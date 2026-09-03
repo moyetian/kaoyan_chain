@@ -81,6 +81,9 @@ def run_tests():
         runner.assert_true(len(prompt) > 200, f"学科 [{subj_key}] 提示词生成完整 (长度: {len(prompt)} 字符)")
         runner.assert_true("AGENTS.md" in prompt or "考研" in prompt, f"学科 [{subj_key}] 成功挂载顶层中枢协议")
 
+    math_prompt = ky_cli.build_system_prompt("math")
+    runner.assert_true("严禁凭空捏造题目出处" in math_prompt and "李林880" in math_prompt, "数学私教提示词严密锁定防虚构李林880红线")
+
     # ------------------------------------------------------------
     # 测试 3: 四大聊天平台报文结构与容错机制
     # ------------------------------------------------------------
@@ -240,6 +243,23 @@ def run_tests():
             runner.assert_true(resp.status == 200, "Web 伴侣实时同步接口 /api/live 返回正常 (HTTP 200)")
             api_data = json.loads(resp.read().decode("utf-8"))
             runner.assert_true("messages" in api_data, "Web 伴侣实时数据流 JSON 格式正确")
+
+        # 测试 /api/ask 支持多模态上传
+        ask_img_payload = json.dumps({
+            "message": "批改这道泰勒展开题",
+            "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        }).encode("utf-8")
+        ask_req = urllib.request.Request(
+            f"http://127.0.0.1:{test_port}/api/ask",
+            data=ask_img_payload,
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(ask_req, timeout=5) as resp:
+            runner.assert_true(resp.status == 200, "Web 伴侣 /api/ask 图像多模态上传处理正常 (HTTP 200)")
+
+        # 测试 live.html 支持 LaTeX 保护与图片上传能力
+        runner.assert_true("renderMarkdownWithKaTeX" in html_text, "Web 伴侣实现 renderMarkdownWithKaTeX 预保护解析")
+        runner.assert_true("image-file-input" in html_text and "paste" in html_text, "Web 伴侣已集成图片上传、Ctrl+V 粘贴截图与拖拽")
     except Exception as e:
         runner.assert_true(False, f"Web 伴侣服务测试异常: {e}")
 
@@ -261,8 +281,8 @@ def run_tests():
     fake_config = ROOT / "ky_config.json"
     fake_config.write_text(json.dumps({"test_api_key": "sk-secret123456"}), encoding="utf-8")
 
-    git_check = subprocess.run(["git", "status", "--porcelain"], cwd=str(ROOT), capture_output=True, text=True)
-    runner.assert_true("ky_config.json" not in git_check.stdout, "ky_config.json 被 .gitignore 正确忽略 (无泄漏风险)")
+    git_check = subprocess.run(["git", "status", "--porcelain"], cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace")
+    runner.assert_true("ky_config.json" not in (git_check.stdout or ""), "ky_config.json 被 .gitignore 正确忽略 (无泄漏风险)")
 
     # 恢复或清理
     if fake_config.exists():

@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>考研学习链 · 实时可视化伴侣 (Live LaTeX Companion)</title>
-  <!-- KaTeX CSS & JS -->
+  <title>考研学习链 · 实时可视化伴侣 (Live LaTeX & Vision Companion)</title>
+  
+  <!-- KaTeX CSS & JS (不加 defer，保证加载即用) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
   <!-- Marked Markdown Parser -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
@@ -133,7 +133,7 @@
     .msg-wrapper {
       display: flex;
       flex-direction: column;
-      max-width: 860px;
+      max-width: 880px;
       width: 100%;
       margin: 0 auto;
     }
@@ -144,11 +144,11 @@
       align-items: flex-start;
     }
     .msg-bubble {
-      padding: 14px 18px;
+      padding: 15px 20px;
       border-radius: 14px;
       font-size: 14.5px;
-      line-height: 1.68;
-      max-width: 92%;
+      line-height: 1.7;
+      max-width: 95%;
       box-shadow: var(--shadow);
       border: 1px solid var(--border);
       word-break: break-word;
@@ -167,28 +167,61 @@
     .msg-meta {
       font-size: 11px;
       color: var(--subtext);
-      margin-top: 4px;
+      margin-top: 5px;
       padding: 0 4px;
     }
 
-    /* 数学公式美化与高亮 */
+    /* 用户上传的图片样式 */
+    .bubble-uploaded-img {
+      max-width: 320px;
+      max-height: 260px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      display: block;
+      cursor: zoom-in;
+      border: 2px solid rgba(255,255,255,0.2);
+      transition: transform 0.15s ease;
+    }
+    .bubble-uploaded-img:hover {
+      transform: scale(1.02);
+    }
+
+    /* 数学公式美化与表格支持 */
     .katex-display {
       margin: 14px 0 !important;
       overflow-x: auto;
       overflow-y: hidden;
-      padding: 8px 12px;
+      padding: 10px 14px;
       background: rgba(99, 102, 241, 0.05);
       border-radius: 8px;
-      border-left: 3px solid var(--primary);
+      border-left: 4px solid var(--primary);
     }
     body.dark .katex-display {
       background: rgba(99, 102, 241, 0.12);
+    }
+    .msg-bubble table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 13.5px;
+    }
+    .msg-bubble th, .msg-bubble td {
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      text-align: left;
+    }
+    .msg-bubble th {
+      background: rgba(0,0,0,0.03);
+      font-weight: 600;
+    }
+    body.dark .msg-bubble th {
+      background: rgba(255,255,255,0.05);
     }
     .msg-bubble code {
       background: rgba(0,0,0,0.06);
       padding: 2px 6px;
       border-radius: 4px;
-      font-family: Consolas, monospace;
+      font-family: Consolas, Monaco, monospace;
       font-size: 13px;
     }
     body.dark .msg-bubble code {
@@ -208,7 +241,7 @@
       flex-shrink: 0;
     }
     .input-box-wrapper {
-      max-width: 860px;
+      max-width: 880px;
       margin: 0 auto;
       display: flex;
       flex-direction: column;
@@ -235,10 +268,72 @@
       border-color: var(--primary);
       color: var(--primary);
     }
+
+    /* 图片预览条 */
+    #image-preview-container {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .preview-thumb {
+      width: 48px;
+      height: 48px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .preview-info {
+      flex: 1;
+      font-size: 12px;
+      color: var(--subtext);
+    }
+    .preview-name {
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+    .btn-remove-img {
+      background: rgba(239, 68, 68, 0.1);
+      color: #ef4444;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .btn-remove-img:hover {
+      background: #ef4444;
+      color: #ffffff;
+    }
+
     .input-row {
       display: flex;
-      gap: 10px;
+      gap: 8px;
       align-items: flex-end;
+    }
+    .btn-tool {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 44px;
+      flex-shrink: 0;
+      transition: all 0.15s;
+    }
+    .btn-tool:hover {
+      border-color: var(--primary);
+      color: var(--primary);
     }
     textarea#user-input {
       flex: 1;
@@ -263,11 +358,13 @@
       background: var(--primary);
       color: #ffffff;
       border: none;
-      padding: 11px 20px;
+      padding: 0 22px;
+      height: 44px;
       border-radius: 10px;
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
+      flex-shrink: 0;
       transition: background 0.15s;
     }
     .btn-send:hover {
@@ -278,12 +375,12 @@
     .empty-state {
       text-align: center;
       margin: auto;
-      max-width: 480px;
+      max-width: 520px;
       color: var(--subtext);
       padding: 40px 20px;
     }
     .empty-icon {
-      font-size: 40px;
+      font-size: 44px;
       margin-bottom: 12px;
     }
     .empty-title {
@@ -306,17 +403,17 @@
       </div>
     </div>
     <div class="header-actions">
-      <button class="btn-icon" onclick="clearLive()">🗑️ 清空伴侣视图</button>
-      <button class="btn-icon" onclick="toggleTheme()">🌓 主题模式</button>
+      <button class="btn-icon" onclick="clearLive()">🗑️ 清空视图</button>
+      <button class="btn-icon" onclick="toggleTheme()">🌓 主题切换</button>
     </div>
   </header>
 
   <main id="chat-container">
     <div class="empty-state" id="empty-state">
       <div class="empty-icon">📐</div>
-      <div class="empty-title">实时 LaTeX 渲染与手写批改视窗</div>
-      <p style="font-size: 13.5px; line-height: 1.6;">
-        在终端（CLI）或下方输入考研数学、英语、政治题目，本窗口将以<strong>印刷级 KaTeX 排版</strong>实时呈现极限、积分、矩阵与采分点批改！
+      <div class="empty-title">印刷级 LaTeX 渲染 & 视觉批改视窗</div>
+      <p style="font-size: 13.5px; line-height: 1.6; margin-top: 8px;">
+        在终端（CLI）或下方直接输入题目，或点击 <strong>📷 上传图片 / 直接剪贴板粘贴截图 (Ctrl+V)</strong>，私教将为您提供步骤赋分、错因归因与 KaTeX 印刷级排版！
       </p>
     </div>
   </main>
@@ -330,9 +427,24 @@
         <span class="chip" onclick="insertPrompt('/dissect ')">🧱 长难句解剖</span>
         <span class="chip" onclick="insertPrompt('/skills')">🧩 技能清单</span>
       </div>
+
+      <!-- 图片上传预览区 -->
+      <div id="image-preview-container">
+        <img id="image-preview-thumb" class="preview-thumb" src="" alt="预览图">
+        <div class="preview-info">
+          <div class="preview-name" id="preview-filename">题目截图.png</div>
+          <div id="preview-filesize">0 KB · 已挂载</div>
+        </div>
+        <button class="btn-remove-img" onclick="clearSelectedImage()">✖ 移除</button>
+      </div>
+
       <div class="input-row">
-        <textarea id="user-input" rows="1" placeholder="在此输入问题，或在终端敲字，两端实时自动同步... (Enter 发送, Shift+Enter 换行)"></textarea>
-        <button class="btn-send" onclick="sendMessage()">发送</button>
+        <input type="file" id="image-file-input" accept="image/*" style="display:none;" onchange="handleFileInputChange(event)">
+        <button class="btn-tool" onclick="triggerImageUpload()" title="上传题目截图或手写草稿 (亦可直接 Ctrl+V 粘贴截图)">
+          📷 传图
+        </button>
+        <textarea id="user-input" rows="1" placeholder="输入题目，或直接粘贴截图 (Ctrl+V)，Enter 发送，Shift+Enter 换行..."></textarea>
+        <button class="btn-send" id="btn-send" onclick="sendMessage()">发送</button>
       </div>
     </div>
   </footer>
@@ -340,6 +452,8 @@
   <script>
     let lastMessageCount = 0;
     let autoScroll = true;
+    let selectedImageBase64 = null;
+    let selectedImageName = "";
 
     // 主题切换
     function toggleTheme() {
@@ -357,6 +471,76 @@
       input.focus();
     }
 
+    // 触发图片上传
+    function triggerImageUpload() {
+      document.getElementById('image-file-input').click();
+    }
+
+    function handleFileInputChange(e) {
+      const file = e.target.files && e.target.files[0];
+      if (file) {
+        processImageFile(file);
+      }
+    }
+
+    // 处理图片读取为 Base64
+    function processImageFile(file) {
+      if (!file.type.startsWith('image/')) {
+        alert('请选择有效的图片文件！');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        selectedImageBase64 = evt.target.result;
+        selectedImageName = file.name || "题目截图.png";
+        showImagePreview(selectedImageBase64, selectedImageName, (file.size / 1024).toFixed(1) + " KB");
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function showImagePreview(base64, name, sizeStr) {
+      const container = document.getElementById('image-preview-container');
+      const thumb = document.getElementById('image-preview-thumb');
+      const nameEl = document.getElementById('preview-filename');
+      const sizeEl = document.getElementById('preview-filesize');
+
+      thumb.src = base64;
+      nameEl.textContent = name;
+      sizeEl.textContent = `${sizeStr} · 准备发送至私教视觉批改`;
+      container.style.display = 'flex';
+    }
+
+    function clearSelectedImage() {
+      selectedImageBase64 = null;
+      selectedImageName = "";
+      document.getElementById('image-preview-container').style.display = 'none';
+      document.getElementById('image-file-input').value = "";
+    }
+
+    // 剪贴板监听 (支持全局 Ctrl + V 粘贴截图)
+    window.addEventListener('paste', function(e) {
+      const items = (e.clipboardData || window.clipboardData).items;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          processImageFile(blob);
+          break;
+        }
+      }
+    });
+
+    // 拖拽上传支持
+    window.addEventListener('dragover', function(e) { e.preventDefault(); });
+    window.addEventListener('drop', function(e) {
+      e.preventDefault();
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        if (file.type.startsWith('image/')) {
+          processImageFile(file);
+        }
+      }
+    });
+
     // 回车发送
     document.getElementById('user-input').addEventListener('keydown', function(e) {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -365,43 +549,122 @@
       }
     });
 
-    // 渲染 KaTeX 和 Markdown
-    function renderMath(element) {
-      if (window.renderMathInElement) {
-        renderMathInElement(element, {
-          delimiters: [
-            {left: '$$', right: '$$', display: true},
-            {left: '\\[', right: '\\]', display: true},
-            {left: '$', right: '$', display: false},
-            {left: '\\(', right: '\\)', display: false}
-          ],
-          throwOnError: false
-        });
+    // 核心：Markdown + KaTeX 混合渲染器 (预保护 LaTeX，防止 Marked 转义反斜杠)
+    function renderMarkdownWithKaTeX(rawText) {
+      if (!rawText) return "";
+      const mathTokens = [];
+
+      // 1. 保护 display math: $$...$$ 和 \[...\]
+      let text = rawText.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
+        const idx = mathTokens.length;
+        mathTokens.push({ math: math.trim(), display: true });
+        return `%%KY_MATH_BLOCK_${idx}%%`;
+      });
+      text = text.replace(/\\\[([\s\S]+?)\\\]/g, (_, math) => {
+        const idx = mathTokens.length;
+        mathTokens.push({ math: math.trim(), display: true });
+        return `%%KY_MATH_BLOCK_${idx}%%`;
+      });
+
+      // 2. 保护 inline math: \(...\) 和 $...$
+      text = text.replace(/\\\(([\s\S]+?)\\\)/g, (_, math) => {
+        const idx = mathTokens.length;
+        mathTokens.push({ math: math.trim(), display: false });
+        return `%%KY_MATH_INLINE_${idx}%%`;
+      });
+      text = text.replace(/(?<!\\)\$([^\$\n]+?)(?<!\\)\$/g, (_, math) => {
+        const idx = mathTokens.length;
+        mathTokens.push({ math: math.trim(), display: false });
+        return `%%KY_MATH_INLINE_${idx}%%`;
+      });
+
+      // 3. 容错处理：若模型在某些地方误输出 (f(x)=\ln...) 或 [ \ln... ]，但包含典型 LaTeX 控制字
+      text = text.replace(/(?:^|\n)\[\s*([\s\S]*?\\[a-zA-Z]+[\s\S]*?)\s*\](?=\n|$)/g, (_, math) => {
+        const idx = mathTokens.length;
+        mathTokens.push({ math: math.trim(), display: true });
+        return `\n%%KY_MATH_BLOCK_${idx}%%\n`;
+      });
+
+      // 4. 执行 Markdown 解析
+      let html = "";
+      if (window.marked && typeof marked.parse === 'function') {
+        html = marked.parse(text);
+      } else {
+        html = text;
       }
+
+      // 5. 将保护标记还原为 KaTeX 渲染结果
+      html = html.replace(/%%KY_MATH_BLOCK_(\d+)%%/g, (_, idx) => {
+        const item = mathTokens[parseInt(idx)];
+        if (!item) return "";
+        if (window.katex && typeof katex.renderToString === 'function') {
+          try {
+            return `<div class="katex-display">${katex.renderToString(item.math, { displayMode: true, throwOnError: false })}</div>`;
+          } catch (e) {
+            return `<code>${item.math}</code>`;
+          }
+        }
+        return `\\[${item.math}\\]`;
+      });
+
+      html = html.replace(/%%KY_MATH_INLINE_(\d+)%%/g, (_, idx) => {
+        const item = mathTokens[parseInt(idx)];
+        if (!item) return "";
+        if (window.katex && typeof katex.renderToString === 'function') {
+          try {
+            return katex.renderToString(item.math, { displayMode: false, throwOnError: false });
+          } catch (e) {
+            return `<code>${item.math}</code>`;
+          }
+        }
+        return `\\(${item.math}\\)`;
+      });
+
+      return html;
     }
 
-    // 发送消息到后端
+    // 发送消息到后端 (支持图文混合发送)
     async function sendMessage() {
       const input = document.getElementById('user-input');
       const text = input.value.trim();
-      if (!text) return;
+      const currentImage = selectedImageBase64;
+
+      if (!text && !currentImage) return;
+
       input.value = '';
+      clearSelectedImage();
+
+      // 构建用户展示内容
+      let userDisplay = text;
+      if (currentImage) {
+        userDisplay = `<img src="${currentImage}" class="bubble-uploaded-img" alt="上传图片" />` + (text ? `<div>${text}</div>` : '');
+      }
 
       // 立即在前端上屏
-      appendMessage('user', text);
+      appendMessage('user', userDisplay, new Date().toLocaleTimeString(), true);
 
+      // 发送请求
       try {
-        await fetch('/api/ask', {
+        const payload = { message: text };
+        if (currentImage) payload.image = currentImage;
+
+        const resp = await fetch('/api/ask', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({message: text})
+          body: JSON.stringify(payload)
         });
+        if (resp.ok) {
+          const resData = await resp.json();
+          if (resData && resData.reply) {
+            appendMessage('ai', resData.reply, new Date().toLocaleTimeString());
+          }
+        }
       } catch (err) {
-        console.warn('同步发送失败，若未运行 ky serve 仅本地记录');
+        console.warn('请求发送失败，若未运行后台服务仅本地记录');
       }
     }
 
-    function appendMessage(role, content, timeStr) {
+    function appendMessage(role, content, timeStr, isRawHtml = false) {
       const container = document.getElementById('chat-container');
       const emptyState = document.getElementById('empty-state');
       if (emptyState) emptyState.style.display = 'none';
@@ -412,11 +675,11 @@
       const bubble = document.createElement('div');
       bubble.className = 'msg-bubble';
       
-      // 解析 Markdown
-      bubble.innerHTML = marked.parse(content);
-      
-      // 渲染数学公式
-      renderMath(bubble);
+      if (isRawHtml) {
+        bubble.innerHTML = content;
+      } else {
+        bubble.innerHTML = renderMarkdownWithKaTeX(content);
+      }
 
       const meta = document.createElement('div');
       meta.className = 'msg-meta';
@@ -431,7 +694,7 @@
       }
     }
 
-    // 轮询同步与状态拉取
+    // 轮询同步终端与后台消息流
     async function pollLiveFeed() {
       try {
         const resp = await fetch('/api/live');
@@ -442,15 +705,15 @@
             const container = document.getElementById('chat-container');
             container.innerHTML = '';
             messages.forEach(m => {
-              appendMessage(m.role, m.content, m.time);
+              const isHtml = m.content.startsWith('<img') || m.content.startsWith('<div class="bubble');
+              appendMessage(m.role, m.content, m.time, isHtml);
             });
             lastMessageCount = messages.length;
             document.getElementById('sync-status').textContent = '已同步 (' + messages.length + ')';
           }
         }
       } catch (e) {
-        // 离线模式
-        document.getElementById('sync-status').textContent = '本地静态模式';
+        document.getElementById('sync-status').textContent = '本地模式';
       }
     }
 
@@ -460,7 +723,7 @@
         <div class="empty-state" id="empty-state">
           <div class="empty-icon">📐</div>
           <div class="empty-title">视窗已清空</div>
-          <p style="font-size: 13.5px; line-height: 1.6;">随时在终端敲入题目或使用 /calc, /img, 这里将以印刷级数学排版呈现。</p>
+          <p style="font-size: 13.5px; line-height: 1.6;">随时在此输入题目、上传图片 (📷 或 Ctrl+V 粘贴)，或在终端敲字，两端实时自动呈现印刷级排版。</p>
         </div>
       `;
       lastMessageCount = 0;

@@ -179,6 +179,32 @@ def build_system_prompt(active_subj="math"):
     if state_context:
         sys_parts.append(f"\n=== 【当前学员学情档案与记忆状态 ({subj_name})】 ===\n" + "\n\n".join(state_context))
 
+    # 3. 动态核验参考资料真实性 (杜绝假冒李林880等虚构题源)
+    mat_dir = s_dir / "参考资料"
+    mat_files = []
+    if mat_dir.exists():
+        for f in mat_dir.iterdir():
+            if f.is_file() and f.name.lower() not in ("readme.md", ".gitkeep", ".gitignore"):
+                mat_files.append(f.name)
+
+    if mat_files:
+        mat_text = (
+            f"\n=== 📚【本地真题与资料白名单清单 ({subj_name})】===\n"
+            f"本地「参考资料/」目录下实际存放的文件为：{', '.join(mat_files)}。\n"
+            "若需抽题或引用，必须严格以以上文件为准，严禁引用上述列表之外的任何书籍！"
+        )
+    else:
+        mat_text = (
+            f"\n=== 🚨【最高红线：本地未放入参考资料 · 绝对禁止虚构题源出处】===\n"
+            f"系统物理核验结果：当前学科【{subj_name}】的「参考资料/」目录下【尚未放置任何教材或题库文件】！\n"
+            "【四大不可违背的真实性铁律】：\n"
+            "1. 严禁凭空捏造题目出处！绝对严禁声称“以下题目均来自《李林880》”、“来自《张宇1000》”、“来自《汤家凤1800》”等虚假书名！\n"
+            "2. 当学员自主输入题目时：私教只针对学员给出的题目本身进行采分点批改与思路拆解；\n"
+            "3. 若在解答后提供类似题供学员巩固，必须如实标明为【私教自拟类似变式训练】，绝对禁止伪称来自某本未核验的出版物！\n"
+            "4. 若学员要求从某题册（如李林880）抽题，但本地无该文件且学员未提供题号，必须如实告知：“您本地参考资料库尚未放置该文件，请提供具体题目文字或截图，私教立刻为您解答。”"
+        )
+    sys_parts.append(mat_text)
+
     sys_parts.append(
         "\n=== 【CLI 指令与行为规则】 ===\n"
         "1. 严格遵守当前配置的私教辅导风格（严格/秒杀/鼓励/溯源）；\n"
@@ -1230,46 +1256,50 @@ def create_gateway_handler():
                 self.wfile.write(b'{"status":"cleared"}')
                 return
 
-            # 来自 Web 伴侣前端的提问
+            # 来自 Web 伴侣前端的提问 (支持多模态图片批改与草稿手写上传)
             if parsed.path == "/api/ask":
+                import base64
+                import time
                 try:
                     data = json.loads(post_data)
                     user_msg = data.get("message", "").strip()
+                    img_base64 = data.get("image", "").strip()
                 except Exception:
                     user_msg = post_data.strip()
+                    img_base64 = ""
 
-                if not user_msg:
+                if not user_msg and not img_base64:
                     self.send_response(400)
                     self.end_headers()
                     return
 
-                append_live_message("user", user_msg)
-                active_subj = cfg.get("active_subject", "math")
-                sys_prompt = build_system_prompt(active_subj)
-                messages = [
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": user_msg}
-                ]
-                
-                reply = "已收到！正在为您解析..."
-                if not cfg.get("api_key"):
-                    reply = f"🎓【考研私教】收到您的提问: \"{user_msg}\"\n当前尚未配置大模型 API Key，请在电脑端运行 `ky config` 设置密钥。"
-                else:
+                reply = ""
+                # 1. 若前端上传了图片 (拍照/截图/剪贴板Ctrl+V)
+                if img_base64:
+                    upload_dir = ROOT / "tools" / "scratch" / "uploads"
+                    upload_dir.mkdir(parents=True, exist_ok=True)
+                    img_filename = f"web_upload_{int(time.time()*1000)}.png"
+                    img_path = upload_dir / img_filename
                     try:
-                        base_url = cfg.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
-                        url = f"{base_url}/chat/completions"
-                        req = urllib.request.Request(
-                            url,
-                            data=json.dumps({"model": cfg.get("model", "deepseek-chat"), "messages": messages, "stream": False}).encode("utf-8"),
-                            headers={"Content-Type": "application/json", "Authorization": f"Bearer {cfg.get('api_key','')}"}
-                        )
-                        with urllib.request.urlopen(req, timeout=30) as resp:
-                            res_json = json.loads(resp.read().decode("utf-8"))
-                            reply = res_json["choices"][0]["message"]["content"]
-                    except Exception as e:
-                        reply = f"[私教处理异常]: {e}"
+                        header_sep = img_base64.find(",")
+                        raw_b64 = img_base64[header_sep+1:] if header_sep != -1 else img_base64
+                        img_path.write_bytes(base64.b64decode(raw_b64))
+                        print(colorize(f"\n[📸 收到 Web 伴侣上传图片: {img_filename}，启动视觉技能阅卷批改...]", C.CYAN))
+                        from tools.skills import vision_solver
+                        prompt_text = user_msg or "请详细批改本题并按步骤给分，指出关键推导与可能的丢分点。"
+                        reply = vision_solver.solve_image_with_model(str(img_path), prompt_text, cfg, stream=False)
+                    except Exception as err:
+                        reply = f"【图片解析异常】: {err}"
 
-                append_live_message("assistant", reply)
+                    user_display = f'<img src="{img_base64}" class="bubble-uploaded-img" alt="手写草稿" />' + (f'<div>{user_msg}</div>' if user_msg else '')
+                    append_live_message("user", user_display)
+                    append_live_message("assistant", reply)
+                else:
+                    # 2. 纯文字提问，使用 query_llm_reply 进行学科路由、技能验算与反幻觉保障
+                    append_live_message("user", user_msg)
+                    reply = query_llm_reply(user_msg, cfg)
+                    append_live_message("assistant", reply)
+
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Access-Control-Allow-Origin", "*")
@@ -1277,7 +1307,7 @@ def create_gateway_handler():
                 self.wfile.write(json.dumps({"reply": reply}, ensure_ascii=False).encode("utf-8"))
                 return
 
-                        # ── OpenAI 兼容接口 (/v1/chat/completions 供 OpenClaw / WeChat ClawBot 使用) ──
+            # ── OpenAI 兼容接口 (/v1/chat/completions 供 OpenClaw / WeChat ClawBot 使用) ──
             if parsed.path in ("/v1/chat/completions", "/chat/completions"):
                 import time
                 try:
