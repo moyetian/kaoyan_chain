@@ -35,17 +35,17 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG_FILE = ROOT / "ky_config.json"
 HISTORY_FILE = ROOT / "ky_history.json"
 
-# 引入考研专用 Skills 体系
+# 引入考研专用 Skills 体系与路径配置
 tools_dir = Path(__file__).resolve().parent
-if str(tools_dir) not in sys.path:
-    sys.path.insert(0, str(tools_dir))
+for p_item in (str(ROOT), str(tools_dir)):
+    if p_item not in sys.path:
+        sys.path.insert(0, p_item)
 
 try:
     from skills import vision_solver, math_verifier, english_dissector, pdf_extractor, error_logger, latex_beautifier, list_skills
 except Exception as _e:
     try:
-        import skills
-        from skills import vision_solver, math_verifier, english_dissector, pdf_extractor, error_logger, latex_beautifier, list_skills
+        from tools.skills import vision_solver, math_verifier, english_dissector, pdf_extractor, error_logger, latex_beautifier, list_skills
     except Exception:
         list_skills = lambda: {}
         vision_solver = None
@@ -57,6 +57,48 @@ except Exception as _e:
 
 # Web 可视化伴侣会话缓存
 LIVE_SESSION_MESSAGES = []
+
+def grab_clipboard_image():
+    """从 Windows/macOS/Linux 系统剪贴板中提取图像并暂存为本地图片文件"""
+    upload_dir = ROOT / "tools" / "scratch" / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    target_path = upload_dir / f"clip_{int(time.time() * 1000)}.png"
+
+    # 1. 优先使用 Pillow ImageGrab (跨平台，支持微信截图、SnippingTool、浏览器复制图像等)
+    try:
+        from PIL import ImageGrab
+        im = ImageGrab.grabclipboard()
+        if im is not None:
+            if hasattr(im, "save"):
+                im.save(str(target_path), "PNG")
+                return target_path
+            elif isinstance(im, list):
+                for item in im:
+                    p = Path(item)
+                    if p.is_file() and p.suffix.lower() in ('.png', '.jpg', '.jpeg', '.webp', '.bmp'):
+                        return p
+    except Exception:
+        pass
+
+    # 2. Windows PowerShell 底层读取剪贴板位图
+    if sys.platform == "win32":
+        try:
+            import subprocess
+            ps_cmd = f"""
+            Add-Type -AssemblyName System.Windows.Forms;
+            $img = [System.Windows.Forms.Clipboard]::GetImage();
+            if ($img -ne $null) {{
+                $img.Save('{str(target_path).replace("\\", "/")}', [System.Drawing.Imaging.ImageFormat]::Png);
+                Write-Output 'OK';
+            }}
+            """
+            res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, timeout=4)
+            if "OK" in (res.stdout or "") and target_path.exists():
+                return target_path
+        except Exception:
+            pass
+
+    return None
 
 def append_live_message(role, content):
     """向网页可视化伴侣推送同步消息"""
@@ -1008,7 +1050,7 @@ def run_repl():
             print_command_palette()
             continue
 
-        # ── 智能图片输入检测 (直接输入图片、拖拽路径、或语句中嵌入图片路径) ──
+        # ── 智能图片输入检测 (直接输入图片、拖拽路径、文件名匹配、或系统剪贴板自动抓取) ──
         clean_input = user_input.strip().strip('"').strip("'")
         img_pattern = r'([a-zA-Z]:[\\/][^\r\n"\'<>|?*]+?\.(?:png|jpg|jpeg|webp|bmp)|\b[^\s"\'<>|?*]+?\.(?:png|jpg|jpeg|webp|bmp))\b'
         img_match = re.search(img_pattern, user_input, re.IGNORECASE)
@@ -1023,6 +1065,32 @@ def run_repl():
             if Path(candidate).exists():
                 found_img_path = candidate
                 extra_question = user_input.replace(img_match.group(0), "").strip()
+            else:
+                # 尝试在常见临时、桌面、下载或上传目录查找同名文件
+                cand_name = Path(candidate).name
+                search_dirs = [
+                    ROOT / "tools" / "scratch" / "uploads",
+                    Path.home() / "Desktop",
+                    Path.home() / "Downloads",
+                    Path(os.environ.get("TEMP", "")) if os.environ.get("TEMP") else None
+                ]
+                for sd in search_dirs:
+                    if sd and (sd / cand_name).exists():
+                        found_img_path = str(sd / cand_name)
+                        extra_question = user_input.replace(img_match.group(0), "").strip()
+                        break
+
+        # 若用户输入中明确带有 [图片: ...]、"图片"、或从微信复制的图片标识，本地文件未命中时自动抓取系统剪贴板
+        if not found_img_path and ("[图片" in user_input or "截图" in user_input):
+            clip_img = grab_clipboard_image()
+            if clip_img:
+                found_img_path = str(clip_img)
+                extra_question = re.sub(r'\[图片[^\]]*\]', '', user_input).strip()
+                print(colorize(f"\n[📸 检测到您粘贴了图片引用，已自动从系统剪贴板抓取最新截图: {Path(found_img_path).name}！]", C.GREEN))
+            else:
+                print(colorize("\n[!] 提示：检测到您输入了图片引用，但在本地未找到对应文件，且当前剪贴板中无截图。", C.YELLOW))
+                print("💡 解决方案：\n  1. 使用微信 (Alt+A) 或系统 (Win+Shift+S) 截图后，在终端直接输入 /paste 即可立即批改！\n  2. 或在网页伴侣 (http://127.0.0.1:8088/live) 中按 Ctrl+V 粘贴图片。\n")
+                continue
 
         if found_img_path:
             print(colorize(f"\n[📸 检测到题目/草稿图片: {Path(found_img_path).name}，正在调起考研视觉解题技能...]\n", C.CYAN))
@@ -1059,14 +1127,46 @@ def run_repl():
                 print()
                 continue
 
-            # ── 技能 2: /img 或 /ocr 视觉看图与手写批改 ──
-            elif cmd in ("/img", "/ocr"):
-                if not arg:
-                    print(colorize("用法: /img <图片路径> [补充要求]\n示例: /img C:\\Users\\draft.jpg 请重点检查第3行计算", C.YELLOW))
+            # ── 技能 2: /paste 或 /clip 直接读取系统剪贴板截图 ──
+            elif cmd in ("/paste", "/clip", "/v"):
+                clip_img = grab_clipboard_image()
+                if not clip_img:
+                    print(colorize("\n[!] 当前系统剪贴板中未检测到图片截图！", C.YELLOW))
+                    print("💡 提示：您可以先使用微信截图 (Alt+A)、QQ截图 (Ctrl+Alt+A) 或 Windows截图 (Win+Shift+S) 截取题目后，在此输入 /paste 即可立即批改！\n")
                     continue
-                parts = arg.split(maxsplit=1)
-                img_p = parts[0].strip('"').strip("'")
-                extra = parts[1] if len(parts) > 1 else ""
+                extra = arg
+                print(colorize(f"\n[📸 已从系统剪贴板读取到最新题目/草稿截图: {clip_img.name}，正在调起考研视觉解题技能...]\n", C.CYAN))
+                reply = vision_solver.solve_image_with_model(str(clip_img), extra, cfg, stream=True)
+                if reply:
+                    append_live_message("user", f"[剪贴板截图: {clip_img.name}] {extra}")
+                    append_live_message("assistant", reply)
+                    history.append({"role": "user", "content": f"[剪贴板批改: {clip_img.name}] {extra}"})
+                    history.append({"role": "assistant", "content": reply})
+
+                    # Codex CLI 风格快捷操作栏
+                    print(f"\n{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮{C.RESET}")
+                    print(f"{C.CYAN}│{C.RESET}  {C.BOLD}💡 下一步操作:{C.RESET} [1] 📐 符号验算  [2] 📌 记入错题本  [3] 🌐 网页排版  [4] 🔄 变式演练 {C.CYAN}│{C.RESET}")
+                    print(f"{C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}")
+                continue
+
+            # ── 技能 3: /img 或 /ocr 视觉看图与手写批改 ──
+            elif cmd in ("/img", "/ocr"):
+                img_p = ""
+                extra = ""
+                if not arg:
+                    # 自动尝试剪贴板
+                    clip_img = grab_clipboard_image()
+                    if clip_img:
+                        img_p = str(clip_img)
+                        print(colorize(f"\n[📸 未提供路径，已自动提取剪贴板最新截图: {clip_img.name}]", C.GREEN))
+                    else:
+                        print(colorize("用法: /img <图片路径> [补充要求] 或输入 /paste 自动读取剪贴板截图\n示例: /img C:\\Users\\draft.jpg 请重点检查第3行计算", C.YELLOW))
+                        continue
+                else:
+                    parts = arg.split(maxsplit=1)
+                    img_p = parts[0].strip('"').strip("'")
+                    extra = parts[1] if len(parts) > 1 else ""
+
                 if not Path(img_p).exists():
                     print(colorize(f"\n[!] 未找到图片: {img_p}\n", C.RED))
                     continue
@@ -1253,10 +1353,15 @@ def query_llm_reply(user_msg, cfg):
 
     if user_msg.startswith("/calc") or "验算" in user_msg:
         try:
-            from tools.skills import math_verifier
+            mv = math_verifier
+            if mv is None:
+                try:
+                    from skills import math_verifier as mv
+                except ImportError:
+                    from tools.skills import math_verifier as mv
             expr = user_msg.replace("/calc", "").replace("验算", "").strip()
-            if expr:
-                return math_verifier.run_math_query(expr)
+            if expr and mv:
+                return mv.run_math_query(expr)
         except Exception:
             pass
 
@@ -1377,9 +1482,14 @@ def create_gateway_handler():
                         raw_b64 = img_base64[header_sep+1:] if header_sep != -1 else img_base64
                         img_path.write_bytes(base64.b64decode(raw_b64))
                         print(colorize(f"\n[📸 收到 Web 伴侣上传图片: {img_filename}，启动视觉技能阅卷批改...]", C.CYAN))
-                        from tools.skills import vision_solver
+                        vs = vision_solver
+                        if vs is None:
+                            try:
+                                from skills import vision_solver as vs
+                            except ImportError:
+                                from tools.skills import vision_solver as vs
                         prompt_text = user_msg or "请详细批改本题并按步骤给分，指出关键推导与可能的丢分点。"
-                        reply = vision_solver.solve_image_with_model(str(img_path), prompt_text, cfg, stream=False)
+                        reply = vs.solve_image_with_model(str(img_path), prompt_text, cfg, stream=False)
                     except Exception as err:
                         reply = f"【图片解析异常】: {err}"
 
