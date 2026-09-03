@@ -3,18 +3,20 @@
 考研学习链 (Kaoyan AI Study Chain) · 专有技能中枢 (Skills Registry)
 汇总所有考研专用技能插件：
   1. vision_solver: 多模态图像识别、手写草稿逐行批改、LaTeX 提取
-  2. math_verifier: SymPy 高精度符号计算与验算 (极限、导数、积分、矩阵、级数)
+  2. math_verifier: SymPy 高精度符号计算与验算 (微分方程、二次型正定、极限、求导、微积分、矩阵、级数)
   3. english_dissector: 考研英语长难句搭积木解剖与翻译
-  4. pdf_extractor: 资料库教材与真题 PDF 文本抽取
-  5. error_logger: 错题本自动沉淀与薄弱点雷达更新
-  6. latex_beautifier: 终端数学公式 Unicode 美化与实时网页伴侣联动
+  4. socratic_tutor: 苏格拉底式三级阶梯微步骤启发引导 (/hint)
+  5. error_logger: 错题归档与艾宾浩斯盲盒复测闭环引擎 (/review /quiz)
+  6. pdf_extractor: 资料库教材与真题 PDF 文本抽取
+  7. latex_beautifier: 终端数学公式 Unicode 美化与实时网页伴侣联动
 """
 
 from . import vision_solver
 from . import math_verifier
 from . import english_dissector
-from . import pdf_extractor
+from . import socratic_tutor
 from . import error_logger
+from . import pdf_extractor
 from . import latex_beautifier
 
 SKILLS_REGISTRY = {
@@ -26,14 +28,26 @@ SKILLS_REGISTRY = {
     },
     "math_verifier": {
         "name": "📐 数学高精度符号计算技能 (Math & SymPy Verifier)",
-        "desc": "极限/求导/微积分/行列式/特征值/泰勒展开精确验算，杜绝计算幻觉",
+        "desc": "常微分方程/二次型正定/级数求和/极限/微积分/矩阵，杜绝计算幻觉",
         "command": "/calc <数学表达式>",
         "status": math_verifier.get_status()
+    },
+    "socratic_tutor": {
+        "name": "💡 苏格拉底式微步骤脚手架 (Socratic Scaffolding Tutor)",
+        "desc": "拒绝直接剧透答案，通过三级微步骤（破题定性/首步搭桥/避坑指南）循循善诱",
+        "command": "/hint [题目] 或快捷键 [5]",
+        "status": "已就绪"
+    },
+    "error_logger": {
+        "name": "🎯 错题归档与艾宾浩斯盲盒复测闭环 (Error Logger & Quiz Engine)",
+        "desc": "自动提取错题现场，隐去原解析生成盲盒试题，复测合格自动标记出库",
+        "command": "/review [科目] 或 /quiz 或快捷键 [2]",
+        "status": "已就绪"
     },
     "latex_beautifier": {
         "name": "🌐 终端公式美化与实时网页伴侣 (LaTeX Beautifier & Live View)",
         "desc": "将晦涩的 LaTeX 语法转为易读 Unicode 符号，并联动 KaTeX 实时网页渲染",
-        "command": "/view (打开网页伴侣) 或自动渲染",
+        "command": "/view (打开网页伴侣) 或快捷键 [3]",
         "status": "已就绪"
     },
     "english_dissector": {
@@ -46,12 +60,6 @@ SKILLS_REGISTRY = {
         "name": "📚 参考书与真题检索技能 (PDF & Document Extractor)",
         "desc": "快速检索四科「参考资料/」教材与历年真题库内容",
         "command": "/pdf [关键词或页码]",
-        "status": "已就绪"
-    },
-    "error_logger": {
-        "name": "📌 错题自动归档技能 (Error Logger)",
-        "desc": "将批改出的错题与错因自动写入对应科目的「错题本/」",
-        "command": "自动触发或 /log",
         "status": "已就绪"
     }
 }

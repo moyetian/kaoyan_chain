@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070a12" />
+      <stop offset="50%" stop-color="#0d1322" />
+      <stop offset="100%" stop-color="#080c18" />
+    </linearGradient>
+    <linearGradient id="hubGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1e1b4b" />
+      <stop offset="50%" stop-color="#0e2a47" />
+      <stop offset="100%" stop-color="#06322b" />
+    </linearGradient>
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#151d30" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <filter id="glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <style>
+    .t-main { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 800; fill: #f8fafc; font-size: 26px; }
+    .t-sub { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; fill: #94a3b8; font-size: 13.5px; }
+    .node-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 700; font-size: 13.5px; }
+    .node-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-size: 11px; fill: #94a3b8; }
+    .cmd-badge { font-family: "JetBrains Mono", Consolas, monospace; font-size: 10px; font-weight: 600; fill: #38bdf8; }
+    .flow-line { stroke: #38bdf8; stroke-width: 1.5; stroke-dasharray: 4 4; stroke-opacity: 0.6; }
+  </style>
+
+  <!-- 背景 -->
+  <rect width="960" height="520" rx="20" fill="url(#bgGrad2)" stroke="#1e293b" stroke-width="1.5" />
+  
+  <!-- 网格点缀 -->
+  <path d="M 0 70 L 960 70 M 0 160 L 960 160 M 0 250 L 960 250 M 0 340 L 960 340 M 0 430 L 960 430" stroke="#334155" stroke-opacity="0.12" stroke-width="1" />
+  <path d="M 120 0 L 120 520 M 240 0 L 240 520 M 360 0 L 360 520 M 480 0 L 480 520 M 600 0 L 600 520 M 720 0 L 720 520 M 840 0 L 840 520" stroke="#334155" stroke-opacity="0.12" stroke-width="1" />
+
+  <!-- 头部主标题 -->
+  <g transform="translate(480, 42)" text-anchor="middle">
+    <text class="t-main" y="0">ky-cli 专有智能私教技能中枢架构</text>
+    <text class="t-sub" y="24">全键盘 TUI 交互 · 7 大考研专有技能插件 · 多端聊天机器人桥接 · 外置状态机驱动</text>
+  </g>
+
+  <!-- ══════════════ 第一层：输入与交互层 ══════════════ -->
+  <g transform="translate(40, 84)">
+    <rect width="880" height="52" rx="10" fill="#0f172a" stroke="#334155" stroke-width="1.2" />
+    <text x="20" y="32" font-family="sans-serif" font-weight="700" fill="#cbd5e1" font-size="13">📱 多维全景接入端</text>
+    
+    <!-- 端节点 -->
+    <g transform="translate(180, 11)">
+      <rect width="150" height="30" rx="6" fill="#1e293b" stroke="#3b82f6" stroke-width="1" />
+      <text x="75" y="20" text-anchor="middle" fill="#93c5fd" font-size="11.5" font-weight="600">⌨️ 终端 TUI (ky.bat)</text>
+    </g>
+    <g transform="translate(345, 11)">
+      <rect width="150" height="30" rx="6" fill="#1e293b" stroke="#10b981" stroke-width="1" />
+      <text x="75" y="20" text-anchor="middle" fill="#6ee7b7" font-size="11.5" font-weight="600">💬 微信 ClawBot 扫码</text>
+    </g>
+    <g transform="translate(510, 11)">
+      <rect width="150" height="30" rx="6" fill="#1e293b" stroke="#f59e0b" stroke-width="1" />
+      <text x="75" y="20" text-anchor="middle" fill="#fcd34d" font-size="11.5" font-weight="600">🤖 QQ / 钉钉 / 飞书群</text>
+    </g>
+    <g transform="translate(675, 11)">
+      <rect width="185" height="30" rx="6" fill="#1e293b" stroke="#ec4899" stroke-width="1" />
+      <text x="92" y="20" text-anchor="middle" fill="#f472b6" font-size="11.5" font-weight="600">🌐 Web 实时伴侣 (/view)</text>
+    </g>
+  </g>
+
+  <!-- 连线 1 -->
+  <line x1="480" y1="136" x2="480" y2="156" stroke="#06b6d4" stroke-width="2" stroke-dasharray="3 3" />
+
+  <!-- ══════════════ 第二层：调度中枢层 ══════════════ -->
+  <g transform="translate(40, 156)" filter="url(#glow)">
+    <rect width="880" height="64" rx="12" fill="url(#hubGrad)" stroke="#0284c7" stroke-width="1.5" />
+    
+    <g transform="translate(25, 20)">
+      <text font-family="sans-serif" font-weight="800" fill="#38bdf8" font-size="15">🎯 ky-cli 核心调度中枢 (Router &amp; Gateway)</text>
+      <text font-family="sans-serif" fill="#94a3b8" font-size="11.5" y="24">四科私教协议路由 · 采分点打分规则 · 5维 Codex Follow-up 快捷工具栏: [1]验算 [2]记错 [3]伴侣 [4]变式 [5]提示</text>
+    </g>
+
+    <g transform="translate(730, 16)">
+      <rect width="125" height="32" rx="6" fill="#0369a1" />
+      <text x="62" y="21" text-anchor="middle" fill="#f0f9ff" font-size="11" font-weight="700">⚡ 毫秒级任务分发</text>
+    </g>
+  </g>
+
+  <!-- 连线 2 到技能层 -->
+  <path d="M 480 220 L 480 242 M 165 242 L 795 242 M 165 242 L 165 258 M 375 242 L 375 258 M 585 242 L 585 258 M 795 242 L 795 258" stroke="#38bdf8" stroke-width="1.5" />
+
+  <!-- ══════════════ 第三层：7 大专有技能集群 ══════════════ -->
+  <!-- 技能 1: 视觉看图批改 -->
+  <g transform="translate(40, 258)" filter="url(#glow)">
+    <rect width="205" height="110" rx="10" fill="url(#cardGrad)" stroke="#3b82f6" stroke-width="1.2" />
+    <text class="node-title" x="14" y="26" fill="#93c5fd">👁️ vision_solver</text>
+    <text class="cmd-badge" x="14" y="44">/img · /paste · /ocr</text>
+    <text class="node-desc" x="14" y="66">手写草稿与试卷截图识别</text>
+    <text class="node-desc" x="14" y="82">LaTeX题干提取+采分点打分</text>
+    <text class="node-desc" x="14" y="98" fill="#38bdf8">本地OCR+视觉API双引擎</text>
+  </g>
+
+  <!-- 技能 2: 数学精确验算 -->
+  <g transform="translate(265, 258)" filter="url(#glow)">
+    <rect width="205" height="110" rx="10" fill="url(#cardGrad)" stroke="#10b981" stroke-width="1.2" />
+    <text class="node-title" x="14" y="26" fill="#6ee7b7">📐 math_verifier</text>
+    <text class="cmd-badge" x="14" y="44" fill="#34d399">/calc &lt;式子&gt; · SymPy</text>
+    <text class="node-desc" x="14" y="66">常微分方程通解/特解 (ODE)</text>
+    <text class="node-desc" x="14" y="82">二次型正定性/顺序主子式</text>
+    <text class="node-desc" x="14" y="98" fill="#34d399">级数求和与极值驻点求解</text>
+  </g>
+
+  <!-- 技能 3: 苏格拉底脚手架 -->
+  <g transform="translate(490, 258)" filter="url(#glow)">
+    <rect width="205" height="110" rx="10" fill="url(#cardGrad)" stroke="#f59e0b" stroke-width="1.2" />
+    <text class="node-title" x="14" y="26" fill="#fcd34d">💡 socratic_tutor</text>
+    <text class="cmd-badge" x="14" y="44" fill="#fbbf24">/hint · 快捷键 [5]</text>
+    <text class="node-desc" x="14" y="66">Level 1: 破题定性不给答案</text>
+    <text class="node-desc" x="14" y="82">Level 2: 首步搭桥保留计算</text>
+    <text class="node-desc" x="14" y="98" fill="#fbbf24">Level 3: 揭露命题失分陷阱</text>
+  </g>
+
+  <!-- 技能 4: 艾宾浩斯盲盒复测 -->
+  <g transform="translate(715, 258)" filter="url(#glow)">
+    <rect width="205" height="110" rx="10" fill="url(#cardGrad)" stroke="#ec4899" stroke-width="1.2" />
+    <text class="node-title" x="14" y="26" fill="#f472b6">🎯 error_logger</text>
+    <text class="cmd-badge" x="14" y="44" fill="#f472b6">/review · /quiz · /batch</text>
+    <text class="node-desc" x="14" y="66">隐去历史推导生成盲盒试题</text>
+    <text class="node-desc" x="14" y="82">1/3/7天艾宾浩斯周期筛选</text>
+    <text class="node-desc" x="14" y="98" fill="#f472b6">复测合格自动标记出库</text>
+  </g>
+
+  <!-- ══════════════ 第四层：下层外置状态机存储与看板 ══════════════ -->
+  <g transform="translate(40, 390)">
+    <rect width="880" height="98" rx="12" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
+    
+    <text x="25" y="28" font-family="sans-serif" font-weight="700" fill="#94a3b8" font-size="12">💾 外置状态机记忆驱动 (External State Machine) · 零云端依赖 · 纯本地 Markdown</text>
+    
+    <g transform="translate(25, 42)">
+      <rect width="195" height="42" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1" />
+      <text x="12" y="18" fill="#e2e8f0" font-size="11" font-weight="600">📁 01~04 科目/错题本/</text>
+      <text x="12" y="32" fill="#64748b" font-size="9.5">Markdown错题卡与盲盒题源</text>
+    </g>
+
+    <g transform="translate(240, 42)">
+      <rect width="195" height="42" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1" />
+      <text x="12" y="18" fill="#e2e8f0" font-size="11" font-weight="600">📊 _状态/薄弱点雷达.md</text>
+      <text x="12" y="32" fill="#64748b" font-size="9.5">错因五分类分布与章节掌握度</text>
+    </g>
+
+    <g transform="translate(455, 42)">
+      <rect width="195" height="42" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1" />
+      <text x="12" y="18" fill="#e2e8f0" font-size="11" font-weight="600">📋 _状态/今日任务.md</text>
+      <text x="12" y="32" fill="#64748b" font-size="9.5">四科当日任务量与攻坚清单</text>
+    </g>
+
+    <g transform="translate(670, 42)">
+      <rect width="185" height="42" rx="6" fill="#0f172a" stroke="#10b981" stroke-width="1" />
+      <text x="12" y="18" fill="#34d399" font-size="11" font-weight="600">📱 静态自测看板 (HTML5)</text>
+      <text x="12" y="32" fill="#64748b" font-size="9.5">毛玻璃遮罩自测 + PWA 支持</text>
+    </g>
+  </g>
+</svg>
