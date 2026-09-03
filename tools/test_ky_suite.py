@@ -174,6 +174,39 @@ def run_tests():
     if fake_config.exists():
         fake_config.unlink()
 
+    # ------------------------------------------------------------
+    # 测试 8: 考研专有 Skills 体系校验
+    # ------------------------------------------------------------
+    print("\n[测试组 8: 考研专有 Skills 体系功能实测]")
+    import skills
+    all_skills = skills.list_skills()
+    runner.assert_true(len(all_skills) >= 5, f"技能中枢成功注册 {len(all_skills)} 个核心 Skills")
+    runner.assert_true("vision_solver" in all_skills, "vision_solver 视觉批改技能已注册")
+    runner.assert_true("math_verifier" in all_skills, "math_verifier 符号验算技能已注册")
+    runner.assert_true("english_dissector" in all_skills, "english_dissector 句子解剖技能已注册")
+
+    # 验证视觉 Prompt 构造
+    v_prompt = skills.vision_solver.build_vision_prompt("请批改导数推导")
+    runner.assert_true("题面提取" in v_prompt and "采分点" in v_prompt and "错因五分类" in v_prompt, "视觉批改 Prompt 包含采分点与错因五分类约束")
+
+    # 验证图片 Base64 编码 (使用 docs/assets/hero_banner.jpg 测试)
+    test_img = ROOT / "docs" / "assets" / "hero_banner.jpg"
+    if test_img.exists():
+        data_url, mime, fname = skills.vision_solver.encode_image_to_base64(str(test_img))
+        runner.assert_true(data_url.startswith("data:image/jpeg;base64,"), "视觉技能成功将本地图片编码为标准 Data URL")
+
+    # 验证英语长难句拆解 Prompt 构造
+    e_prompt = skills.english_dissector.build_dissection_prompt("Although the theory is complex, students can master it.")
+    runner.assert_true("主干骨架抽取" in e_prompt and "两步翻译法" in e_prompt, "英语长难句技能搭积木指令生成规范")
+
+    # 验证数学引擎状态与基础执行
+    m_status = skills.math_verifier.get_status()
+    runner.assert_true(isinstance(m_status, str) and len(m_status) > 5, "数学高精度计算引擎状态正常")
+
+    # 验证资料库文献检索
+    mats = skills.pdf_extractor.list_materials()
+    runner.assert_true(isinstance(mats, dict) and "01-数学" in mats, "PDF与教材资料库扫描接口正常")
+
     # 统计并返回
     success = runner.print_summary()
     sys.exit(0 if success else 1)
