@@ -420,6 +420,12 @@ def run_tests():
     m_agents_txt = (ROOT / "01-数学" / "AGENTS.md").read_text(encoding="utf-8")
     runner.assert_true("核心薄弱点" in m_agents_txt and "导数中值定理" in m_agents_txt, "数学专属协议注入学员专属核心薄弱项")
 
+    # 验证当本地未放置实体资料时，向导真实反应，绝不虚构不存在的书目
+    no_book_plan = study_planner.run_study_plan_wizard(interactive=False)
+    runner.assert_true("暂未放置实体资料" in no_book_plan.get("math_books", "") and "李林" not in no_book_plan.get("math_books", ""), "无实体资料时向导严格杜绝虚构书目")
+    clean_agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    runner.assert_true("暂未放置实体资料" in clean_agents, "AGENTS.md 真实记录无资料状态，杜绝任何硬编码假书目")
+
     # 统计并返回
     success = runner.print_summary()
     sys.exit(0 if success else 1)
