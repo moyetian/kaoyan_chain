@@ -228,6 +228,11 @@ def run_tests():
     beautified = skills.latex_beautifier.prettify_latex_for_terminal(raw_latex)
     runner.assert_true("∫" in beautified and "f(x)" in beautified and "\\" not in beautified, "终端 LaTeX 美化器成功将积分和反斜杠公式还原为直观符号")
 
+    # 验证本地 RapidOCR 图像提取引擎
+    if test_img.exists():
+        ocr_res = skills.vision_solver.extract_text_with_local_ocr(str(test_img))
+        runner.assert_true(ocr_res is not None and len(ocr_res) > 0, "本地 RapidOCR 成功识别并提取图片文字内容")
+
     # 统计并返回
     success = runner.print_summary()
     sys.exit(0 if success else 1)

@@ -58,26 +58,122 @@ def build_vision_prompt(user_instruction="", subject="math"):
         return f"{default_prompt}\n\n学员补充说明或具体疑问：\n{user_instruction}"
     return default_prompt
 
+def extract_text_with_local_ocr(image_path):
+    """
+    尝试使用本地极速 OCR 引擎 (RapidOCR / EasyOCR / Tesseract) 提取图片中的题干与公式
+    纯本地离线运行，免外部 API，数学公式与中英文识别率极高
+    """
+    p = Path(image_path).expanduser().resolve()
+    if not p.exists():
+        return None
+
+    # 1. 优先使用 RapidOCR (ONNX 运行时，轻量快速，国内中文与公式效果佳)
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+        engine = RapidOCR()
+        res, _ = engine(str(p))
+        if res:
+            lines = [item[1] for item in res if item and len(item) > 1 and item[1].strip()]
+            if lines:
+                return "\n".join(lines)
+    except Exception:
+        pass
+
+    # 2. 尝试 EasyOCR
+    try:
+        import easyocr
+        reader = easyocr.Reader(['ch_sim', 'en'], gpu=False)
+        res = reader.readtext(str(p), detail=0)
+        if res:
+            return "\n".join(res)
+    except Exception:
+        pass
+
+    # 3. 尝试 pytesseract
+    try:
+        import pytesseract
+        from PIL import Image
+        text = pytesseract.image_to_string(Image.open(str(p)), lang="chi_sim+eng")
+        if text.strip():
+            return text.strip()
+    except Exception:
+        pass
+
+    return None
+
 def solve_image_with_model(image_path, user_prompt="", config=None, stream=True):
     """
     使用多模态视觉模型对图片进行识别、解答与批改
-    支持流式输出打印
+    支持流式输出打印。若当前配置为主流纯文本模型 (如 deepseek-chat)，
+    将自动调起本地 RapidOCR 提取题干与公式，再由大模型按考研真题阅卷标准逐行批改！
     """
     if config is None:
         config = {}
 
-    data_url, mime, filename = encode_image_to_base64(image_path)
+    p = Path(image_path).expanduser().resolve()
+    if not p.exists():
+        print(f"\n[!] 错误: 未找到图片文件 {image_path}\n")
+        return ""
+
+    # 判断使用的模型与接口
+    vision_model = config.get("vision_model")
+    model = vision_model or config.get("model", "deepseek-chat")
+    base_url = (config.get("vision_base_url") or config.get("base_url", "https://api.deepseek.com/v1")).rstrip("/")
+    api_key = (config.get("vision_api_key") or config.get("api_key", "")).strip()
+
+    # 判断是否为纯文本模型 (例如官方 deepseek-chat 不支持图像输入)
+    is_pure_text_model = ("deepseek" in model.lower() and "vl" not in model.lower()) or ("text" in model.lower())
+
+    # ── 场景 A: 纯文本模型 (如 DeepSeek-Chat) ➔ 自动触发本地 OCR 提取 ──
+    if is_pure_text_model and not vision_model:
+        ocr_text = extract_text_with_local_ocr(p)
+        if ocr_text:
+            print(f"\n[\033[92m⚡ 考研视觉引擎已调起本地 RapidOCR 识别题干与手写公式\033[0m]")
+            print(f"\033[2m识别提取内容预览:\n{ocr_text[:180]}...\033[0m\n")
+            print(f"[\033[96m考研私教正在按真题评分细则进行逐行核验与采分点批改...\033[0m]\n")
+
+            # 构建结构化 OCR 批改 Prompt
+            ocr_prompt = (
+                f"你是一位深谙中国研究生入学考试命题规范与阅卷标准的专属总教练。\n"
+                f"以下是系统从学员上传的试卷/草稿图片（{p.name}）中高精度提取出的题目与手写步骤：\n\n"
+                f"```text\n{ocr_text}\n```\n\n"
+            )
+            if user_prompt:
+                ocr_prompt += f"学员补充疑问或做题困惑：\n{user_prompt}\n\n"
+
+            ocr_prompt += (
+                "请严格按照考研阅卷人标准进行批改与精讲：\n"
+                "1. 【题面与题型定性】：规范化还原 LaTeX 公式 ($...$ 或 $$...$$)，点明属于哪一章节核心考点；\n"
+                "2. 【步骤推导与采分点】：标出各推导步骤得分情况 (`[+2分]` 或 `[-1分]`)，指出跳步或逻辑漏洞；\n"
+                "3. 【错因五分类】：若有失误，明确判定为概念漏洞/审题偏差/公式记错/计算失误/书写丢分；\n"
+                "4. 【标准答案与解题处方】：给出规范满分标准解答，并提供针对性提分建议。"
+            )
+
+            # 调用大语言模型进行解答
+            from tools import ky_cli
+            messages = [
+                {"role": "system", "content": ky_cli.build_system_prompt(config.get("active_subject", "math"))},
+                {"role": "user", "content": ocr_prompt}
+            ]
+            return ky_cli.stream_chat(messages, config)
+        else:
+            # 本地未安装 OCR 库且当前是纯文本模型时的友好指引
+            print("""
+\033[93m╭────────────────────────────────────────────────────────────────────────╮\033[0m
+\033[93m│\033[0m \033[1m⚠️ 【视觉看图大模型与本地 OCR 提示】\033[0m                                   \033[93m│\033[0m
+\033[93m│\033[0m 您当前配置的主模型为「deepseek-chat」，该模型为纯文本模型，不支持看图。\033[93m│\033[0m
+\033[93m│\033[0m                                                                        \033[93m│\033[0m
+\033[93m│\033[0m \033[1m💡 推荐解决方案（任选其一，立即生效）：\033[0m                                 \033[93m│\033[0m
+\033[93m│\033[0m  1. \033[92m配置多模态视觉模型\033[0m：输入 /config ➔ 选择视觉模型 (GLM-4V/Qwen-VL)   \033[93m│\033[0m
+\033[93m│\033[0m  2. \033[92m开启本地离线 OCR\033[0m：运行 pip install rapidocr_onnxruntime 离线识别   \033[93m│\033[0m
+\033[93m│\033[0m  3. \033[92m浏览器伴侣输入\033[0m：输入 /view 打开伴侣网页，直接复制粘贴题目文本。    \033[93m│\033[0m
+\033[93m╰────────────────────────────────────────────────────────────────────────╯\033[0m
+""")
+            return ""
+
+    # ── 场景 B: 配置了多模态视觉大模型 (如 Qwen-VL, GLM-4V, GPT-4o) ──
+    data_url, mime, filename = encode_image_to_base64(p)
     prompt_text = build_vision_prompt(user_prompt, config.get("active_subject", "math"))
-
-    # 判断使用的模型：优先使用专门的 vision_model，否则使用当前 model
-    model = config.get("vision_model") or config.get("model", "deepseek-chat")
-    base_url = config.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
-    api_key = config.get("api_key", "").strip()
-
-    # 如果当前配置是纯文本 deepseek-chat，且用户未配置 vision_model，则提示用户
-    if "deepseek-chat" in model and not config.get("vision_model"):
-        # 很多用户使用 SiliconFlow / Qwen / OpenRouter 的视觉模型
-        pass
 
     url = f"{base_url}/chat/completions"
     headers = {
@@ -86,7 +182,6 @@ def solve_image_with_model(image_path, user_prompt="", config=None, stream=True)
         "User-Agent": "Kaoyan-Vision-Solver/1.0"
     }
 
-    # 标准 OpenAI 视觉格式
     messages = [
         {
             "role": "user",
@@ -148,7 +243,7 @@ def solve_image_with_model(image_path, user_prompt="", config=None, stream=True)
     except urllib.error.HTTPError as e:
         err_msg = e.read().decode("utf-8", errors="ignore")
         print(f"\n[视觉 API 错误 {e.code}]: {err_msg}\n")
-        print("提示：若当前服务商的默认模型不支持图片输入，请在 /config 中配置支持 Vision 的多模态模型（如 qwen-vl-max, glm-4v, gpt-4o 等）。")
+        print("提示：若当前服务商不支持图片多模态，可在 /config 中配置专用的多模态模型 (如 GLM-4V, Qwen2-VL 等)。")
         return ""
     except Exception as e:
         print(f"\n[网络异常]: {e}\n")
