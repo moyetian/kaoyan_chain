@@ -268,8 +268,33 @@ def main():
 
     copy_templates()
     ensure_material_folders()
-    math_key, eng_key, pro_type, pro_name = choose_exam_subjects_and_syllabi(interactive=interactive)
-    configure_profile(interactive=interactive, math_key=math_key, eng_key=eng_key, pro_type=pro_type, pro_name=pro_name)
+    
+    # 步骤 3 & 4: 启动 7 维度个人定制化必考方案向导 (时间/考纲/资料白名单/学情摸底/时间预算/作息)
+    try:
+        import study_planner
+        plan = study_planner.run_study_plan_wizard(interactive=interactive)
+    except Exception as e:
+        print(f"  [!] 方案设计提示: {e}，使用默认配置。")
+        math_key, eng_key, pro_type, pro_name = choose_exam_subjects_and_syllabi(interactive=interactive)
+        configure_profile(interactive=interactive, math_key=math_key, eng_key=eng_key, pro_type=pro_type, pro_name=pro_name)
+
+    if interactive:
+        ask_bot = input("\n  是否需要现在配置微信/QQ/钉钉/飞书等群机器人推送? (y/n) [n]: ").strip().lower()
+        if ask_bot == "y":
+            try:
+                import ky_cli
+                ky_cli.configure_webhooks(ky_cli.load_config())
+            except Exception as e:
+                print(f"  [!] Webhook 配置提示: {e}")
+
+        ask_key = input("\n  是否需要现在配置大模型 API 密钥 (自动直达 DeepSeek/Qwen/GLM 控制台并一键套用)? (y/n) [n]: ").strip().lower()
+        if ask_key == "y":
+            try:
+                import ky_cli
+                ky_cli.configure_llm(ky_cli.load_config())
+            except Exception as e:
+                print(f"  [!] 模型配置提示: {e}")
+
     build_dashboard()
 
     print("\n" + "=" * 68)

@@ -356,6 +356,67 @@ def run_tests():
     p_out = (ROOT / "04-专业课" / "考试大纲.md").read_text(encoding="utf-8")
     runner.assert_true("408" in p_out and "数据结构" in p_out, "408专业课考纲自动注入四大模块考点")
 
+    # ------------------------------------------------------------
+    # 测试 10: 个人定制化必考方案设计引擎与状态持久化校验
+    # ------------------------------------------------------------
+    print("\n[测试组 10: 个人定制化必考方案设计引擎与状态持久化校验]")
+    import study_planner
+    preset_plan = {
+        "target_year": "2026",
+        "exam_date": "2026-12-19",
+        "stage_name": "强化题型攻坚阶段",
+        "school": "目标院校",
+        "major": "报考专业",
+        "math_key": "math2",
+        "eng_key": "eng2",
+        "pro_type": "408",
+        "pro_name": "408 计算机学科专业基础",
+        "math_baseline": "60分",
+        "math_weakness": "导数中值定理、计算失误",
+        "eng_baseline": "四级已过 / 摸底50分",
+        "eng_weakness": "长难句主干速抓、细节定位",
+        "pol_baseline": "基础刚起步 / 摸底40分",
+        "pol_weakness": "马原唯物辩证法、多选题漏选",
+        "pro_baseline": "科班有基础 / 摸底80分",
+        "pro_weakness": "核心算法设计与证明步骤",
+        "math_books": "同济教材+基础讲义+历年真题",
+        "eng_books": "近15年历年真题精解+真题词汇宝典",
+        "pol_books": "考研政治核心考案+精选1000题+冲刺全真卷",
+        "pro_books": "408官方教材与课后习题+历年真题汇编",
+        "total_hours": 8.5,
+        "math_hours": 3.0,
+        "eng_hours": 2.0,
+        "pol_hours": 1.0,
+        "pro_hours": 2.5,
+        "rest_weekly": "每周日晚 18:00~22:30 放松休整",
+        "rest_monthly": "每月最后一个周日全天闭卷模考与全科雷达复盘",
+        "style_name": "严格把关·保姆提分型 (Strict & Disciplined)",
+        "math_target": "110+ 分",
+        "eng_target": "65+ 分",
+        "pol_target": "70+ 分",
+        "pro_target": "120-130 分",
+        "total_target": "370+ 分"
+    }
+    built_plan = study_planner.run_study_plan_wizard(interactive=False, preset_data=preset_plan)
+    runner.assert_true(built_plan.get("days_left") >= 0, "方案引擎精准计算并注入初试倒计时")
+    runner.assert_true(built_plan.get("math_books") == "同济教材+基础讲义+历年真题", "手头备考资料白名单登记正确")
+
+    # 验证 AGENTS.md 状态持久化
+    agents_txt = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    runner.assert_true("当前备考阶段" in agents_txt and "强化题型攻坚阶段" in agents_txt, "AGENTS.md 成功挂载当前备考阶段")
+    runner.assert_true("个性化学情与作息调节机制" in agents_txt, "AGENTS.md 成功固化作息与学情调节机制")
+    runner.assert_true("手头资料白名单" in agents_txt and "同济教材" in agents_txt, "AGENTS.md 写入手头资料白名单作为 AI 防虚构硬约束")
+    runner.assert_true("每周休整窗口" in agents_txt and "每周日晚" in agents_txt, "AGENTS.md 成功锁定每周休息放风窗口")
+
+    # 验证 ky_config.json 标记
+    cfg_loaded = ky_cli.load_config()
+    runner.assert_true(cfg_loaded.get("onboarding_completed") is True, "配置文件正确持久化 onboarding_completed 标记")
+    runner.assert_true(isinstance(cfg_loaded.get("study_plan"), dict), "配置文件持久化完整 study_plan 结构化数据")
+
+    # 验证数学专属 AGENTS.md 薄弱项
+    m_agents_txt = (ROOT / "01-数学" / "AGENTS.md").read_text(encoding="utf-8")
+    runner.assert_true("核心薄弱点" in m_agents_txt and "导数中值定理" in m_agents_txt, "数学专属协议注入学员专属核心薄弱项")
+
     # 统计并返回
     success = runner.print_summary()
     sys.exit(0 if success else 1)

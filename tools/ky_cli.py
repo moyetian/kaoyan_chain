@@ -915,12 +915,13 @@ def interactive_config():
         print(f"  [1] 🧠 配置主大模型 API 与密钥     [当前: {curr_p} / {curr_m} / {key_tag}]")
         print(f"  [2] 📸 配置多模态视觉大模型 API   [当前: {colorize(vis_m, C.CYAN)}]")
         print(f"  [3] 📱 配置聊天机器人 Webhook 推送 [当前: {hooks_tag}]")
-        print(f"  [4] 🎓 考研科目与官方考纲管理     [数一/数二/数三/396、英一/英二、408/自命题]")
-        print(f"  [5] 📄 查看当前完整配置清单")
-        print(f"  [6] 📢 一键测试所有机器人推送")
+        print(f"  [4] 📋 个人定制化必考方案设计     [时间/考纲/已有资料白名单/学情摸底/时间预算/作息]")
+        print(f"  [5] 🎓 考研科目与官方考纲快速切换 [数一/数二/数三/396、英一/英二、408/自命题]")
+        print(f"  [6] 📄 查看当前完整配置清单")
+        print(f"  [7] 📢 一键测试所有机器人推送")
         print(f"  [0] 💾 完成配置并返回")
 
-        choice = input("\n请选择功能 (0~6) [默认 0]: ").strip() or "0"
+        choice = input("\n请选择功能 (0~7) [默认 0]: ").strip() or "0"
         if choice == "0":
             save_config(cfg)
             print(colorize("\n[√] 配置已安全保存至 ky_config.json！\n", C.GREEN))
@@ -932,10 +933,17 @@ def interactive_config():
         elif choice == "3":
             configure_webhooks(cfg)
         elif choice == "4":
-            manage_syllabi_cli(cfg)
+            try:
+                import study_planner
+                study_planner.run_study_plan_wizard(interactive=True)
+                cfg = load_config()
+            except Exception as e:
+                print(f"方案设计提示: {e}")
         elif choice == "5":
-            show_config(cfg)
+            manage_syllabi_cli(cfg)
         elif choice == "6":
+            show_config(cfg)
+        elif choice == "7":
             broadcast_briefing(cfg, custom_msg="🎓【考研学习链】这是一条自检测试广播消息，您的机器人连接状态正常！")
 
 # ════════════════════════════════════════════════════════════════
@@ -1033,6 +1041,7 @@ def print_command_palette():
 {C.CYAN}│{C.RESET}    {C.CYAN}/build{C.RESET}     重新编译并刷新本地与手机自测看板 (docs/index.html)         {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}  {C.BOLD}⚙️ 终端管理与辅助:{C.RESET}                                                      {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/plan{C.RESET}      个人专属定制化必考方案向导 (时间/考纲/白名单/学情摸底/作息) {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.MAGENTA}/status{C.RESET}    查看考研总战役大盘态势、倒计时与四科目标矩阵             {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.MAGENTA}/config{C.RESET}    分类多选管理菜单：配置大模型 API 与机器人 Webhook          {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.MAGENTA}/clear{C.RESET}     清空当前会话上下文                                         {C.CYAN}│{C.RESET}
@@ -1047,6 +1056,27 @@ def run_repl():
     # 静默启动后台实时 Web 可视化伴侣
     live_port = start_background_live_server(8088) or 8088
     print_welcome(live_port=live_port)
+
+    # 首次使用引导：个人专属定制化必考方案向导
+    if not cfg.get("onboarding_completed"):
+        print(f"""
+{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮
+│  🎓 欢迎使用考研全科 AI 私人教师中枢！                                 │
+│  检测到您尚未进行个人专属定制化必考方案设计。                          │
+│  💡 仅需 2~3 分钟即可完成时间倒计时、官方考纲、已有资料白名单、        │
+│     当前学情痛点摸底与每日复习黄金作息个性化建档！                     │
+╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
+""")
+        init_plan = input("是否立即启动【个人定制化必考方案设计向导】? (y/n) [y]: ").strip().lower()
+        if init_plan != "n":
+            try:
+                import study_planner
+                study_planner.run_study_plan_wizard(interactive=True)
+                cfg = load_config()
+            except Exception as e:
+                print(f"方案向导提示: {e}")
+        else:
+            print(colorize("💡 提示：您可以随时在终端输入 /plan 或运行 ky plan 重新启动向导。\n", C.DIM))
 
     if not cfg.get("api_key"):
         print(colorize("[!] 检测到尚未配置大模型 API Key！", C.YELLOW))
@@ -1341,6 +1371,14 @@ def run_repl():
                 target_url = f"http://localhost:{live_port or 8088}/live"
                 webbrowser.open(target_url)
                 print(colorize(f"\n[已在默认浏览器中打开实时可视化伴侣: {target_url}]\n", C.GREEN))
+                continue
+            elif cmd in ("/plan", "/profile", "/blueprint"):
+                try:
+                    import study_planner
+                    study_planner.run_study_plan_wizard(interactive=True)
+                    cfg = load_config()
+                except Exception as e:
+                    print(f"方案设计提示: {e}")
                 continue
             elif cmd in ("/subject", "/exam", "/syllabus"):
                 manage_syllabi_cli(cfg)
@@ -1837,6 +1875,12 @@ def main():
         run_repl()
     elif args[0] in ("config", "--config"):
         interactive_config()
+    elif args[0] in ("plan", "--plan", "profile", "--profile", "onboarding"):
+        try:
+            import study_planner
+            study_planner.run_study_plan_wizard(interactive=True)
+        except Exception as e:
+            print(f"方案设计提示: {e}")
     elif args[0] in ("notify", "--notify"):
         cfg = load_config()
         custom = " ".join(args[1:]) if len(args) > 1 else None
@@ -1863,6 +1907,7 @@ def main():
 考研学习链专用终端工具 (ky-cli)
 用法：
   python tools/ky_cli.py              启动类似 Claude Code 的交互式终端私教 (默认)
+  python tools/ky_cli.py plan         启动个人专属定制化必考方案向导 (时间/考纲/白名单/学情/作息)
   python tools/ky_cli.py notify [内容] 一键推送今日任务/晨报到微信、QQ、钉钉、飞书群
   python tools/ky_cli.py clawbot      一键启动微信个人号 ClawBot 扫码连接器 (腾讯官方)
   python tools/ky_cli.py bridge       查看微信/钉钉/飞书/QQ 双向讲题网关接入指南
