@@ -709,6 +709,92 @@ def configure_vision_model(cfg):
     save_config(cfg)
     print(colorize(f"\n[√] 视觉模型已更新为: {cfg.get('vision_model')}！\n", C.GREEN))
 
+def manage_syllabi_cli(cfg):
+    """交互式切换考研科目与重载官方标准考纲"""
+    try:
+        from tools import syllabus_manager
+    except ImportError:
+        import syllabus_manager
+
+    math_agents = ROOT / "01-数学" / "AGENTS.md"
+    eng_agents = ROOT / "02-英语" / "AGENTS.md"
+    pro_agents = ROOT / "04-专业课" / "AGENTS.md"
+
+    curr_m = "数学二 (302)"
+    curr_e = "英语二 (204)"
+    curr_p = "专业课"
+    if math_agents.exists():
+        m = re.search(r"- \*\*考试科目\*\*：`([^`]+)`", read_text_safe(math_agents))
+        if m: curr_m = m.group(1)
+    if eng_agents.exists():
+        m = re.search(r"- \*\*考试科目\*\*：`([^`]+)`", read_text_safe(eng_agents))
+        if m: curr_e = m.group(1)
+    if pro_agents.exists():
+        m = re.search(r"- \*\*专业课科目代码与名称\*\*：`([^`]+)`", read_text_safe(pro_agents))
+        if m: curr_p = m.group(1)
+
+    print(colorize("\n--- 🎓 考研科目精细配置与官方考纲管理 ---", C.BOLD))
+    print(f"当前绑定状态：数学: [{colorize(curr_m, C.CYAN)}]  英语: [{colorize(curr_e, C.CYAN)}]  专业课: [{colorize(curr_p, C.CYAN)}]")
+    print("\n请选择您想调整的科目：")
+    print("  [1] 📐 切换数学考试科目 (数一 / 数二 / 数三 / 396 / 自命题)")
+    print("  [2] 📖 切换英语考试科目 (英语一 / 英语二 / 单独命题)")
+    print("  [3] 💻 修改专业课科目 (408统考 / 199管综 / 院校自命题)")
+    print("  [4] 🔄 运行完整工作区向导 (重选院校、专业与全科考纲)")
+    print("  [0] 取消返回")
+
+    c = input("\n请选择 (0~4) [默认 0]: ").strip() or "0"
+    if c == "0":
+        return
+    elif c == "1":
+        print("\n  --- 📐 请选择您的数学考试科目 ---")
+        print("    [1] 数学二 (302) [高数78% + 线代22%，严控不考概率/级数/曲面积分/三重积分] (专硕推荐)")
+        print("    [2] 数学一 (301) [高数56% + 线代22% + 概率22%，考查范围最广/工学学硕]")
+        print("    [3] 数学三 (303) [微积分56% + 线代22% + 概率22%，经管门类/差分方程]")
+        print("    [4] 396 经济类综合能力数学 [微积分+线代+概率，单选与计算]")
+        m_sel = input("  请选择 (1~4) [默认 1]: ").strip() or "1"
+        m_key = {"1": "math2", "2": "math1", "3": "math3", "4": "math396"}.get(m_sel, "math2")
+        math_info = syllabus_manager.MATH_SYLLABI[m_key]
+        (ROOT / "01-数学" / "考试大纲.md").write_text(math_info["content"], encoding="utf-8")
+        txt = read_text_safe(math_agents)
+        txt = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{math_info['name']}`", txt)
+        math_agents.write_text(txt, encoding="utf-8")
+        print(colorize(f"\n[√] 已切换为 {math_info['name']}！已将官方大纲与超纲红线写入 01-数学/考试大纲.md", C.GREEN))
+    elif c == "2":
+        print("\n  --- 📖 请选择您的英语考试科目 ---")
+        print("    [1] 英语二 (204) [专硕为主，整段段落英译汉 15分 + 图表数据大作文 15分] (推荐)")
+        print("    [2] 英语一 (201) [学硕为主，5大高难长难句精译 10分 + 图画哲理漫画大作文 20分]")
+        e_sel = input("  请选择 (1~2) [默认 1]: ").strip() or "1"
+        e_key = {"1": "eng2", "2": "eng1"}.get(e_sel, "eng2")
+        eng_info = syllabus_manager.ENGLISH_SYLLABI[e_key]
+        (ROOT / "02-英语" / "考试大纲.md").write_text(eng_info["content"], encoding="utf-8")
+        txt = read_text_safe(eng_agents)
+        txt = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{eng_info['name']}`", txt)
+        eng_agents.write_text(txt, encoding="utf-8")
+        print(colorize(f"\n[√] 已切换为 {eng_info['name']}！已将官方大纲写入 02-英语/考试大纲.md", C.GREEN))
+    elif c == "3":
+        print("\n  --- 💻 请选择您的专业课方案 ---")
+        print("    [1] 全国统考 408 计算机学科专业基础")
+        print("    [2] 全国统考 199 管理类综合能力")
+        print("    [3] 院校自命题专业课")
+        p_sel = input("  请选择 (1~3) [默认 3]: ").strip() or "3"
+        if p_sel == "1":
+            (ROOT / "04-专业课" / "考试大纲.md").write_text(syllabus_manager.CS408_SYLLABUS, encoding="utf-8")
+            pro_title = "408 计算机学科专业基础"
+        else:
+            pro_title = input("  请输入专业课代码与名称 [如 801 信号与系统]: ").strip() or "专业课"
+            (ROOT / "04-专业课" / "考试大纲.md").write_text(
+                f"# 04-专业课 · 【{pro_title}】官方考试大纲\n\n> 本大纲为报考院校官方考纲。\n\n## 考查要点\n- 请在此填入各章节掌握/理解要求",
+                encoding="utf-8"
+            )
+        txt = read_text_safe(pro_agents)
+        txt = re.sub(r"- \*\*专业课科目代码与名称\*\*：.*", f"- **专业课科目代码与名称**：`{pro_title}`", txt)
+        pro_agents.write_text(txt, encoding="utf-8")
+        print(colorize(f"\n[√] 专业课已更新为: {pro_title}！", C.GREEN))
+    elif c == "4":
+        import subprocess
+        init_py = ROOT / "tools" / "init_workspace.py"
+        subprocess.run([sys.executable, str(init_py)])
+
 def interactive_config():
     """配置管理中心主路由"""
     cfg = load_config()
@@ -728,11 +814,12 @@ def interactive_config():
         print(f"  [1] 🧠 配置主大模型 API 与密钥     [当前: {curr_p} / {curr_m} / {key_tag}]")
         print(f"  [2] 📸 配置多模态视觉大模型 API   [当前: {colorize(vis_m, C.CYAN)}]")
         print(f"  [3] 📱 配置聊天机器人 Webhook 推送 [当前: {hooks_tag}]")
-        print(f"  [4] 📄 查看当前完整配置清单")
-        print(f"  [5] 📢 一键测试所有机器人推送")
+        print(f"  [4] 🎓 考研科目与官方考纲管理     [数一/数二/数三/396、英一/英二、408/自命题]")
+        print(f"  [5] 📄 查看当前完整配置清单")
+        print(f"  [6] 📢 一键测试所有机器人推送")
         print(f"  [0] 💾 完成配置并返回")
 
-        choice = input("\n请选择功能 (0~5) [默认 0]: ").strip() or "0"
+        choice = input("\n请选择功能 (0~6) [默认 0]: ").strip() or "0"
         if choice == "0":
             save_config(cfg)
             print(colorize("\n[√] 配置已安全保存至 ky_config.json！\n", C.GREEN))
@@ -744,6 +831,8 @@ def interactive_config():
         elif choice == "3":
             configure_webhooks(cfg)
         elif choice == "4":
+            manage_syllabi_cli(cfg)
+        elif choice == "5":
             show_config(cfg)
         elif choice == "6":
             broadcast_briefing(cfg, custom_msg="🎓【考研学习链】这是一条自检测试广播消息，您的机器人连接状态正常！")
@@ -1093,6 +1182,9 @@ def run_repl():
                 target_url = f"http://localhost:{live_port or 8088}/live"
                 webbrowser.open(target_url)
                 print(colorize(f"\n[已在默认浏览器中打开实时可视化伴侣: {target_url}]\n", C.GREEN))
+                continue
+            elif cmd in ("/subject", "/exam", "/syllabus"):
+                manage_syllabi_cli(cfg)
                 continue
             elif cmd in ("/clawbot", "/wechat", "/wx"):
                 run_wechat_clawbot_install()
@@ -1580,6 +1672,9 @@ def main():
         cfg = load_config()
         custom = " ".join(args[1:]) if len(args) > 1 else None
         broadcast_briefing(cfg, custom_msg=custom)
+    elif args[0] in ("subject", "--subject", "exam", "--exam", "syllabus", "--syllabus"):
+        cfg = load_config()
+        manage_syllabi_cli(cfg)
     elif args[0] in ("clawbot", "--clawbot", "wechat", "--wechat", "wx"):
         run_wechat_clawbot_install()
     elif args[0] in ("bridge", "--bridge", "tunnel", "--tunnel"):
@@ -1602,7 +1697,7 @@ def main():
   python tools/ky_cli.py notify [内容] 一键推送今日任务/晨报到微信、QQ、钉钉、飞书群
   python tools/ky_cli.py clawbot      一键启动微信个人号 ClawBot 扫码连接器 (腾讯官方)
   python tools/ky_cli.py bridge       查看微信/钉钉/飞书/QQ 双向讲题网关接入指南
-  python tools/ky_cli.py serve [端口] 启动双向 Webhook 网关 (默认 8088 端口)
+  python tools/ky_cli.py subject      精细选择考研科目(数一/二/三/396、英一/二)并自动加载官方考纲
   python tools/ky_cli.py config       配置大模型 API Key、视觉模型与机器人 Webhook
   python tools/ky_cli.py build        一键重新编译并刷新本地与移动端看板
 """)
