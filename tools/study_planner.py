@@ -453,7 +453,10 @@ def apply_study_plan(plan):
     cfg["study_plan"] = plan
     CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # 5. 自动重新编译自测看板
+    # 5. 全自动生成各科定制化总规划与今日真实任务清单
+    generate_plan_and_today_files(plan)
+
+    # 6. 自动重新编译自测看板
     build_py = ROOT / "05-考研看板" / "build.py"
     if build_py.exists():
         try:
@@ -461,6 +464,190 @@ def apply_study_plan(plan):
             subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"), capture_output=True)
         except Exception:
             pass
+
+def generate_plan_and_today_files(plan):
+    """根据向导结果全自动生成各科总规划文件与今日真实任务清单"""
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    days_left = plan.get("days_left", 0)
+    stage_name = plan.get("stage_name", "强化题型攻坚阶段")
+
+    m_n = plan.get("math_name", "数学")
+    e_n = plan.get("eng_name", "英语")
+    pro_n = plan.get("pro_name", "专业课")
+
+    m_h = float(plan.get("math_hours", 3.0))
+    e_h = float(plan.get("eng_hours", 2.0))
+    p_h = float(plan.get("pol_hours", 1.0))
+    pro_h = float(plan.get("pro_hours", 2.5))
+
+    # 1. 生成 00_考研全科总战役规划.md
+    root_plan_file = ROOT / "00_考研全科总战役规划.md"
+    root_plan_content = f"""# 🎓 考研全科总战役规划书 · 个人定制专属版
+
+> **生成时间**：{datetime.now().strftime("%Y-%m-%d %H:%M")} ｜ **初试倒计时**：{days_left} 天 ｜ **当前战役阶段**：{stage_name}
+
+---
+
+## 🎯 一、战役总目标与提分矩阵
+
+- **目标院校与专业**：`{plan.get('school', '目标院校')}` · `{plan.get('major', '报考专业')}`
+- **研考初试日期**：`{plan.get('exam_date', '2026-12-19')}`
+- **初试总分目标**：`{plan.get('total_target', '370+ 分')}`
+- **当前激活辅导风格**：`{plan.get('style_name', STYLES['1'][0])}`
+
+| 科目 | 摸底/基准分 | 目标成绩 | 每日时间预算 | 核心薄弱防线与攻坚策略 |
+|---|---|---|---|---|
+| **{m_n}** | {plan.get('math_baseline', '60分')} | **{plan.get('math_target', '110+ 分')}** | {m_h} 小时 ({int(m_h*60)}m) | 重点攻克【{plan.get('math_weakness', '计算失误')}】，规避失误，步骤规范化 |
+| **{e_n}** | {plan.get('eng_baseline', '50分')} | **{plan.get('eng_target', '65+ 分')}** | {e_h} 小时 ({int(e_h*60)}m) | 攻克【{plan.get('eng_weakness', '长难句主干拆解')}】，搭积木拆解，定位阅读选项逻辑 |
+| **思想政治理论** | {plan.get('pol_baseline', '40分')} | **{plan.get('pol_target', '70+ 分')}** | {p_h} 小时 ({int(p_h*60)}m) | 攻克【{plan.get('pol_weakness', '马原多选题')}】，单选拿满，帽子词秒杀 |
+| **{pro_n}** | {plan.get('pro_baseline', '80分')} | **{plan.get('pro_target', '120-130 分')}** | {pro_h} 小时 ({int(pro_h*60)}m) | 攻克【{plan.get('pro_weakness', '核心算法设计')}】，权威教材体系+真题深度解剖 |
+| **合计** | [摸底总分] | **{plan.get('total_target', '370+ 分')}** | {plan.get('total_hours', 8.5)} 小时 | **稳扎稳打拿牢核心得分盘，拒绝偏难怪题** |
+
+---
+
+## 📚 二、手头已有备考资料白名单（AI 私教 100% 严守题源）
+
+- **数学权威资料**：`{plan.get('math_books', '同济教材+基础讲义+真题')}`
+- **英语权威资料**：`{plan.get('eng_books', '历年真题精解+真题词汇')}`
+- **政治权威资料**：`{plan.get('pol_books', '核心考案+精选1000题+冲刺卷')}`
+- **专业课权威资料**：`{plan.get('pro_books', '官方教材+历年真题')}`
+
+---
+
+## 🌿 三、科学作息与防内耗调节机制
+
+- **每日精力预算**：{plan.get('total_hours', 8.5)} 小时 (数学 {m_h}h / 英语 {e_h}h / 政治 {p_h}h / 专业课 {pro_h}h)
+- **每周休整窗口**：`{plan.get('rest_weekly', '每周日晚放松休整')}`
+- **每月模考复盘**：`{plan.get('rest_monthly', '每月最后一个周日全真模考')}`
+- **防疲劳保障**：连续两日完成率低于 60% 时，系统自动启动温和减负模式，优先保住核心高频题。
+"""
+    root_plan_file.write_text(root_plan_content, encoding="utf-8")
+
+    # 2. 生成各科备考总规划
+    math_plan_file = ROOT / "01-数学" / "00_数学备考总规划.md"
+    math_plan_file.write_text(f"""# {m_n} · 备考总规划与阶段蓝图
+
+- **目标成绩**：`{plan.get('math_target', '110+ 分')}` ｜ **摸底基准**：`{plan.get('math_baseline', '60分')}`
+- **每日投入**：`{m_h} 小时 ({int(m_h*60)} 分钟)`
+- **核心白名单资料**：`{plan.get('math_books', '教材+讲义+历年真题')}`
+- **专属薄弱项攻坚**：`{plan.get('math_weakness', '导数中值定理、计算失误')}`
+
+## 一、阶段攻坚路线 (当前处于: {stage_name})
+1. **基础夯实期**：地毯式过教材定理推导与基本计算，保证基础题正确率 80%+；
+2. **强化攻坚期**：专题突破，聚焦【{plan.get('math_weakness', '核心难点')}】，解答题步骤赋分规范化；
+3. **真题冲刺期**：近 15 年真题闭卷限时模考，按考研阅卷人尺度逐点扣分，稳步达到 {plan.get('math_target', '110+ 分')}；
+4. **查漏补缺期**：公式遮罩默写自测，错题队列全部清零。
+
+## 二、每日复习黄金切分 ({int(m_h*60)} 分钟)
+- **概念方法精讲**：{int(m_h*60*0.2)} 分钟 (吃透定理推导与防陷阱技巧)
+- **核心习题精练**：{int(m_h*60*0.55)} 分钟 (白名单资料精选真题专练)
+- **AI 批改与错题归档**：{int(m_h*60*0.25)} 分钟 (输入「交作业」，AI 分步采分与归因)
+""", encoding="utf-8")
+
+    eng_plan_file = ROOT / "02-英语" / "00_英语备考总规划.md"
+    eng_plan_file.write_text(f"""# {e_n} · 备考总规划与阶段蓝图
+
+- **目标成绩**：`{plan.get('eng_target', '65+ 分')}` ｜ **摸底基准**：`{plan.get('eng_baseline', '50分')}`
+- **每日投入**：`{e_h} 小时 ({int(e_h*60)} 分钟)`
+- **核心白名单资料**：`{plan.get('eng_books', '历年真题精解')}`
+- **专属薄弱项攻坚**：`{plan.get('eng_weakness', '长难句拆解')}`
+
+## 一、阶段攻坚路线 (当前处于: {stage_name})
+1. **基础期**：核心 5500 词汇高频词背诵，长难句意群切分与搭积木拆解；
+2. **强化期**：历年真题阅读精读，吃透微观长难句与宏观段落逻辑，阅读错题控制在 1 题/篇；
+3. **突破期**：小作文与大作文功能句型固化，翻译精准意群转换；
+4. **冲刺期**：全真 3 小时闭卷模考，合理分配答题节奏。
+""", encoding="utf-8")
+
+    pol_plan_file = ROOT / "03-思想政治理论" / "00_政治备考总规划.md"
+    pol_plan_file.write_text(f"""# 思想政治理论 · 备考总规划与高分策略
+
+- **目标成绩**：`{plan.get('pol_target', '70+ 分')}` ｜ **摸底基准**：`{plan.get('pol_baseline', '40分')}`
+- **每日投入**：`{p_h} 小时 ({int(p_h*60)} 分钟)`
+- **核心白名单资料**：`{plan.get('pol_books', '核心考案+精选1000题')}`
+- **专属薄弱项攻坚**：`{plan.get('pol_weakness', '马原哲学多选题')}`
+
+## 一、得分盘战略
+- **单项选择题**：稳拿 14-16 分，不丢基本常识分；
+- **多项选择题**：冲刺 24-28 分，主攻【{plan.get('pol_weakness', '多选漏选错选')}】，强化干扰项排除技巧；
+- **分析大题**：30-34 分，原理帽子词对应到位 + 结合材料规范分点答题。
+""", encoding="utf-8")
+
+    pro_plan_file = ROOT / "04-专业课" / "00_专业课备考总规划.md"
+    pro_plan_file.write_text(f"""# {pro_n} · 备考总规划与专业课高分图谱
+
+- **目标成绩**：`{plan.get('pro_target', '120-130 分')}` ｜ **摸底基准**：`{plan.get('pro_baseline', '80分')}`
+- **每日投入**：`{pro_h} 小时 ({int(pro_h*60)} 分钟)`
+- **核心白名单资料**：`{plan.get('pro_books', '官方指定教材+历年真题')}`
+- **专属薄弱项攻坚**：`{plan.get('pro_weakness', '核心算法设计与证明步骤')}`
+
+## 一、阶段攻坚路线 (当前处于: {stage_name})
+1. **基础构建期**：通读官方指定教材，掌握核心概念定义与底层原理；
+2. **专题突破期**：深挖高频大题与核心算法，规范推导与代码书写采分点；
+3. **真题闭卷期**：近 10-15 年真题全真演练，形成考点分值地图；
+4. **押题回归期**：回归知识图谱骨架，消除一切薄弱项盲区。
+""", encoding="utf-8")
+
+    # 3. 自动生成四科真实今日任务文件
+    m_task_file = ROOT / "01-数学" / "_状态" / "今日任务.md"
+    m_task_file.parent.mkdir(parents=True, exist_ok=True)
+    m_task_file.write_text(f"""# 今日数学任务 ({today_str})
+
+> 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{int(m_h*60)} 分钟
+
+| 模块 | 任务内容 | 预计用时 | 完成状态 |
+|---|---|---|---|
+| 概念精讲 | 重点攻克薄弱项【{plan.get('math_weakness', '核心定理')}】定义与公式推导 | {int(m_h*60*0.2)} 分钟 | [ ] |
+| 习题精练 | 精做白名单资料【{plan.get('math_books', '教材习题')}】对应专题典型例题 | {int(m_h*60*0.55)} 分钟 | [ ] |
+| 订正归档 | 在 CLI 输入「交作业」，AI 按步骤采分并自动录入错题队列 | {int(m_h*60*0.25)} 分钟 | [ ] |
+
+> **私教提示**：在终端输入 `/math` 或 `数学报到`，私教即可根据今日任务派发第一道针对性试题！
+""", encoding="utf-8")
+
+    e_task_file = ROOT / "02-英语" / "_状态" / "今日任务.md"
+    e_task_file.parent.mkdir(parents=True, exist_ok=True)
+    e_task_file.write_text(f"""# 今日英语任务 ({today_str})
+
+> 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{int(e_h*60)} 分钟
+
+| 模块 | 任务内容 | 预计用时 | 完成状态 |
+|---|---|---|---|
+| 词汇破冰 | 快速复习 50 个高频核心真题词汇与派生变形 | {int(e_h*60*0.25)} 分钟 | [ ] |
+| 长难句解剖 | 攻克薄弱项【{plan.get('eng_weakness', '长难句拆解')}】(输入 /dissect 实战) | {int(e_h*60*0.35)} 分钟 | [ ] |
+| 真题阅读 | 精读 1 篇历年真题阅读并定位干扰项逻辑 | {int(e_h*60*0.4)} 分钟 | [ ] |
+
+> **私教提示**：在终端输入 `/eng` 或 `英语报到` 开始今日英语专项训练！
+""", encoding="utf-8")
+
+    p_task_file = ROOT / "03-思想政治理论" / "_状态" / "今日任务.md"
+    p_task_file.parent.mkdir(parents=True, exist_ok=True)
+    p_task_file.write_text(f"""# 今日政治任务 ({today_str})
+
+> 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{int(p_h*60)} 分钟
+
+| 模块 | 任务内容 | 预计用时 | 完成状态 |
+|---|---|---|---|
+| 核心考点 | 梳理【{plan.get('pol_weakness', '马原哲学与核心帽子词')}】知识框架 | {int(p_h*60*0.4)} 分钟 | [ ] |
+| 选择刷题 | 从白名单资料【{plan.get('pol_books', '1000题')}】中精选 20 道选择题自测 | {int(p_h*60*0.4)} 分钟 | [ ] |
+| 易混归纳 | 记录做错的帽子词与混淆概念，固化到记忆卡 | {int(p_h*60*0.2)} 分钟 | [ ] |
+
+> **私教提示**：在终端输入 `/pol` 或 `政治报到` 启动今日政治考点抽查！
+""", encoding="utf-8")
+
+    pro_task_file = ROOT / "04-专业课" / "_状态" / "今日任务.md"
+    pro_task_file.parent.mkdir(parents=True, exist_ok=True)
+    pro_task_file.write_text(f"""# 今日专业课任务 ({today_str})
+
+> 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{int(pro_h*60)} 分钟
+
+| 模块 | 任务内容 | 预计用时 | 完成状态 |
+|---|---|---|---|
+| 核心知识点 | 聚焦专业课核心考点与【{plan.get('pro_weakness', '核心算法设计')}】推导 | {int(pro_h*60*0.3)} 分钟 | [ ] |
+| 习题精练 | 选取教材课后题/历年真题经典大题 2~3 道动笔完整书写 | {int(pro_h*60*0.5)} 分钟 | [ ] |
+| AI 阅卷批改 | 将草稿或解答输入 CLI (可用 /img 上传草稿照片)，逐行诊断丢分点 | {int(pro_h*60*0.2)} 分钟 | [ ] |
+
+> **私教提示**：在终端输入 `/pro` 或 `专业课报到` 开始今日专业课攻坚！
+""", encoding="utf-8")
 
 def update_subject_agents(plan):
     """将白名单与薄弱项同步写入 01~04 各科专属 AGENTS.md"""
@@ -512,6 +699,10 @@ def print_study_plan_summary(plan):
     m_n = plan.get("math_name", "数学")
     e_n = plan.get("eng_name", "英语")
     pro_n = plan.get("pro_name", "专业课")
+    m_h = float(plan.get("math_hours", 3.0))
+    e_h = float(plan.get("eng_hours", 2.0))
+    p_h = float(plan.get("pol_hours", 1.0))
+    pro_h = float(plan.get("pro_hours", 2.5))
 
     print(f"""
 {C.GREEN}╭────────────────────────────────────────────────────────────────────────╮
@@ -545,9 +736,22 @@ def print_study_plan_summary(plan):
 {C.BOLD}【科学作息与防疲劳减压机制】{C.RESET}
   • 每周放风休整: {C.CYAN}{plan.get('rest_weekly', '每周日晚放松休整')}{C.RESET}
   • 每月模考复盘: {C.CYAN}{plan.get('rest_monthly', '每月最后一个周日全真模考')}{C.RESET}
-  • 防内耗保障:   {C.DIM}若连续 2 天任务达成率低于 60%，系统将自动启动温和减负模式，优先稳住核心基础盘。{C.RESET}
+{C.CYAN}╭── 📋 今日首日四科任务清单 (已全自动写入各科 _状态/今日任务.md) ───────╮{C.RESET}
+{C.CYAN}│{C.RESET}  • {C.BOLD}{m_n:<18}{C.RESET} ({int(m_h*60)}分钟) : 攻克【{plan.get('math_weakness','导数中值定理')}】定理与核心题型
+{C.CYAN}│{C.RESET}  • {C.BOLD}{e_n:<18}{C.RESET} ({int(e_h*60)}分钟) : 拆解【{plan.get('eng_weakness','真题长难句')}】与阅读定位
+{C.CYAN}│{C.RESET}  • {C.BOLD}思想政治理论       {C.RESET} ({int(p_h*60)}分钟) : 攻坚【{plan.get('pol_weakness','马原哲学与帽子词')}】框架梳理
+{C.CYAN}│{C.RESET}  • {C.BOLD}{pro_n:<18}{C.RESET} ({int(pro_h*60)}分钟) : 突破【{plan.get('pro_weakness','核心算法推导')}】与解答规范
+{C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
 
-✨ 本方案已完整写入工作区各科中枢协议，随时输入 {C.YELLOW}/plan{C.RESET} 或 {C.YELLOW}ky plan{C.RESET} 即可动态调整！
+👉 {C.BOLD}下一步直接在终端输入指令开始学习：{C.RESET}
+   - {C.GREEN}/math{C.RESET} 或 {C.GREEN}数学报到{C.RESET}  ➔ 启动数学私教今日精选真题训练
+   - {C.GREEN}/eng{C.RESET}  或 {C.GREEN}英语报到{C.RESET}  ➔ 启动英语长难句与阅读精析
+   - {C.GREEN}/pol{C.RESET}  或 {C.GREEN}政治报到{C.RESET}  ➔ 启动政治考点与帽子词自测
+   - {C.GREEN}/pro{C.RESET}  或 {C.GREEN}专业课报到{C.RESET}➔ 启动专业课高频大题推导演练
+   - {C.YELLOW}/today{C.RESET}                ➔ 随时查看今日四科任务与完成状态
+   - {C.YELLOW}/plan{C.RESET}                 ➔ 随时动态调整备考方案与作息
+
+✨ 所有规划文件已在各科目目录下生成完毕！
 """)
 
 if __name__ == "__main__":

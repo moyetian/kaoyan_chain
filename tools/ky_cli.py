@@ -1017,16 +1017,46 @@ def print_welcome(live_port=8088, animate=True):
 {C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
 """)
 
+def print_today_tasks_summary():
+    """读取并全彩打印四科今日真实任务清单"""
+    subjs = [
+        ("01-数学", "数学", C.GREEN),
+        ("02-英语", "英语", C.CYAN),
+        ("03-思想政治理论", "思想政治理论", C.RED),
+        ("04-专业课", "专业课", C.YELLOW)
+    ]
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    print(f"\n{C.CYAN}╭── 📋 今日全科复习任务清单 ({today_str}) ─────────────────────────╮{C.RESET}")
+    has_any = False
+    for dir_name, label, color in subjs:
+        task_file = ROOT / dir_name / "_状态" / "今日任务.md"
+        if task_file.exists():
+            has_any = True
+            content = task_file.read_text(encoding="utf-8")
+            print(f"  {colorize(f'【{label}】', color)}")
+            lines = [l.strip() for l in content.splitlines() if "|" in l and not l.startswith("|---|") and not "完成状态" in l and not "模块" in l]
+            for line in lines:
+                parts = [p.strip() for p in line.split("|") if p.strip()]
+                if len(parts) >= 3:
+                    status = f"{C.GREEN}[√]{C.RESET}" if "[x]" in parts[-1].lower() else f"{C.DIM}[ ]{C.RESET}"
+                    print(f"    {status} {parts[0]} ({parts[2]}): {parts[1]}")
+            print()
+        else:
+            print(f"  {colorize(f'【{label}】', color)}: 暂未生成今日任务，输入 /plan 一键生成。\n")
+    print(f"{C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}")
+    print(f"💡 开始学习口令: 输入 {C.GREEN}[科目]报到{C.RESET} (如「数学报到」) 立即由私教派题；完成输入 {C.YELLOW}交作业{C.RESET} 自动批改打分！\n")
+
 def print_command_palette():
     """打印 Claude Code 风格分类指令面板"""
     print(f"""
 {C.CYAN}╭── 🛠️ 考研私教智能终端 · 指令大盘 (Command Palette) ───────────────────────╮{C.RESET}
 {C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
-{C.CYAN}│{C.RESET}  {C.BOLD}🎓 学科专属私教路由:{C.RESET}                                                     {C.CYAN}│{C.RESET}
-{C.CYAN}│{C.RESET}    {C.GREEN}/math{C.RESET}     切换数学私教 (核心题型攻坚、步骤规范化、严防超纲与计算失误)  {C.CYAN}│{C.RESET}
-{C.CYAN}│{C.RESET}    {C.GREEN}/eng{C.RESET}      切换英语私教 (长难句搭积木、阅读真题定位、作文功能句固化)    {C.CYAN}│{C.RESET}
-{C.CYAN}│{C.RESET}    {C.GREEN}/pol{C.RESET}      切换政治私教 (单选多选得分盘、帽子词秒杀、背诵闭环)          {C.CYAN}│{C.RESET}
-{C.CYAN}│{C.RESET}    {C.GREEN}/pro{C.RESET}      切换专业课私教 (权威教材知识图谱、历年真题深度解剖)          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  {C.BOLD}🎓 学科专属私教路由与每日任务:{C.RESET}                                           {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.GREEN}/today{C.RESET}     查看四科今日必做任务清单与完成进度打钩                    {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.GREEN}/math{C.RESET}      切换数学私教 (核心题型攻坚、步骤规范化、严防超纲与计算失误){C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.GREEN}/eng{C.RESET}       切换英语私教 (长难句搭积木、阅读真题定位、作文功能句固化)  {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.GREEN}/pol{C.RESET}       切换政治私教 (单选多选得分盘、帽子词秒杀、背诵闭环)        {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.GREEN}/pro{C.RESET}       切换专业课私教 (权威教材知识图谱、历年真题深度解剖)        {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}  {C.BOLD}🧩 考研专有扩展技能 (Skills):{C.RESET}                                            {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.YELLOW}/img <路径>{C.RESET}  上传草稿纸或截图，逐行批改、采分点打分与 LaTeX 题干提取   {C.CYAN}│{C.RESET}
@@ -1371,6 +1401,9 @@ def run_repl():
                 target_url = f"http://localhost:{live_port or 8088}/live"
                 webbrowser.open(target_url)
                 print(colorize(f"\n[已在默认浏览器中打开实时可视化伴侣: {target_url}]\n", C.GREEN))
+                continue
+            elif cmd in ("/today", "/tasks", "/task"):
+                print_today_tasks_summary()
                 continue
             elif cmd in ("/plan", "/profile", "/blueprint"):
                 try:
@@ -1881,6 +1914,8 @@ def main():
             study_planner.run_study_plan_wizard(interactive=True)
         except Exception as e:
             print(f"方案设计提示: {e}")
+    elif args[0] in ("today", "--today", "tasks", "--tasks"):
+        print_today_tasks_summary()
     elif args[0] in ("notify", "--notify"):
         cfg = load_config()
         custom = " ".join(args[1:]) if len(args) > 1 else None
