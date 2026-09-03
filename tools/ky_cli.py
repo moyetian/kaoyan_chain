@@ -42,15 +42,16 @@ for p_item in (str(ROOT), str(tools_dir)):
         sys.path.insert(0, p_item)
 
 try:
-    from skills import vision_solver, math_verifier, english_dissector, pdf_extractor, error_logger, latex_beautifier, list_skills
+    from skills import vision_solver, math_verifier, english_dissector, socratic_tutor, pdf_extractor, error_logger, latex_beautifier, list_skills
 except Exception as _e:
     try:
-        from tools.skills import vision_solver, math_verifier, english_dissector, pdf_extractor, error_logger, latex_beautifier, list_skills
+        from tools.skills import vision_solver, math_verifier, english_dissector, socratic_tutor, pdf_extractor, error_logger, latex_beautifier, list_skills
     except Exception:
         list_skills = lambda: {}
         vision_solver = None
         math_verifier = None
         english_dissector = None
+        socratic_tutor = None
         pdf_extractor = None
         error_logger = None
         latex_beautifier = None
@@ -1060,8 +1061,11 @@ def print_command_palette():
 {C.CYAN}│{C.RESET}    {C.GREEN}/pro{C.RESET}       切换专业课私教 (权威教材知识图谱、历年真题深度解剖)        {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}  {C.BOLD}🧩 考研专有扩展技能 (Skills):{C.RESET}                                            {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/review{C.RESET}    艾宾浩斯错题盲盒重测 (隐去原答案，独立重做，通过后出库)   {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/hint{C.RESET}      苏格拉底微步骤启发 (拒绝全解剧透，分级引导突破口)         {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/batch{C.RESET}     客观题答题卡批量对题 (快速比对选项，统计正确率与错题归因) {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.YELLOW}/img <路径>{C.RESET}  上传草稿纸或截图，逐行批改、采分点打分与 LaTeX 题干提取   {C.CYAN}│{C.RESET}
-{C.CYAN}│{C.RESET}    {C.YELLOW}/calc <式子>{C.RESET} 数学高精度符号验算 (极限/导数/微积分/矩阵/泰勒展开)     {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/calc <式子>{C.RESET} 数学高精度验算 (微分方程/二次型/级数/极限/微积分/矩阵)     {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.YELLOW}/dissect <句>{C.RESET}英语长难句搭积木解剖 (主干骨架/从句解构/考点词/润色翻译)   {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.YELLOW}/pdf [关键词]{C.RESET}全文检索四科资料库中的官方教材与历年真题                 {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.YELLOW}/skills{C.RESET}     查看当前已装载的所有技能详细清单与状态                    {C.CYAN}│{C.RESET}
@@ -1118,6 +1122,7 @@ def run_repl():
 
     curr_subj = cfg.get("active_subject", "math")
     history = []
+    active_quiz_item = None
 
     def get_prompt_tag():
         _, s_name = SUBJECT_DIRS.get(curr_subj, ("01-数学", "数学"))
@@ -1126,6 +1131,11 @@ def run_repl():
         elif curr_subj == "pol": target = "70+稳拿"
         elif curr_subj == "pro": target = "120-130拔高"
         return f"\n{C.CYAN}╭─{C.RESET} [ {C.BOLD}{s_name}{C.RESET} · {C.YELLOW}{target}{C.RESET} ] {C.DIM}──────────────────────────────────────────{C.RESET}\n{C.CYAN}╰─❯{C.RESET} "
+
+    def print_followup_toolbar():
+        print(f"\n{C.CYAN}╭──────────────────────────────────────────────────────────────────────────────────╮{C.RESET}")
+        print(f"{C.CYAN}│{C.RESET}  {C.BOLD}💡 下一步:{C.RESET} [1] 📐 符号验算  [2] 📌 记错题  [3] 🌐 网页伴侣  [4] 🔄 变式演练  [5] 💡 启发提示 {C.CYAN}│{C.RESET}")
+        print(f"{C.CYAN}╰──────────────────────────────────────────────────────────────────────────────────╯{C.RESET}")
 
     print(colorize(f"当前已激活：{SUBJECT_DIRS[curr_subj][1]}。直接输入问题/题目，或使用 /img 批改草稿，/calc 验算数学。", C.DIM))
     if live_port:
@@ -1143,19 +1153,30 @@ def run_repl():
 
         # ── 数字快捷操作响应 (Codex 风格) ──
         if user_input == "1":
-            calc_expr = input(colorize("请输入待精确验算的数学式 (如 diff x^2*sin(x) 或 limit (sin(x)-x)/x^3 as x->0): ", C.YELLOW)).strip()
+            calc_expr = input(colorize("请输入待精确验算的数学式 (如 ode y''+4*y=0, quad [[2,1],[1,2]], limit (sin(x)-x)/x^3 as x->0): ", C.YELLOW)).strip()
             if calc_expr:
                 user_input = f"/calc {calc_expr}"
             else:
                 continue
         elif user_input == "2":
             last_resp = history[-1]["content"] if history and history[-1]["role"] == "assistant" else "做题记录"
+            last_q = ""
+            for h in reversed(history):
+                if h.get("role") == "user" and not h.get("content", "").startswith("/"):
+                    last_q = h.get("content", "")
+                    break
+            err_type = "需强化复练"
+            for et in ("概念漏洞", "审题偏差", "公式记错", "计算失误", "书写丢分"):
+                if et in last_resp:
+                    err_type = et
+                    break
             res = error_logger.log_error_record(
                 subject=curr_subj,
                 title=f"{SUBJECT_DIRS[curr_subj][1]}重点错题复盘",
-                error_type="需强化复练",
-                detail=last_resp[:300] + "...",
-                prescription="已同步载入艾宾浩斯错题复习队列 (1天/3天/7天后重做)。"
+                error_type=err_type,
+                detail=last_resp[:400] + ("..." if len(last_resp) > 400 else ""),
+                prescription="已载入艾宾浩斯盲盒复测队列 (1天/3天/7天后重做)。",
+                question=last_q
             )
             print(colorize(f"\n[√] {res}\n", C.GREEN))
             continue
@@ -1164,6 +1185,16 @@ def run_repl():
         elif user_input == "4":
             print(colorize(f"\n[🔄 正在根据上一题考点与易错陷阱为您抽取同类变式真题...]\n", C.CYAN))
             user_input = "请根据上一题的核心考点与命题陷阱，为我抽取一道难度相当的考研真题同类变式题。要求：只给题干背景与设问，不要直接贴答案，让我先独立作答。"
+        elif user_input == "5":
+            last_q = ""
+            for h in reversed(history):
+                if h.get("role") == "user" and not h.get("content", "").startswith("/"):
+                    last_q = h.get("content", "")
+                    break
+            if not last_q:
+                print(colorize("\n[!] 暂无上一题上下文，请直接输入：/hint <题目内容>\n", C.YELLOW))
+                continue
+            user_input = f"/hint {last_q}"
 
         # ── 呼出指令大盘 ──
         if user_input in ("/", "/help", "/h", "help", "？", "?"):
@@ -1222,9 +1253,7 @@ def run_repl():
                 history.append({"role": "assistant", "content": reply})
 
                 # Codex CLI 风格快捷操作栏
-                print(f"\n{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮{C.RESET}")
-                print(f"{C.CYAN}│{C.RESET}  {C.BOLD}💡 下一步操作:{C.RESET} [1] 📐 符号验算  [2] 📌 记入错题本  [3] 🌐 网页排版  [4] 🔄 变式演练 {C.CYAN}│{C.RESET}")
-                print(f"{C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}")
+                print_followup_toolbar()
             continue
 
         # ── 斜杠指令与 Skills 分发 ──
@@ -1264,9 +1293,7 @@ def run_repl():
                     history.append({"role": "assistant", "content": reply})
 
                     # Codex CLI 风格快捷操作栏
-                    print(f"\n{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮{C.RESET}")
-                    print(f"{C.CYAN}│{C.RESET}  {C.BOLD}💡 下一步操作:{C.RESET} [1] 📐 符号验算  [2] 📌 记入错题本  [3] 🌐 网页排版  [4] 🔄 变式演练 {C.CYAN}│{C.RESET}")
-                    print(f"{C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}")
+                    print_followup_toolbar()
                 continue
 
             # ── 技能 3: /img 或 /ocr 视觉看图与手写批改 ──
@@ -1299,9 +1326,7 @@ def run_repl():
                     history.append({"role": "assistant", "content": reply})
 
                     # Codex CLI 风格快捷操作栏
-                    print(f"\n{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮{C.RESET}")
-                    print(f"{C.CYAN}│{C.RESET}  {C.BOLD}💡 下一步操作:{C.RESET} [1] 📐 符号验算  [2] 📌 记入错题本  [3] 🌐 网页排版  [4] 🔄 变式演练 {C.CYAN}│{C.RESET}")
-                    print(f"{C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}")
+                    print_followup_toolbar()
                 continue
 
             # ── 技能 3: /calc 或 /verify 数学符号验算 ──
@@ -1312,6 +1337,82 @@ def run_repl():
                 print(colorize(f"\n[📐 正在运行数学符号验算引擎...]\n", C.CYAN))
                 res = math_verifier.run_math_query(arg)
                 print(res + "\n")
+                print_followup_toolbar()
+                continue
+
+            # ── 技能: /review 或 /quiz 艾宾浩斯盲盒复测 ──
+            elif cmd in ("/review", "/quiz"):
+                target_subj = curr_subj
+                if arg:
+                    for s_k, s_v in (("math", "数"), ("eng", "英"), ("pol", "政"), ("pro", "专")):
+                        if s_k in arg.lower() or s_v in arg:
+                            target_subj = s_k
+                            break
+                due_items = error_logger.get_due_reviews(target_subj, max_count=5) if error_logger else []
+                if not due_items:
+                    print(colorize(f"\n[🎉 恭喜] {SUBJECT_DIRS[target_subj][1]} 当前没有到期需要艾宾浩斯复测的错题！掌握度优良！\n", C.GREEN))
+                    continue
+
+                active_quiz_item = due_items[0]
+                quiz_card = error_logger.generate_blind_quiz(active_quiz_item)
+                print(quiz_card + "\n")
+                print(colorize("👉 请直接在下方输入您的推导步骤或最终答案进行核对 (输入 cancel 随时退出复测)：\n", C.CYAN))
+                continue
+
+            # ── 技能: /hint 或 /tishi 苏格拉底微步骤启发 ──
+            elif cmd in ("/hint", "/tishi"):
+                target_q = arg
+                if not target_q:
+                    for h in reversed(history):
+                        if h.get("role") == "user" and not h.get("content", "").startswith("/"):
+                            target_q = h.get("content", "")
+                            break
+                if not target_q:
+                    print(colorize("用法: /hint <题目内容> 或做题卡壳时直接输入 /hint 获取微步骤启发\n示例: /hint 设 f(x) 在 [0, 1] 上连续，证明存在 xi 使得...", C.YELLOW))
+                    continue
+
+                hint_lvl = 1
+                for h in history[-4:]:
+                    c = h.get("content", "")
+                    if "【第 1 级启发性提示】" in c: hint_lvl = 2
+                    if "【第 2 级启发性提示】" in c: hint_lvl = 3
+
+                print(colorize(f"\n[💡 苏格拉底导师正在为您构建 Level {hint_lvl} 微步骤启发 (严守不剧透铁律)...]\n", C.CYAN))
+                hint_prompt = socratic_tutor.build_hint_prompt(target_q, hint_level=hint_lvl) if socratic_tutor else target_q
+                messages = [
+                    {"role": "system", "content": "你是一位深谙苏格拉底式启发教学理念的考研专属私教总教练。"},
+                    {"role": "user", "content": hint_prompt}
+                ]
+                reply = stream_chat(messages, cfg)
+                if reply:
+                    history.append({"role": "user", "content": f"/hint {target_q}"})
+                    history.append({"role": "assistant", "content": f"【第 {hint_lvl} 级启发性提示】\n{reply}"})
+                    print_followup_toolbar()
+                continue
+
+            # ── 技能: /batch 或 /answers 客观题答题卡批量对题 ──
+            elif cmd in ("/batch", "/answers"):
+                if not arg:
+                    print(colorize("用法: /batch <你的选项答案序列> [标准答案序列]\n示例:\n  /batch 1-5: A B C D A; 6-10: C B A D C\n  /batch 我的答案: CADBD 标准答案: CADBC", C.YELLOW))
+                    continue
+                print(colorize(f"\n[📊 正在核对客观题答题卡并统计正答率与错题考点...]\n", C.CYAN))
+                batch_prompt = (
+                    "你是一位考研命题与阅卷总教练。学员输入了一组客观选择题的答题卡选项：\n\n"
+                    f"```text\n{arg}\n```\n\n"
+                    "请按照以下格式进行批量核对与诊断：\n"
+                    "1. 【正误统计】：逐题核对并列出对错清单，计算总正答率与得分；\n"
+                    "2. 【错题聚类与考点定位】：明确指出错题分别考察考纲哪一章节考点；\n"
+                    "3. 【深度精讲指引】：挑出错题中最关键的一道，指出解题突破口并建议学员在草稿纸上复练。"
+                )
+                messages = [
+                    {"role": "system", "content": "你是一位考研阅卷与答题卡批改专家。"},
+                    {"role": "user", "content": batch_prompt}
+                ]
+                reply = stream_chat(messages, cfg)
+                if reply:
+                    history.append({"role": "user", "content": f"/batch {arg}"})
+                    history.append({"role": "assistant", "content": reply})
+                    print_followup_toolbar()
                 continue
 
             # ── 技能 4: /dissect 英语长难句解剖 ──
@@ -1437,6 +1538,46 @@ def run_repl():
                 print(colorize(f"未知指令 {cmd}，输入 /skills 查看可用技能，或输入 /math /eng /pol /pro", C.RED))
                 continue
 
+        # ── 艾宾浩斯错题盲盒作答判定 ──
+        if active_quiz_item and not user_input.startswith("/"):
+            if user_input.lower() in ("cancel", "/cancel", "退出", "放弃"):
+                active_quiz_item = None
+                print(colorize("\n[已退出当前错题盲盒复测]\n", C.YELLOW))
+                continue
+
+            print(colorize(f"\n[🎯 考研阅卷人正在对您的盲盒复测作答进行智能核验与采分...]\n", C.CYAN))
+            quiz_eval_prompt = (
+                f"你是一位考研全真阅卷专家。学员正在对以下历史错题进行【艾宾浩斯盲盒复测】：\n\n"
+                f"【题目标题】：{active_quiz_item['title']}\n"
+                f"【原题设问与题干】：\n{active_quiz_item['question']}\n\n"
+                f"【学员复测提交的作答】：\n{user_input}\n\n"
+                f"请按真题采分点严格判定：\n"
+                f"1. 核验学员的核心步骤与最终结论是否正确无误？\n"
+                f"2. 若完全正确，请在回答首行明确标出：`【复测通过·已掌握】`，并简明指出亮点与关键得分点；\n"
+                f"3. 若仍有错误或计算失误，请在回答首行明确标出：`【复测未通过·需强化】`，指出具体第几步失误与错因五分类，并给出正解示范。"
+            )
+            messages = [
+                {"role": "system", "content": "你是一位考研真题阅卷与艾宾浩斯复测主考官。"},
+                {"role": "user", "content": quiz_eval_prompt}
+            ]
+            reply = stream_chat(messages, cfg)
+            if reply:
+                if "【复测通过·已掌握】" in reply or "复测通过" in reply:
+                    ok, msg = error_logger.mark_error_status(
+                        active_quiz_item["subject"],
+                        active_quiz_item["file_name"],
+                        active_quiz_item["title"],
+                        new_status="已掌握"
+                    )
+                    print(colorize(f"\n🎉 [艾宾浩斯系统判定]: {msg} 掌握度已更新，该题已从复测队列出库！\n", C.GREEN))
+                else:
+                    print(colorize("\n⚠️ [艾宾浩斯系统判定]: 复测仍有失误，已重置艾宾浩斯记忆周期，保持在待测队列！\n", C.YELLOW))
+                history.append({"role": "user", "content": f"[错题复测作答: {active_quiz_item['title']}] {user_input}"})
+                history.append({"role": "assistant", "content": reply})
+                active_quiz_item = None
+                print_followup_toolbar()
+            continue
+
         # ── LLM 交互 ──
         sys_prompt = build_system_prompt(curr_subj)
         messages = [{"role": "system", "content": sys_prompt}]
@@ -1466,9 +1607,7 @@ def run_repl():
                 print()
 
             # Codex CLI 风格快捷操作栏 (Follow-up Toolbar)
-            print(f"{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮{C.RESET}")
-            print(f"{C.CYAN}│{C.RESET}  {C.BOLD}💡 下一步操作:{C.RESET} [1] 📐 符号验算  [2] 📌 记入错题本  [3] 🌐 网页排版  [4] 🔄 变式演练 {C.CYAN}│{C.RESET}")
-            print(f"{C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}")
+            print_followup_toolbar()
 
 # ════════════════════════════════════════════════════════════════
 # 6. Webhook 网关模式 (`ky serve --port 8088`)

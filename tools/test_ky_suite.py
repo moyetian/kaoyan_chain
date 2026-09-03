@@ -426,6 +426,58 @@ def run_tests():
     clean_agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     runner.assert_true("暂未放置实体资料" in clean_agents, "AGENTS.md 真实记录无资料状态，杜绝任何硬编码假书目")
 
+    # ------------------------------------------------------------
+    # 测试 11: 专有技能中枢重度升级与全流程闭环校验
+    # ------------------------------------------------------------
+    print("\n[测试组 11: 专有技能中枢重度升级与全流程闭环校验]")
+    from skills import math_verifier as mv_test
+    from skills import socratic_tutor as st_test
+    from skills import error_logger as el_test
+    from skills import list_skills as ls_test
+
+    # 1. 检验技能注册表包含新技能
+    all_sks = ls_test()
+    runner.assert_true("socratic_tutor" in all_sks, "技能注册表包含苏格拉底脚手架技能 socratic_tutor")
+    runner.assert_true("error_logger" in all_sks and "盲盒" in all_sks["error_logger"]["name"], "错题引擎已升级为艾宾浩斯盲盒复测")
+
+    # 2. 检验 math_verifier 高阶微积分与代数能力
+    ode_res = mv_test.run_math_query("ode y'' + 4*y = 0")
+    runner.assert_true("sin" in ode_res.lower() or "cos" in ode_res.lower(), "数学高阶验算：常微分方程通解计算准确")
+
+    quad_res = mv_test.run_math_query("quad [[2, 1], [1, 2]]")
+    runner.assert_true("正定" in quad_res and "\\Delta_1" in quad_res, "数学高阶验算：二次型正定性与顺序主子式判定准确")
+
+    sum_res = mv_test.run_math_query("sum 1/n^2 from 1 to oo")
+    runner.assert_true("pi" in sum_res.lower() or "\\pi" in sum_res, "数学高阶验算：巴塞尔级数求和计算准确")
+
+    solve_res = mv_test.run_math_query("solve x^2 - 5*x + 6 = 0")
+    runner.assert_true("2" in solve_res and "3" in solve_res, "数学高阶验算：代数方程与极值驻点求解准确")
+
+    # 3. 检验 socratic_tutor 三级脚手架生成
+    hint_q = "证明设 f(x) 在 [0,1] 连续，存在 xi 满足积分中值公式"
+    p_lvl1 = st_test.build_hint_prompt(hint_q, hint_level=1)
+    runner.assert_true("Level 1" in p_lvl1 and "铁律" in p_lvl1 and "严禁给出最终答案" in p_lvl1, "苏格拉底脚手架：Level 1 破题定性提示规范且锁定不剧透铁律")
+
+    p_lvl2 = st_test.build_hint_prompt(hint_q, hint_level=2)
+    runner.assert_true("Level 2" in p_lvl2 and "首步" in p_lvl2, "苏格拉底脚手架：Level 2 首步搭桥提示规范")
+
+    p_lvl3 = st_test.build_hint_prompt(hint_q, hint_level=3)
+    runner.assert_true("Level 3" in p_lvl3 and "陷阱" in p_lvl3, "苏格拉底脚手架：Level 3 命题避坑指南规范")
+
+    # 4. 检验 error_logger 盲盒抽题与闭环状态回写
+    el_test.log_error_record("math", "泰勒展开阶数匹配失误", "审题偏差", "展开至3阶漏掉余项", "严格对照分母极限阶数", question="求极限 lim (tan(x)-x)/x^3")
+    rec_list = el_test.scan_error_records("math")
+    runner.assert_true(len(rec_list) > 0, "错题解析引擎：成功结构化提取 Markdown 错题卡片")
+
+    due_list = el_test.get_due_reviews("math")
+    runner.assert_true(len(due_list) > 0, "艾宾浩斯复测：成功提取待复测到期错题队列")
+
+    blind_card = el_test.generate_blind_quiz(due_list[0])
+    runner.assert_true("盲盒重测" in blind_card and "隐去历史推导过程" in blind_card, "错题盲盒引擎：成功生成无答案的盲盒复测试题")
+
+    up_ok, up_msg = el_test.mark_error_status("math", due_list[0]["file_name"], due_list[0]["title"], new_status="已掌握")
+    runner.assert_true(up_ok is True, "闭环状态回写：成功将复测合格题目更新标记为 [已掌握]")
+
     # 统计并返回
     success = runner.print_summary()
     sys.exit(0 if success else 1)
