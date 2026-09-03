@@ -277,15 +277,18 @@ def run_tests():
     # ------------------------------------------------------------
     print("\n[测试组 7: Git 隐私隔离机制实测]")
     import subprocess
-    # 创建一个临时测试配置文件以核查是否被 Git 忽略
+    # 校验 ky_config.json 是否被 Git 忽略 (妥善备份并还原原本配置)
     fake_config = ROOT / "ky_config.json"
+    old_content = fake_config.read_text(encoding="utf-8") if fake_config.exists() else None
     fake_config.write_text(json.dumps({"test_api_key": "sk-secret123456"}), encoding="utf-8")
 
     git_check = subprocess.run(["git", "status", "--porcelain"], cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace")
     runner.assert_true("ky_config.json" not in (git_check.stdout or ""), "ky_config.json 被 .gitignore 正确忽略 (无泄漏风险)")
 
     # 恢复或清理
-    if fake_config.exists():
+    if old_content is not None:
+        fake_config.write_text(old_content, encoding="utf-8")
+    elif fake_config.exists():
         fake_config.unlink()
 
     # ------------------------------------------------------------
