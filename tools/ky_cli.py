@@ -35,6 +35,25 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG_FILE = ROOT / "ky_config.json"
 HISTORY_FILE = ROOT / "ky_history.json"
 
+# 引入考研专用 Skills 体系
+tools_dir = Path(__file__).resolve().parent
+if str(tools_dir) not in sys.path:
+    sys.path.insert(0, str(tools_dir))
+
+try:
+    from skills import vision_solver, math_verifier, english_dissector, pdf_extractor, error_logger, list_skills
+except Exception as _e:
+    try:
+        import skills
+        from skills import vision_solver, math_verifier, english_dissector, pdf_extractor, error_logger, list_skills
+    except Exception:
+        list_skills = lambda: {}
+        vision_solver = None
+        math_verifier = None
+        english_dissector = None
+        pdf_extractor = None
+        error_logger = None
+
 # ANSI 终端色彩
 class C:
     RESET = "\033[0m"
@@ -568,12 +587,19 @@ def print_welcome():
   ██║ ╚██╗██║  ██║╚██████╔╝   ██║   ██║  ██║██║ ╚████║    ╚██████╗███████╗██║
   ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝    ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═══╝     ╚═════╝╚══════╝╚═╝
 {C.RESET}
-{C.BOLD}  🎓 考研全科 AI 专属私教终端 · Kaoyan Study CLI v1.0{C.RESET}
+{C.BOLD}  🎓 考研全科 AI 专属私教终端 · Kaoyan Study CLI v1.2 (Skills 全功能版){C.RESET}
   ----------------------------------------------------------------------
-  快捷指令：
-   {C.GREEN}/math{C.RESET} 切换数学私教    {C.GREEN}/eng{C.RESET} 切换英语私教    {C.GREEN}/pol{C.RESET} 切换政治私教    {C.GREEN}/pro{C.RESET} 切换专业课
-   {C.GREEN}/status{C.RESET} 今日进度大盘  {C.GREEN}/notify{C.RESET} 推送晨报到群   {C.GREEN}/build{C.RESET} 重新编译看板    {C.GREEN}/config{C.RESET} 接口设置
-   {C.GREEN}/clear{C.RESET} 清空当前对话   {C.GREEN}/exit{C.RESET} 退出终端
+  四科私教调度：
+   {C.GREEN}/math{C.RESET} 数学专属私教    {C.GREEN}/eng{C.RESET} 英语专属私教    {C.GREEN}/pol{C.RESET} 政治专属私教    {C.GREEN}/pro{C.RESET} 专业课私教
+  考研专有技能 (Skills)：
+   {C.YELLOW}/img <图片路径>{C.RESET}   📸 多模态视觉批改：识别题干、手写推导、采分点打分与公式还原
+   {C.YELLOW}/calc <数学表达式>{C.RESET} 📐 符号验算引擎：求导、极限、积分、矩阵与泰勒级数严谨验算
+   {C.YELLOW}/dissect <英语句子>{C.RESET} 🧱 英语长难句搭积木解剖：主干抽取/从句解构/高频词/润色翻译
+   {C.YELLOW}/pdf [关键词]{C.RESET}      📚 资料库与历年真题教材全文检索
+   {C.YELLOW}/skills{C.RESET}            🧩 查看当前已装载的所有技能及其就绪状态
+  大盘与配置管理：
+   {C.CYAN}/status{C.RESET} 今日大盘态势    {C.CYAN}/notify{C.RESET} 推送晨报到群   {C.CYAN}/build{C.RESET} 编译移动端看板  {C.CYAN}/config{C.RESET} 配置中心
+   {C.CYAN}/clear{C.RESET}  清空当前对话    {C.CYAN}/exit{C.RESET}   退出终端私教
   ----------------------------------------------------------------------
 """
     print(banner)
@@ -596,7 +622,7 @@ def run_repl():
         _, s_name = SUBJECT_DIRS.get(curr_subj, ("01-数学", "数学"))
         return f"{C.CYAN}[ky-cli:{s_name}]{C.RESET} > "
 
-    print(colorize(f"当前已激活：{SUBJECT_DIRS[curr_subj][1]}。直接输入你的问题、解题草稿，或输入 /math, /eng 切换科目。\n", C.DIM))
+    print(colorize(f"当前已激活：{SUBJECT_DIRS[curr_subj][1]}。直接输入问题/题目，或使用 /img 批改草稿，/calc 验算数学。\n", C.DIM))
 
     while True:
         try:
@@ -608,12 +634,100 @@ def run_repl():
         if not user_input:
             continue
 
-        # ── 斜杠命令处理 ──
+        # ── 智能图片输入检测 (直接输入或拖拽图片路径) ──
+        clean_input = user_input.strip().strip('"').strip("'")
+        if clean_input.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")) and Path(clean_input).exists():
+            print(colorize(f"\n[📸 检测到直接输入图片: {Path(clean_input).name}，正在调起多模态视觉阅卷技能...]\n", C.CYAN))
+            reply = vision_solver.solve_image_with_model(clean_input, "", cfg, stream=True)
+            if reply:
+                history.append({"role": "user", "content": f"[图片批改: {Path(clean_input).name}]"})
+                history.append({"role": "assistant", "content": reply})
+            continue
+
+        # ── 斜杠指令与 Skills 分发 ──
         if user_input.startswith("/"):
-            cmd = user_input.lower().split()[0]
+            cmd_parts = user_input.split(maxsplit=1)
+            cmd = cmd_parts[0].lower()
+            arg = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
+
             if cmd in ("/exit", "/quit"):
                 print("再见！一战成硕！")
                 break
+
+            # ── 技能 1: /skills 查看所有技能 ──
+            elif cmd == "/skills":
+                print(colorize("\n=== 🧩 考研专有智能体技能中心 (Skills Registry) ===", C.BOLD))
+                for sk_id, sk in list_skills().items():
+                    print(f"\n  {sk['name']} [{colorize(sk['status'], C.GREEN)}]")
+                    print(f"    - 功能: {sk['desc']}")
+                    print(f"    - 指令: {colorize(sk['command'], C.YELLOW)}")
+                print()
+                continue
+
+            # ── 技能 2: /img 或 /ocr 视觉看图与手写批改 ──
+            elif cmd in ("/img", "/ocr"):
+                if not arg:
+                    print(colorize("用法: /img <图片路径> [补充要求]\n示例: /img C:\\Users\\draft.jpg 请重点检查第3行计算", C.YELLOW))
+                    continue
+                parts = arg.split(maxsplit=1)
+                img_p = parts[0].strip('"').strip("'")
+                extra = parts[1] if len(parts) > 1 else ""
+                if not Path(img_p).exists():
+                    print(colorize(f"\n[!] 未找到图片: {img_p}\n", C.RED))
+                    continue
+                print(colorize(f"\n[📸 正在调起多模态视觉阅卷技能分析: {Path(img_p).name}...]\n", C.CYAN))
+                reply = vision_solver.solve_image_with_model(img_p, extra, cfg, stream=True)
+                if reply:
+                    history.append({"role": "user", "content": f"[图片批改: {Path(img_p).name}] {extra}"})
+                    history.append({"role": "assistant", "content": reply})
+                continue
+
+            # ── 技能 3: /calc 或 /verify 数学符号验算 ──
+            elif cmd in ("/calc", "/verify"):
+                if not arg:
+                    print(colorize("用法: /calc <数学式子>\n示例:\n  /calc diff x^3*sin(x)\n  /calc limit (sin(x)-x)/x^3 as x->0\n  /calc int x*exp(x) dx", C.YELLOW))
+                    continue
+                print(colorize(f"\n[📐 正在运行数学符号验算引擎...]\n", C.CYAN))
+                res = math_verifier.run_math_query(arg)
+                print(res + "\n")
+                continue
+
+            # ── 技能 4: /dissect 英语长难句解剖 ──
+            elif cmd in ("/dissect", "/chai"):
+                if not arg:
+                    print(colorize("用法: /dissect <考研英语长难句>\n示例: /dissect But the human mind can also imagine what it would be like...", C.YELLOW))
+                    continue
+                dissect_prompt = english_dissector.build_dissection_prompt(arg)
+                messages = [
+                    {"role": "system", "content": "你是一位考研英语长难句命题分析与拆解专家。"},
+                    {"role": "user", "content": dissect_prompt}
+                ]
+                print(colorize(f"\n[🧱 正在执行长难句搭积木分层切分...]\n", C.CYAN))
+                reply = stream_chat(messages, cfg)
+                if reply:
+                    history.append({"role": "user", "content": f"/dissect {arg}"})
+                    history.append({"role": "assistant", "content": reply})
+                continue
+
+            # ── 技能 5: /pdf 资料检索 ──
+            elif cmd == "/pdf":
+                if arg:
+                    print(colorize(f"\n[📚 正在四科资料库中检索关键词: {arg}...]\n", C.CYAN))
+                    matches = pdf_extractor.search_text_in_materials(arg)
+                    if matches:
+                        for m in matches[:10]:
+                            print("  " + m)
+                    else:
+                        print("  未检索到相关内容。")
+                else:
+                    print(colorize("\n[📚 四科「参考资料/」文献清单]:", C.CYAN))
+                    mats = pdf_extractor.list_materials()
+                    for s, flist in mats.items():
+                        print(f"  - {s}: {', '.join(flist) if flist else '暂无文件 (可放入教材PDF/真题)'}")
+                print()
+                continue
+
+            # ── 四科路由 ──
             elif cmd in ("/math", "/shuxue"):
                 curr_subj = "math"
                 cfg["active_subject"] = "math"
@@ -672,7 +786,7 @@ def run_repl():
                 print()
                 continue
             else:
-                print(colorize(f"未知指令 {cmd}，支持: /math /eng /pol /pro /status /notify /build /config /clear /exit", C.RED))
+                print(colorize(f"未知指令 {cmd}，输入 /skills 查看可用技能，或输入 /math /eng /pol /pro", C.RED))
                 continue
 
         # ── LLM 交互 ──
@@ -746,21 +860,24 @@ def run_server(port=8088):
                 {"role": "user", "content": user_msg}
             ]
 
-            # 发起非流式请求以返回 JSON
+            # 发起请求或返回未配置提示
             reply = "已收到！正在为您解析..."
-            try:
-                base_url = cfg.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
-                url = f"{base_url}/chat/completions"
-                req = urllib.request.Request(
-                    url,
-                    data=json.dumps({"model": cfg.get("model", "deepseek-chat"), "messages": messages, "stream": False}).encode("utf-8"),
-                    headers={"Content-Type": "application/json", "Authorization": f"Bearer {cfg.get('api_key','')}"}
-                )
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    res_json = json.loads(resp.read().decode("utf-8"))
-                    reply = res_json["choices"][0]["message"]["content"]
-            except Exception as e:
-                reply = f"[私教处理异常]: {e}"
+            if not cfg.get("api_key"):
+                reply = f"🎓【考研私教】收到您的提问: \"{user_msg}\"\n当前尚未配置大模型 API Key，请在电脑端运行 `ky config` 设置密钥。"
+            else:
+                try:
+                    base_url = cfg.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
+                    url = f"{base_url}/chat/completions"
+                    req = urllib.request.Request(
+                        url,
+                        data=json.dumps({"model": cfg.get("model", "deepseek-chat"), "messages": messages, "stream": False}).encode("utf-8"),
+                        headers={"Content-Type": "application/json", "Authorization": f"Bearer {cfg.get('api_key','')}"}
+                    )
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        res_json = json.loads(resp.read().decode("utf-8"))
+                        reply = res_json["choices"][0]["message"]["content"]
+                except Exception as e:
+                    reply = f"[私教处理异常]: {e}"
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
