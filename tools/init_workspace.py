@@ -150,6 +150,14 @@ def configure_profile(interactive=True):
     print(f"      - 辅导风格: {style_name}")
     print(f"      - 主力 Agent: {agent_name}")
 
+    ask_bot = input("\n  8. 是否需要现在配置微信/QQ/钉钉/飞书等群机器人推送? (y/n) [n]: ").strip().lower()
+    if ask_bot == "y":
+        try:
+            import ky_cli
+            ky_cli.configure_webhooks(ky_cli.load_config())
+        except Exception as e:
+            print(f"  [!] Webhook 配置提示: {e}")
+
 def build_dashboard():
     """编译看板并生成 docs/index.html"""
     print("\n[步骤 4/4] 编译个人移动端自测看板...")
