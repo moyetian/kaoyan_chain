@@ -478,6 +478,86 @@ def run_tests():
     up_ok, up_msg = el_test.mark_error_status("math", due_list[0]["file_name"], due_list[0]["title"], new_status="已掌握")
     runner.assert_true(up_ok is True, "闭环状态回写：成功将复测合格题目更新标记为 [已掌握]")
 
+    # ------------------------------------------------------------
+    # 测试 12: 工业级 Agent Loop、工具分发、权限安全与沙箱拦截全链路回归
+    # ------------------------------------------------------------
+    print("\n[测试组 12: 工业级 Agent Loop、工具分发、权限安全与沙箱拦截全链路回归]")
+    from agent import Sandbox, SecurityException, PermissionManager, PermissionLevel, ToolRegistry, ContextEngine, AgentRunner
+
+    # 1. 沙箱越界拦截与高危指令黑名单
+    sb_test = Sandbox(workspace_root=ROOT)
+    caught_path = False
+    try:
+        sb_test.resolve_safe_path("C:\\Windows\\System32\\calc.exe")
+    except SecurityException:
+        caught_path = True
+    runner.assert_true(caught_path is True, "沙箱防护：坚决阻断系统敏感目录 (C:\\Windows) 访问穿越")
+
+    caught_cmd = False
+    try:
+        sb_test.check_command_safety("rm -rf /")
+    except SecurityException:
+        caught_cmd = True
+    runner.assert_true(caught_cmd is True, "沙箱防护：坚决阻断系统高危命令 (rm -rf /) 破坏性执行")
+
+    # 2. 权限分级系统 (Safe / Auto / Ask 策略)
+    pm_safe = PermissionManager(mode="safe")
+    tr_safe = ToolRegistry(sandbox=sb_test, permissions=pm_safe)
+    safe_rej = tr_safe.execute_tool("write_file", {"path": "test_perm.txt", "content": "hello"})
+    runner.assert_true("PermissionDenied" in safe_rej, "权限引擎：严格安全模式 (--permission=safe) 成功阻断非只读写入")
+
+    pm_auto = PermissionManager(mode="auto")
+    tr_auto = ToolRegistry(sandbox=sb_test, permissions=pm_auto)
+    ro_res = tr_auto.execute_tool("list_directory", {"path": ".", "max_depth": 1})
+    runner.assert_true("README.md" in ro_res, "权限引擎：只读探索工具 (Level 0) 全自动秒级放行")
+
+    # 3. 标准工具集功能回归
+    temp_p = "01-数学/_状态/test_agent_card.tmp.md"
+    w_res = tr_auto.execute_tool("write_file", {"path": temp_p, "content": "### 泰勒公式复测\n待做题目", "overwrite": True})
+    runner.assert_true("Success" in w_res and (ROOT / temp_p).exists(), "标准文件工具：write_file 成功建立考研状态文件")
+
+    r_res = tr_auto.execute_tool("read_file", {"path": temp_p})
+    runner.assert_true("泰勒公式" in r_res, "标准文件工具：read_file 成功读取考研状态文件")
+
+    e_res = tr_auto.execute_tool("edit_file", {"path": temp_p, "target_content": "待做题目", "replacement": "已完成推导"})
+    runner.assert_true("Success" in e_res and "已完成推导" in (ROOT / temp_p).read_text(encoding="utf-8"), "标准文件工具：edit_file 精确替换内容成功")
+
+    grep_res = tr_auto.execute_tool("grep", {"query": "泰勒公式", "path": "01-数学/_状态"})
+    runner.assert_true(temp_p.split("/")[-1] in grep_res, "标准搜索工具：grep 全文检索准确命中关键词")
+
+    pm_auto.force_allow_all = True
+    d_res = tr_auto.execute_tool("delete_file", {"path": temp_p})
+    runner.assert_true("Success" in d_res and not (ROOT / temp_p).exists(), "标准文件工具：delete_file 授权删除成功")
+    pm_auto.force_allow_all = False
+
+    # 4. 考研专有工具联动
+    mv_tool_res = tr_auto.execute_tool("verify_math", {"expression": "diff x^3"})
+    runner.assert_true("x" in mv_tool_res and "3" in mv_tool_res and "2" in mv_tool_res, "考研专用工具：verify_math 符号求导准确")
+
+    hint_tool_res = tr_auto.execute_tool("socratic_hint", {"question": "证明中值定理存在性", "level": 1})
+    runner.assert_true("Level 1" in hint_tool_res, "考研专用工具：socratic_hint 脚手架分级启发正常调用")
+
+    # 5. 上下文压缩 Context Compaction 算法
+    ce_test = ContextEngine(workspace_root=ROOT, active_subject="math", max_context_tokens=50)
+    fake_history = [
+        {"role": "system", "content": "顶层协议"},
+        {"role": "user", "content": "请从真题抽一道中值定理题目" * 10},
+        {"role": "tool", "name": "read_exam_paper", "content": "提取了五千字真题试卷" * 20},
+        {"role": "assistant", "content": "这是2018年第15题" * 10},
+        {"role": "user", "content": "我的解答是 f'(xi)=0"},
+        {"role": "assistant", "content": "批改完成，获得10分"},
+        {"role": "user", "content": "再抽一道积分题"},
+        {"role": "assistant", "content": "好的，请看这道 2021 年第 3 题"}
+    ]
+    compacted_msgs = ce_test.compact_context(fake_history)
+    runner.assert_true(len(compacted_msgs) < len(fake_history) or any("Context Compaction" in m.get("content", "") for m in compacted_msgs), "上下文引擎：Context Compaction 自动压缩超长工具输出，防爆 Context 成功")
+
+    # 6. ToolRegistry 生成 OpenAI 规范 tools
+    oa_tools = tr_auto.get_openai_tools()
+    runner.assert_true(any(t["function"]["name"] == "read_exam_paper" for t in oa_tools), "OpenAI Tools 规范：包含真题专抽工具 read_exam_paper")
+    runner.assert_true(any(t["function"]["name"] == "verify_math" for t in oa_tools), "OpenAI Tools 规范：包含符号高精验算工具 verify_math")
+    runner.assert_true(any(t["function"]["name"] == "read_file" for t in oa_tools), "OpenAI Tools 规范：包含标准文件读取工具 read_file")
+
     # 统计并返回
     success = runner.print_summary()
     sys.exit(0 if success else 1)

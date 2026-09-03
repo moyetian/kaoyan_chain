@@ -56,6 +56,14 @@ except Exception as _e:
         error_logger = None
         latex_beautifier = None
 
+try:
+    from agent import AgentRunner, Sandbox, PermissionManager, ToolRegistry, ContextEngine
+except Exception:
+    try:
+        from tools.agent import AgentRunner, Sandbox, PermissionManager, ToolRegistry, ContextEngine
+    except Exception:
+        AgentRunner = None
+
 # Web 可视化伴侣会话缓存
 LIVE_SESSION_MESSAGES = []
 
@@ -1085,7 +1093,7 @@ def print_command_palette():
 {C.CYAN}╰──────────────────────────────────────────────────────────────────────────╯{C.RESET}
 """)
 
-def run_repl():
+def run_repl(permission_mode: str = "ask"):
     cfg = load_config()
 
     # 静默启动后台实时 Web 可视化伴侣
@@ -1123,6 +1131,18 @@ def run_repl():
     curr_subj = cfg.get("active_subject", "math")
     history = []
     active_quiz_item = None
+
+    # 初始化自主智能体内核 AgentRunner
+    agent_runner = None
+    if AgentRunner:
+        effective_perm = cfg.get("permission_mode") or permission_mode
+        agent_runner = AgentRunner(
+            config=cfg,
+            workspace_root=ROOT,
+            permission_mode=effective_perm,
+            live_callback=append_live_message
+        )
+        agent_runner.set_subject(curr_subj)
 
     def get_prompt_tag():
         _, s_name = SUBJECT_DIRS.get(curr_subj, ("01-数学", "数学"))
@@ -1456,6 +1476,8 @@ def run_repl():
                 cfg["active_subject"] = "math"
                 save_config(cfg)
                 history = []
+                if agent_runner:
+                    agent_runner.set_subject("math")
                 print(colorize(f"\n[已切换至：{SUBJECT_DIRS['math'][1]}] 上下文与状态已重载。\n", C.GREEN))
                 continue
             elif cmd in ("/eng", "/yingyu"):
@@ -1463,6 +1485,8 @@ def run_repl():
                 cfg["active_subject"] = "eng"
                 save_config(cfg)
                 history = []
+                if agent_runner:
+                    agent_runner.set_subject("eng")
                 print(colorize(f"\n[已切换至：{SUBJECT_DIRS['eng'][1]}] 上下文与状态已重载。\n", C.GREEN))
                 continue
             elif cmd in ("/pol", "/zhengzhi"):
@@ -1470,6 +1494,8 @@ def run_repl():
                 cfg["active_subject"] = "pol"
                 save_config(cfg)
                 history = []
+                if agent_runner:
+                    agent_runner.set_subject("pol")
                 print(colorize(f"\n[已切换至：{SUBJECT_DIRS['pol'][1]}] 上下文与状态已重载。\n", C.GREEN))
                 continue
             elif cmd in ("/pro", "/zhuanye"):
@@ -1477,6 +1503,8 @@ def run_repl():
                 cfg["active_subject"] = "pro"
                 save_config(cfg)
                 history = []
+                if agent_runner:
+                    agent_runner.set_subject("pro")
                 print(colorize(f"\n[已切换至：{SUBJECT_DIRS['pro'][1]}] 上下文与状态已重载。\n", C.GREEN))
                 continue
             elif cmd == "/clear":
@@ -1578,21 +1606,25 @@ def run_repl():
                 print_followup_toolbar()
             continue
 
-        # ── LLM 交互 ──
-        sys_prompt = build_system_prompt(curr_subj)
-        messages = [{"role": "system", "content": sys_prompt}]
-        for h in history[-6:]:  # 保持最近 6 轮
-            messages.append(h)
-        messages.append({"role": "user", "content": user_input})
-
+        # ── LLM 交互 (Agent Loop 驱动) ──
         append_live_message("user", user_input)
+        print(colorize(f"\n[{SUBJECT_DIRS[curr_subj][1]} 正在思考并规划解答...]\n", C.DIM))
 
-        print(colorize(f"\n[{SUBJECT_DIRS[curr_subj][1]} 正在思考并按评分标准批改...]\n", C.DIM))
-        reply = stream_chat(messages, cfg)
-        if reply:
-            append_live_message("assistant", reply)
-            history.append({"role": "user", "content": user_input})
-            history.append({"role": "assistant", "content": reply})
+        reply = ""
+        if agent_runner and cfg.get("api_key"):
+            reply = agent_runner.run(user_input, interactive=True)
+        else:
+            # 降级传统 stream_chat
+            sys_prompt = build_system_prompt(curr_subj)
+            messages = [{"role": "system", "content": sys_prompt}]
+            for h in history[-6:]:  # 保持最近 6 轮
+                messages.append(h)
+            messages.append({"role": "user", "content": user_input})
+            reply = stream_chat(messages, cfg)
+            if reply:
+                append_live_message("assistant", reply)
+                history.append({"role": "user", "content": user_input})
+                history.append({"role": "assistant", "content": reply})
 
             # 如果回复中包含 LaTeX，在终端下方自动打印美化版本并提示 /view
             if latex_beautifier and any(sym in reply for sym in ("\\(", "\\[", "\\int", "\\frac", "\\lim", "\\sum", "$$")):
@@ -2078,15 +2110,25 @@ def run_server(port=8088):
 # ════════════════════════════════════════════════════════════════
 
 def main():
-    args = sys.argv[1:]
+    permission_mode = "ask"
+    filtered_args = []
+    for a in sys.argv[1:]:
+        if a.startswith("--permission="):
+            permission_mode = a.split("=", 1)[1].strip().lower()
+        elif a.startswith("-p="):
+            permission_mode = a.split("=", 1)[1].strip().lower()
+        else:
+            filtered_args.append(a)
+
+    args = filtered_args
     if not args:
-        run_repl()
+        run_repl(permission_mode=permission_mode)
     elif args[0] in ("view", "--view", "--web", "live"):
         port = start_background_live_server(8088) or 8088
         import webbrowser
         webbrowser.open(f"http://localhost:{port}/live")
         print(f"已在默认浏览器打开实时 LaTeX 伴侣: http://localhost:{port}/live")
-        run_repl()
+        run_repl(permission_mode=permission_mode)
     elif args[0] in ("config", "--config"):
         interactive_config()
     elif args[0] in ("plan", "--plan", "profile", "--profile", "onboarding"):
@@ -2122,7 +2164,9 @@ def main():
         print(f"""
 考研学习链专用终端工具 (ky-cli)
 用法：
-  python tools/ky_cli.py              启动类似 Claude Code 的交互式终端私教 (默认)
+  python tools/ky_cli.py              启动交互式 Agent 私教终端 (默认 --permission=ask)
+  python tools/ky_cli.py --permission=auto   启动全自动沙箱模式 (免交互确认)
+  python tools/ky_cli.py --permission=safe   启动严格只读安全模式 (禁止文件写入与执行)
   python tools/ky_cli.py plan         启动个人专属定制化必考方案向导 (时间/考纲/白名单/学情/作息)
   python tools/ky_cli.py notify [内容] 一键推送今日任务/晨报到微信、QQ、钉钉、飞书群
   python tools/ky_cli.py clawbot      一键启动微信个人号 ClawBot 扫码连接器 (腾讯官方)
