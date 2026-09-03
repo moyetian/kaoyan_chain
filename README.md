@@ -13,9 +13,17 @@
   <img src="https://img.shields.io/badge/License-MIT-lightgrey.svg?style=flat-square" alt="License" />
 </p>
 
+<p align="center">
+  <img src="docs/assets/hero_banner.jpg" alt="Kaoyan AI Study Chain Banner" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
+</p>
+
 ---
 
 ## 📖 这是什么？
+
+<p align="center">
+  <img src="docs/assets/feature_comparison.svg" alt="传统 AI 对话与考研学习链对比" style="max-width:100%;" />
+</p>
 
 **考研学习链 (Kaoyan AI Study Chain)** 是一套面向考研学子的**数字化、工程化 AI 私人教师备考系统**。
 
@@ -127,6 +135,10 @@ python tools/init_workspace.py
 
 ### 第四步：接入 AI 开启每日私教闭环
 
+<p align="center">
+  <img src="docs/assets/daily_study_loop.jpg" alt="每日数字化私教闭环 SOP" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
+</p>
+
 本项目支持 **两种主流使用模式**：
 
 #### 模式 A：Agent IDE 闭环模式 (最推荐 · 全自动化)
@@ -170,6 +182,10 @@ python -m http.server 8080 --directory docs
 ---
 
 ## 📱 移动端自测看板核心功能
+
+<p align="center">
+  <img src="docs/assets/dashboard_showcase.jpg" alt="移动端自测看板与遮罩默写功能演示" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
+</p>
 
 | 页签 | 功能特性 | 核心使用场景 |
 |---|---|---|
