@@ -149,6 +149,22 @@ def run_tests():
     except Exception as e:
         runner.assert_true(False, f"Webhook 网关通信异常: {e}")
 
+    # 测试 /live 页面与 /api/live 数据流接口
+    try:
+        live_req = urllib.request.Request(f"http://127.0.0.1:{test_port}/live")
+        with urllib.request.urlopen(live_req, timeout=5) as resp:
+            runner.assert_true(resp.status == 200, "Web 伴侣前端页面 /live 访问正常 (HTTP 200)")
+            html_text = resp.read().decode("utf-8")
+            runner.assert_true("katex" in html_text.lower(), "Web 伴侣前端正确集成了 KaTeX 渲染引擎")
+        
+        api_req = urllib.request.Request(f"http://127.0.0.1:{test_port}/api/live")
+        with urllib.request.urlopen(api_req, timeout=5) as resp:
+            runner.assert_true(resp.status == 200, "Web 伴侣实时同步接口 /api/live 返回正常 (HTTP 200)")
+            api_data = json.loads(resp.read().decode("utf-8"))
+            runner.assert_true("messages" in api_data, "Web 伴侣实时数据流 JSON 格式正确")
+    except Exception as e:
+        runner.assert_true(False, f"Web 伴侣服务测试异常: {e}")
+
     # ------------------------------------------------------------
     # 测试 6: 本地看板构建集成测试
     # ------------------------------------------------------------
@@ -206,6 +222,11 @@ def run_tests():
     # 验证资料库文献检索
     mats = skills.pdf_extractor.list_materials()
     runner.assert_true(isinstance(mats, dict) and "01-数学" in mats, "PDF与教材资料库扫描接口正常")
+
+    # 验证终端 LaTeX 公式美化器
+    raw_latex = r"求 \(f(x)\): \[f(x)=\int_{0}^{x}e^{-f(t)}\,dt\] 导数: \(f'(x)\)"
+    beautified = skills.latex_beautifier.prettify_latex_for_terminal(raw_latex)
+    runner.assert_true("∫" in beautified and "f(x)" in beautified and "\\" not in beautified, "终端 LaTeX 美化器成功将积分和反斜杠公式还原为直观符号")
 
     # 统计并返回
     success = runner.print_summary()
