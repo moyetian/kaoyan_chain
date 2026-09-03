@@ -13,10 +13,11 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 class ContextEngine:
-    def __init__(self, workspace_root: Path, active_subject: str = "math", max_context_tokens: int = 48000):
+    def __init__(self, workspace_root: Path, active_subject: str = "math", max_context_tokens: int = 48000, memory_manager=None):
         self.workspace_root = Path(workspace_root).resolve()
         self.active_subject = active_subject
         self.max_context_tokens = max_context_tokens
+        self.memory_manager = memory_manager
         self.messages: List[Dict[str, Any]] = []
 
     def set_subject(self, subject: str):
@@ -25,6 +26,12 @@ class ContextEngine:
     def build_system_prompt(self, tools_description: str = "") -> str:
         """多层次组装系统提示词"""
         sys_parts = []
+
+        # 0. 三级分层记忆挂载
+        if self.memory_manager:
+            mem_text = self.memory_manager.load_all_memory()
+            if mem_text:
+                sys_parts.append(mem_text)
 
         # 1. 顶层总控协议 AGENTS.md
         root_agents = self.workspace_root / "AGENTS.md"
@@ -108,7 +115,7 @@ class ContextEngine:
                 total_chars += len(str(m["tool_calls"]))
         return int(total_chars * 0.6)
 
-    def compact_context(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def compact_context(self, messages: List[Dict[str, Any]], hook_manager=None) -> List[Dict[str, Any]]:
         """
         Context Compaction 算法:
         当估算 Token 超过阈值时，保留 System Prompt 与最近 4 轮交互，
@@ -117,6 +124,10 @@ class ContextEngine:
         cur_tokens = self.estimate_tokens(messages)
         if cur_tokens <= self.max_context_tokens or len(messages) <= 6:
             return messages
+
+        # 触发 BeforeCompact Hook 提取关键记忆
+        if hook_manager:
+            hook_manager.trigger_before_compact(messages, {"active_subject": self.active_subject})
 
         # 保持第 0 项 (System Prompt)
         system_msg = messages[0] if messages and messages[0].get("role") == "system" else None

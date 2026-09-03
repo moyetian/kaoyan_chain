@@ -16,6 +16,9 @@ from .sandbox import Sandbox
 from .permissions import PermissionManager
 from .tools_impl import ToolRegistry
 from .context_engine import ContextEngine
+from .memory import MemoryManager
+from .hooks import HookManager, HookEvent
+from .mcp_client import MCPClientManager
 
 class AgentRunner:
     def __init__(
@@ -33,13 +36,34 @@ class AgentRunner:
         self.stream_callback = stream_callback
         self.live_callback = live_callback
 
-        # 初始化沙箱、权限与工具库
+        # 1. 初始化三级记忆引擎并预装考研默认偏好
+        self.memory_manager = MemoryManager(workspace_root=self.workspace_root)
+        self.memory_manager.init_defaults_from_config(self.config)
+
+        # 2. 初始化生命周期拦截钩子系统
+        self.hooks = HookManager(workspace_root=self.workspace_root, memory_manager=self.memory_manager)
+
+        # 3. 初始化外部 MCP 客户端管理器并尝试加载配置
+        self.mcp_manager = MCPClientManager(workspace_root=self.workspace_root)
+        if "mcp_servers" in self.config and isinstance(self.config["mcp_servers"], dict):
+            self.mcp_manager.load_from_config(self.config["mcp_servers"])
+
+        # 4. 初始化沙箱、权限与工具库
         self.sandbox = Sandbox(workspace_root=self.workspace_root)
         self.permissions = PermissionManager(mode=permission_mode)
-        self.tool_registry = ToolRegistry(sandbox=self.sandbox, permissions=self.permissions)
+        self.tool_registry = ToolRegistry(
+            sandbox=self.sandbox,
+            permissions=self.permissions,
+            memory_manager=self.memory_manager
+        )
+        # 挂载外部 MCP 工具
+        self.tool_registry.register_mcp_tools(self.mcp_manager)
+
+        # 5. 初始化上下文引擎 (挂载三级分层记忆)
         self.context_engine = ContextEngine(
             workspace_root=self.sandbox.workspace_root,
-            active_subject=self.config.get("active_subject", "math")
+            active_subject=self.config.get("active_subject", "math"),
+            memory_manager=self.memory_manager
         )
 
         self.history: List[Dict[str, Any]] = []
@@ -50,6 +74,9 @@ class AgentRunner:
 
     def run(self, user_input: str, interactive: bool = True) -> str:
         """运行完整的 Agent Loop 交互循环"""
+        ctx = {"active_subject": self.config.get("active_subject", "math"), "user_input": user_input}
+        self.hooks.trigger_session_start(ctx)
+
         api_key = self.config.get("api_key", "").strip()
         if not api_key:
             err_msg = "[!] 错误: 未配置大模型 API Key！请在终端输入 /config 进行配置。"
@@ -64,8 +91,8 @@ class AgentRunner:
         active_messages.extend(self.history)
         active_messages.append({"role": "user", "content": user_input})
 
-        # 2. 上下文防爆压缩
-        active_messages = self.context_engine.compact_context(active_messages)
+        # 2. 上下文防爆压缩 (联动 BeforeCompact 自动提炼决策记忆)
+        active_messages = self.context_engine.compact_context(active_messages, hook_manager=self.hooks)
 
         # 3. Agent 循环 (最多 max_steps 步)
         step = 0
@@ -119,12 +146,20 @@ class AgentRunner:
                     args_summary = ", ".join(f"{k}='{v}'" if len(str(v))<40 else f"{k}='...'" for k, v in fn_args.items())
                     print(f"\n\033[96m🛠️  [Agent Tool] 智能私教正在调用: \033[1m{fn_name}\033[0m\033[96m({args_summary})\033[0m")
 
-                    # 执行工具
-                    exec_result = self.tool_registry.execute_tool(fn_name, fn_args, interactive=interactive)
+                    # 触发 PreToolUse 钩子 (沙箱与考纲红线硬拦截)
+                    allow, hook_reason, mod_args = self.hooks.trigger_pre_tool_use(fn_name, fn_args, ctx)
+                    if not allow:
+                        print(f"   \033[91m↳ [考纲红线拦截]: {hook_reason}\033[0m")
+                        exec_result = f"HookBlocked: {hook_reason}"
+                    else:
+                        # 执行工具
+                        exec_result = self.tool_registry.execute_tool(fn_name, mod_args, interactive=interactive)
+                        # 触发 PostToolUse 钩子 (自检与联动)
+                        exec_result = self.hooks.trigger_post_tool_use(fn_name, mod_args, exec_result, ctx)
 
                     # 简短结果提示
                     res_preview = str(exec_result)[:80].replace("\n", " ")
-                    if "Error" in exec_result or "PermissionDenied" in exec_result:
+                    if "Error" in exec_result or "PermissionDenied" in exec_result or "HookBlocked" in exec_result:
                         print(f"   \033[93m↳ 结果: {res_preview}...\033[0m")
                     else:
                         print(f"   \033[92m↳ 完成: {res_preview}...\033[0m")

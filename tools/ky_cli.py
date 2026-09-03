@@ -1165,6 +1165,8 @@ def run_repl(permission_mode: str = "ask"):
         try:
             user_input = input(get_prompt_tag()).strip()
         except (KeyboardInterrupt, EOFError):
+            if agent_runner and hasattr(agent_runner, "hooks"):
+                agent_runner.hooks.trigger_session_end({"active_subject": curr_subj})
             print("\n再见！保持节奏，一战成硕！🎓")
             break
 
@@ -1535,6 +1537,11 @@ def run_repl(permission_mode: str = "ask"):
             elif cmd in ("/today", "/tasks", "/task"):
                 print_today_tasks_summary()
                 continue
+            elif cmd in ("/exit", "/quit", "exit", "quit"):
+                if agent_runner and hasattr(agent_runner, "hooks"):
+                    agent_runner.hooks.trigger_session_end({"active_subject": curr_subj})
+                print("\n再见！保持节奏，一战成硕！🎓")
+                break
             elif cmd in ("/plan", "/profile", "/blueprint"):
                 try:
                     import study_planner
