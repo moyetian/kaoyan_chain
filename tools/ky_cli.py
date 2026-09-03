@@ -579,8 +579,71 @@ def show_config(cfg):
     print(f"  - 钉钉 Webhook: {hooks.get('dingtalk') or '未设置'} (加签: {'已启用' if hooks.get('dingtalk_secret') else '未启用'})")
     print(f"  - 飞书 Webhook: {hooks.get('feishu') or '未设置'}")
     print(f"  - QQ OneBot:    {hooks.get('qq_onebot') or '未设置'} (目标: {hooks.get('qq_target_id') or '无'})")
+    
+    vis_m = cfg.get("vision_model")
+    print(colorize("\n--- 视觉大模型 (Vision Model) 配置状态 ---", C.CYAN))
+    print(f"  - 视觉模型:     {vis_m or '未独立配置 (默认调用本地 RapidOCR 提取题干后交由主模型)'}")
+    if vis_m:
+        print(f"  - 视觉 Base URL: {cfg.get('vision_base_url', '跟随主模型')}")
+
     print(f"\n配置文件绝对路径: {CONFIG_FILE}")
     print("本文件已被 .gitignore 严密保护，绝不会被 Git 追踪提交。\n")
+
+def configure_vision_model(cfg):
+    """配置用于视觉识图的多模态大模型"""
+    print(colorize("\n--- 📸 配置多模态视觉大模型 (Vision Model) ---", C.BOLD))
+    print("推荐预设：")
+    print("  [1] 智谱清言 GLM-4V-Flash (免费调用 / 速度极快 / 强力推荐)")
+    print("  [2] 阿里通义千问 Qwen2-VL (DashScope / 支持高难度数学手写草稿)")
+    print("  [3] 硅基流动 SiliconFlow Qwen-VL (注册送免费额度 / 国内直连稳定)")
+    print("  [4] 谷歌 Gemini 1.5 Flash (免费层 / 数学公式解析极其强悍)")
+    print("  [5] OpenAI GPT-4o-mini")
+    print("  [6] 自定义 Vision API (兼容 OpenAI 规范)")
+    print("  [7] 清空配置 (使用主模型 + 本地 RapidOCR 引擎)")
+    print("  [0] 取消返回")
+
+    c = input("\n请选择视觉模型预设 (0~7) [默认 1]: ").strip() or "1"
+    if c == "0":
+        return
+    elif c == "1":
+        cfg["vision_model"] = "glm-4v-flash"
+        cfg["vision_base_url"] = "https://open.bigmodel.cn/api/paas/v4"
+        k = input("请输入智谱 API Key (若与主模型相同直接回车): ").strip()
+        if k: cfg["vision_api_key"] = k
+    elif c == "2":
+        cfg["vision_model"] = "qwen-vl-max"
+        cfg["vision_base_url"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        k = input("请输入通义千问 API Key: ").strip()
+        if k: cfg["vision_api_key"] = k
+    elif c == "3":
+        cfg["vision_model"] = "Qwen/Qwen2-VL-72B-Instruct"
+        cfg["vision_base_url"] = "https://api.siliconflow.cn/v1"
+        k = input("请输入 SiliconFlow API Key: ").strip()
+        if k: cfg["vision_api_key"] = k
+    elif c == "4":
+        cfg["vision_model"] = "gemini-1.5-flash"
+        cfg["vision_base_url"] = "https://generativelanguage.googleapis.com/v1beta/openai"
+        k = input("请输入 Google Gemini API Key: ").strip()
+        if k: cfg["vision_api_key"] = k
+    elif c == "5":
+        cfg["vision_model"] = "gpt-4o-mini"
+        cfg["vision_base_url"] = "https://api.openai.com/v1"
+        k = input("请输入 OpenAI API Key: ").strip()
+        if k: cfg["vision_api_key"] = k
+    elif c == "6":
+        cfg["vision_model"] = input("请输入模型代号 (如 claude-3-5-sonnet): ").strip()
+        cfg["vision_base_url"] = input("请输入 Base URL: ").strip()
+        cfg["vision_api_key"] = input("请输入 API Key: ").strip()
+    elif c == "7":
+        cfg.pop("vision_model", None)
+        cfg.pop("vision_base_url", None)
+        cfg.pop("vision_api_key", None)
+        print(colorize("\n[√] 已清空独立视觉模型，将优先使用本地 RapidOCR 引擎进行图文提取！\n", C.GREEN))
+        save_config(cfg)
+        return
+
+    save_config(cfg)
+    print(colorize(f"\n[√] 视觉模型已更新为: {cfg.get('vision_model')}！\n", C.GREEN))
 
 def interactive_config():
     """配置管理中心主路由"""
@@ -590,19 +653,22 @@ def interactive_config():
         curr_m = cfg.get("model", "deepseek-chat")
         has_key = bool(cfg.get("api_key"))
         key_tag = colorize("已设置", C.GREEN) if has_key else colorize("未设置", C.RED)
+
+        vis_m = cfg.get("vision_model", "本地 RapidOCR 引擎")
         
         hooks = cfg.get("webhooks", {})
         active_hooks = [k for k, v in hooks.items() if v and not k.endswith("_secret") and not k.endswith("_id")]
         hooks_tag = colorize(f"已配 {len(active_hooks)} 个 ({', '.join(active_hooks)})", C.GREEN) if active_hooks else colorize("未配任何平台", C.DIM)
 
         print(colorize("\n=== ⚙️ 考研私教 CLI 配置管理中心 ===", C.BOLD))
-        print(f"  [1] 🧠 配置大模型 API 与密钥     [当前: {curr_p} / {curr_m} / {key_tag}]")
-        print(f"  [2] 📱 配置聊天机器人 Webhook 推送 [当前: {hooks_tag}]")
-        print(f"  [3] 📄 查看当前完整配置清单")
-        print(f"  [4] 📢 一键测试所有机器人推送")
+        print(f"  [1] 🧠 配置主大模型 API 与密钥     [当前: {curr_p} / {curr_m} / {key_tag}]")
+        print(f"  [2] 📸 配置多模态视觉大模型 API   [当前: {colorize(vis_m, C.CYAN)}]")
+        print(f"  [3] 📱 配置聊天机器人 Webhook 推送 [当前: {hooks_tag}]")
+        print(f"  [4] 📄 查看当前完整配置清单")
+        print(f"  [5] 📢 一键测试所有机器人推送")
         print(f"  [0] 💾 完成配置并返回")
 
-        choice = input("\n请选择功能 (0~4) [默认 0]: ").strip() or "0"
+        choice = input("\n请选择功能 (0~5) [默认 0]: ").strip() or "0"
         if choice == "0":
             save_config(cfg)
             print(colorize("\n[√] 配置已安全保存至 ky_config.json！\n", C.GREEN))
@@ -610,17 +676,46 @@ def interactive_config():
         elif choice == "1":
             configure_llm(cfg)
         elif choice == "2":
-            configure_webhooks(cfg)
+            configure_vision_model(cfg)
         elif choice == "3":
-            show_config(cfg)
+            configure_webhooks(cfg)
         elif choice == "4":
+            show_config(cfg)
+        elif choice == "5":
             broadcast_briefing(cfg, custom_msg="🎓【考研学习链】这是一条自检测试广播消息，您的机器人连接状态正常！")
 
 # ════════════════════════════════════════════════════════════════
 # 5. 交互式 TUI 主界面 (Claude Code / Codex / Gemini 融合风格)
 # ════════════════════════════════════════════════════════════════
 
-def print_welcome(live_port=8088):
+def print_welcome(live_port=8088, animate=True):
+    # ── 1. 彩色渐变 ASCII 大字艺术标题 ──
+    gradient_ascii = f"""
+{C.CYAN}{C.BOLD}  ██╗  ██╗ █████╗  ██████╗ ██╗   ██╗ █████╗ ███╗   ██╗     ██████╗██╗     ██╗{C.RESET}
+{C.CYAN}{C.BOLD}  ██║ ██╔╝██╔══██╗██╔═══██╗╚██╗ ██╔╝██╔══██╗████╗  ██║    ██╔════╝██║     ██║{C.RESET}
+{C.GREEN}{C.BOLD}  █████═╝ ███████║██║   ██║ ╚████╔╝ ███████║██╔██╗ ██║    ██║     ██║     ██║{C.RESET}
+{C.GREEN}{C.BOLD}  ██╔═██╗ ██╔══██║██║   ██║  ╚██╔╝  ██╔══██║██║╚██╗██║    ██║     ██║     ██║{C.RESET}
+{C.YELLOW}{C.BOLD}  ██║ ╚██╗██║  ██║╚██████╔╝   ██║   ██║  ██║██║ ╚████║    ╚██████╗███████╗██║{C.RESET}
+{C.YELLOW}{C.BOLD}  ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝    ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═══╝     ╚═════╝╚══════╝╚═╝{C.RESET}
+"""
+    print(gradient_ascii)
+
+    # ── 2. 动感载入动画 (Boot Sequence) ──
+    if animate:
+        steps = [
+            ("装载考研全科中枢总控协议 (AGENTS.md)...", 0.04),
+            ("唤醒 6 项考研专有技能 (Vision/Math/Dissect/PDF/Radar)...", 0.04),
+            (f"启动 Web 实时可视化伴侣 (:{live_port}/live)...", 0.04)
+        ]
+        for step, delay in steps:
+            sys.stdout.write(f"  {C.CYAN}⠋{C.RESET} {step}")
+            sys.stdout.flush()
+            time.sleep(delay)
+            sys.stdout.write(f"\r  {C.GREEN}✔{C.RESET} {step} {C.GREEN}[就绪]{C.RESET}\n")
+            sys.stdout.flush()
+        print()
+
+    # ── 3. 现代化状态与快捷指令大盘卡片 ──
     today = datetime.now().date()
     exam_date = datetime(today.year, 12, 19).date()
     if today > exam_date:
@@ -649,8 +744,7 @@ def print_welcome(live_port=8088):
     subj_short = subj_name.replace("专属私教", "").replace("私教", "").strip()
     style_short = style_tag.split("·")[0] if "·" in style_tag else style_tag
 
-    print(f"""
-{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮{C.RESET}
+    print(f"""{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮{C.RESET}
 {C.CYAN}│{C.RESET}  {C.BOLD}🎓 考研全科 AI 专属私教终端 · Kaoyan CLI (Claude Code / Gemini 体验版){C.RESET}  {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}  [ 专属私教: {C.GREEN}{subj_short}{C.RESET} · {C.YELLOW}{style_short}{C.RESET} ]   [ 🎯 研考初试倒计时: {C.MAGENTA}{days_left} 天{C.RESET} ]          {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}  [ 🧠 模型: {C.BLUE}{provider}/{model_name}{C.RESET} ]   [ 🌐 伴侣: {C.CYAN}:{live_port}/live{C.RESET} ]   [ 🧩 技能: {C.GREEN}6项全就绪{C.RESET} ] {C.CYAN}│{C.RESET}
@@ -761,14 +855,35 @@ def run_repl():
             print_command_palette()
             continue
 
-        # ── 智能图片输入检测 (直接输入或拖拽图片路径) ──
+        # ── 智能图片输入检测 (直接输入图片、拖拽路径、或语句中嵌入图片路径) ──
         clean_input = user_input.strip().strip('"').strip("'")
-        if clean_input.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")) and Path(clean_input).exists():
-            print(colorize(f"\n[📸 检测到直接输入图片: {Path(clean_input).name}，正在调起多模态视觉阅卷技能...]\n", C.CYAN))
-            reply = vision_solver.solve_image_with_model(clean_input, "", cfg, stream=True)
+        img_pattern = r'([a-zA-Z]:[\\/][^\r\n"\'<>|?*]+?\.(?:png|jpg|jpeg|webp|bmp)|\b[^\s"\'<>|?*]+?\.(?:png|jpg|jpeg|webp|bmp))\b'
+        img_match = re.search(img_pattern, user_input, re.IGNORECASE)
+        found_img_path = None
+        extra_question = ""
+
+        if Path(clean_input).exists() and clean_input.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
+            found_img_path = clean_input
+            extra_question = ""
+        elif img_match:
+            candidate = img_match.group(1).strip().strip('"').strip("'")
+            if Path(candidate).exists():
+                found_img_path = candidate
+                extra_question = user_input.replace(img_match.group(0), "").strip()
+
+        if found_img_path:
+            print(colorize(f"\n[📸 检测到题目/草稿图片: {Path(found_img_path).name}，正在调起考研视觉解题技能...]\n", C.CYAN))
+            reply = vision_solver.solve_image_with_model(found_img_path, extra_question, cfg, stream=True)
             if reply:
-                history.append({"role": "user", "content": f"[图片批改: {Path(clean_input).name}]"})
+                append_live_message("user", f"[图片: {Path(found_img_path).name}] {extra_question}")
+                append_live_message("assistant", reply)
+                history.append({"role": "user", "content": f"[图片批改: {Path(found_img_path).name}] {extra_question}"})
                 history.append({"role": "assistant", "content": reply})
+
+                # Codex CLI 风格快捷操作栏
+                print(f"\n{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮{C.RESET}")
+                print(f"{C.CYAN}│{C.RESET}  {C.BOLD}💡 下一步操作:{C.RESET} [1] 📐 符号验算  [2] 📌 记入错题本  [3] 🌐 网页排版  [4] 🔄 变式演练 {C.CYAN}│{C.RESET}")
+                print(f"{C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}")
             continue
 
         # ── 斜杠指令与 Skills 分发 ──
@@ -805,8 +920,15 @@ def run_repl():
                 print(colorize(f"\n[📸 正在调起多模态视觉阅卷技能分析: {Path(img_p).name}...]\n", C.CYAN))
                 reply = vision_solver.solve_image_with_model(img_p, extra, cfg, stream=True)
                 if reply:
+                    append_live_message("user", f"[图片: {Path(img_p).name}] {extra}")
+                    append_live_message("assistant", reply)
                     history.append({"role": "user", "content": f"[图片批改: {Path(img_p).name}] {extra}"})
                     history.append({"role": "assistant", "content": reply})
+
+                    # Codex CLI 风格快捷操作栏
+                    print(f"\n{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮{C.RESET}")
+                    print(f"{C.CYAN}│{C.RESET}  {C.BOLD}💡 下一步操作:{C.RESET} [1] 📐 符号验算  [2] 📌 记入错题本  [3] 🌐 网页排版  [4] 🔄 变式演练 {C.CYAN}│{C.RESET}")
+                    print(f"{C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}")
                 continue
 
             # ── 技能 3: /calc 或 /verify 数学符号验算 ──
