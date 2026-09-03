@@ -149,6 +149,60 @@ def run_tests():
     except Exception as e:
         runner.assert_true(False, f"Webhook 网关通信异常: {e}")
 
+    # 测试飞书开放平台 URL 校验握手 (url_verification)
+    try:
+        feishu_verify_payload = json.dumps({
+            "type": "url_verification",
+            "challenge": "ky_feishu_test_token_8899",
+            "token": "test_token"
+        }).encode("utf-8")
+        f_req = urllib.request.Request(
+            f"http://127.0.0.1:{test_port}/webhook",
+            data=feishu_verify_payload,
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(f_req, timeout=5) as resp:
+            f_res = json.loads(resp.read().decode("utf-8"))
+            runner.assert_true(f_res.get("challenge") == "ky_feishu_test_token_8899", "飞书开放平台 url_verification 握手校验秒级通过")
+    except Exception as e:
+        runner.assert_true(False, f"飞书 URL 校验握手异常: {e}")
+
+    # 测试钉钉 sessionWebhook 异步防超时应答
+    try:
+        ding_async_payload = json.dumps({
+            "msgtype": "text",
+            "text": {"content": "学数学：求极限"},
+            "sessionWebhook": "http://127.0.0.1:18099/mock_ding_receiver"
+        }).encode("utf-8")
+        d_req = urllib.request.Request(
+            f"http://127.0.0.1:{test_port}/webhook",
+            data=ding_async_payload,
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(d_req, timeout=5) as resp:
+            d_res = json.loads(resp.read().decode("utf-8"))
+            runner.assert_true(d_res.get("msgtype") == "empty", "钉钉 sessionWebhook 模式立即回包防止 5 秒超时")
+    except Exception as e:
+        runner.assert_true(False, f"钉钉 sessionWebhook 测试异常: {e}")
+
+    # 测试 QQ OneBot 11 报文
+    try:
+        qq_payload = json.dumps({
+            "post_type": "message",
+            "message_type": "group",
+            "raw_message": "学数学：极限保号性"
+        }).encode("utf-8")
+        q_req = urllib.request.Request(
+            f"http://127.0.0.1:{test_port}/webhook",
+            data=qq_payload,
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(q_req, timeout=5) as resp:
+            q_res = json.loads(resp.read().decode("utf-8"))
+            runner.assert_true("reply" in q_res and q_res.get("at_sender") is True, "QQ OneBot 11 报文解析且回包格式规范")
+    except Exception as e:
+        runner.assert_true(False, f"QQ OneBot 测试异常: {e}")
+
     # 测试 /live 页面与 /api/live 数据流接口
     try:
         live_req = urllib.request.Request(f"http://127.0.0.1:{test_port}/live")
