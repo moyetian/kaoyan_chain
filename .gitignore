@@ -23,6 +23,11 @@ wheels/
 .venv/
 venv/
 ENV/
+.env
+.env.*
+config.json
+ky_config.json
+ky_history.json
 
 # ==========================================
 # 隐私防泄露铁律 (Privacy Guardrails)
