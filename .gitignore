@@ -57,6 +57,10 @@ ENV/
 !**/错题与长难句本/_索引.md
 !**/错题与长难句本/README.md
 
+# 个人参考资料库 (大体积课件与教材 PDF 本地存放，不上传)
+**/参考资料/*
+!**/参考资料/README.md
+
 # Large binary files & PDFs (Keep local for copyright & storage)
 *.pdf
 *.zip
