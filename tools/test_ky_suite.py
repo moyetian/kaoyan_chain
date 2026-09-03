@@ -203,6 +203,30 @@ def run_tests():
     except Exception as e:
         runner.assert_true(False, f"QQ OneBot 测试异常: {e}")
 
+    # 测试 OpenAI 兼容端点 (供 OpenClaw / 微信 ClawBot 桥接)
+    try:
+        m_req = urllib.request.Request(f"http://127.0.0.1:{test_port}/v1/models")
+        with urllib.request.urlopen(m_req, timeout=5) as resp:
+            runner.assert_true(resp.status == 200, "OpenAI 兼容端点 /v1/models 返回 HTTP 200")
+            m_res = json.loads(resp.read().decode("utf-8"))
+            runner.assert_true("data" in m_res and any(x["id"] == "kaoyan-tutor" for x in m_res["data"]), "OpenAI 兼容模型列表注册正常")
+
+        chat_payload = json.dumps({
+            "model": "kaoyan-tutor",
+            "messages": [{"role": "user", "content": "学数学：极限保号性"}]
+        }).encode("utf-8")
+        c_req = urllib.request.Request(
+            f"http://127.0.0.1:{test_port}/v1/chat/completions",
+            data=chat_payload,
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(c_req, timeout=5) as resp:
+            runner.assert_true(resp.status == 200, "OpenAI 兼容端点 /v1/chat/completions 返回 HTTP 200")
+            c_res = json.loads(resp.read().decode("utf-8"))
+            runner.assert_true("choices" in c_res and "message" in c_res["choices"][0], "OpenAI 兼容回包符合规范 (微信ClawBot即插即用)")
+    except Exception as e:
+        runner.assert_true(False, f"OpenAI 兼容端点测试异常: {e}")
+
     # 测试 /live 页面与 /api/live 数据流接口
     try:
         live_req = urllib.request.Request(f"http://127.0.0.1:{test_port}/live")

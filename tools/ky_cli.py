@@ -459,6 +459,40 @@ def configure_llm(cfg):
     save_config(cfg)
     print(colorize("[√] 模型 API 配置已更新！", C.GREEN))
 
+def run_wechat_clawbot_install():
+    """启动腾讯官方微信 ClawBot 扫码连接工具 (@tencent-weixin/openclaw-weixin-cli)"""
+    import shutil
+    import subprocess
+
+    print(f"""
+{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮
+│  📱 微信个人号 · WeChat ClawBot 手机扫码直连专属中枢                     │
+│  (腾讯官方 @tencent-weixin/openclaw-weixin-cli 驱动)                  │
+╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
+""")
+    print(colorize("🔍 正在核验 Node.js 与 NPX 环境...", C.DIM))
+    if not shutil.which("npx"):
+        print(colorize("❌ 未检测到 npx 命令。请先安装 Node.js (https://nodejs.org) 或在终端运行: winget install OpenJS.NodeJS\n", C.RED))
+        return
+    
+    print(colorize("✔ Node.js / NPX 环境正常！", C.GREEN))
+    print(f"""
+{C.BOLD}【微信 ClawBot 连接原理与步骤说明】{C.RESET}
+• 微信个人号是由腾讯官方开源的 OpenClaw 微信连接器驱动；
+• 它{C.YELLOW}并非普通 Webhook{C.RESET}，而是直接在终端打印【登录二维码】，手机微信扫码授权即可；
+• 扫码成功后，微信接收到的考研提问会自动转发给本地私教大模型并推回微信！
+• 本地 OpenAI 兼容接口地址: {C.GREEN}http://127.0.0.1:8088/v1{C.RESET} (已自动挂载考研私教 Prompt 与技能)
+
+{C.CYAN}[执行命令]: npx -y @tencent-weixin/openclaw-weixin-cli@latest install{C.RESET}
+""")
+    act = input("是否立即启动腾讯官方扫码安装程序? (y/n) [y]: ").strip().lower()
+    if act != "n":
+        print(colorize("\n🚀 正在拉取腾讯官方微信连接器并启动二维码，请准备好手机微信扫一扫...\n", C.CYAN))
+        try:
+            subprocess.run("npx -y @tencent-weixin/openclaw-weixin-cli@latest install", shell=True)
+        except Exception as e:
+            print(colorize(f"执行异常: {e}", C.RED))
+
 def configure_webhooks(cfg):
     """多选菜单式配置各个聊天机器人 Webhook"""
     hooks = cfg.setdefault("webhooks", {})
@@ -469,25 +503,29 @@ def configure_webhooks(cfg):
         fs_tag = colorize("已配置", C.GREEN) if hooks.get("feishu") else colorize("未配置", C.DIM)
         qq_tag = colorize("已配置", C.GREEN) if hooks.get("qq_onebot") else colorize("未配置", C.DIM)
 
-        print(colorize("\n--- 📱 2. 聊天机器人 Webhook / 消息推送配置 ---", C.CYAN))
-        print("请直接选择您想配置或修改的机器人平台：")
-        print(f"  [1] 微信 / 企业微信 / 微信助手 ClawBot  [{wc_tag}]")
-        print(f"  [2] 钉钉群自定义机器人 (DingTalk)         [{dt_tag}]")
-        print(f"  [3] 飞书群自定义机器人 (Feishu)           [{fs_tag}]")
-        print(f"  [4] QQ 机器人 (OneBot 11 / NapCat)        [{qq_tag}]")
-        print(f"  [5] 📢 发送一条测试消息验证所有已配机器人")
-        print(f"  [6] 🗑️ 清空某个平台的配置")
+        print(colorize("\n--- 📱 2. 聊天机器人 / 消息推送与双向讲题配置 ---", C.CYAN))
+        print("请选择您想配置或连接的机器人平台：")
+        print(f"  [1] 📱 微信个人号 (WeChat ClawBot 手机扫码直连 - 官方推荐)")
+        print(f"  [2] 🏢 企业微信群机器人 (Webhook 推送模式) [{wc_tag}]")
+        print(f"  [3] 📌 钉钉群自定义机器人 (DingTalk)       [{dt_tag}]")
+        print(f"  [4] 🐦 飞书群自定义机器人 (Feishu)         [{fs_tag}]")
+        print(f"  [5] 🐧 QQ 机器人 (OneBot 11 / NapCat)      [{qq_tag}]")
+        print(f"  [6] 📢 发送一条测试消息验证所有已配机器人")
+        print(f"  [7] 🗑️ 清空某个平台的配置")
         print(f"  [0] 💾 保存并返回上级菜单")
 
-        choice = input("\n请选择平台编号 (0~6) [默认 0]: ").strip() or "0"
+        choice = input("\n请选择平台编号 (0~7) [默认 0]: ").strip() or "0"
         
         if choice == "0":
             save_config(cfg)
             print(colorize("[√] 机器人 Webhook 配置已安全保存！", C.GREEN))
             break
         elif choice == "1":
-            print(colorize("\n[配置 微信 / 企业微信 / ClawBot Webhook]", C.BOLD))
-            print("说明：适用于企业微信群机器人或微信 ClawBot 助手。")
+            # 微信个人号 ClawBot (扫码直连，非 Webhook)
+            run_wechat_clawbot_install()
+        elif choice == "2":
+            print(colorize("\n[配置 企业微信群机器人 Webhook]", C.BOLD))
+            print("说明：适用于企业微信群添加的机器人。在群聊 -> 添加群机器人 获取 Webhook。")
             print("地址格式如：https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxx")
             curr = hooks.get("wechat", "")
             val = input(f"请输入 Webhook URL (直接回车保持现有: {curr or '空'}): ").strip()
@@ -497,9 +535,9 @@ def configure_webhooks(cfg):
             if hooks.get("wechat"):
                 t = input("是否立即向该微信机器人发送测试消息? (y/n) [y]: ").strip().lower()
                 if t != "n":
-                    ok, res = send_to_wechat(hooks["wechat"], "🎓【考研学习链】微信机器人连接成功！每日任务与晨报将在此推送。")
+                    ok, res = send_to_wechat(hooks["wechat"], "🎓【考研学习链】企业微信机器人连接成功！每日任务与晨报将在此推送。")
                     print(colorize(f"  -> 发送成功！", C.GREEN) if ok else colorize(f"  -> 发送失败: {res}", C.RED))
-        elif choice == "2":
+        elif choice == "3":
             print(colorize("\n[配置 钉钉群自定义机器人]", C.BOLD))
             print("说明：在钉钉电脑端群聊 -> 群设置 -> 智能群助手 -> 添加机器人 -> 自定义。")
             print("地址格式如：https://oapi.dingtalk.com/robot/send?access_token=xxxxxx")
@@ -516,7 +554,7 @@ def configure_webhooks(cfg):
                 if t != "n":
                     ok, res = send_to_dingtalk(hooks["dingtalk"], "🎓 **【考研学习链】** 钉钉群机器人连接成功！每日任务与晨报将在此推送。", hooks.get("dingtalk_secret"))
                     print(colorize(f"  -> 发送成功！", C.GREEN) if ok else colorize(f"  -> 发送失败: {res}", C.RED))
-        elif choice == "3":
+        elif choice == "4":
             print(colorize("\n[配置 飞书群自定义机器人]", C.BOLD))
             print("说明：在飞书群设置 -> 机器人 -> 添加机器人 -> 自定义机器人。")
             print("地址格式如：https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxx")
@@ -530,7 +568,7 @@ def configure_webhooks(cfg):
                 if t != "n":
                     ok, res = send_to_feishu(hooks["feishu"], "🎓【考研学习链】飞书群机器人连接成功！每日任务与晨报将在此推送。")
                     print(colorize(f"  -> 发送成功！", C.GREEN) if ok else colorize(f"  -> 发送失败: {res}", C.RED))
-        elif choice == "4":
+        elif choice == "5":
             print(colorize("\n[配置 QQ 机器人 (OneBot 11 / NapCat / Go-CQHTTP)]", C.BOLD))
             print("说明：使用 NapCat QQ、LLOneBot 或 Go-CQHTTP 提供的 OneBot 11 HTTP 接口。")
             print("地址格式如：http://127.0.0.1:3000")
@@ -547,9 +585,9 @@ def configure_webhooks(cfg):
                 if t != "n":
                     ok, res = send_to_qq(hooks["qq_onebot"], hooks.get("qq_target_id"), "🎓【考研学习链】QQ 机器人连接成功！每日任务与晨报将在此推送。")
                     print(colorize(f"  -> 发送成功！", C.GREEN) if ok else colorize(f"  -> 发送失败: {res}", C.RED))
-        elif choice == "5":
-            broadcast_briefing(cfg, custom_msg="🎓【考研学习链】这是一条自检广播测试消息，您的机器人连接状态正常！")
         elif choice == "6":
+            broadcast_briefing(cfg, custom_msg="🎓【考研学习链】这是一条自检广播测试消息，您的机器人连接状态正常！")
+        elif choice == "7":
             print("\n请选择要清空的平台：")
             print("  [1] 微信  [2] 钉钉  [3] 飞书  [4] QQ  [5] 清空全部")
             c = input("请输入数字: ").strip()
@@ -681,7 +719,7 @@ def interactive_config():
             configure_webhooks(cfg)
         elif choice == "4":
             show_config(cfg)
-        elif choice == "5":
+        elif choice == "6":
             broadcast_briefing(cfg, custom_msg="🎓【考研学习链】这是一条自检测试广播消息，您的机器人连接状态正常！")
 
 # ════════════════════════════════════════════════════════════════
@@ -1030,6 +1068,9 @@ def run_repl():
                 webbrowser.open(target_url)
                 print(colorize(f"\n[已在默认浏览器中打开实时可视化伴侣: {target_url}]\n", C.GREEN))
                 continue
+            elif cmd in ("/clawbot", "/wechat", "/wx"):
+                run_wechat_clawbot_install()
+                continue
             elif cmd in ("/bridge", "/bot", "/webhook"):
                 show_bridge_guide()
                 continue
@@ -1146,6 +1187,23 @@ def create_gateway_handler():
                     self.send_response(404)
                     self.end_headers()
                     self.wfile.write(b"docs/live.html not found")
+            elif parsed.path == "/v1/models":
+                models_data = {
+                    "object": "list",
+                    "data": [
+                        {"id": "kaoyan-tutor", "object": "model", "owned_by": "kaoyan-chain"},
+                        {"id": "kaoyan-math", "object": "model", "owned_by": "kaoyan-chain"},
+                        {"id": "kaoyan-eng", "object": "model", "owned_by": "kaoyan-chain"},
+                        {"id": "kaoyan-pol", "object": "model", "owned_by": "kaoyan-chain"},
+                        {"id": "kaoyan-pro", "object": "model", "owned_by": "kaoyan-chain"}
+                    ]
+                }
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps(models_data).encode("utf-8"))
+                return
             elif parsed.path == "/api/live":
                 data = json.dumps({"messages": LIVE_SESSION_MESSAGES}, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
@@ -1219,7 +1277,40 @@ def create_gateway_handler():
                 self.wfile.write(json.dumps({"reply": reply}, ensure_ascii=False).encode("utf-8"))
                 return
 
-            # ── 1. 飞书开放平台 URL 校验握手 (url_verification) ──
+                        # ── OpenAI 兼容接口 (/v1/chat/completions 供 OpenClaw / WeChat ClawBot 使用) ──
+            if parsed.path in ("/v1/chat/completions", "/chat/completions"):
+                import time
+                try:
+                    req_data = json.loads(post_data)
+                    msgs = req_data.get("messages", [])
+                    user_msg = msgs[-1]["content"] if msgs else ""
+                except Exception:
+                    user_msg = post_data.strip()
+
+                reply = query_llm_reply(user_msg, cfg)
+                append_live_message("user", f"[微信ClawBot提问]: {user_msg}")
+                append_live_message("assistant", reply)
+
+                completion_data = {
+                    "id": f"chatcmpl-ky-{int(time.time())}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": req_data.get("model", "kaoyan-tutor") if isinstance(req_data, dict) else "kaoyan-tutor",
+                    "choices": [{
+                        "index": 0,
+                        "message": {"role": "assistant", "content": reply},
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {"prompt_tokens": len(user_msg), "completion_tokens": len(reply), "total_tokens": len(user_msg) + len(reply)}
+                }
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps(completion_data, ensure_ascii=False).encode("utf-8"))
+                return
+
+# ── 1. 飞书开放平台 URL 校验握手 (url_verification) ──
             try:
                 data = json.loads(post_data) if post_data else {}
             except Exception:
@@ -1389,6 +1480,13 @@ def show_bridge_guide():
   • 外网穿透推荐命令: {C.CYAN}cpolar http 8088{C.RESET} 或 {C.CYAN}cloudflared tunnel --url http://localhost:8088{C.RESET}
 
 ────────────────────────────────────────────────────────────────────────
+{C.BOLD}📌 0. 微信个人号 (WeChat ClawBot 手机扫码直连 - 官方推荐，无需公网与穿透):{C.RESET}
+  ① 在终端直接运行命令: {C.CYAN}ky clawbot{C.RESET} (或 {C.CYAN}npx -y @tencent-weixin/openclaw-weixin-cli@latest install{C.RESET})
+  ② 终端将自动输出微信登录二维码，打开手机微信【扫一扫】授权连接
+  ③ 本地考研私教 OpenAI API 地址: {C.GREEN}http://127.0.0.1:8088/v1{C.RESET} (自动挂载全科考纲与解题技能)
+  ④ 在个人微信中给机器人发题目，即可随时随地在手机上享受考研私教 1对1 讲题！
+
+────────────────────────────────────────────────────────────────────────
 {C.BOLD}📌 1. 钉钉群 (DingTalk) 实现双向讲题 (最推荐，2分钟搞定):{C.RESET}
   ① 打开钉钉电脑端 ➔ 进入你的考研备考群 ➔ 点击右上角【群设置】➔【智能群助手】
   ② 找到你创建的自定义机器人 ➔ 点击展开设置
@@ -1452,6 +1550,8 @@ def main():
         cfg = load_config()
         custom = " ".join(args[1:]) if len(args) > 1 else None
         broadcast_briefing(cfg, custom_msg=custom)
+    elif args[0] in ("clawbot", "--clawbot", "wechat", "--wechat", "wx"):
+        run_wechat_clawbot_install()
     elif args[0] in ("bridge", "--bridge", "tunnel", "--tunnel"):
         show_bridge_guide()
     elif args[0] in ("serve", "--serve"):
@@ -1470,8 +1570,10 @@ def main():
 用法：
   python tools/ky_cli.py              启动类似 Claude Code 的交互式终端私教 (默认)
   python tools/ky_cli.py notify [内容] 一键推送今日任务/晨报到微信、QQ、钉钉、飞书群
+  python tools/ky_cli.py clawbot      一键启动微信个人号 ClawBot 扫码连接器 (腾讯官方)
+  python tools/ky_cli.py bridge       查看微信/钉钉/飞书/QQ 双向讲题网关接入指南
   python tools/ky_cli.py serve [端口] 启动双向 Webhook 网关 (默认 8088 端口)
-  python tools/ky_cli.py config       配置大模型 API Key 与聊天机器人 Webhook
+  python tools/ky_cli.py config       配置大模型 API Key、视觉模型与机器人 Webhook
   python tools/ky_cli.py build        一键重新编译并刷新本地与移动端看板
 """)
     else:

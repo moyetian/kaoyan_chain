@@ -346,6 +346,43 @@ python -m http.server 8080 --directory docs
 
 ---
 
+## 🤖 考研专属终端 (ky-cli) 与微信/钉钉/飞书/QQ 机器人连接
+
+本项目内置了专为考研学子深度定制的交互式终端私教工具 **`ky` (ky-cli)**，不仅拥有媲美 Claude Code、Codex 与 Gemini CLI 的现代化 TUI 交互体验，还支持**微信个人号 ClawBot、钉钉群、飞书群与 QQ 群的双向讲题连接**：
+
+```bash
+# 启动交互式考研私教终端 (Claude Code 风格)
+python tools/ky_cli.py
+# 或运行根目录批处理命令:
+ky
+```
+
+### 📱 微信 / 钉钉 / 飞书 / QQ 机器人双向连接矩阵
+
+| 平台 | 连接方式 | 核心优势 | 快速命令 |
+|---|---|---|---|
+| 📱 **微信个人号** | **WeChat ClawBot 扫码直连** (腾讯官方) | **无需任何公网 IP**，手机微信扫码授权即可将个人号变身 24h 私教 | `ky clawbot` 或 `ky wechat` |
+| 📌 **钉钉群** | **Outgoing 机器人回调** + 异步回传 | 内置 `sessionWebhook` 异步通道，**彻底根除 5 秒超时难题**，群内 @ 即讲题 | `ky bridge` |
+| 🐦 **飞书群** | **企业自建应用** + 事件订阅 | 内置 `url_verification` 握手校验秒级通过，群内艾特自动步骤赋分 | `ky bridge` |
+| 🐧 **QQ 群** | **NapCat / OneBot 11** 本地模式 | **无需任何公网穿透**，本地局域网秒级双向收发、符号验算与题解推送 | `ky bridge` |
+
+> 📖 **完整保姆级图文配置教程**：请参阅 [`docs/BOT_INTEGRATION_GUIDE.md`](docs/BOT_INTEGRATION_GUIDE.md)
+
+### 常用终端命令速查
+
+```bash
+ky              # 启动终端交互式私教 (彩色渐变大字标题、动效、KaTeX 网页排版伴侣)
+ky config       # 交互式配置模型 API Key、多模态视觉模型与机器人
+ky clawbot      # 启动腾讯官方微信 ClawBot 扫码连接工具 (npx 自动引导)
+ky bridge       # 查看局域网 IP 与微信/钉钉/飞书/QQ 双向讲题打通配置指引
+ky serve 8088   # 启动双向 Webhook 与 OpenAI 兼容服务网关
+ky notify       # 一键向所有配置的机器人推送今日晨报与待办自测卡片
+ky view         # 在浏览器中调出 KaTeX 印刷级排版实时同步视图
+ky build        # 重新编译本地与移动端自测看板
+```
+
+---
+
 ## 📂 仓库目录规范全景树
 
 ```text
