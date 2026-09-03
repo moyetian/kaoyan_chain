@@ -7,6 +7,7 @@
   3. english_dissector: 考研英语长难句搭积木解剖与翻译
   4. pdf_extractor: 资料库教材与真题 PDF 文本抽取
   5. error_logger: 错题本自动沉淀与薄弱点雷达更新
+  6. latex_beautifier: 终端数学公式 Unicode 美化与实时网页伴侣联动
 """
 
 from . import vision_solver
@@ -14,6 +15,7 @@ from . import math_verifier
 from . import english_dissector
 from . import pdf_extractor
 from . import error_logger
+from . import latex_beautifier
 
 SKILLS_REGISTRY = {
     "vision_solver": {
@@ -27,6 +29,12 @@ SKILLS_REGISTRY = {
         "desc": "极限/求导/微积分/行列式/特征值/泰勒展开精确验算，杜绝计算幻觉",
         "command": "/calc <数学表达式>",
         "status": math_verifier.get_status()
+    },
+    "latex_beautifier": {
+        "name": "🌐 终端公式美化与实时网页伴侣 (LaTeX Beautifier & Live View)",
+        "desc": "将晦涩的 LaTeX 语法转为易读 Unicode 符号，并联动 KaTeX 实时网页渲染",
+        "command": "/view (打开网页伴侣) 或自动渲染",
+        "status": "已就绪"
     },
     "english_dissector": {
         "name": "🧱 英语长难句搭积木切分技能 (Sentence Dissector)",

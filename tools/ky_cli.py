@@ -41,11 +41,11 @@ if str(tools_dir) not in sys.path:
     sys.path.insert(0, str(tools_dir))
 
 try:
-    from skills import vision_solver, math_verifier, english_dissector, pdf_extractor, error_logger, list_skills
+    from skills import vision_solver, math_verifier, english_dissector, pdf_extractor, error_logger, latex_beautifier, list_skills
 except Exception as _e:
     try:
         import skills
-        from skills import vision_solver, math_verifier, english_dissector, pdf_extractor, error_logger, list_skills
+        from skills import vision_solver, math_verifier, english_dissector, pdf_extractor, error_logger, latex_beautifier, list_skills
     except Exception:
         list_skills = lambda: {}
         vision_solver = None
@@ -53,6 +53,20 @@ except Exception as _e:
         english_dissector = None
         pdf_extractor = None
         error_logger = None
+        latex_beautifier = None
+
+# Web 可视化伴侣会话缓存
+LIVE_SESSION_MESSAGES = []
+
+def append_live_message(role, content):
+    """向网页可视化伴侣推送同步消息"""
+    LIVE_SESSION_MESSAGES.append({
+        "role": role,
+        "content": content,
+        "time": datetime.now().strftime("%H:%M:%S")
+    })
+    if len(LIVE_SESSION_MESSAGES) > 60:
+        LIVE_SESSION_MESSAGES.pop(0)
 
 # ANSI 终端色彩
 class C:
@@ -597,9 +611,10 @@ def print_welcome():
    {C.YELLOW}/dissect <英语句子>{C.RESET} 🧱 英语长难句搭积木解剖：主干抽取/从句解构/高频词/润色翻译
    {C.YELLOW}/pdf [关键词]{C.RESET}      📚 资料库与历年真题教材全文检索
    {C.YELLOW}/skills{C.RESET}            🧩 查看当前已装载的所有技能及其就绪状态
-  大盘与配置管理：
-   {C.CYAN}/status{C.RESET} 今日大盘态势    {C.CYAN}/notify{C.RESET} 推送晨报到群   {C.CYAN}/build{C.RESET} 编译移动端看板  {C.CYAN}/config{C.RESET} 配置中心
-   {C.CYAN}/clear{C.RESET}  清空当前对话    {C.CYAN}/exit{C.RESET}   退出终端私教
+  大盘与前端联动：
+   {C.CYAN}/view{C.RESET}   🌐 打开实时可视化网页伴侣 (印刷级 KaTeX 排版对照)
+   {C.CYAN}/status{C.RESET} 今日大盘态势    {C.CYAN}/notify{C.RESET} 推送晨报到群   {C.CYAN}/build{C.RESET} 编译移动端看板
+   {C.CYAN}/config{C.RESET} 配置中心        {C.CYAN}/clear{C.RESET}  清空当前对话   {C.CYAN}/exit{C.RESET}   退出终端私教
   ----------------------------------------------------------------------
 """
     print(banner)
@@ -607,6 +622,9 @@ def print_welcome():
 def run_repl():
     cfg = load_config()
     print_welcome()
+
+    # 静默启动后台实时 Web 可视化伴侣
+    live_port = start_background_live_server(8088)
 
     if not cfg.get("api_key"):
         print(colorize("[!] 检测到尚未配置大模型 API Key！", C.YELLOW))
@@ -622,7 +640,9 @@ def run_repl():
         _, s_name = SUBJECT_DIRS.get(curr_subj, ("01-数学", "数学"))
         return f"{C.CYAN}[ky-cli:{s_name}]{C.RESET} > "
 
-    print(colorize(f"当前已激活：{SUBJECT_DIRS[curr_subj][1]}。直接输入问题/题目，或使用 /img 批改草稿，/calc 验算数学。\n", C.DIM))
+    print(colorize(f"当前已激活：{SUBJECT_DIRS[curr_subj][1]}。直接输入问题/题目，或使用 /img 批改草稿，/calc 验算数学。", C.DIM))
+    if live_port:
+        print(colorize(f"🌐 [实时 LaTeX 网页伴侣已就绪]: http://localhost:{live_port}/live (随时输入 /view 自动打开浏览器对照排版)\n", C.CYAN))
 
     while True:
         try:
@@ -775,6 +795,12 @@ def run_repl():
                     subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"))
                 print()
                 continue
+            elif cmd in ("/view", "/live"):
+                import webbrowser
+                target_url = f"http://localhost:{live_port or 8088}/live"
+                webbrowser.open(target_url)
+                print(colorize(f"\n[已在默认浏览器中打开实时可视化伴侣: {target_url}]\n", C.GREEN))
+                continue
             elif cmd == "/status":
                 print(colorize(f"\n--- 考研大盘概况 ({datetime.now().strftime('%Y-%m-%d')}) ---", C.BOLD))
                 agents_root = ROOT / "AGENTS.md"
@@ -796,32 +822,126 @@ def run_repl():
             messages.append(h)
         messages.append({"role": "user", "content": user_input})
 
+        append_live_message("user", user_input)
+
         print(colorize(f"\n[{SUBJECT_DIRS[curr_subj][1]} 正在思考并按评分标准批改...]\n", C.DIM))
         reply = stream_chat(messages, cfg)
         if reply:
+            append_live_message("assistant", reply)
             history.append({"role": "user", "content": user_input})
             history.append({"role": "assistant", "content": reply})
-            print()
+
+            # 如果回复中包含 LaTeX，在终端下方自动打印美化版本并提示 /view
+            if latex_beautifier and any(sym in reply for sym in ("\\(", "\\[", "\\int", "\\frac", "\\lim", "\\sum", "$$")):
+                beautified = latex_beautifier.prettify_latex_for_terminal(reply)
+                print(colorize("\n" + "─" * 58, C.DIM))
+                print(colorize(" 📐 【终端数学公式与推导步骤美化视图】", C.BOLD))
+                print(colorize("─" * 58, C.DIM))
+                print(beautified)
+                print(colorize("─" * 58, C.DIM))
+                print(colorize(" 💡 提示: 输入 /view 可在浏览器中对照查看印刷级 KaTeX 排版！\n", C.YELLOW))
+            else:
+                print()
 
 # ════════════════════════════════════════════════════════════════
 # 6. Webhook 网关模式 (`ky serve --port 8088`)
 # ════════════════════════════════════════════════════════════════
 
-def run_server(port=8088):
-    """启动轻量级 HTTP Webhook 接收网关，实现微信/QQ/钉钉双向收发"""
-    from http.server import HTTPServer, BaseHTTPRequestHandler
+def create_gateway_handler():
+    from http.server import BaseHTTPRequestHandler
     cfg = load_config()
 
-    print(colorize(f"\n[🚀 考研智能体 Webhook 网关正在启动... 监听端口: {port}]", C.BOLD))
-    print(f"  - 钉钉/企业微信回调地址: http://<你的公网IP或内网穿透域名>:{port}/webhook")
-    print(f"  - 当前默认学科: {SUBJECT_DIRS[cfg.get('active_subject','math')][1]}")
-    print("  - 支持接收群聊提问并自动回复，按 Ctrl+C 停止服务。\n")
-
     class GatewayHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path in ("/live", "/", "/index.html"):
+                live_html_p = ROOT / "docs" / "live.html"
+                if not live_html_p.exists():
+                    live_html_p = ROOT / "05-考研看板" / "docs" / "live.html"
+                if live_html_p.exists():
+                    content = live_html_p.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(content)
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+                    self.wfile.write(b"docs/live.html not found")
+            elif parsed.path == "/api/live":
+                data = json.dumps({"messages": LIVE_SESSION_MESSAGES}, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self.send_response(404)
+                self.end_headers()
+
         def do_POST(self):
+            parsed = urllib.parse.urlparse(self.path)
             content_length = int(self.headers.get("Content-Length", 0))
             post_data = self.rfile.read(content_length).decode("utf-8", errors="ignore")
             
+            # 清空可视化伴侣视图
+            if parsed.path == "/api/clear":
+                LIVE_SESSION_MESSAGES.clear()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(b'{"status":"cleared"}')
+                return
+
+            # 来自 Web 伴侣前端的提问
+            if parsed.path == "/api/ask":
+                try:
+                    data = json.loads(post_data)
+                    user_msg = data.get("message", "").strip()
+                except Exception:
+                    user_msg = post_data.strip()
+
+                if not user_msg:
+                    self.send_response(400)
+                    self.end_headers()
+                    return
+
+                append_live_message("user", user_msg)
+                active_subj = cfg.get("active_subject", "math")
+                sys_prompt = build_system_prompt(active_subj)
+                messages = [
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": user_msg}
+                ]
+                
+                reply = "已收到！正在为您解析..."
+                if not cfg.get("api_key"):
+                    reply = f"🎓【考研私教】收到您的提问: \"{user_msg}\"\n当前尚未配置大模型 API Key，请在电脑端运行 `ky config` 设置密钥。"
+                else:
+                    try:
+                        base_url = cfg.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
+                        url = f"{base_url}/chat/completions"
+                        req = urllib.request.Request(
+                            url,
+                            data=json.dumps({"model": cfg.get("model", "deepseek-chat"), "messages": messages, "stream": False}).encode("utf-8"),
+                            headers={"Content-Type": "application/json", "Authorization": f"Bearer {cfg.get('api_key','')}"}
+                        )
+                        with urllib.request.urlopen(req, timeout=30) as resp:
+                            res_json = json.loads(resp.read().decode("utf-8"))
+                            reply = res_json["choices"][0]["message"]["content"]
+                    except Exception as e:
+                        reply = f"[私教处理异常]: {e}"
+
+                append_live_message("assistant", reply)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"reply": reply}, ensure_ascii=False).encode("utf-8"))
+                return
+
             user_msg = ""
             try:
                 data = json.loads(post_data)
@@ -879,6 +999,9 @@ def run_server(port=8088):
                 except Exception as e:
                     reply = f"[私教处理异常]: {e}"
 
+            append_live_message("user", user_msg)
+            append_live_message("assistant", reply)
+
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
@@ -890,7 +1013,36 @@ def run_server(port=8088):
         def log_message(self, format, *args):
             return  # 静默请求日志
 
-    httpd = HTTPServer(("0.0.0.0", port), GatewayHandler)
+    return GatewayHandler
+
+def start_background_live_server(start_port=8088):
+    """在后台静默启动 Web 实时伴侣服务器，自动处理端口占用"""
+    from http.server import HTTPServer
+    import threading
+    handler_class = create_gateway_handler()
+    for p in range(start_port, start_port + 20):
+        try:
+            httpd = HTTPServer(("127.0.0.1", p), handler_class)
+            t = threading.Thread(target=httpd.serve_forever, daemon=True)
+            t.start()
+            return p
+        except OSError:
+            continue
+    return None
+
+def run_server(port=8088):
+    """启动轻量级 HTTP Webhook 接收网关，实现微信/QQ/钉钉双向收发与 Web 伴侣"""
+    from http.server import HTTPServer
+    cfg = load_config()
+
+    print(colorize(f"\n[🚀 考研智能体 Webhook 网关与实时 Web 伴侣正在启动... 监听端口: {port}]", C.BOLD))
+    print(f"  - 网页实时 LaTeX 伴侣: http://127.0.0.1:{port}/live")
+    print(f"  - 钉钉/企业微信回调地址: http://<你的公网IP或内网穿透域名>:{port}/webhook")
+    print(f"  - 当前默认学科: {SUBJECT_DIRS[cfg.get('active_subject','math')][1]}")
+    print("  - 支持接收群聊提问并自动回复，按 Ctrl+C 停止服务。\n")
+
+    handler_class = create_gateway_handler()
+    httpd = HTTPServer(("0.0.0.0", port), handler_class)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -903,6 +1055,12 @@ def run_server(port=8088):
 def main():
     args = sys.argv[1:]
     if not args:
+        run_repl()
+    elif args[0] in ("view", "--view", "--web", "live"):
+        port = start_background_live_server(8088) or 8088
+        import webbrowser
+        webbrowser.open(f"http://localhost:{port}/live")
+        print(f"已在默认浏览器打开实时 LaTeX 伴侣: http://localhost:{port}/live")
         run_repl()
     elif args[0] in ("config", "--config"):
         interactive_config()

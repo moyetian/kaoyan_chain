@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>考研学习链 · 实时可视化伴侣 (Live LaTeX Companion)</title>
+  <!-- KaTeX CSS & JS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+  <!-- Marked Markdown Parser -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --subtext: #64748b;
+      --border: #e2e8f0;
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --bubble-ai: #ffffff;
+      --bubble-user: #4f46e5;
+      --bubble-user-text: #ffffff;
+      --shadow: 0 4px 16px rgba(0,0,0,0.06);
+    }
+    body.dark {
+      --bg: #0b0f19;
+      --card-bg: #131b2e;
+      --text: #f8fafc;
+      --subtext: #94a3b8;
+      --border: #1e293b;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --bubble-ai: #131b2e;
+      --bubble-user: #3730a3;
+      --bubble-user-text: #ffffff;
+      --shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+
+    /* 顶部导航栏 */
+    header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 20px;
+      background: rgba(16, 185, 129, 0.12);
+      color: #10b981;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .live-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #10b981;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn-icon {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .btn-icon:hover {
+      background: rgba(0,0,0,0.04);
+      border-color: var(--primary);
+    }
+    body.dark .btn-icon:hover {
+      background: rgba(255,255,255,0.06);
+    }
+
+    /* 对话展示区 */
+    #chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      scroll-behavior: smooth;
+    }
+    .msg-wrapper {
+      display: flex;
+      flex-direction: column;
+      max-width: 860px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .msg-wrapper.user {
+      align-items: flex-end;
+    }
+    .msg-wrapper.ai {
+      align-items: flex-start;
+    }
+    .msg-bubble {
+      padding: 14px 18px;
+      border-radius: 14px;
+      font-size: 14.5px;
+      line-height: 1.68;
+      max-width: 92%;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      word-break: break-word;
+    }
+    .msg-wrapper.user .msg-bubble {
+      background: var(--bubble-user);
+      color: var(--bubble-user-text);
+      border-color: transparent;
+      border-bottom-right-radius: 4px;
+    }
+    .msg-wrapper.ai .msg-bubble {
+      background: var(--bubble-ai);
+      color: var(--text);
+      border-bottom-left-radius: 4px;
+    }
+    .msg-meta {
+      font-size: 11px;
+      color: var(--subtext);
+      margin-top: 4px;
+      padding: 0 4px;
+    }
+
+    /* 数学公式美化与高亮 */
+    .katex-display {
+      margin: 14px 0 !important;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 8px 12px;
+      background: rgba(99, 102, 241, 0.05);
+      border-radius: 8px;
+      border-left: 3px solid var(--primary);
+    }
+    body.dark .katex-display {
+      background: rgba(99, 102, 241, 0.12);
+    }
+    .msg-bubble code {
+      background: rgba(0,0,0,0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+    }
+    body.dark .msg-bubble code {
+      background: rgba(255,255,255,0.1);
+    }
+    .msg-bubble pre code {
+      display: block;
+      padding: 12px;
+      overflow-x: auto;
+    }
+
+    /* 底部输入区 */
+    footer {
+      background: var(--card-bg);
+      border-top: 1px solid var(--border);
+      padding: 12px 20px 16px;
+      flex-shrink: 0;
+    }
+    .input-box-wrapper {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .quick-chips {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+    .chip {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--subtext);
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 14px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .chip:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    .input-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+    textarea#user-input {
+      flex: 1;
+      min-height: 44px;
+      max-height: 120px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14.5px;
+      font-family: inherit;
+      resize: none;
+      outline: none;
+      line-height: 1.4;
+    }
+    textarea#user-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+    .btn-send {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      padding: 11px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-send:hover {
+      background: var(--primary-hover);
+    }
+
+    /* 空态提示 */
+    .empty-state {
+      text-align: center;
+      margin: auto;
+      max-width: 480px;
+      color: var(--subtext);
+      padding: 40px 20px;
+    }
+    .empty-icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+    }
+    .empty-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <span style="font-size: 20px;">🎓</span>
+      <span class="brand-title">考研学习链 · 实时可视化伴侣</span>
+      <div class="live-badge">
+        <span class="live-dot"></span>
+        <span id="sync-status">实时同步中</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn-icon" onclick="clearLive()">🗑️ 清空伴侣视图</button>
+      <button class="btn-icon" onclick="toggleTheme()">🌓 主题模式</button>
+    </div>
+  </header>
+
+  <main id="chat-container">
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">📐</div>
+      <div class="empty-title">实时 LaTeX 渲染与手写批改视窗</div>
+      <p style="font-size: 13.5px; line-height: 1.6;">
+        在终端（CLI）或下方输入考研数学、英语、政治题目，本窗口将以<strong>印刷级 KaTeX 排版</strong>实时呈现极限、积分、矩阵与采分点批改！
+      </p>
+    </div>
+  </main>
+
+  <footer>
+    <div class="input-box-wrapper">
+      <div class="quick-chips">
+        <span class="chip" onclick="insertPrompt('请解析并按步骤给分：')">📝 步骤判分</span>
+        <span class="chip" onclick="insertPrompt('/calc limit (sin(x)-x)/x^3 as x->0')">📐 极限验算</span>
+        <span class="chip" onclick="insertPrompt('/calc int x*exp(x) dx')">∫ 积分求值</span>
+        <span class="chip" onclick="insertPrompt('/dissect ')">🧱 长难句解剖</span>
+        <span class="chip" onclick="insertPrompt('/skills')">🧩 技能清单</span>
+      </div>
+      <div class="input-row">
+        <textarea id="user-input" rows="1" placeholder="在此输入问题，或在终端敲字，两端实时自动同步... (Enter 发送, Shift+Enter 换行)"></textarea>
+        <button class="btn-send" onclick="sendMessage()">发送</button>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    let lastMessageCount = 0;
+    let autoScroll = true;
+
+    // 主题切换
+    function toggleTheme() {
+      document.body.classList.toggle('dark');
+      localStorage.setItem('ky_live_theme', document.body.classList.contains('dark') ? 'dark' : 'light');
+    }
+    if (localStorage.getItem('ky_live_theme') === 'dark') {
+      document.body.classList.add('dark');
+    }
+
+    // 快捷填入
+    function insertPrompt(text) {
+      const input = document.getElementById('user-input');
+      input.value = text;
+      input.focus();
+    }
+
+    // 回车发送
+    document.getElementById('user-input').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    // 渲染 KaTeX 和 Markdown
+    function renderMath(element) {
+      if (window.renderMathInElement) {
+        renderMathInElement(element, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '\\[', right: '\\]', display: true},
+            {left: '$', right: '$', display: false},
+            {left: '\\(', right: '\\)', display: false}
+          ],
+          throwOnError: false
+        });
+      }
+    }
+
+    // 发送消息到后端
+    async function sendMessage() {
+      const input = document.getElementById('user-input');
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+
+      // 立即在前端上屏
+      appendMessage('user', text);
+
+      try {
+        await fetch('/api/ask', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({message: text})
+        });
+      } catch (err) {
+        console.warn('同步发送失败，若未运行 ky serve 仅本地记录');
+      }
+    }
+
+    function appendMessage(role, content, timeStr) {
+      const container = document.getElementById('chat-container');
+      const emptyState = document.getElementById('empty-state');
+      if (emptyState) emptyState.style.display = 'none';
+
+      const wrapper = document.createElement('div');
+      wrapper.className = `msg-wrapper ${role}`;
+
+      const bubble = document.createElement('div');
+      bubble.className = 'msg-bubble';
+      
+      // 解析 Markdown
+      bubble.innerHTML = marked.parse(content);
+      
+      // 渲染数学公式
+      renderMath(bubble);
+
+      const meta = document.createElement('div');
+      meta.className = 'msg-meta';
+      meta.textContent = `${role === 'user' ? '学员' : '考研专属私教'} · ${timeStr || new Date().toLocaleTimeString()}`;
+
+      wrapper.appendChild(bubble);
+      wrapper.appendChild(meta);
+      container.appendChild(wrapper);
+
+      if (autoScroll) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+
+    // 轮询同步与状态拉取
+    async function pollLiveFeed() {
+      try {
+        const resp = await fetch('/api/live');
+        if (resp.ok) {
+          const data = await resp.json();
+          const messages = data.messages || [];
+          if (messages.length !== lastMessageCount) {
+            const container = document.getElementById('chat-container');
+            container.innerHTML = '';
+            messages.forEach(m => {
+              appendMessage(m.role, m.content, m.time);
+            });
+            lastMessageCount = messages.length;
+            document.getElementById('sync-status').textContent = '已同步 (' + messages.length + ')';
+          }
+        }
+      } catch (e) {
+        // 离线模式
+        document.getElementById('sync-status').textContent = '本地静态模式';
+      }
+    }
+
+    function clearLive() {
+      fetch('/api/clear', {method: 'POST'}).catch(() => {});
+      document.getElementById('chat-container').innerHTML = `
+        <div class="empty-state" id="empty-state">
+          <div class="empty-icon">📐</div>
+          <div class="empty-title">视窗已清空</div>
+          <p style="font-size: 13.5px; line-height: 1.6;">随时在终端敲入题目或使用 /calc, /img, 这里将以印刷级数学排版呈现。</p>
+        </div>
+      `;
+      lastMessageCount = 0;
+    }
+
+    // 800ms 周期同步
+    setInterval(pollLiveFeed, 800);
+    pollLiveFeed();
+  </script>
+</body>
+</html>
