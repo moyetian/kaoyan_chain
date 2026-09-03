@@ -331,6 +331,23 @@ def run_tests():
         ocr_res = skills.vision_solver.extract_text_with_local_ocr(str(test_img))
         runner.assert_true(ocr_res is not None and len(ocr_res) > 0, "本地 RapidOCR 成功识别并提取图片文字内容")
 
+    # ------------------------------------------------------------
+    # 测试 9: 考研科目方案与官方大纲管理体系校验
+    # ------------------------------------------------------------
+    print("\n[测试组 9: 考研科目方案与官方大纲管理体系校验]")
+    import syllabus_manager
+    runner.assert_true("math1" in syllabus_manager.MATH_SYLLABI and "math2" in syllabus_manager.MATH_SYLLABI, "数学大纲库包含数一/数二完整方案")
+    runner.assert_true("eng1" in syllabus_manager.ENGLISH_SYLLABI and "eng2" in syllabus_manager.ENGLISH_SYLLABI, "英语大纲库包含英一/英二完整方案")
+    m_info, e_info, updated = syllabus_manager.apply_syllabus_selection(
+        math_key="math2", eng_key="eng2", pro_type="408", pro_name="408 计算机学科专业基础", auto_write=True
+    )
+    runner.assert_true(m_info["name"] == "数学二 (302)", "数学方案精准匹配数学二 (302)")
+    runner.assert_true(e_info["name"] == "英语二 (204)", "英语方案精准匹配英语二 (204)")
+    m_out = (ROOT / "01-数学" / "考试大纲.md").read_text(encoding="utf-8")
+    runner.assert_true("三重积分" in m_out and ("绝不考" in m_out or "严禁出现" in m_out or "不考" in m_out), "数二大纲明确标出三重积分与曲面积分超纲红线")
+    p_out = (ROOT / "04-专业课" / "考试大纲.md").read_text(encoding="utf-8")
+    runner.assert_true("408" in p_out and "数据结构" in p_out, "408专业课考纲自动注入四大模块考点")
+
     # 统计并返回
     success = runner.print_summary()
     sys.exit(0 if success else 1)
