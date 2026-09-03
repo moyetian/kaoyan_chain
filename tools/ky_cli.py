@@ -343,24 +343,21 @@ def broadcast_briefing(config, custom_msg=None):
     print()
 
 # ════════════════════════════════════════════════════════════════
-# 4. 交互式配置向导 (/config)
+# 4. 交互式配置管理中心 (/config)
 # ════════════════════════════════════════════════════════════════
 
-def interactive_config():
-    cfg = load_config()
-    print(colorize("\n=== ⚙️ 考研私教 CLI 配置管理 ===", C.BOLD))
-    print("支持接入各大主流大模型 API 与常用即时通讯聊天机器人。\n")
-
-    print(colorize("--- 1. 模型 API 配置 ---", C.CYAN))
-    print("推荐 API 服务商：")
+def configure_llm(cfg):
+    """配置大模型 API 服务商与密钥"""
+    print(colorize("\n--- 🧠 1. 大模型 API 服务商与密钥配置 ---", C.CYAN))
+    print("支持接入各大主流大模型 API：")
     print("  [1] DeepSeek (api.deepseek.com) · 极力推荐 (V3/R1 理工科解题首选)")
     print("  [2] 智谱清言 GLM (open.bigmodel.cn)")
     print("  [3] 阿里云百炼 Qwen (dashscope.aliyuncs.com)")
     print("  [4] 月之暗面 Kimi (api.moonshot.cn)")
     print("  [5] 本地 Ollama (http://localhost:11434/v1)")
-    print("  [6] 自定义 OpenAI 兼容接口 / SiliconFlow / OpenAI\n")
+    print("  [6] 自定义 OpenAI 兼容接口 / SiliconFlow / 豆包 等\n")
 
-    p_choice = input(f"选择服务商类型 (直接回车保持现有: {cfg['api_provider']}): ").strip()
+    p_choice = input(f"选择服务商 (1~6，直接回车保持现有: {cfg.get('api_provider','deepseek')}): ").strip()
     if p_choice == "1":
         cfg["api_provider"] = "deepseek"
         cfg["base_url"] = "https://api.deepseek.com/v1"
@@ -381,43 +378,181 @@ def interactive_config():
         cfg["api_provider"] = "ollama"
         cfg["base_url"] = "http://localhost:11434/v1"
         cfg["model"] = "deepseek-r1:14b"
+    elif p_choice == "6":
+        cfg["api_provider"] = "custom"
 
-    new_url = input(f"Base URL [{cfg['base_url']}]: ").strip()
+    new_url = input(f"Base URL (直接回车保持现有: {cfg['base_url']}): ").strip()
     if new_url:
         cfg["base_url"] = new_url
 
-    new_model = input(f"Model 名称 [{cfg['model']}]: ").strip()
+    new_model = input(f"Model 模型代号 (直接回车保持现有: {cfg['model']}): ").strip()
     if new_model:
         cfg["model"] = new_model
 
-    curr_key_display = cfg['api_key'][:6] + "..." if len(cfg['api_key']) > 8 else (cfg['api_key'] or "未设置")
-    new_key = input(f"API Key [{curr_key_display}]: ").strip()
+    curr_key_display = cfg['api_key'][:6] + "..." if len(cfg.get('api_key','')) > 8 else (cfg.get('api_key','') or "未设置")
+    new_key = input(f"API Key (输入新密钥或直接回车保持现有: {curr_key_display}): ").strip()
     if new_key:
         cfg["api_key"] = new_key
 
-    print(colorize("\n--- 2. 聊天机器人 Webhook 配置 (可选 · 留空跳过) ---", C.CYAN))
-    hooks = cfg.setdefault("webhooks", {})
-    
-    wc = input(f"微信 / 企微 Webhook URL [{hooks.get('wechat','')}]: ").strip()
-    if wc != "": hooks["wechat"] = wc
-    
-    dt = input(f"钉钉 Webhook URL [{hooks.get('dingtalk','')}]: ").strip()
-    if dt != "": hooks["dingtalk"] = dt
-    if hooks.get("dingtalk"):
-        sec = input(f"钉钉加签 Secret [{hooks.get('dingtalk_secret','')}]: ").strip()
-        if sec != "": hooks["dingtalk_secret"] = sec
-        
-    fs = input(f"飞书 Webhook URL [{hooks.get('feishu','')}]: ").strip()
-    if fs != "": hooks["feishu"] = fs
-
-    qq = input(f"QQ OneBot HTTP 接口 (如 http://127.0.0.1:3000) [{hooks.get('qq_onebot','')}]: ").strip()
-    if qq != "": hooks["qq_onebot"] = qq
-    if hooks.get("qq_onebot"):
-        qid = input(f"QQ 目标群号/好友号 [{hooks.get('qq_target_id','')}]: ").strip()
-        if qid != "": hooks["qq_target_id"] = qid
-
     save_config(cfg)
-    print(colorize("\n[√] 配置已安全保存至 ky_config.json（已加入 .gitignore，绝不会上传 GitHub）！\n", C.GREEN))
+    print(colorize("[√] 模型 API 配置已更新！", C.GREEN))
+
+def configure_webhooks(cfg):
+    """多选菜单式配置各个聊天机器人 Webhook"""
+    hooks = cfg.setdefault("webhooks", {})
+
+    while True:
+        wc_tag = colorize("已配置", C.GREEN) if hooks.get("wechat") else colorize("未配置", C.DIM)
+        dt_tag = colorize("已配置", C.GREEN) if hooks.get("dingtalk") else colorize("未配置", C.DIM)
+        fs_tag = colorize("已配置", C.GREEN) if hooks.get("feishu") else colorize("未配置", C.DIM)
+        qq_tag = colorize("已配置", C.GREEN) if hooks.get("qq_onebot") else colorize("未配置", C.DIM)
+
+        print(colorize("\n--- 📱 2. 聊天机器人 Webhook / 消息推送配置 ---", C.CYAN))
+        print("请直接选择您想配置或修改的机器人平台：")
+        print(f"  [1] 微信 / 企业微信 / 微信助手 ClawBot  [{wc_tag}]")
+        print(f"  [2] 钉钉群自定义机器人 (DingTalk)         [{dt_tag}]")
+        print(f"  [3] 飞书群自定义机器人 (Feishu)           [{fs_tag}]")
+        print(f"  [4] QQ 机器人 (OneBot 11 / NapCat)        [{qq_tag}]")
+        print(f"  [5] 📢 发送一条测试消息验证所有已配机器人")
+        print(f"  [6] 🗑️ 清空某个平台的配置")
+        print(f"  [0] 💾 保存并返回上级菜单")
+
+        choice = input("\n请选择平台编号 (0~6) [默认 0]: ").strip() or "0"
+        
+        if choice == "0":
+            save_config(cfg)
+            print(colorize("[√] 机器人 Webhook 配置已安全保存！", C.GREEN))
+            break
+        elif choice == "1":
+            print(colorize("\n[配置 微信 / 企业微信 / ClawBot Webhook]", C.BOLD))
+            print("说明：适用于企业微信群机器人或微信 ClawBot 助手。")
+            print("地址格式如：https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxx")
+            curr = hooks.get("wechat", "")
+            val = input(f"请输入 Webhook URL (直接回车保持现有: {curr or '空'}): ").strip()
+            if val:
+                hooks["wechat"] = val
+            save_config(cfg)
+            if hooks.get("wechat"):
+                t = input("是否立即向该微信机器人发送测试消息? (y/n) [y]: ").strip().lower()
+                if t != "n":
+                    ok, res = send_to_wechat(hooks["wechat"], "🎓【考研学习链】微信机器人连接成功！每日任务与晨报将在此推送。")
+                    print(colorize(f"  -> 发送成功！", C.GREEN) if ok else colorize(f"  -> 发送失败: {res}", C.RED))
+        elif choice == "2":
+            print(colorize("\n[配置 钉钉群自定义机器人]", C.BOLD))
+            print("说明：在钉钉电脑端群聊 -> 群设置 -> 智能群助手 -> 添加机器人 -> 自定义。")
+            print("地址格式如：https://oapi.dingtalk.com/robot/send?access_token=xxxxxx")
+            curr = hooks.get("dingtalk", "")
+            val = input(f"请输入 Webhook URL (直接回车保持现有: {curr or '空'}): ").strip()
+            if val:
+                hooks["dingtalk"] = val
+            sec = input(f"请输入加签 Secret (若机器人未勾选加签直接回车，当前: {hooks.get('dingtalk_secret','') or '无'}): ").strip()
+            if sec != "":
+                hooks["dingtalk_secret"] = sec
+            save_config(cfg)
+            if hooks.get("dingtalk"):
+                t = input("是否立即向钉钉发送测试消息? (y/n) [y]: ").strip().lower()
+                if t != "n":
+                    ok, res = send_to_dingtalk(hooks["dingtalk"], "🎓 **【考研学习链】** 钉钉群机器人连接成功！每日任务与晨报将在此推送。", hooks.get("dingtalk_secret"))
+                    print(colorize(f"  -> 发送成功！", C.GREEN) if ok else colorize(f"  -> 发送失败: {res}", C.RED))
+        elif choice == "3":
+            print(colorize("\n[配置 飞书群自定义机器人]", C.BOLD))
+            print("说明：在飞书群设置 -> 机器人 -> 添加机器人 -> 自定义机器人。")
+            print("地址格式如：https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxx")
+            curr = hooks.get("feishu", "")
+            val = input(f"请输入 Webhook URL (直接回车保持现有: {curr or '空'}): ").strip()
+            if val:
+                hooks["feishu"] = val
+            save_config(cfg)
+            if hooks.get("feishu"):
+                t = input("是否立即向飞书发送测试消息? (y/n) [y]: ").strip().lower()
+                if t != "n":
+                    ok, res = send_to_feishu(hooks["feishu"], "🎓【考研学习链】飞书群机器人连接成功！每日任务与晨报将在此推送。")
+                    print(colorize(f"  -> 发送成功！", C.GREEN) if ok else colorize(f"  -> 发送失败: {res}", C.RED))
+        elif choice == "4":
+            print(colorize("\n[配置 QQ 机器人 (OneBot 11 / NapCat / Go-CQHTTP)]", C.BOLD))
+            print("说明：使用 NapCat QQ、LLOneBot 或 Go-CQHTTP 提供的 OneBot 11 HTTP 接口。")
+            print("地址格式如：http://127.0.0.1:3000")
+            curr = hooks.get("qq_onebot", "")
+            val = input(f"请输入 OneBot HTTP 接口 (直接回车保持现有: {curr or '空'}): ").strip()
+            if val:
+                hooks["qq_onebot"] = val
+            qid = input(f"请输入目标群号或好友 QQ 号 (当前: {hooks.get('qq_target_id','') or '无'}): ").strip()
+            if qid:
+                hooks["qq_target_id"] = qid
+            save_config(cfg)
+            if hooks.get("qq_onebot") and hooks.get("qq_target_id"):
+                t = input("是否立即向 QQ 发送测试消息? (y/n) [y]: ").strip().lower()
+                if t != "n":
+                    ok, res = send_to_qq(hooks["qq_onebot"], hooks.get("qq_target_id"), "🎓【考研学习链】QQ 机器人连接成功！每日任务与晨报将在此推送。")
+                    print(colorize(f"  -> 发送成功！", C.GREEN) if ok else colorize(f"  -> 发送失败: {res}", C.RED))
+        elif choice == "5":
+            broadcast_briefing(cfg, custom_msg="🎓【考研学习链】这是一条自检广播测试消息，您的机器人连接状态正常！")
+        elif choice == "6":
+            print("\n请选择要清空的平台：")
+            print("  [1] 微信  [2] 钉钉  [3] 飞书  [4] QQ  [5] 清空全部")
+            c = input("请输入数字: ").strip()
+            if c == "1": hooks["wechat"] = ""
+            elif c == "2": hooks["dingtalk"] = ""; hooks["dingtalk_secret"] = ""
+            elif c == "3": hooks["feishu"] = ""
+            elif c == "4": hooks["qq_onebot"] = ""; hooks["qq_target_id"] = ""
+            elif c == "5":
+                for k in list(hooks.keys()): hooks[k] = ""
+            save_config(cfg)
+            print(colorize("[√] 已清空所选平台的配置。", C.YELLOW))
+
+def show_config(cfg):
+    """显示当前完整配置清单"""
+    print(colorize("\n=== 📄 当前考研私教 CLI 配置清单 ===", C.BOLD))
+    print(f"  - 服务商类型: {cfg.get('api_provider')}")
+    print(f"  - 接口地址:   {cfg.get('base_url')}")
+    print(f"  - 模型代号:   {cfg.get('model')}")
+    curr_key = cfg.get('api_key', '')
+    masked_key = curr_key[:6] + "..." + curr_key[-4:] if len(curr_key) > 12 else (curr_key or "未设置")
+    print(f"  - API 密钥:   {masked_key}")
+    print(f"  - 当前学科:   {SUBJECT_DIRS.get(cfg.get('active_subject','math'), ('',''))[1]}")
+    
+    hooks = cfg.get("webhooks", {})
+    print(colorize("\n--- 机器人 Webhook 配置状态 ---", C.CYAN))
+    print(f"  - 微信 Webhook: {hooks.get('wechat') or '未设置'}")
+    print(f"  - 钉钉 Webhook: {hooks.get('dingtalk') or '未设置'} (加签: {'已启用' if hooks.get('dingtalk_secret') else '未启用'})")
+    print(f"  - 飞书 Webhook: {hooks.get('feishu') or '未设置'}")
+    print(f"  - QQ OneBot:    {hooks.get('qq_onebot') or '未设置'} (目标: {hooks.get('qq_target_id') or '无'})")
+    print(f"\n配置文件绝对路径: {CONFIG_FILE}")
+    print("本文件已被 .gitignore 严密保护，绝不会被 Git 追踪提交。\n")
+
+def interactive_config():
+    """配置管理中心主路由"""
+    cfg = load_config()
+    while True:
+        curr_p = cfg.get("api_provider", "deepseek")
+        curr_m = cfg.get("model", "deepseek-chat")
+        has_key = bool(cfg.get("api_key"))
+        key_tag = colorize("已设置", C.GREEN) if has_key else colorize("未设置", C.RED)
+        
+        hooks = cfg.get("webhooks", {})
+        active_hooks = [k for k, v in hooks.items() if v and not k.endswith("_secret") and not k.endswith("_id")]
+        hooks_tag = colorize(f"已配 {len(active_hooks)} 个 ({', '.join(active_hooks)})", C.GREEN) if active_hooks else colorize("未配任何平台", C.DIM)
+
+        print(colorize("\n=== ⚙️ 考研私教 CLI 配置管理中心 ===", C.BOLD))
+        print(f"  [1] 🧠 配置大模型 API 与密钥     [当前: {curr_p} / {curr_m} / {key_tag}]")
+        print(f"  [2] 📱 配置聊天机器人 Webhook 推送 [当前: {hooks_tag}]")
+        print(f"  [3] 📄 查看当前完整配置清单")
+        print(f"  [4] 📢 一键测试所有机器人推送")
+        print(f"  [0] 💾 完成配置并返回")
+
+        choice = input("\n请选择功能 (0~4) [默认 0]: ").strip() or "0"
+        if choice == "0":
+            save_config(cfg)
+            print(colorize("\n[√] 配置已安全保存至 ky_config.json！\n", C.GREEN))
+            break
+        elif choice == "1":
+            configure_llm(cfg)
+        elif choice == "2":
+            configure_webhooks(cfg)
+        elif choice == "3":
+            show_config(cfg)
+        elif choice == "4":
+            broadcast_briefing(cfg, custom_msg="🎓【考研学习链】这是一条自检测试广播消息，您的机器人连接状态正常！")
 
 # ════════════════════════════════════════════════════════════════
 # 5. 交互式 TUI 主界面 (类似 Claude Code)
