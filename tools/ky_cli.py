@@ -220,7 +220,27 @@ def stream_chat(messages, config):
     data_bytes = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
 
+    import threading
+    stop_spinner = threading.Event()
+
+    def spinner_task():
+        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        idx = 0
+        while not stop_spinner.is_set():
+            frame = frames[idx % len(frames)]
+            sys.stdout.write(f"\r  {C.CYAN}{frame}{C.RESET} {C.DIM}[考研私教正在审阅题干关键采分点与推导步骤...]{C.RESET}")
+            sys.stdout.flush()
+            idx += 1
+            time.sleep(0.08)
+        # 清除 spinner 行
+        sys.stdout.write("\r" + " " * 48 + "\r")
+        sys.stdout.flush()
+
+    spinner_thread = threading.Thread(target=spinner_task, daemon=True)
+    spinner_thread.start()
+
     full_reply = []
+    first_token = True
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
             for raw_line in resp:
@@ -237,20 +257,29 @@ def stream_chat(messages, config):
                         delta = choices[0].get("delta", {})
                         content = delta.get("content", "")
                         if content:
+                            if first_token:
+                                stop_spinner.set()
+                                spinner_thread.join(timeout=0.2)
+                                first_token = False
                             sys.stdout.write(content)
                             sys.stdout.flush()
                             full_reply.append(content)
                 except Exception:
                     continue
+        stop_spinner.set()
         print()  # 换行
         return "".join(full_reply)
     except urllib.error.HTTPError as e:
+        stop_spinner.set()
         err_msg = e.read().decode("utf-8", errors="ignore")
         print(colorize(f"\n[API 错误 {e.code}]: {err_msg}\n", C.RED))
         return ""
     except Exception as e:
+        stop_spinner.set()
         print(colorize(f"\n[网络连接异常]: {e}\n", C.RED))
         return ""
+    finally:
+        stop_spinner.set()
 
 # ════════════════════════════════════════════════════════════════
 # 3. 聊天平台 Webhook / 消息桥接 (微信 / QQ / 钉钉 / 飞书)
@@ -588,43 +617,88 @@ def interactive_config():
             broadcast_briefing(cfg, custom_msg="🎓【考研学习链】这是一条自检测试广播消息，您的机器人连接状态正常！")
 
 # ════════════════════════════════════════════════════════════════
-# 5. 交互式 TUI 主界面 (类似 Claude Code)
+# 5. 交互式 TUI 主界面 (Claude Code / Codex / Gemini 融合风格)
 # ════════════════════════════════════════════════════════════════
 
-def print_welcome():
-    banner = f"""
-{C.CYAN}{C.BOLD}
-  ██╗  ██╗ █████╗  ██████╗ ██╗   ██╗ █████╗ ███╗   ██╗     ██████╗██╗     ██╗
-  ██║ ██╔╝██╔══██╗██╔═══██╗╚██╗ ██╔╝██╔══██╗████╗  ██║    ██╔════╝██║     ██║
-  █████═╝ ███████║██║   ██║ ╚████╔╝ ███████║██╔██╗ ██║    ██║     ██║     ██║
-  ██╔═██╗ ██╔══██║██║   ██║  ╚██╔╝  ██╔══██║██║╚██╗██║    ██║     ██║     ██║
-  ██║ ╚██╗██║  ██║╚██████╔╝   ██║   ██║  ██║██║ ╚████║    ╚██████╗███████╗██║
-  ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝    ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═══╝     ╚═════╝╚══════╝╚═╝
-{C.RESET}
-{C.BOLD}  🎓 考研全科 AI 专属私教终端 · Kaoyan Study CLI v1.2 (Skills 全功能版){C.RESET}
-  ----------------------------------------------------------------------
-  四科私教调度：
-   {C.GREEN}/math{C.RESET} 数学专属私教    {C.GREEN}/eng{C.RESET} 英语专属私教    {C.GREEN}/pol{C.RESET} 政治专属私教    {C.GREEN}/pro{C.RESET} 专业课私教
-  考研专有技能 (Skills)：
-   {C.YELLOW}/img <图片路径>{C.RESET}   📸 多模态视觉批改：识别题干、手写推导、采分点打分与公式还原
-   {C.YELLOW}/calc <数学表达式>{C.RESET} 📐 符号验算引擎：求导、极限、积分、矩阵与泰勒级数严谨验算
-   {C.YELLOW}/dissect <英语句子>{C.RESET} 🧱 英语长难句搭积木解剖：主干抽取/从句解构/高频词/润色翻译
-   {C.YELLOW}/pdf [关键词]{C.RESET}      📚 资料库与历年真题教材全文检索
-   {C.YELLOW}/skills{C.RESET}            🧩 查看当前已装载的所有技能及其就绪状态
-  大盘与前端联动：
-   {C.CYAN}/view{C.RESET}   🌐 打开实时可视化网页伴侣 (印刷级 KaTeX 排版对照)
-   {C.CYAN}/status{C.RESET} 今日大盘态势    {C.CYAN}/notify{C.RESET} 推送晨报到群   {C.CYAN}/build{C.RESET} 编译移动端看板
-   {C.CYAN}/config{C.RESET} 配置中心        {C.CYAN}/clear{C.RESET}  清空当前对话   {C.CYAN}/exit{C.RESET}   退出终端私教
-  ----------------------------------------------------------------------
-"""
-    print(banner)
+def print_welcome(live_port=8088):
+    today = datetime.now().date()
+    exam_date = datetime(today.year, 12, 19).date()
+    if today > exam_date:
+        exam_date = datetime(today.year + 1, 12, 19).date()
+    days_left = (exam_date - today).days
+
+    cfg = load_config()
+    curr_subj = cfg.get("active_subject", "math")
+    subj_name = SUBJECT_DIRS.get(curr_subj, ("01-数学", "数学"))[1]
+    provider = cfg.get("api_provider", "deepseek")
+    model_name = cfg.get("model", "deepseek-chat")
+
+    style_tag = "严格把关·保姆流"
+    agents_root = ROOT / "AGENTS.md"
+    if agents_root.exists():
+        txt = read_text_safe(agents_root)
+        m = re.search(r"- \*\*当前激活辅导风格\*\*：`([^`]+)`", txt)
+        if m:
+            raw_s = m.group(1).strip().strip("[]")
+            m_s = re.search(r"(\d+\.\s*)?([^\s/\]]+(?:·[^\s/\]]+)?)", raw_s)
+            if m_s:
+                style_tag = re.sub(r"^\d+\.\s*", "", m_s.group(2)).strip()
+            else:
+                style_tag = "严格把关保姆流"
+
+    subj_short = subj_name.replace("专属私教", "").replace("私教", "").strip()
+    style_short = style_tag.split("·")[0] if "·" in style_tag else style_tag
+
+    print(f"""
+{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮{C.RESET}
+{C.CYAN}│{C.RESET}  {C.BOLD}🎓 考研全科 AI 专属私教终端 · Kaoyan CLI (Claude Code / Gemini 体验版){C.RESET}  {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  [ 专属私教: {C.GREEN}{subj_short}{C.RESET} · {C.YELLOW}{style_short}{C.RESET} ]   [ 🎯 研考初试倒计时: {C.MAGENTA}{days_left} 天{C.RESET} ]          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  [ 🧠 模型: {C.BLUE}{provider}/{model_name}{C.RESET} ]   [ 🌐 伴侣: {C.CYAN}:{live_port}/live{C.RESET} ]   [ 🧩 技能: {C.GREEN}6项全就绪{C.RESET} ] {C.CYAN}│{C.RESET}
+{C.CYAN}├────────────────────────────────────────────────────────────────────────┤{C.RESET}
+{C.CYAN}│{C.RESET}  {C.BOLD}快捷指令速查 (随时输入 / 展开指令大盘)：                                {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}   {C.GREEN}/math{C.RESET} 数学  {C.GREEN}/eng{C.RESET} 英语  {C.GREEN}/pol{C.RESET} 政治  {C.GREEN}/pro{C.RESET} 专业课  {C.CYAN}/view{C.RESET} 网页排版对照        {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}   {C.YELLOW}/calc{C.RESET} 符号验算  {C.YELLOW}/img{C.RESET} 视觉批改  {C.YELLOW}/dissect{C.RESET} 长难句解剖  {C.YELLOW}/pdf{C.RESET} 真题资料检索   {C.CYAN}│{C.RESET}
+{C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
+""")
+
+def print_command_palette():
+    """打印 Claude Code 风格分类指令面板"""
+    print(f"""
+{C.CYAN}╭── 🛠️ 考研私教智能终端 · 指令大盘 (Command Palette) ───────────────────────╮{C.RESET}
+{C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  {C.BOLD}🎓 学科专属私教路由:{C.RESET}                                                     {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.GREEN}/math{C.RESET}     切换数学私教 (核心题型攻坚、步骤规范化、严防超纲与计算失误)  {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.GREEN}/eng{C.RESET}      切换英语私教 (长难句搭积木、阅读真题定位、作文功能句固化)    {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.GREEN}/pol{C.RESET}      切换政治私教 (单选多选得分盘、帽子词秒杀、背诵闭环)          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.GREEN}/pro{C.RESET}      切换专业课私教 (权威教材知识图谱、历年真题深度解剖)          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  {C.BOLD}🧩 考研专有扩展技能 (Skills):{C.RESET}                                            {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/img <路径>{C.RESET}  上传草稿纸或截图，逐行批改、采分点打分与 LaTeX 题干提取   {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/calc <式子>{C.RESET} 数学高精度符号验算 (极限/导数/微积分/矩阵/泰勒展开)     {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/dissect <句>{C.RESET}英语长难句搭积木解剖 (主干骨架/从句解构/考点词/润色翻译)   {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/pdf [关键词]{C.RESET}全文检索四科资料库中的官方教材与历年真题                 {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/skills{C.RESET}     查看当前已装载的所有技能详细清单与状态                    {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  {C.BOLD}🌐 前端联动与外设协同:{C.RESET}                                                  {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.CYAN}/view{C.RESET}      打开实时可视化网页伴侣 (印刷级 KaTeX 排版与双端同步)        {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.CYAN}/notify{C.RESET}    一键向微信、钉钉、飞书、QQ 群广播今日考研晨报与自测卡片    {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.CYAN}/build{C.RESET}     重新编译并刷新本地与手机自测看板 (docs/index.html)         {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  {C.BOLD}⚙️ 终端管理与辅助:{C.RESET}                                                      {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/status{C.RESET}    查看考研总战役大盘态势、倒计时与四科目标矩阵             {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/config{C.RESET}    分类多选管理菜单：配置大模型 API 与机器人 Webhook          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/clear{C.RESET}     清空当前会话上下文                                         {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/exit{C.RESET}      退出私教终端                                               {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
+{C.CYAN}╰──────────────────────────────────────────────────────────────────────────╯{C.RESET}
+""")
 
 def run_repl():
     cfg = load_config()
-    print_welcome()
 
     # 静默启动后台实时 Web 可视化伴侣
-    live_port = start_background_live_server(8088)
+    live_port = start_background_live_server(8088) or 8088
+    print_welcome(live_port=live_port)
 
     if not cfg.get("api_key"):
         print(colorize("[!] 检测到尚未配置大模型 API Key！", C.YELLOW))
@@ -638,7 +712,11 @@ def run_repl():
 
     def get_prompt_tag():
         _, s_name = SUBJECT_DIRS.get(curr_subj, ("01-数学", "数学"))
-        return f"{C.CYAN}[ky-cli:{s_name}]{C.RESET} > "
+        target = "110+冲刺"
+        if curr_subj == "eng": target = "65+突破"
+        elif curr_subj == "pol": target = "70+稳拿"
+        elif curr_subj == "pro": target = "120-130拔高"
+        return f"\n{C.CYAN}╭─{C.RESET} [ {C.BOLD}{s_name}{C.RESET} · {C.YELLOW}{target}{C.RESET} ] {C.DIM}──────────────────────────────────────────{C.RESET}\n{C.CYAN}╰─❯{C.RESET} "
 
     print(colorize(f"当前已激活：{SUBJECT_DIRS[curr_subj][1]}。直接输入问题/题目，或使用 /img 批改草稿，/calc 验算数学。", C.DIM))
     if live_port:
@@ -652,6 +730,35 @@ def run_repl():
             break
 
         if not user_input:
+            continue
+
+        # ── 数字快捷操作响应 (Codex 风格) ──
+        if user_input == "1":
+            calc_expr = input(colorize("请输入待精确验算的数学式 (如 diff x^2*sin(x) 或 limit (sin(x)-x)/x^3 as x->0): ", C.YELLOW)).strip()
+            if calc_expr:
+                user_input = f"/calc {calc_expr}"
+            else:
+                continue
+        elif user_input == "2":
+            last_resp = history[-1]["content"] if history and history[-1]["role"] == "assistant" else "做题记录"
+            res = error_logger.log_error_record(
+                subject=curr_subj,
+                title=f"{SUBJECT_DIRS[curr_subj][1]}重点错题复盘",
+                error_type="需强化复练",
+                detail=last_resp[:300] + "...",
+                prescription="已同步载入艾宾浩斯错题复习队列 (1天/3天/7天后重做)。"
+            )
+            print(colorize(f"\n[√] {res}\n", C.GREEN))
+            continue
+        elif user_input == "3":
+            user_input = "/view"
+        elif user_input == "4":
+            print(colorize(f"\n[🔄 正在根据上一题考点与易错陷阱为您抽取同类变式真题...]\n", C.CYAN))
+            user_input = "请根据上一题的核心考点与命题陷阱，为我抽取一道难度相当的考研真题同类变式题。要求：只给题干背景与设问，不要直接贴答案，让我先独立作答。"
+
+        # ── 呼出指令大盘 ──
+        if user_input in ("/", "/help", "/h", "help", "？", "?"):
+            print_command_palette()
             continue
 
         # ── 智能图片输入检测 (直接输入或拖拽图片路径) ──
@@ -842,6 +949,11 @@ def run_repl():
                 print(colorize(" 💡 提示: 输入 /view 可在浏览器中对照查看印刷级 KaTeX 排版！\n", C.YELLOW))
             else:
                 print()
+
+            # Codex CLI 风格快捷操作栏 (Follow-up Toolbar)
+            print(f"{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮{C.RESET}")
+            print(f"{C.CYAN}│{C.RESET}  {C.BOLD}💡 下一步操作:{C.RESET} [1] 📐 符号验算  [2] 📌 记入错题本  [3] 🌐 网页排版  [4] 🔄 变式演练 {C.CYAN}│{C.RESET}")
+            print(f"{C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}")
 
 # ════════════════════════════════════════════════════════════════
 # 6. Webhook 网关模式 (`ky serve --port 8088`)
