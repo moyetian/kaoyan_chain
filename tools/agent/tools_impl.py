@@ -58,9 +58,10 @@ class ToolDefinition:
         }
 
 class ToolRegistry:
-    def __init__(self, sandbox: Sandbox, permissions: PermissionManager):
+    def __init__(self, sandbox: Sandbox, permissions: PermissionManager, memory_manager=None):
         self.sandbox = sandbox
         self.permissions = permissions
+        self.memory_manager = memory_manager
         self.tools: Dict[str, ToolDefinition] = {}
         self._register_all_tools()
 
@@ -388,12 +389,12 @@ class ToolRegistry:
             return res.stdout[:2000].strip() or "无 Diff 差异"
 
         # ─────────────────────────────────────────────────────────────
-        # 5. 网络工具 (fetch_url)
+        # 5. 网络工具 (fetch_url & web_search)
         # ─────────────────────────────────────────────────────────────
 
         @self.register(
             name="fetch_url",
-            desc="获取公开网络 URL 的网页文本内容 (例如查询真题解析或考纲最新动态)。",
+            desc="获取公开网络 URL 的网页文本内容 (例如查询真题解析或考纲最新动态)。自动过滤脚本与排版噪点。",
             params_schema={
                 "type": "object",
                 "properties": {
@@ -407,17 +408,59 @@ class ToolRegistry:
             if not url.startswith(("http://", "https://")):
                 return "Error: 仅支持 http:// 或 https:// 协议"
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 Kaoyan-Tutor/1.0"})
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    html_bytes = resp.read(60000)
+                import re
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Kaoyan-Tutor/1.0"})
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    html_bytes = resp.read(80000)
                     text = html_bytes.decode("utf-8", errors="ignore")
-                    # 极简正则去除 html 标签
-                    import re
+                    # 深度过滤 script, style, nav, footer 噪点
+                    text = re.sub(r"<(script|style|nav|footer|header)[^>]*>.*?</\1>", " ", text, flags=re.DOTALL | re.IGNORECASE)
                     clean_txt = re.sub(r"<[^>]+>", " ", text)
                     clean_txt = re.sub(r"\s+", " ", clean_txt).strip()
-                    return clean_txt[:2500]
+                    return clean_txt[:3000]
             except Exception as e:
                 return f"Error 访问网页失败: {e}"
+
+        @self.register(
+            name="web_search",
+            desc="安全联网检索考研真题、官方大纲变动通知、目标院校考研专业课简章等外部权威资讯。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "搜索关键词 (例如 2026考研数学二大纲变动, 浙江大学408自命题)"},
+                    "num_results": {"type": "integer", "description": "返回结果条数 (默认5)"}
+                },
+                "required": ["query"]
+            },
+            level=PermissionLevel.NETWORK
+        )
+        def web_search(query: str, num_results: int = 5) -> str:
+            import urllib.parse
+            import re
+            url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            req = urllib.request.Request(url, headers=headers)
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    html = resp.read().decode("utf-8", errors="ignore")
+                    snippets = re.findall(r'<a[^>]+class="result__snippet"[^>]*>(.*?)</a>', html, re.DOTALL)
+                    titles = re.findall(r'<a[^>]+class="result__url"[^>]*>(.*?)</a>', html, re.DOTALL)
+                    results = []
+                    limit = min(len(snippets), num_results)
+                    for i in range(limit):
+                        t_clean = re.sub(r'<[^>]+>', '', titles[i]).strip() if i < len(titles) else f"结果 {i+1}"
+                        s_clean = re.sub(r'<[^>]+>', '', snippets[i]).strip()
+                        results.append(f"[{i+1}] {t_clean}\n    摘要: {s_clean}")
+                    if results:
+                        return f"【DuckDuckGo 考研网络检索: {query}】:\n\n" + "\n\n".join(results)
+                    else:
+                        clean_txt = re.sub(r"<[^>]+>", " ", html)
+                        clean_txt = re.sub(r"\s+", " ", clean_txt).strip()
+                        return f"【网络检索摘要: {query}】:\n" + clean_txt[:1000]
+            except Exception as e:
+                return f"【网络检索提示】: 当前本地网络暂时无法访问外部搜索引擎 ({e})。请优先参考工作区内置的官方考纲与参考资料。"
 
         # ─────────────────────────────────────────────────────────────
         # 6. 考研专属能力工具 (针对用户痛点定制)
@@ -562,3 +605,60 @@ class ToolRegistry:
             first = due_list[0]
             card = error_logger.generate_blind_quiz(first)
             return f"【艾宾浩斯盲盒复测 (共待测 {len(due_list)} 题)】:\n\n{card}"
+
+        # ─────────────────────────────────────────────────────────────
+        # 7. 三级记忆自主管理工具
+        # ─────────────────────────────────────────────────────────────
+
+        @self.register(
+            name="manage_memory",
+            desc="读取或更新三级记忆库 (global: 学员全局习惯; project: 考研战役配置; decisions: 关键避坑决策; session: 当前即时工作记忆)。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "description": "操作类型: read (读取), write (覆写), append (追加)", "enum": ["read", "write", "append"]},
+                    "scope": {"type": "string", "description": "记忆分层: global, project, decisions, session", "enum": ["global", "project", "decisions", "session"]},
+                    "content": {"type": "string", "description": "记忆内容 (action为write或append时必填)"}
+                },
+                "required": ["action", "scope"]
+            },
+            level=PermissionLevel.SAFE_EDIT
+        )
+        def manage_memory(action: str, scope: str, content: str = "") -> str:
+            if not self.memory_manager:
+                return "Error: 未挂载 MemoryManager"
+            act = action.lower().strip()
+            sc = scope.lower().strip()
+            if act == "read":
+                res = self.memory_manager.read_memory(sc)
+                return f"【记忆库 {sc} 内容】:\n{res or '(空)'}"
+            elif act == "write":
+                ok = self.memory_manager.write_memory(sc, content)
+                return f"Success: 已成功覆写 {sc} 记忆" if ok else f"Error: 写入 {sc} 记忆失败"
+            elif act == "append":
+                ok = self.memory_manager.append_memory(sc, content)
+                return f"Success: 已成功向 {sc} 记忆追加要点" if ok else f"Error: 追加 {sc} 记忆失败"
+            return f"Error: 未知操作 {action}"
+
+    def register_mcp_tools(self, mcp_manager):
+        """动态将外部 MCP Server 提供的工具注入注册表"""
+        if not mcp_manager:
+            return
+        for mcp_tool in mcp_manager.get_all_mcp_tools():
+            scoped_name = mcp_tool["scoped_name"]
+            server_name = mcp_tool["mcp_server"]
+            orig_name = mcp_tool["orig_name"]
+            desc = mcp_tool["description"]
+            schema = mcp_tool.get("inputSchema") or {"type": "object", "properties": {}}
+
+            def make_mcp_caller(s_name, o_name):
+                return lambda **kwargs: mcp_manager.execute_mcp_tool(s_name, o_name, kwargs)
+
+            self.tools[scoped_name] = ToolDefinition(
+                name=scoped_name,
+                desc=desc,
+                params_schema=schema,
+                func=make_mcp_caller(server_name, orig_name),
+                level=PermissionLevel.SHELL_EXEC
+            )
+

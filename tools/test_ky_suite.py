@@ -558,9 +558,95 @@ def run_tests():
     runner.assert_true(any(t["function"]["name"] == "verify_math" for t in oa_tools), "OpenAI Tools 规范：包含符号高精验算工具 verify_math")
     runner.assert_true(any(t["function"]["name"] == "read_file" for t in oa_tools), "OpenAI Tools 规范：包含标准文件读取工具 read_file")
 
+    # ------------------------------------------------------------
+    # 测试 13: 三级分层记忆、生命周期拦截钩子、网络搜索与 MCP 客户端全链路回归
+    # ------------------------------------------------------------
+    print("\n[测试组 13: 三级分层记忆、生命周期拦截钩子、网络搜索与 MCP 客户端全链路回归]")
+    from agent import MemoryManager, MemoryScope, HookManager, HookEvent, MCPProcessClient, MCPClientManager
+
+    # 1. 三级分层记忆体系 (MemoryManager)
+    mm_test = MemoryManager(workspace_root=ROOT)
+    mm_test.init_defaults_from_config(cfg)
+    mm_test.write_memory("session", "当前正在攻坚 2018 年第 15 题中值定理证明")
+    mm_test.append_memory("decisions", "[复习决策]: 数学二严禁复习三重积分")
+    mem_all = mm_test.load_all_memory()
+    runner.assert_true("Global" in mem_all and "Project" in mem_all and "Decisions" in mem_all and "Session" in mem_all, "三级分层记忆：全层级记忆编译装配完整")
+
+    # 智能体通过 manage_memory 工具自主维护记忆
+    tr_auto.memory_manager = mm_test
+    mem_tool_res = tr_auto.execute_tool("manage_memory", {"action": "read", "scope": "session"})
+    runner.assert_true("中值定理证明" in mem_tool_res, "三级分层记忆：manage_memory 成功读取 Session 工作记忆")
+
+    tr_auto.execute_tool("manage_memory", {"action": "append", "scope": "decisions", "content": "英语阅读先读题干划出题眼"})
+    d_read = mm_test.read_memory("decisions")
+    runner.assert_true("英语阅读先读题干划出题眼" in d_read, "三级分层记忆：manage_memory 成功向 decisions 追加长期避坑决策")
+
+    # 2. 生命周期拦截钩子系统 (HookManager)
+    hm_test = HookManager(workspace_root=ROOT, memory_manager=mm_test)
+    
+    # 测试 PreToolUse 考纲红线拦截 (数二超纲三重积分硬阻断)
+    allow_ok, reason_ok, _ = hm_test.trigger_pre_tool_use("verify_math", {"expression": "diff x^3"}, {"active_subject": "math"})
+    runner.assert_true(allow_ok is True, "生命周期钩子：大纲范围内考点 PreToolUse 正常放行")
+
+    allow_bad, reason_bad, _ = hm_test.trigger_pre_tool_use("verify_math", {"expression": "三重积分计算"}, {"active_subject": "math"})
+    runner.assert_true(allow_bad is False and "考纲红线" in reason_bad and "三重积分" in reason_bad, "生命周期钩子：PreToolUse 成功硬拦截数二超纲考点 (三重积分)")
+
+    # 测试 PostToolUse 错题联动
+    post_res = hm_test.trigger_post_tool_use(
+        "log_mistake",
+        {"title": "泰勒展开阶数不足", "mistake_type": "概念漏洞"},
+        "Success: 错题已成功归档入库",
+        {"active_subject": "math"}
+    )
+    runner.assert_true("联动更新 Session 记忆" in post_res, "生命周期钩子：PostToolUse 成功捕获错题归档并自动联动更新 Session 记忆")
+
+    # 测试 BeforeCompact 自动提炼决策
+    sample_msgs = [
+        {"role": "user", "content": "经过复盘我决定不要做偏难怪题，只看真题"},
+        {"role": "assistant", "content": "好的，这个策略非常务实！"}
+    ]
+    hm_test.trigger_before_compact(sample_msgs, {"active_subject": "math"})
+    dec_after = mm_test.read_memory("decisions")
+    runner.assert_true("不要做偏难怪题" in dec_after, "生命周期钩子：BeforeCompact 上下文压缩前成功自动提炼学员决策沉淀")
+
+    # 3. 增强网络工具 (fetch_url & web_search)
+    pm_auto.force_allow_all = True
+    fetch_bad = tr_auto.execute_tool("fetch_url", {"url": "file:///etc/passwd"})
+    runner.assert_true("Error" in fetch_bad or "协议" in fetch_bad, "网络增强工具：fetch_url 阻断非 HTTP 协议探测")
+
+    search_res = tr_auto.execute_tool("web_search", {"query": "考研数学二官方考试大纲", "num_results": 2})
+    runner.assert_true(isinstance(search_res, str) and len(search_res) > 10, "网络增强工具：web_search 搜索执行平稳无崩溃")
+    pm_auto.force_allow_all = False
+
+    # 4. Model Context Protocol (MCP) 客户端引擎
+    mock_server_script = ROOT / "tools" / "agent" / "_mock_mcp_server.py"
+    mcp_client = MCPProcessClient(
+        name="mock",
+        command=sys.executable,
+        args=[str(mock_server_script)],
+        cwd=ROOT
+    )
+    started = mcp_client.start()
+    runner.assert_true(started is True, "MCP 客户端：成功启动标准 stdio MCP Server 并完成 initialize 握手")
+
+    mcp_tools = mcp_client.list_tools()
+    runner.assert_true(len(mcp_tools) > 0 and mcp_tools[0]["name"] == "study_calc", "MCP 客户端：成功通过 tools/list 探测到外部 MCP 工具")
+
+    call_res = mcp_client.call_tool("study_calc", {"score": 90})
+    runner.assert_true("108.0" in call_res or "WeightedScore" in call_res, "MCP 客户端：成功通过 tools/call 调用外部 MCP 工具并获得计算结果")
+
+    # 验证动态注入 ToolRegistry
+    mcp_mgr = MCPClientManager(workspace_root=ROOT)
+    mcp_mgr.clients["mock"] = mcp_client
+    tr_auto.register_mcp_tools(mcp_mgr)
+    runner.assert_true("mcp_mock_study_calc" in tr_auto.tools, "MCP 客户端：成功将外部 MCP 工具动态注册进 Agent 智能体工具注册表")
+
+    mcp_client.stop()
+
     # 统计并返回
     success = runner.print_summary()
     sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
     run_tests()
+
