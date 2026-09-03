@@ -1,7 +1,7 @@
-# 考研学习链 (Kaoyan AI Study Chain) · 数字化备考工程脚手架
+# 考研学习链 (Kaoyan AI Study Chain) · 数字化备考工程
 
 <p align="center">
-  <strong>基于 AI Agent 私人教师协议、外置状态机驱动与自动化自测看板的开源考研备考工程脚手架</strong>
+  <strong>基于 AI Agent 私人教师协议、外置状态机驱动与自动化自测看板的开源考研备考工程</strong>
 </p>
 
 <p align="center">
