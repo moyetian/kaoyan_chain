@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme:light)">
+<meta name="theme-color" content="#090d16" media="(prefers-color-scheme:dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>考研学习看板 · 倒计时 107 天</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<style>
+:root{
+  --bg:#f8fafc; --surf:#ffffff; --surf2:#f1f5f9; --surf3:#e2e8f0; --fg:#0f172a; --mut:#64748b;
+  --line:#e2e8f0; --acc:#4f46e5; --acc-sub:#e0e7ff; --ok:#10b981; --warn:#f59e0b; --bad:#ef4444;
+  --radius:16px;
+  --sh:0 1px 3px rgba(0,0,0,.04),0 4px 12px rgba(0,0,0,.03);
+  --sh2:0 4px 20px -2px rgba(0,0,0,.06),0 2px 6px -1px rgba(0,0,0,.03);
+}
+@media(prefers-color-scheme:dark){:root:not([data-t=light]){
+  --bg:#090d16; --surf:#111827; --surf2:#1e293b; --surf3:#334155; --fg:#f8fafc; --mut:#94a3b8;
+  --line:#1e293b; --acc:#818cf8; --acc-sub:#1e1e38; --ok:#34d399; --warn:#fbbf24; --bad:#f87171;
+  --sh:0 1px 3px rgba(0,0,0,.3);
+  --sh2:0 8px 24px rgba(0,0,0,.4);
+}}
+:root[data-t=dark]{
+  --bg:#090d16; --surf:#111827; --surf2:#1e293b; --surf3:#334155; --fg:#f8fafc; --mut:#94a3b8;
+  --line:#1e293b; --acc:#818cf8; --acc-sub:#1e1e38; --ok:#34d399; --warn:#fbbf24; --bad:#f87171;
+  --sh:0 1px 3px rgba(0,0,0,.3);
+  --sh2:0 8px 24px rgba(0,0,0,.4);
+}
+:root[data-t=light]{
+  --bg:#f8fafc; --surf:#ffffff; --surf2:#f1f5f9; --surf3:#e2e8f0; --fg:#0f172a; --mut:#64748b;
+  --line:#e2e8f0; --acc:#4f46e5; --acc-sub:#e0e7ff; --ok:#10b981; --warn:#f59e0b; --bad:#ef4444;
+  --sh:0 1px 3px rgba(0,0,0,.04),0 4px 12px rgba(0,0,0,.03);
+  --sh2:0 4px 20px -2px rgba(0,0,0,.06),0 2px 6px -1px rgba(0,0,0,.03);
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{overscroll-behavior-y:none}
+body{margin:0;background:var(--bg);color:var(--fg);
+ font:14.5px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+ -webkit-font-smoothing:antialiased;padding-bottom:calc(76px + env(safe-area-inset-bottom));transition:background .2s,color .2s}
+.wrap{max-width:820px;margin:0 auto;padding:0 18px}
+
+/* ── 顶部 ── */
+header{padding:22px 0 6px}
+.hd{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.hl{line-height:1}
+.hl .lb{font-size:11.5px;letter-spacing:.12em;color:var(--mut);text-transform:uppercase;margin-bottom:7px;display:flex;align-items:center;gap:6px}
+.hl .lb::before{content:"";width:7px;height:7px;border-radius:99px;background:var(--ok);display:inline-block}
+.hl .big{font-size:56px;font-weight:850;letter-spacing:-.04em;font-variant-numeric:tabular-nums;color:var(--fg)}
+.hl .big i{font-size:20px;font-weight:600;color:var(--mut);font-style:normal;margin-left:4px}
+.hr2{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.tbtn-theme{background:var(--surf2);border:1px solid var(--line);border-radius:99px;padding:6px 12px;font-size:12px;color:var(--fg);cursor:pointer;display:flex;align-items:center;gap:5px;box-shadow:var(--sh);transition:.15s}
+.tbtn-theme:hover{background:var(--surf)}
+.hr-info{font-size:11.5px;color:var(--mut);text-align:right;line-height:1.6}
+.hr-info b{color:var(--fg);font-weight:700}
+
+.plan{margin:14px 0 4px}
+.plan .pt{display:flex;justify-content:space-between;font-size:11px;color:var(--mut);margin-bottom:6px;font-weight:600}
+.ptrack{height:7px;background:var(--surf2);border-radius:99px;overflow:hidden;border:1px solid var(--line)}
+.pfill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--acc),#06b6d4,var(--ok));transition:width 1s cubic-bezier(.2,.8,.2,1)}
+
+/* ── 学科小卡 ── */
+.subs{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0 8px}
+.sub{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);padding:12px 10px;
+ text-align:center;box-shadow:var(--sh);transition:transform .18s,box-shadow .18s}
+.sub:hover{transform:translateY(-1px);box-shadow:var(--sh2)}
+.sub .si{font-size:16px;font-weight:800;color:var(--c);line-height:1.2}
+.sub .sn{font-size:11.5px;color:var(--mut);margin-top:4px;font-weight:600}
+.sub .sv{font-size:16px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums;color:var(--fg)}
+.sub .su{font-size:10px;color:var(--mut);margin-top:2px}
+@media(prefers-color-scheme:dark){:root:not([data-t=light]) .sub .si{color:var(--cd)}}
+:root[data-t=dark] .sub .si{color:var(--cd)}
+
+/* ── 页签 ── */
+.pane{display:none;animation:fade .22s ease-out}
+.pane.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:40;
+ background:color-mix(in srgb,var(--surf) 90%,transparent);
+ backdrop-filter:saturate(180%) blur(24px);-webkit-backdrop-filter:saturate(180%) blur(24px);
+ border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -4px 16px rgba(0,0,0,.03)}
+.bar button{flex:1;background:none;border:0;color:var(--mut);font:inherit;font-size:11.5px;
+ padding:9px 4px 10px;cursor:pointer;line-height:1.3;transition:color .15s}
+.bar button i{display:block;font-style:normal;font-size:18px;margin-bottom:2px;
+ transition:transform .2s cubic-bezier(.3,1.4,.5,1)}
+.bar button.on{color:var(--acc);font-weight:700}
+.bar button.on i{transform:translateY(-2px) scale(1.1)}
+
+/* ── 通用卡片块 ── */
+.blk{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);margin:14px 0;
+ overflow:hidden;box-shadow:var(--sh)}
+.blk-h{padding:12px 18px;font-size:12.5px;color:var(--fg);font-weight:700;
+ border-bottom:1px solid var(--line);background:var(--surf2);display:flex;align-items:center}
+.blk-h .ic{color:var(--c);font-weight:800;margin-right:8px;font-size:14px}
+.blk-h .sep{margin:0 6px;opacity:.4;color:var(--mut)}
+.blk-b{padding:4px 18px 16px}
+.blk-b h3,.blk-b h4,.blk-b h5,.blk-b h6{font-size:14px;margin:14px 0 6px;font-weight:700}
+.blk-b p{margin:8px 0;line-height:1.6}
+.blk-b ul,.blk-b ol{margin:8px 0;padding-left:18px}
+.blk-b li{margin:4px 0}
+.blk-b hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+.blk-b blockquote{margin:10px 0;padding:10px 14px;background:var(--surf2);
+ border-left:3px solid var(--acc);border-radius:0 10px 10px 0;font-size:13px;color:var(--mut)}
+.blk-b code{background:var(--surf2);padding:2px 6px;border-radius:6px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+.blk-b pre{background:var(--surf2);padding:12px;border-radius:12px;overflow-x:auto;font-size:12px;line-height:1.5}
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:10px -18px;padding:0 18px}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;min-width:320px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:middle}
+th:last-child,td:last-child{border-right:0}
+tr:last-child td{border-bottom:0}
+th{background:var(--surf2);font-weight:700;color:var(--fg);white-space:nowrap}
+tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)}
+
+/* ── 遮罩自测效果 ── */
+.mask-active td:nth-child(n+2):not(:last-child){filter:blur(6px);user-select:none;cursor:pointer;transition:filter .2s ease;background:color-mix(in srgb,var(--acc-sub) 30%,transparent)}
+.mask-active td:nth-child(n+2):not(:last-child).revealed{filter:none;background:transparent}
+
+.empty{text-align:center;color:var(--mut);padding:56px 20px;font-size:13.5px}
+.empty .ei{font-size:36px;margin-bottom:10px;opacity:.6}
+.extra{margin:18px 0 8px}
+.extra summary{cursor:pointer;font-size:12.5px;color:var(--mut);padding:10px 14px;
+ background:var(--surf);border:1px solid var(--line);border-radius:12px;list-style:none;transition:background .15s}
+.extra summary:hover{background:var(--surf2)}
+.extra summary::-webkit-details-marker{display:none}
+.extra[open] summary{border-radius:12px 12px 0 0;border-bottom:0}
+
+/* ── 卡组选择 ── */
+.decks{display:flex;gap:8px;overflow-x:auto;padding:12px 0 10px;
+ -webkit-overflow-scrolling:touch;scrollbar-width:none}
+.decks::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;background:var(--surf);border:1px solid var(--line);border-radius:99px;
+ padding:7px 14px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px;
+ white-space:nowrap;transition:.15s;box-shadow:var(--sh)}
+.chip:hover{border-color:var(--acc)}
+.chip .dot{width:6px;height:6px;border-radius:99px;background:var(--c)}
+.chip .n{color:var(--mut);font-size:10.5px;font-variant-numeric:tabular-nums;background:var(--surf2);padding:1px 6px;border-radius:99px}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:700}
+.chip.on .dot{background:#fff}
+.chip.on .n{background:rgba(255,255,255,.2);color:#fff}
+
+/* ── 翻卡 ── */
+.stage{perspective:1400px;margin:8px 0 14px}
+.card{position:relative;width:100%;min-height:50vh;transform-style:preserve-3d;
+ transition:transform .48s cubic-bezier(.2,.8,.2,1);cursor:pointer}
+.card.flip{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;
+ background:var(--surf);border:1px solid var(--line);border-radius:20px;box-shadow:var(--sh2);
+ display:flex;flex-direction:column;overflow:hidden}
+.face.back{transform:rotateY(180deg)}
+.f-top{display:flex;align-items:center;gap:8px;padding:14px 18px 0;font-size:11.5px;color:var(--mut)}
+.f-top .tag{background:var(--acc);color:#fff;padding:3px 10px;border-radius:99px;font-weight:700;font-size:10.5px}
+.f-top .hard{margin-left:auto;font-size:16px;opacity:.35;cursor:pointer;transition:.2s}
+.f-top .hard.on{opacity:1;color:var(--warn);transform:scale(1.15)}
+.f-body{flex:1;display:flex;align-items:center;justify-content:center;
+ padding:18px 24px 20px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.f-q{font-size:22px;font-weight:700;line-height:1.55;text-align:center;letter-spacing:-.01em}
+.f-a{width:100%;font-size:14.5px}
+.f-a .row{padding:10px 0;border-bottom:1px solid var(--line)}
+.f-a .row:last-child{border-bottom:0}
+.f-a .k{font-size:11px;color:var(--mut);letter-spacing:.06em;text-transform:uppercase;
+ margin-bottom:4px;font-weight:700}
+.f-a .v{line-height:1.65;word-break:break-word}
+.f-hint{text-align:center;font-size:11px;color:var(--mut);padding:0 0 12px;opacity:.7}
+
+/* ── 卡片控制 ── */
+.ctrl{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.nav{flex:0 0 auto;width:42px;height:42px;border-radius:99px;background:var(--surf);
+ border:1px solid var(--line);color:var(--fg);font-size:18px;cursor:pointer;box-shadow:var(--sh);
+ display:flex;align-items:center;justify-content:center;transition:.15s}
+.nav:hover{background:var(--surf2)}
+.nav:active{transform:scale(.94)}
+.nav:disabled{opacity:.3;cursor:default}
+.meter{flex:1}
+.meter .mt{display:flex;justify-content:space-between;font-size:11px;color:var(--mut);
+ margin-bottom:5px;font-variant-numeric:tabular-nums;font-weight:600}
+.mtrack{height:5px;background:var(--surf2);border-radius:99px;overflow:hidden}
+.mfill{height:100%;background:var(--acc);border-radius:99px;transition:width .3s ease}
+.tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.tbtn{background:var(--surf);border:1px solid var(--line);color:var(--fg);border-radius:99px;
+ padding:6px 14px;font:inherit;font-size:12px;cursor:pointer;box-shadow:var(--sh);transition:.15s;display:flex;align-items:center;gap:5px}
+.tbtn:hover{background:var(--surf2)}
+.tbtn:active{transform:scale(.96)}
+.tbtn.on{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:700}
+
+/* ── 指标条 ── */
+.mgrp{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);margin:14px 0;
+ padding:14px 18px 8px;box-shadow:var(--sh)}
+.mgrp h3{margin:0 0 12px;font-size:12.5px;color:var(--mut);font-weight:700;
+ display:flex;align-items:center;gap:7px}
+.mgrp h3 .ic{color:var(--c);font-weight:800}
+.mgrp h3 .sep{opacity:.4}
+.mi{margin-bottom:14px}
+.mi .ml{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
+.mi .mn{font-size:13.5px;font-weight:600;line-height:1.35}
+.mi .mv{font-size:12.5px;color:var(--mut);white-space:nowrap;font-variant-numeric:tabular-nums}
+.mi .mv b{font-size:14.5px;color:var(--fg);font-weight:800}
+.mtk{position:relative;height:8px;background:var(--surf2);border-radius:99px;overflow:visible;border:1px solid var(--line)}
+.mfl{height:100%;border-radius:99px;width:0;transition:width .9s cubic-bezier(.2,.8,.2,1)}
+.mfl.good{background:linear-gradient(90deg,var(--ok),#34d399)}
+.mfl.mid{background:linear-gradient(90deg,var(--warn),#fde047)}
+.mfl.bad{background:linear-gradient(90deg,var(--bad),#fda4af)}
+.mfl.neu{background:var(--acc)}
+.tick{position:absolute;top:-3px;width:2px;height:14px;background:var(--fg);opacity:.4;border-radius:2px}
+.tick::after{content:attr(data-l);position:absolute;top:-14px;left:50%;transform:translateX(-50%);
+ font-size:9px;color:var(--mut);white-space:nowrap;opacity:.85}
+.leg{display:flex;gap:16px;font-size:11px;color:var(--mut);padding:4px 0 10px;flex-wrap:wrap}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opacity:.7}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="hd">
+    <div class="hl">
+      <div class="lb">2026 研考倒计时</div>
+      <div class="big">107<i>天</i></div>
+    </div>
+    <div class="hr2">
+      <button class="tbtn-theme" id="th-btn" title="点击切换深色/浅色模式">🌓 主题模式</button>
+      <div class="hr-info">
+        初试首日 · <b>12-19</b><br>
+        备考第 <b>26</b> / 133 天
+      </div>
+    </div>
+  </div>
+  <div class="plan">
+    <div class="pt"><span>备考总日程推进</span><span>19.5%</span></div>
+    <div class="ptrack"><div class="pfill" id="pf" style="width:0"></div></div>
+  </div>
+</header>
+
+<div class="subs" id="subs"></div>
+
+<div id="p-today" class="pane on">
+  <div style="display:flex;justify-content:flex-end;margin:8px 0 4px">
+    <button class="tbtn" id="mask-today-btn">👁 开启遮罩自测</button>
+  </div>
+  <section class='blk' style='--c:#2563eb;--cd:#60a5fa'><div class='blk-h'><span class='ic'>∫</span>数学</div><div class='blk-b'><h3>今日数学任务</h3>
+<blockquote>日期：YYYY-MM-DD ｜ 阶段：[阶段名称] ｜ 目标用时：150 分钟</blockquote>
+<div class='tw'><table><thead><tr><th>模块</th><th>任务内容</th><th>预计用时</th><th>完成状态</th></tr></thead><tbody><tr><td>概念精讲</td><td>[今日核心考点与步骤模板]</td><td>30 分钟</td><td>[ ]</td></tr><tr><td>习题精练</td><td>[指定教材课后题/题册指定题号]</td><td>80 分钟</td><td>[ ]</td></tr><tr><td>订正归档</td><td>AI 批改、错题分析并录入错题本</td><td>40 分钟</td><td>[ ]</td></tr></tbody></table></div></div></section><section class='blk' style='--c:#e11d48;--cd:#fb7185'><div class='blk-h'><span class='ic'>En</span>英语</div><div class='blk-b'><h3>今日英语任务</h3>
+<blockquote>日期：YYYY-MM-DD ｜ 目标用时：120 分钟</blockquote>
+<div class='tw'><table><thead><tr><th>模块</th><th>训练内容</th><th>预计用时</th><th>完成状态</th></tr></thead><tbody><tr><td>词汇与长难句</td><td>高频核心词复盘 + 2 句真题长难句拆解</td><td>30 分钟</td><td>[ ]</td></tr><tr><td>真题阅读</td><td>1 篇历年真题阅读精读与选项定位</td><td>60 分钟</td><td>[ ]</td></tr><tr><td>语料积累</td><td>作文通用功能句默写 2 组</td><td>30 分钟</td><td>[ ]</td></tr></tbody></table></div></div></section><section class='blk' style='--c:#d97706;--cd:#fbbf24'><div class='blk-h'><span class='ic'>政</span>政治</div><div class='blk-b'><h3>今日政治任务</h3>
+<blockquote>日期：YYYY-MM-DD ｜ 目标用时：60 分钟</blockquote>
+<div class='tw'><table><thead><tr><th>模块</th><th>内容</th><th>预计用时</th><th>完成状态</th></tr></thead><tbody><tr><td>考点速记</td><td>帽子词默写 5 条</td><td>15 分钟</td><td>[ ]</td></tr><tr><td>习题精练</td><td>章节核心选择题 10 题</td><td>30 分钟</td><td>[ ]</td></tr><tr><td>订正复盘</td><td>错题归类与概念澄清</td><td>15 分钟</td><td>[ ]</td></tr></tbody></table></div></div></section><section class='blk' style='--c:#059669;--cd:#34d399'><div class='blk-h'><span class='ic'>★</span>专业课</div><div class='blk-b'><h3>今日专业课任务</h3>
+<blockquote>日期：YYYY-MM-DD ｜ 目标用时：180 分钟</blockquote>
+<div class='tw'><table><thead><tr><th>序号</th><th>任务内容</th><th>预计耗时</th><th>状态</th></tr></thead><tbody><tr><td>1</td><td>教材第 X 章核心概念精读</td><td>45 分钟</td><td>[ ]</td></tr><tr><td>2</td><td>白名单习题精做（2 道计算大题）</td><td>90 分钟</td><td>[ ]</td></tr><tr><td>3</td><td>AI 步骤赋分批改与错题入库</td><td>45 分钟</td><td>[ ]</td></tr></tbody></table></div></div></section>
+</div>
+
+<div id="p-memo" class="pane">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px">
+    <div class="decks" id="dk-memo"></div>
+    <button class="tbtn" id="mask-memo-btn" style="flex-shrink:0">👁 遮罩自测</button>
+  </div>
+  <div id="fc-memo"></div>
+  <details class='extra'><summary>📄 补充说明（非卡片内容）</summary><section class='blk' style='--c:#d97706;--cd:#fbbf24'><div class='blk-h'><span class='ic'>政</span>政治<span class='sep'>·</span>马原</div><div class='blk-b'><h4>一、马原核心帽子词</h4>
+<ul><li>物质的唯一特性：客观实在性</li><li>意识的本质：人脑的机能和对客观存在的主观映象</li><li>唯物辩证法的总特征：联系和发展</li><li>唯物辩证法的实质和核心：对立统一规律</li><li>认识的本质：主体在实践基础上对客体的能动反映</li><li>实践的本质：人类能动地改造世界的社会性的客观物质活动</li></ul></div></section><section class='blk' style='--c:#d97706;--cd:#fbbf24'><div class='blk-h'><span class='ic'>政</span>政治<span class='sep'>·</span>毛中特</div><div class='blk-b'><h4>二、毛中特与新思想高频帽子词</h4>
+<ul><li>党的根本宗旨：全心全意为人民服务</li><li>党的根本组织原则：民主集中制</li><li>中国式现代化的本质要求：坚持中国共产党领导</li><li>发展的第一要务：高质量发展</li><li>全面深化改革的出发点和落脚点：促进社会公平正义、增进人民福祉</li></ul></div></section><section class='blk' style='--c:#d97706;--cd:#fbbf24'><div class='blk-h'><span class='ic'>政</span>政治<span class='sep'>·</span>新思想</div><div class='blk-b'><h4>二、毛中特与新思想高频帽子词</h4>
+<ul><li>党的根本宗旨：全心全意为人民服务</li><li>党的根本组织原则：民主集中制</li><li>中国式现代化的本质要求：坚持中国共产党领导</li><li>发展的第一要务：高质量发展</li><li>全面深化改革的出发点和落脚点：促进社会公平正义、增进人民福祉</li></ul></div></section></details>
+</div>
+
+<div id="p-weak" class="pane">
+  <div class="decks" id="dk-weak"></div>
+  <div id="fc-weak"></div>
+  
+</div>
+
+<div id="p-stat" class="pane">
+  <div class="leg">
+    <span><i style="background:var(--ok)"></i>达标</span>
+    <span><i style="background:var(--warn)"></i>接近</span>
+    <span><i style="background:var(--bad)"></i>待突破</span>
+    <span>│ 竖线 = 目标线</span>
+  </div>
+  <div id="stat"></div>
+</div>
+
+<footer>考研学习看板 · 数据驱动 · 稳扎稳打 · 更新于 2026-09-03 11:23</footer>
+</div>
+
+<nav class="bar">
+  <button class="on" data-p="today"><i>📋</i>今日</button>
+  <button data-p="memo"><i>🧠</i>必背</button>
+  <button data-p="weak"><i>🎯</i>薄弱</button>
+  <button data-p="stat"><i>📊</i>数据</button>
+</nav>
+
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<script>
+var D = {"memo": [{"id": "math-memo-0", "subj": "数学", "key": "math", "icon": "∫", "color": "#2563eb", "dark": "#60a5fa", "title": "公式默写卡", "cards": [{"f": "x -> 0 时，sin", "b": [["核心公式与结论", "x -> 0 时，sin(x)~x, ln(1+x)~x, e^x-1~x, 1-cos(x)~x^2/2"], ["考点描述", "等价无穷小代换"]]}, {"f": "d/dx", "b": [["核心公式与结论", "(d/dx) \\int_a^x f(t)dt = f(x)"], ["考点描述", "变上限积分导数"]]}]}, {"id": "eng-memo-1", "subj": "英语", "key": "eng", "icon": "En", "color": "#e11d48", "dark": "#fb7185", "title": "长难句", "cards": [{"f": "While it is easy to ignore... (示例)", "b": [["意群切分与语法骨架", "While [从句] / it is easy to ignore... / [主句]"], ["规范译文", "尽管容易忽略...但实际表明..."]]}]}, {"id": "pro-memo-2", "subj": "专业课", "key": "pro", "icon": "★", "color": "#059669", "dark": "#34d399", "title": "核心概念", "cards": [{"f": "示例考点 1", "b": [["核心公式 / 定理内容", "$Formula / Conclusion$"], ["适用条件与注意事项", "仅适用于线性时不变系统 / 理想状态"]]}, {"f": "示例考点 2", "b": [["核心公式 / 定理内容", "$Formula / Conclusion$"], ["适用条件与注意事项", "注意正负号与边界条件"]]}]}], "weak": [{"id": "pro-weak-0", "subj": "专业课", "key": "pro", "icon": "★", "color": "#059669", "dark": "#34d399", "title": "章节掌握度", "cards": [{"f": "绪论与基本概念", "b": [["章节编号", "第一章"], ["核心考点", "核心分类与基本性质"], ["掌握度", "B"], ["错题重做队列", "[ ] 课后习题 1-3"]]}, {"f": "核心基础理论 (上)", "b": [["章节编号", "第二章"], ["核心考点", "系统方程与基本响应"], ["掌握度", "B"], ["错题重做队列", "[ ] 课后习题 2-5"]]}, {"f": "核心基础理论 (下)", "b": [["章节编号", "第三章"], ["核心考点", "频域/复频域变换分析"], ["掌握度", "C"], ["错题重做队列", "[ ] 课后习题 3-8"]]}, {"f": "综合应用与设计", "b": [["章节编号", "第四章"], ["核心考点", "实际系统综合求解"], ["错题重做队列", "尚未开始"]]}]}, {"id": "pro-weak-1", "subj": "专业课", "key": "pro", "icon": "★", "color": "#059669", "dark": "#34d399", "title": "掌握度", "cards": [{"f": "绪论与基本概念", "b": [["章节编号", "第一章"], ["核心考点", "核心分类与基本性质"], ["掌握度", "B"], ["错题重做队列", "[ ] 课后习题 1-3"]]}, {"f": "核心基础理论 (上)", "b": [["章节编号", "第二章"], ["核心考点", "系统方程与基本响应"], ["掌握度", "B"], ["错题重做队列", "[ ] 课后习题 2-5"]]}, {"f": "核心基础理论 (下)", "b": [["章节编号", "第三章"], ["核心考点", "频域/复频域变换分析"], ["掌握度", "C"], ["错题重做队列", "[ ] 课后习题 3-8"]]}, {"f": "综合应用与设计", "b": [["章节编号", "第四章"], ["核心考点", "实际系统综合求解"], ["错题重做队列", "尚未开始"]]}]}], "metrics": [], "subjects": [{"key": "math", "name": "数学", "icon": "∫", "color": "#2563eb", "dark": "#60a5fa", "target": 110, "full": 150, "notes": 0, "ok": true}, {"key": "eng", "name": "英语", "icon": "En", "color": "#e11d48", "dark": "#fb7185", "target": 60, "full": 100, "notes": 0, "ok": true}, {"key": "pol", "name": "政治", "icon": "政", "color": "#d97706", "dark": "#fbbf24", "target": 70, "full": 100, "notes": null, "ok": true}, {"key": "pro", "name": "专业课", "icon": "★", "color": "#059669", "dark": "#34d399", "target": 120, "full": 150, "notes": 0, "ok": true}], "plan": {"day": 26, "total": 133}};
+
+function tex(el){
+  if(!el || typeof renderMathInElement !== 'function') return;
+  try{
+    renderMathInElement(el,{
+      delimiters:[
+        {left:'$$',right:'$$',display:true},
+        {left:'$',right:'$',display:false}
+      ],
+      throwOnError:false,
+      errorColor:'#f87171'
+    });
+  }catch(e){console.warn('KaTeX render warning:', e);}
+}
+function esc(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
+function isDark(){
+  var a=document.documentElement.getAttribute('data-t');
+  if(a) return a==='dark';
+  return matchMedia('(prefers-color-scheme:dark)').matches;
+}
+function col(o){return isDark()?(o.dark||o.color):(o.color||'#4f46e5');}
+
+/* ── 主题切换 ── */
+(function(){
+  var tb=document.getElementById('th-btn');
+  if(!tb) return;
+  try{
+    var saved=localStorage.getItem('kytheme');
+    if(saved) document.documentElement.setAttribute('data-t', saved);
+  }catch(e){}
+  tb.onclick=function(){
+    var cur=document.documentElement.getAttribute('data-t');
+    var next=cur==='dark'?'light':(cur==='light'?'dark':(isDark()?'light':'dark'));
+    document.documentElement.setAttribute('data-t',next);
+    try{localStorage.setItem('kytheme',next);}catch(e){}
+  };
+})();
+
+/* ── 学科小卡 ── */
+(function(){
+  var h='';
+  D.subjects.forEach(function(s){
+    var v = s.notes===null ? '—' : s.notes;
+    h += "<div class='sub' style='--c:"+s.color+";--cd:"+s.dark+"'>"
+       + "<div class='si'>"+esc(s.icon)+"</div>"
+       + "<div class='sn'>"+esc(s.name)+"</div>"
+       + "<div class='sv'>"+v+"</div>"
+       + "<div class='su'>"+(s.notes===null?'规划中':'篇归档')+"</div></div>";
+  });
+  var subHost=document.getElementById('subs');
+  if(subHost) subHost.innerHTML=h;
+})();
+
+/* ── 遮罩自测逻辑 ── */
+(function(){
+  function bindMask(btnId, containerId){
+    var btn=document.getElementById(btnId);
+    var pane=document.getElementById(containerId);
+    if(!btn || !pane) return;
+    btn.onclick=function(){
+      pane.classList.toggle('mask-active');
+      var on = pane.classList.contains('mask-active');
+      btn.classList.toggle('on', on);
+      btn.textContent = on ? '✓ 已开启遮罩自测' : '👁 开启遮罩自测';
+    };
+    pane.addEventListener('click', function(e){
+      var td=e.target.closest('td');
+      if(td && pane.classList.contains('mask-active')){
+        td.classList.toggle('revealed');
+      }
+    });
+  }
+  bindMask('mask-today-btn', 'p-today');
+  bindMask('mask-memo-btn', 'p-memo');
+})();
+
+/* ── 闪卡引擎 ── */
+function Flash(tab){
+  var decks=D[tab]||[], self=this;
+  this.tab=tab; this.di=0; this.ci=0; this.shuffled=false; this.onlyHard=false;
+  this.order=[];
+  var KEY='ky-hard-'+tab;
+  try{ this.hard=JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){ this.hard={}; }
+  this.saveHard=function(){ try{localStorage.setItem(KEY,JSON.stringify(self.hard));}catch(e){} };
+
+  this.deck=function(){ return decks[self.di]; };
+  this.key=function(i){ return self.di+':'+i; };
+
+  this.rebuild=function(){
+    var d=self.deck(); if(!d){self.order=[];return;}
+    var idx=d.cards.map(function(_,i){return i;});
+    if(self.onlyHard) idx=idx.filter(function(i){return self.hard[self.key(i)];});
+    if(self.shuffled) for(var i=idx.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=idx[i];idx[i]=idx[j];idx[j]=t;}
+    self.order=idx; if(self.ci>=idx.length) self.ci=0;
+  };
+
+  this.chips=function(){
+    var el=document.getElementById('dk-'+tab); if(!el) return;
+    if(!decks.length){el.innerHTML='';return;}
+    el.innerHTML=decks.map(function(d,i){
+      return "<div class='chip"+(i===self.di?' on':'')+"' data-i='"+i+"' style='--c:"+col(d)+"'>"
+           + "<span class='dot'></span>"+esc(d.subj)+" · "+esc(d.title)
+           + "<span class='n'>"+d.cards.length+"</span></div>";
+    }).join('');
+    el.querySelectorAll('.chip').forEach(function(c){
+      c.onclick=function(){ self.di=+c.dataset.i; self.ci=0; self.rebuild(); self.chips(); self.render(); };
+    });
+  };
+
+  this.render=function(){
+    var host=document.getElementById('fc-'+tab); if(!host) return;
+    var d=self.deck();
+    if(!d){ host.innerHTML="<div class='empty'><div class='ei'>🗂</div>暂无卡片数据<br><small>在 _状态/ 中完善表格后会自动生成卡片</small></div>"; return; }
+    if(!self.order.length){
+      host.innerHTML="<div class='tools'>"+self.toolsHtml()+"</div>"
+        +"<div class='empty'><div class='ei'>⭐</div>暂无标记难点<br><small>翻卡时点击右上角星号标记</small></div>";
+      self.bindTools(); return;
+    }
+    var i=self.order[self.ci], c=d.cards[i], C=col(d);
+    var hard=!!self.hard[self.key(i)];
+    var back=c.b.map(function(kv){
+      return "<div class='row'><div class='k'>"+esc(kv[0])+"</div><div class='v'>"+esc(kv[1])+"</div></div>";
+    }).join('');
+
+    host.innerHTML =
+      "<div class='tools'>"+self.toolsHtml()+"</div>"
+    + "<div class='ctrl'>"
+    +   "<button class='nav' id='pv-"+tab+"' aria-label='上一张'>‹</button>"
+    +   "<div class='meter' style='--c:"+C+"'><div class='mt'><span>"+esc(d.title)+"</span>"
+    +     "<span>"+(self.ci+1)+" / "+self.order.length+"</span></div>"
+    +     "<div class='mtrack'><div class='mfill' style='width:"+((self.ci+1)/self.order.length*100)+"%'></div></div></div>"
+    +   "<button class='nav' id='nx-"+tab+"' aria-label='下一张'>›</button>"
+    + "</div>"
+    + "<div class='stage'><div class='card' id='cd-"+tab+"' style='--c:"+C+"'>"
+    +   "<div class='face'>"
+    +     "<div class='f-top'><span class='tag'>"+esc(d.subj)+"</span><span>"+esc(d.title)+"</span>"
+    +       "<span class='hard"+(hard?' on':'')+"' id='hd-"+tab+"'>"+(hard?'★':'☆')+"</span></div>"
+    +     "<div class='f-body'><div class='f-q'>"+esc(c.f)+"</div></div>"
+    +     "<div class='f-hint'>点击翻转卡片 · 左右轻扫切换</div>"
+    +   "</div>"
+    +   "<div class='face back'>"
+    +     "<div class='f-top'><span class='tag'>答案解析</span><span>"+esc(d.title)+"</span></div>"
+    +     "<div class='f-body'><div class='f-a'>"+back+"</div></div>"
+    +     "<div class='f-hint'>再次点击返回卡片正面</div>"
+    +   "</div>"
+    + "</div></div>";
+
+    var card=document.getElementById('cd-'+tab);
+    if(card) card.onclick=function(e){ if(e.target.id==='hd-'+tab) return; card.classList.toggle('flip'); };
+    var hd=document.getElementById('hd-'+tab);
+    if(hd) hd.onclick=function(e){
+      e.stopPropagation();
+      var k=self.key(i);
+      if(self.hard[k]) delete self.hard[k]; else self.hard[k]=1;
+      self.saveHard(); self.render();
+    };
+    var pv=document.getElementById('pv-'+tab);
+    if(pv) pv.onclick=function(){ self.go(-1); };
+    var nx=document.getElementById('nx-'+tab);
+    if(nx) nx.onclick=function(){ self.go(1); };
+    if(card) self.swipe(card);
+    self.bindTools();
+    tex(host);
+  };
+
+  this.toolsHtml=function(){
+    var n=Object.keys(self.hard).filter(function(k){return k.indexOf(self.di+':')===0;}).length;
+    return "<button class='tbtn"+(self.shuffled?' on':'')+"' id='sf-"+self.tab+"'>🔀 随机打乱</button>"
+         + "<button class='tbtn"+(self.onlyHard?' on':'')+"' id='oh-"+self.tab+"'>⭐ 重点难点 "+(n?'('+n+')':'')+"</button>"
+         + "<button class='tbtn' id='rs-"+self.tab+"'>↺ 从头开始</button>";
+  };
+  this.bindTools=function(){
+    var a=document.getElementById('sf-'+self.tab),b=document.getElementById('oh-'+self.tab),c=document.getElementById('rs-'+self.tab);
+    if(a)a.onclick=function(){self.shuffled=!self.shuffled;self.ci=0;self.rebuild();self.render();};
+    if(b)b.onclick=function(){self.onlyHard=!self.onlyHard;self.ci=0;self.rebuild();self.render();};
+    if(c)c.onclick=function(){self.ci=0;self.rebuild();self.render();};
+  };
+
+  this.go=function(step){
+    if(!self.order.length) return;
+    self.ci=(self.ci+step+self.order.length)%self.order.length;
+    self.render();
+  };
+
+  this.swipe=function(el){
+    var x0=null,y0=null;
+    el.addEventListener('touchstart',function(e){x0=e.touches[0].clientX;y0=e.touches[0].clientY;},{passive:true});
+    el.addEventListener('touchend',function(e){
+      if(x0===null)return;
+      var dx=e.changedTouches[0].clientX-x0, dy=e.changedTouches[0].clientY-y0;
+      if(Math.abs(dx)>52 && Math.abs(dx)>Math.abs(dy)*1.4){ self.go(dx<0?1:-1); }
+      x0=y0=null;
+    },{passive:true});
+  };
+
+  this.init=function(){ self.rebuild(); self.chips(); self.render(); };
+}
+
+var FM=new Flash('memo'), FW=new Flash('weak');
+FM.init(); FW.init();
+
+document.addEventListener('keydown',function(e){
+  var btn=document.querySelector('.bar button.on');
+  if(!btn) return;
+  var t=btn.dataset.p;
+  var f = t==='memo'?FM : (t==='weak'?FW:null);
+  if(!f) return;
+  if(e.key==='ArrowRight'){f.go(1);e.preventDefault();}
+  if(e.key==='ArrowLeft'){f.go(-1);e.preventDefault();}
+  if(e.key===' '){
+    var c=document.getElementById('cd-'+t);
+    if(c){c.classList.toggle('flip');e.preventDefault();}
+  }
+});
+
+/* ── 指标进度条 ── */
+(function(){
+  var host=document.getElementById('stat');
+  if(!host) return;
+  if(!D.metrics.length){ host.innerHTML="<div class='empty'><div class='ei'>📊</div>暂无可视化指标数据<br><small>在薄弱点雷达中记录错因即可生成</small></div>"; return; }
+  var h='';
+  D.metrics.forEach(function(g){
+    var C=col(g);
+    h+="<div class='mgrp' style='--c:"+C+"'><h3><span class='ic'>"+esc(g.icon)+"</span>"
+      +esc(g.subj)+"<span class='sep'>·</span>"+esc(g.title)+"</h3>";
+    g.items.forEach(function(it){
+      var pct = it.pct;
+      var cls='neu', w=0, tick='';
+      if(pct!==undefined){
+        w=Math.max(pct,1.5);
+        if(it.target!==undefined){
+          var ok = it.dir==='lower' ? (pct<=it.target) : (pct>=it.target);
+          var near = it.dir==='lower' ? (pct<=it.target*1.35) : (pct>=it.target*0.8);
+          cls = ok?'good':(near?'mid':'bad');
+          tick="<div class='tick' style='left:"+Math.min(it.target,99)+"%' data-l='目标'></div>";
+        }else{
+          cls = pct>=75?'good':(pct>=50?'mid':'bad');
+        }
+      }else if(it.count!==undefined){
+        w=Math.min(it.count*10,100); cls='neu';
+      }
+      h+="<div class='mi'><div class='ml'><span class='mn'>"+esc(it.label)+"</span>"
+        +"<span class='mv'><b>"+esc(it.text)+"</b>"+(it.target!==undefined?" / 目标 "+it.target+"%":"")+"</span></div>"
+        +"<div class='mtk'>"+tick+"<div class='mfl "+cls+"' data-w='"+w+"'></div></div></div>";
+    });
+    h+="</div>";
+  });
+  host.innerHTML=h;
+})();
+
+function animate(){
+  var pf=document.getElementById('pf');
+  if(pf) pf.style.width='19.5%';
+  document.querySelectorAll('#stat .mfl').forEach(function(el,i){
+    setTimeout(function(){ el.style.width=el.dataset.w+'%'; }, 40+i*22);
+  });
+}
+
+/* ── 页签切换 ── */
+document.querySelectorAll('.bar button').forEach(function(b){
+  b.onclick=function(){
+    document.querySelectorAll('.bar button').forEach(function(x){x.classList.remove('on')});
+    document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('on')});
+    b.classList.add('on');
+    var targetPane=document.getElementById('p-'+b.dataset.p);
+    if(targetPane) targetPane.classList.add('on');
+    window.scrollTo(0,0);
+    if(b.dataset.p==='stat') animate();
+    try{localStorage.setItem('kytab',b.dataset.p)}catch(e){}
+  };
+});
+
+tex(document.getElementById('p-today'));
+setTimeout(animate,180);
+try{
+  var t=localStorage.getItem('kytab');
+  if(t&&t!=='today'){var el=document.querySelector('.bar button[data-p="'+t+'"]'); if(el)el.click();}
+}catch(e){}
+</script>
+</body>
+</html>
