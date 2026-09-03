@@ -200,29 +200,29 @@
 
 ```mermaid
 flowchart TD
-    User([学员输入指令 / 拍照提交草稿 / 报出真题合集]) --> ContextEngine[Context Engine 上下文引擎\nAGENTS.md + 学情档案 + 真实资料白名单 + Token Compaction 防爆]
+    User(["学员输入指令 / 拍照提交草稿 / 报出真题合集"]) --> ContextEngine["Context Engine 上下文引擎<br>AGENTS.md + 学情档案 + 真实资料白名单 + Token Compaction 防爆"]
     
-    subgraph AgentLoop [自主智能体执行循环 Agent Loop]
-        ContextEngine --> LLM[LLM 推理端点\nOpenAI / DeepSeek / Qwen / Ollama 等]
-        LLM --> Decision{是否需要调用外部工具?}
+    subgraph AgentLoop ["自主智能体执行循环 Agent Loop"]
+        ContextEngine --> LLM["LLM 推理端点<br>OpenAI / DeepSeek / Qwen / Ollama 等"]
+        LLM --> Decision{"是否需要调用外部工具?"}
         
-        Decision -->|否: 产出最终解答| Stream[极速流式打字机逐字输出]
-        Decision -->|是: 生成 Tool Call| HookCheck{PreToolUse Hook 拦截\n沙箱越界检查 + 数二超纲红线硬拦截}
+        Decision -->|否: 产出最终解答| Stream["极速流式打字机逐字输出"]
+        Decision -->|是: 生成 Tool Call| HookCheck{"PreToolUse Hook 拦截<br>沙箱越界检查 + 数二超纲红线硬拦截"}
         
-        HookCheck -->|拦截超纲/越界| Reject[回送阻断警告, 提示模型纠正]
+        HookCheck -->|拦截超纲/越界| Reject["回送阻断警告, 提示模型纠正"]
         Reject --> LLM
         
-        HookCheck -->|放行| PermCheck{Permission Manager\n0~5 分级权限系统}
-        PermCheck -->|ask 模式待确认| TerminalPrompt[终端弹出 Codex 风格审批卡片\n[y]批准 / [a]永久信任 / [n]拒绝]
-        TerminalPrompt --> Exec[执行工具: read_exam_paper / verify_math / ...]
+        HookCheck -->|放行| PermCheck{"Permission Manager<br>0~5 分级权限系统"}
+        PermCheck -->|ask 模式待确认| TerminalPrompt["终端弹出审批卡片<br>(y)批准 / (a)永久信任 / (n)拒绝"]
+        TerminalPrompt --> Exec["执行工具: read_exam_paper / verify_math / ..."]
         PermCheck -->|auto / safe 模式放行| Exec
         
-        Exec --> PostAudit[PostToolUse Hook 审计\n错题入库联动 + 记忆持久化]
-        PostAudit --> TR[组装 Tool Result 回包]
+        Exec --> PostAudit["PostToolUse Hook 审计<br>错题入库联动 + 记忆持久化"]
+        PostAudit --> TR["组装 Tool Result 回包"]
         TR --> LLM
     end
 
-    Stream --> Followup[5 维快捷操作栏: [1]符号验算 [2]记入错题 [3]实时伴侣 [4]变式演练 [5]苏格拉底提示]
+    Stream --> Followup["5 维快捷操作栏:<br>(1)符号验算 (2)记入错题 (3)实时伴侣 (4)变式演练 (5)苏格拉底提示"]
 ```
 
 ### 1. 彻底解决“真题 PDF 抽题难”痛点
