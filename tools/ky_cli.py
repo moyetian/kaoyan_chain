@@ -480,7 +480,7 @@ def configure_llm(cfg):
     """配置大模型 API 服务商与密钥"""
     print(colorize("\n--- 🧠 1. 大模型 API 服务商与密钥配置 ---", C.CYAN))
     print("支持接入各大主流大模型 API：")
-    print("  [1] DeepSeek (api.deepseek.com) · 极力推荐 (V3/R1 理工科解题首选)")
+    print("  [1] DeepSeek (api.deepseek.com) (V3/R1 理工科解题)")
     print("  [2] 智谱清言 GLM (open.bigmodel.cn)")
     print("  [3] 阿里云百炼 Qwen (dashscope.aliyuncs.com)")
     print("  [4] 月之暗面 Kimi (api.moonshot.cn)")
@@ -573,7 +573,7 @@ def configure_webhooks(cfg):
 
         print(colorize("\n--- 📱 2. 聊天机器人 / 消息推送与双向讲题配置 ---", C.CYAN))
         print("请选择您想配置或连接的机器人平台：")
-        print(f"  [1] 📱 微信个人号 (WeChat ClawBot 手机扫码直连 - 官方推荐)")
+        print(f"  [1] 📱 微信个人号 (WeChat ClawBot 手机扫码直连)")
         print(f"  [2] 🏢 企业微信群机器人 (Webhook 推送模式) [{wc_tag}]")
         print(f"  [3] 📌 钉钉群自定义机器人 (DingTalk)       [{dt_tag}]")
         print(f"  [4] 🐦 飞书群自定义机器人 (Feishu)         [{fs_tag}]")
@@ -698,8 +698,8 @@ def show_config(cfg):
 def configure_vision_model(cfg):
     """配置用于视觉识图的多模态大模型"""
     print(colorize("\n--- 📸 配置多模态视觉大模型 (Vision Model) ---", C.BOLD))
-    print("推荐预设：")
-    print("  [1] 智谱清言 GLM-4V-Flash (免费调用 / 速度极快 / 强力推荐)")
+    print("可选模型预设：")
+    print("  [1] 智谱清言 GLM-4V-Flash")
     print("  [2] 阿里通义千问 Qwen2-VL (DashScope / 支持高难度数学手写草稿)")
     print("  [3] 硅基流动 SiliconFlow Qwen-VL (注册送免费额度 / 国内直连稳定)")
     print("  [4] 谷歌 Gemini 1.5 Flash (免费层 / 数学公式解析极其强悍)")
@@ -789,7 +789,7 @@ def manage_syllabi_cli(cfg):
         return
     elif c == "1":
         print("\n  --- 📐 请选择您的数学考试科目 ---")
-        print("    [1] 数学二 (302) [高数78% + 线代22%，严控不考概率/级数/曲面积分/三重积分] (专硕推荐)")
+        print("    [1] 数学二 (302) [高数78% + 线代22%，严控不考概率/级数/曲面积分/三重积分] (专硕主流)")
         print("    [2] 数学一 (301) [高数56% + 线代22% + 概率22%，考查范围最广/工学学硕]")
         print("    [3] 数学三 (303) [微积分56% + 线代22% + 概率22%，经管门类/差分方程]")
         print("    [4] 396 经济类综合能力数学 [微积分+线代+概率，单选与计算]")
@@ -803,7 +803,7 @@ def manage_syllabi_cli(cfg):
         print(colorize(f"\n[√] 已切换为 {math_info['name']}！已将官方大纲与超纲红线写入 01-数学/考试大纲.md", C.GREEN))
     elif c == "2":
         print("\n  --- 📖 请选择您的英语考试科目 ---")
-        print("    [1] 英语二 (204) [专硕为主，整段段落英译汉 15分 + 图表数据大作文 15分] (推荐)")
+        print("    [1] 英语二 (204) [专硕为主，整段段落英译汉 15分 + 图表数据大作文 15分] (专硕主流)")
         print("    [2] 英语一 (201) [学硕为主，5大高难长难句精译 10分 + 图画哲理漫画大作文 20分]")
         e_sel = input("  请选择 (1~2) [默认 1]: ").strip() or "1"
         e_key = {"1": "eng2", "2": "eng1"}.get(e_sel, "eng2")
@@ -1708,18 +1708,18 @@ def show_bridge_guide():
 • {C.GREEN}双向对话 Webhook{C.RESET} (本网关): 钉钉/飞书/QQ 收到群员提问后，把题目 POST 给考研网关，私教批改完立即在群里回复。
 
 {C.BOLD}【当前网关服务地址】{C.RESET}
-  • 本地/同局域网回调地址: {C.GREEN}http://{local_ip}:8088/webhook{C.RESET} (QQ NapCat 本地部署推荐)
-  • 外网穿透推荐命令: {C.CYAN}cpolar http 8088{C.RESET} 或 {C.CYAN}cloudflared tunnel --url http://localhost:8088{C.RESET}
+  • 本地/同局域网回调地址: {C.GREEN}http://{local_ip}:8088/webhook{C.RESET}
+  • 外网穿透参考命令: {C.CYAN}cpolar http 8088{C.RESET} 或 {C.CYAN}cloudflared tunnel --url http://localhost:8088{C.RESET}
 
 ────────────────────────────────────────────────────────────────────────
-{C.BOLD}📌 0. 微信个人号 (WeChat ClawBot 手机扫码直连 - 官方推荐，无需公网与穿透):{C.RESET}
+{C.BOLD}📌 0. 微信个人号 (WeChat ClawBot 手机扫码直连，无需公网与穿透):{C.RESET}
   ① 在终端直接运行命令: {C.CYAN}ky clawbot{C.RESET} (或 {C.CYAN}npx -y @tencent-weixin/openclaw-weixin-cli@latest install{C.RESET})
   ② 终端将自动输出微信登录二维码，打开手机微信【扫一扫】授权连接
   ③ 本地考研私教 OpenAI API 地址: {C.GREEN}http://127.0.0.1:8088/v1{C.RESET} (自动挂载全科考纲与解题技能)
   ④ 在个人微信中给机器人发题目，即可随时随地在手机上享受考研私教 1对1 讲题！
 
 ────────────────────────────────────────────────────────────────────────
-{C.BOLD}📌 1. 钉钉群 (DingTalk) 实现双向讲题 (最推荐，2分钟搞定):{C.RESET}
+{C.BOLD}📌 1. 钉钉群 (DingTalk) 实现双向讲题:{C.RESET}
   ① 打开钉钉电脑端 ➔ 进入你的考研备考群 ➔ 点击右上角【群设置】➔【智能群助手】
   ② 找到你创建的自定义机器人 ➔ 点击展开设置
   ③ 开启【机器人回调】开关 ➔ 在【POST 地址】中填入:
