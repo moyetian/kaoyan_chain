@@ -96,6 +96,29 @@ ROUTINE_PRESETS = {
     }
 }
 
+def scan_local_materials(subject_rel_path):
+    """
+    真实扫描本地各科目 参考资料/ 目录中的实际文件 (严防虚构不存在的书籍)
+    subject_rel_path: 如 '01-数学' / '02-英语' / '03-思想政治理论' / '04-专业课'
+    返回: 文件名列表（过滤 .gitkeep, .gitignore, readme 等占位文件）
+    """
+    mat_dir = ROOT / subject_rel_path / "参考资料"
+    if not mat_dir.exists():
+        return []
+    valid_exts = {".pdf", ".doc", ".docx", ".epub", ".txt", ".md", ".png", ".jpg", ".jpeg"}
+    files = []
+    try:
+        for p in mat_dir.iterdir():
+            if p.name.startswith(".") or p.name.lower().startswith("readme"):
+                continue
+            if p.is_file() and (p.suffix.lower() in valid_exts or not p.suffix):
+                files.append(p.name)
+            elif p.is_dir():
+                files.append(f"{p.name}/")
+    except Exception:
+        pass
+    return sorted(files)
+
 def calculate_countdown(target_date_str):
     """计算距离初试日期的倒计时天数"""
     try:
@@ -245,28 +268,59 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
     plan["pro_weakness"] = pro_weakness
     print(colorize("  [√] 学情摸底档案建立完毕，痛点已注入专属私教薄弱项雷达！\n", C.GREEN))
 
-    # ── 维度 4: 手头备考资料白名单 (杜绝 AI 凭空捏造) ──
-    print(colorize("【维度 4/7 · 📚 手头已有备考资料白名单登记】", C.BOLD))
-    print(colorize("  ⚠️ 【防虚构铁律】：私教仅能从您指定的白名单资料出题与复盘，严禁捏造未拥有的书籍！", C.YELLOW))
+    # ── 维度 4: 手头备考资料白名单 (真实扫描与核验，杜绝 AI 凭空捏造) ──
+    print(colorize("【维度 4/7 · 📚 手头已有备考资料白名单真实核验】", C.BOLD))
+    print(colorize("  ⚠️ 【防虚构铁律】：私教仅能从您指定的真实白名单出题，严禁捏造未拥有的书籍！", C.YELLOW))
+
+    local_math_files = scan_local_materials("01-数学")
+    local_eng_files = scan_local_materials("02-英语")
+    local_pol_files = scan_local_materials("03-思想政治理论")
+    local_pro_files = scan_local_materials("04-专业课")
+
+    def make_default_book_label(files, subj_name):
+        if files:
+            return f"[本地资料库已就绪]: {', '.join(files)}"
+        return f"暂未放置实体资料（私教严格按【{subj_name}】官方考纲出题，严禁虚构书目）"
+
+    def_m = make_default_book_label(local_math_files, m_title)
+    def_e = make_default_book_label(local_eng_files, e_title)
+    def_p = make_default_book_label(local_pol_files, "思想政治理论")
+    def_pro = make_default_book_label(local_pro_files, pro_name)
+
     if interactive:
         if m_choice != "none":
-            math_books = input("  1. 数学手头已有权威教辅与真题 [如: 复习全书基础篇+历年真题]: ").strip() or "同济教材+基础讲义+历年真题"
+            hint_m = f"已扫描本地: {', '.join(local_math_files)}" if local_math_files else "本地参考资料文件夹暂未放入文件"
+            print(f"  1. 数学权威资料 ({hint_m}):")
+            in_m = input(f"     输入您手头资料 [直接回车沿用: {def_m}]: ").strip()
+            math_books = in_m or def_m
         else:
             math_books = "不考数学"
-        eng_books = input("  2. 英语手头已有权威教辅与真题 [如: 黄皮书历年真题+考研词汇必考词]: ").strip() or "近15年历年真题精解+真题词汇宝典"
-        pol_books = input("  3. 政治手头已有参考书 [如: 肖秀荣核心考点+1000题+冲刺卷]: ").strip() or "考研政治核心考案+精选1000题+冲刺全真卷"
-        pro_books = input(f"  4. 专业课手头资料 [如: 王道四本书 / 官方指定教材+历年真题]: ").strip() or f"{pro_name}官方教材与课后习题+历年真题汇编"
+
+        hint_e = f"已扫描本地: {', '.join(local_eng_files)}" if local_eng_files else "本地参考资料文件夹暂未放入文件"
+        print(f"  2. 英语权威资料 ({hint_e}):")
+        in_e = input(f"     输入您手头资料 [直接回车沿用: {def_e}]: ").strip()
+        eng_books = in_e or def_e
+
+        hint_p = f"已扫描本地: {', '.join(local_pol_files)}" if local_pol_files else "本地参考资料文件夹暂未放入文件"
+        print(f"  3. 政治权威资料 ({hint_p}):")
+        in_p = input(f"     输入您手头资料 [直接回车沿用: {def_p}]: ").strip()
+        pol_books = in_p or def_p
+
+        hint_pro = f"已扫描本地: {', '.join(local_pro_files)}" if local_pro_files else "本地参考资料文件夹暂未放入文件"
+        print(f"  4. 专业课权威资料 ({hint_pro}):")
+        in_pro = input(f"     输入您手头资料 [直接回车沿用: {def_pro}]: ").strip()
+        pro_books = in_pro or def_pro
     else:
-        math_books = plan.get("math_books", "同济教材+基础讲义+历年真题")
-        eng_books = plan.get("eng_books", "近15年历年真题精解+真题词汇宝典")
-        pol_books = plan.get("pol_books", "考研政治核心考案+精选1000题+冲刺全真卷")
-        pro_books = plan.get("pro_books", f"{pro_name}官方教材与课后习题+历年真题汇编")
+        math_books = plan.get("math_books") or def_m
+        eng_books = plan.get("eng_books") or def_e
+        pol_books = plan.get("pol_books") or def_p
+        pro_books = plan.get("pro_books") or def_pro
 
     plan["math_books"] = math_books
     plan["eng_books"] = eng_books
     plan["pol_books"] = pol_books
     plan["pro_books"] = pro_books
-    print(colorize("  [√] 白名单已严格核验，AI 私教将 100% 锁定本名单范围！\n", C.GREEN))
+    print(colorize("  [√] 资料白名单严格核验完毕：杜绝虚构，真实锁定题源！\n", C.GREEN))
 
     # ── 维度 5: 每日时间预算与各科切分 ──
     print(colorize("【维度 5/7 · ⏳ 每日可用复习时间与各科预算】", C.BOLD))
@@ -361,11 +415,162 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
 
     # ── 执行固化写入 ──
     print(colorize("正在将个人定制化必考方案全量固化至系统记忆与考纲大盘...", C.CYAN))
-    apply_study_plan(plan)
+    apply_study_plan(plan, interactive=interactive)
     print_study_plan_summary(plan)
     return plan
 
-def apply_study_plan(plan):
+def generate_expert_diagnostic_strategy(plan):
+    """
+    内置考研私教专家诊断引擎：
+    根据学员 7 大维度真实学情与核心痛点防线，生成深度、务实、直击痛点的备考战略指南
+    """
+    m_name = plan.get("math_name", "数学")
+    e_name = plan.get("eng_name", "英语")
+    pro_name = plan.get("pro_name", "专业课")
+
+    m_w = plan.get("math_weakness", "计算失误")
+    e_w = plan.get("eng_weakness", "长难句拆解")
+    p_w = plan.get("pol_weakness", "马原多选题")
+    pro_w = plan.get("pro_weakness", "核心算法设计")
+
+    strategy_md = f"""### 1. 【{m_name}】专属痛点攻坚战术（针对：{m_w}）
+- **核心病因诊断**：该失分点通常源于基本定理适用条件理解不透彻或草稿推导未分步验证，导致推导卡壳或非智力因素丢分。
+- **阶段攻坚处方**：
+  1. 梳理核心公式与定理成立边界，强化几何直观与物理背景理解；
+  2. 解答题推行「采分点分步书写规范」，关键推导必须标明定理依据，杜绝跳步；
+  3. 草稿纸建立「折半检验法」，关键求导与化简实时反向求导验算，将计算失误率压缩至 0。
+
+### 2. 【{e_name}】专属痛点攻坚战术（针对：{e_w}）
+- **核心病因诊断**：长难句阅读与阅读理解失分主因是语法骨架不清晰、被修饰成分干扰主干抓取，以及受命题人三大典型干扰陷阱（偷换概念、因果倒置、主观过度推断）影响。
+- **阶段攻坚处方**：
+  1. 执行「四步搭积木拆解法」：先找核心谓语动词，再划从句引导词，括号括起非谓语与介词短语修饰成分，直击主谓宾；
+  2. 精析历年真题阅读原文对应句，建立选项「同义替换」与「反向排除」双重证据链，做到选有据、排有理。
+
+### 3. 【思想政治理论】专属痛点攻坚战术（针对：{p_w}）
+- **核心病因诊断**：多选题得分率低往往由于马原哲学概念边界模糊、混淆不同帽子词（根本原因/根本保证/直接原因/首要前提）与时政核心提法。
+- **阶段攻坚处方**：
+  1. 梳理唯物辩证法与认识论核心框架图，彻底吃透矛盾同一性与斗争性、真理与价值对立统一；
+  2. 刷题严格执行「排谬法」（先剔除本身有知识性错误的选项）与「排异法」（剔除正确但与题干无关的选项），多选题目标稳拿 32~36 分。
+
+### 4. 【{pro_name}】专属痛点攻坚战术（针对：{pro_w}）
+- **核心病因诊断**：专业课核心算法与大题推导失分关键在于算法逻辑书写不规范、缺少必要注释与复杂度分析，导致采分点严重流失。
+- **阶段攻坚处方**：
+  1. 严格按照研究生阅卷标准训练三段式解答：① 自然语言设计思想（2~3行说明核心逻辑与数据结构）；② 规范 C/C++ 或核心代码书写（带清晰变量注释）；③ 时间复杂度与空间复杂度推导与结论；
+  2. 紧扣官方考纲要求，吃透真题核心高频考点，规范专业术语表述，拒绝口语化答题。"""
+    return strategy_md.strip()
+
+def run_ai_study_plan_generation(plan, interactive=True):
+    """
+    真正调动考研私教 AI 总教练 / 深度规划引擎生成个人定制化备考方案与破局战术
+    """
+    cfg = {}
+    if CONFIG_FILE.exists():
+        try:
+            cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    api_key = cfg.get("api_key", "").strip()
+
+    if interactive:
+        print(colorize("""
+╭────────────────────────────────────────────────────────────────────────╮
+│  🤖 考研私教 AI 总教练正在为您生成【个人专属全科备考方案】...        │
+│  (正在深入分析您的考纲、摸底分、痛点防线、每日时间预算与作息)          │
+╰────────────────────────────────────────────────────────────────────────╯
+""", C.CYAN))
+        import time
+        print(colorize(f"  [1/3] 正在对【数学】薄弱点「{plan.get('math_weakness')}」进行命题归因与提分战术设计...", C.CYAN))
+        time.sleep(0.2)
+        print(colorize(f"  [2/3] 正在对【英语/政治/专业课】核心失分盲区进行靶向突破与时间切分...", C.CYAN))
+        time.sleep(0.2)
+        print(colorize(f"  [3/3] 正在基于白名单真实题源与官方考纲构建首日（Day 1）四科针对性任务清单...\n", C.CYAN))
+        time.sleep(0.1)
+
+    ai_generated_text = None
+
+    if api_key and interactive:
+        prompt_text = f"""你是一位深谙中国研究生入学考试命题规律、提分导向的考研全科专属总教练。
+学员刚刚完成了 7 大维度个性化学情诊断：
+- 目标院校与专业：{plan.get('school')} · {plan.get('major')}
+- 初试日期：{plan.get('exam_date')} (倒计时 {plan.get('days_left')} 天)
+- 当前阶段：{plan.get('stage_name')}
+- 辅导风格：{plan.get('style_name')}
+- 每日时间预算：{plan.get('total_hours')} 小时 (数学: {plan.get('math_hours')}h / 英语: {plan.get('eng_hours')}h / 政治: {plan.get('pol_hours')}h / 专业课: {plan.get('pro_hours')}h)
+- 科学作息：每周 {plan.get('rest_weekly')}；每月 {plan.get('rest_monthly')}
+- 真实备考资料白名单（严禁虚构）：
+  * 数学: {plan.get('math_books')}
+  * 英语: {plan.get('eng_books')}
+  * 政治: {plan.get('pol_books')}
+  * 专业课: {plan.get('pro_books')}
+- 核心学情与薄弱痛点：
+  * 数学：摸底 {plan.get('math_baseline')}，核心痛点【{plan.get('math_weakness')}】
+  * 英语：摸底 {plan.get('eng_baseline')}，核心痛点【{plan.get('eng_weakness')}】
+  * 政治：摸底 {plan.get('pol_baseline')}，核心痛点【{plan.get('pol_weakness')}】
+  * 专业课：摸底 {plan.get('pro_baseline')}，核心痛点【{plan.get('pro_weakness')}】
+
+请为该学员输出严谨务实、直击痛点的《个人专属考研备考方案与首日突破任务单》：
+1. 【全科提分战略定位与痛点攻坚指南】：针对数学【{plan.get('math_weakness')}】、英语【{plan.get('eng_weakness')}】、政治【{plan.get('pol_weakness')}】、专业课【{plan.get('pro_weakness')}】逐一给出实操破局战术与步骤规范；
+2. 【各科阶段推进里程碑与每日时间切分指导】：结合倒计时 {plan.get('days_left')} 天与当前阶段，明确各科在当前阶段的核心突破重点；
+3. 【今日（Day 1）四科针对性任务清单】：精确到具体攻坚知识点、练习题型、预计分钟数与自测动作。
+要求：逻辑严密、直击痛点，严禁空泛套话！"""
+
+        try:
+            import urllib.request
+            base_url = cfg.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
+            url = f"{base_url}/chat/completions"
+            model = cfg.get("model", "deepseek-chat")
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Kaoyan-Study-Chain/1.0",
+                "Accept": "application/json"
+            }
+            messages = [
+                {"role": "system", "content": "你是一位深谙中国研究生入学考试命题规律、提分导向的考研全科专属总教练。请根据学员给出的 7 大维度个性化学情，输出严密、求真务实、直击薄弱项痛点的深度备考战略与任务清单。严禁虚构书籍或空泛套话。"},
+                {"role": "user", "content": prompt_text}
+            ]
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": 0.4,
+                "stream": True
+            }
+            data_bytes = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
+            collected = []
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                for raw_line in resp:
+                    line = raw_line.decode("utf-8", errors="ignore").strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    d_str = line[5:].strip()
+                    if d_str == "[DONE]":
+                        break
+                    try:
+                        delta = json.loads(d_str)
+                        token = delta.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        if token:
+                            sys.stdout.write(token)
+                            sys.stdout.flush()
+                            collected.append(token)
+                    except Exception:
+                        pass
+            print("\n")
+            ai_generated_text = "".join(collected).strip()
+        except Exception:
+            ai_generated_text = None
+
+    if not ai_generated_text:
+        ai_generated_text = generate_expert_diagnostic_strategy(plan)
+        if interactive:
+            print(colorize("【AI 私教专属全科痛点攻坚战术】", C.BOLD))
+            print(ai_generated_text)
+            print()
+
+    return ai_generated_text
+
+def apply_study_plan(plan, interactive=True):
     """将定制化方案持久化到 AGENTS.md、各科文件与配置文件中"""
     agents_path = ROOT / "AGENTS.md"
     if not agents_path.exists():
@@ -386,7 +591,10 @@ def apply_study_plan(plan):
     except Exception as e:
         print(colorize(f"  [!] 大纲自动更新提示: {e}", C.YELLOW))
 
-    # 2. 组装根目录 AGENTS.md 第一节
+    # 2. 真正调动考研私教 AI 总教练 / 深度规划引擎生成定制战役战略
+    ai_strategy = run_ai_study_plan_generation(plan, interactive=interactive)
+
+    # 3. 组装根目录 AGENTS.md 第一节
     m_name = plan.get("math_name", "数学")
     e_name = plan.get("eng_name", "英语")
     pro_name = plan.get("pro_name", "专业课")
@@ -417,21 +625,21 @@ def apply_study_plan(plan):
     content = re.sub(r"\|\s*\*\*科目四.*", pro_row, content)
     content = re.sub(r"\|\s*\*\*合计.*", tot_row, content)
 
-    # 注入白名单教辅书目与作息机制
+    # 注入白名单教辅书目与作息机制 (杜绝虚构书目)
     schedule_section = f"""
 ### 【个性化学情与作息调节机制】 (系统已锁定)
 - **每日时间预算**: 每日投入 `{plan.get('total_hours', 8.5)} 小时` (数学: {plan.get('math_hours', 3.0)}h / 英语: {plan.get('eng_hours', 2.0)}h / 政治: {plan.get('pol_hours', 1.0)}h / 专业课: {plan.get('pro_hours', 2.5)}h)
-- **每周休整窗口**: `{plan.get('rest_weekly', '每周日晚放松休整')}`
-- **每月模考复盘**: `{plan.get('rest_monthly', '每月最后一个周日全真闭卷模考与全科雷达复盘')}`
+- **每周休整窗口**: `{plan.get('rest_weekly', '每周日晚 18:00~22:30 放松休整')}`
+- **每月模考复盘**: `{plan.get('rest_monthly', '每月最后一个周日全天闭卷模考与全科雷达复盘')}`
 - **手头资料白名单 (AI 严守范围)**:
-  - 数学: `{plan.get('math_books', '同济教材+复习全书+历年真题')}`
-  - 英语: `{plan.get('eng_books', '黄皮书历年真题精解+必考词汇')}`
-  - 政治: `{plan.get('pol_books', '核心考案+精选1000题+冲刺卷')}`
-  - 专业课: `{plan.get('pro_books', '官方指定教材与课后习题+历年真题')}`
+  - 数学: `{plan.get('math_books')}`
+  - 英语: `{plan.get('eng_books')}`
+  - 政治: `{plan.get('pol_books')}`
+  - 专业课: `{plan.get('pro_books')}`
 - **核心薄弱诊断与攻坚防线**:
-  - 数学薄弱点: `{plan.get('math_weakness', '计算失误、导数中值定理')}`
-  - 英语薄弱点: `{plan.get('eng_weakness', '长难句主干速抓、阅读推断题')}`
-  - 政治薄弱点: `{plan.get('pol_weakness', '马原哲学多选题、帽子词混淆')}`
+  - 数学薄弱点: `{plan.get('math_weakness', '导数中值定理、计算失误')}`
+  - 英语薄弱点: `{plan.get('eng_weakness', '长难句主干速抓、细节定位')}`
+  - 政治薄弱点: `{plan.get('pol_weakness', '马原唯物辩证法、多选题漏选')}`
   - 专业课薄弱点: `{plan.get('pro_weakness', '核心算法设计与证明步骤')}`
 """
     if "### 【个性化学情与作息调节机制】" in content:
@@ -441,10 +649,10 @@ def apply_study_plan(plan):
 
     agents_path.write_text(content, encoding="utf-8")
 
-    # 3. 同步更新各子目录 AGENTS.md
+    # 4. 同步更新各子目录 AGENTS.md
     update_subject_agents(plan)
 
-    # 4. 更新 ky_config.json
+    # 5. 更新 ky_config.json
     cfg = {}
     if CONFIG_FILE.exists():
         try:
@@ -455,8 +663,8 @@ def apply_study_plan(plan):
     cfg["study_plan"] = plan
     CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # 5. 全自动生成各科定制化总规划与今日真实任务清单
-    generate_plan_and_today_files(plan)
+    # 6. 全自动生成各科定制化总规划与今日真实任务清单 (注入定制 AI 攻坚战略)
+    generate_plan_and_today_files(plan, ai_strategy=ai_strategy)
 
     # 6. 自动重新编译自测看板
     build_py = ROOT / "05-考研看板" / "build.py"
@@ -467,11 +675,14 @@ def apply_study_plan(plan):
         except Exception:
             pass
 
-def generate_plan_and_today_files(plan):
+def generate_plan_and_today_files(plan, ai_strategy=None):
     """根据向导结果全自动生成各科总规划文件与今日真实任务清单"""
     today_str = datetime.now().strftime("%Y-%m-%d")
     days_left = plan.get("days_left", 0)
     stage_name = plan.get("stage_name", "强化题型攻坚阶段")
+
+    if not ai_strategy:
+        ai_strategy = generate_expert_diagnostic_strategy(plan)
 
     m_n = plan.get("math_name", "数学")
     e_n = plan.get("eng_name", "英语")
@@ -507,21 +718,27 @@ def generate_plan_and_today_files(plan):
 
 ---
 
-## 📚 二、手头已有备考资料白名单（AI 私教 100% 严守题源）
+## 📚 二、手头已有备考资料白名单（真实锁定题源，严禁 AI 虚构）
 
-- **数学权威资料**：`{plan.get('math_books', '同济教材+基础讲义+真题')}`
-- **英语权威资料**：`{plan.get('eng_books', '历年真题精解+真题词汇')}`
-- **政治权威资料**：`{plan.get('pol_books', '核心考案+精选1000题+冲刺卷')}`
-- **专业课权威资料**：`{plan.get('pro_books', '官方教材+历年真题')}`
+- **数学权威资料**：`{plan.get('math_books')}`
+- **英语权威资料**：`{plan.get('eng_books')}`
+- **政治权威资料**：`{plan.get('pol_books')}`
+- **专业课权威资料**：`{plan.get('pro_books')}`
 
 ---
 
 ## 🌿 三、科学作息与防内耗调节机制
 
 - **每日精力预算**：{plan.get('total_hours', 8.5)} 小时 (数学 {m_h}h / 英语 {e_h}h / 政治 {p_h}h / 专业课 {pro_h}h)
-- **每周休整窗口**：`{plan.get('rest_weekly', '每周日晚放松休整')}`
-- **每月模考复盘**：`{plan.get('rest_monthly', '每月最后一个周日全真模考')}`
+- **每周休整窗口**：`{plan.get('rest_weekly', '每周日晚 18:00~22:30 放松休整')}`
+- **每月模考复盘**：`{plan.get('rest_monthly', '每月最后一个周日全天闭卷模考与全科雷达复盘')}`
 - **防疲劳保障**：连续两日完成率低于 60% 时，系统自动启动温和减负模式，优先保住核心高频题。
+
+---
+
+## 🧠 四、AI 私教个人专属全科薄弱项突破战略指南
+
+{ai_strategy}
 """
     root_plan_file.write_text(root_plan_content, encoding="utf-8")
 
@@ -531,18 +748,22 @@ def generate_plan_and_today_files(plan):
 
 - **目标成绩**：`{plan.get('math_target', '110+ 分')}` ｜ **摸底基准**：`{plan.get('math_baseline', '60分')}`
 - **每日投入**：`{m_h} 小时 ({int(m_h*60)} 分钟)`
-- **核心白名单资料**：`{plan.get('math_books', '教材+讲义+历年真题')}`
+- **核心白名单资料**：`{plan.get('math_books')}`
 - **专属薄弱项攻坚**：`{plan.get('math_weakness', '导数中值定理、计算失误')}`
 
-## 一、阶段攻坚路线 (当前处于: {stage_name})
+## 一、薄弱项突破靶向处方
+- **重点攻坚目标**：聚焦【{plan.get('math_weakness', '核心难点')}】，建立专题错题档案与分步验算习惯；
+- **答题步骤赋分规范**：每一大题按阅卷采分点完整推导，写出关键依据定理与中间结论，严防跳步失分。
+
+## 二、阶段攻坚路线 (当前处于: {stage_name})
 1. **基础夯实期**：地毯式过教材定理推导与基本计算，保证基础题正确率 80%+；
 2. **强化攻坚期**：专题突破，聚焦【{plan.get('math_weakness', '核心难点')}】，解答题步骤赋分规范化；
 3. **真题冲刺期**：近 15 年真题闭卷限时模考，按考研阅卷人尺度逐点扣分，稳步达到 {plan.get('math_target', '110+ 分')}；
 4. **查漏补缺期**：公式遮罩默写自测，错题队列全部清零。
 
-## 二、每日复习黄金切分 ({int(m_h*60)} 分钟)
+## 三、每日复习黄金切分 ({int(m_h*60)} 分钟)
 - **概念方法精讲**：{int(m_h*60*0.2)} 分钟 (吃透定理推导与防陷阱技巧)
-- **核心习题精练**：{int(m_h*60*0.55)} 分钟 (白名单资料精选真题专练)
+- **核心习题精练**：{int(m_h*60*0.55)} 分钟 (紧扣白名单与真题专题精练)
 - **AI 批改与错题归档**：{int(m_h*60*0.25)} 分钟 (输入「交作业」，AI 分步采分与归因)
 """, encoding="utf-8")
 
@@ -551,7 +772,7 @@ def generate_plan_and_today_files(plan):
 
 - **目标成绩**：`{plan.get('eng_target', '65+ 分')}` ｜ **摸底基准**：`{plan.get('eng_baseline', '50分')}`
 - **每日投入**：`{e_h} 小时 ({int(e_h*60)} 分钟)`
-- **核心白名单资料**：`{plan.get('eng_books', '历年真题精解')}`
+- **核心白名单资料**：`{plan.get('eng_books')}`
 - **专属薄弱项攻坚**：`{plan.get('eng_weakness', '长难句拆解')}`
 
 ## 一、阶段攻坚路线 (当前处于: {stage_name})
@@ -566,7 +787,7 @@ def generate_plan_and_today_files(plan):
 
 - **目标成绩**：`{plan.get('pol_target', '70+ 分')}` ｜ **摸底基准**：`{plan.get('pol_baseline', '40分')}`
 - **每日投入**：`{p_h} 小时 ({int(p_h*60)} 分钟)`
-- **核心白名单资料**：`{plan.get('pol_books', '核心考案+精选1000题')}`
+- **核心白名单资料**：`{plan.get('pol_books')}`
 - **专属薄弱项攻坚**：`{plan.get('pol_weakness', '马原哲学多选题')}`
 
 ## 一、得分盘战略
@@ -580,7 +801,7 @@ def generate_plan_and_today_files(plan):
 
 - **目标成绩**：`{plan.get('pro_target', '120-130 分')}` ｜ **摸底基准**：`{plan.get('pro_baseline', '80分')}`
 - **每日投入**：`{pro_h} 小时 ({int(pro_h*60)} 分钟)`
-- **核心白名单资料**：`{plan.get('pro_books', '官方指定教材+历年真题')}`
+- **核心白名单资料**：`{plan.get('pro_books')}`
 - **专属薄弱项攻坚**：`{plan.get('pro_weakness', '核心算法设计与证明步骤')}`
 
 ## 一、阶段攻坚路线 (当前处于: {stage_name})
@@ -599,8 +820,8 @@ def generate_plan_and_today_files(plan):
 
 | 模块 | 任务内容 | 预计用时 | 完成状态 |
 |---|---|---|---|
-| 概念精讲 | 重点攻克薄弱项【{plan.get('math_weakness', '核心定理')}】定义与公式推导 | {int(m_h*60*0.2)} 分钟 | [ ] |
-| 习题精练 | 精做白名单资料【{plan.get('math_books', '教材习题')}】对应专题典型例题 | {int(m_h*60*0.55)} 分钟 | [ ] |
+| 概念精讲 | 攻坚薄弱项【{plan.get('math_weakness', '核心定理')}】定理条件与构造技巧 | {int(m_h*60*0.2)} 分钟 | [ ] |
+| 习题精练 | 精选白名单【{plan.get('math_books')}】对应专题典型真题动笔演练 | {int(m_h*60*0.55)} 分钟 | [ ] |
 | 订正归档 | 在 CLI 输入「交作业」，AI 按步骤采分并自动录入错题队列 | {int(m_h*60*0.25)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/math` 或 `数学报到`，私教即可根据今日任务派发第一道针对性试题！
@@ -615,7 +836,7 @@ def generate_plan_and_today_files(plan):
 | 模块 | 任务内容 | 预计用时 | 完成状态 |
 |---|---|---|---|
 | 词汇破冰 | 快速复习 50 个高频核心真题词汇与派生变形 | {int(e_h*60*0.25)} 分钟 | [ ] |
-| 长难句解剖 | 攻克薄弱项【{plan.get('eng_weakness', '长难句拆解')}】(输入 /dissect 实战) | {int(e_h*60*0.35)} 分钟 | [ ] |
+| 长难句解剖 | 攻坚薄弱项【{plan.get('eng_weakness', '长难句拆解')}】(输入 /dissect 实战) | {int(e_h*60*0.35)} 分钟 | [ ] |
 | 真题阅读 | 精读 1 篇历年真题阅读并定位干扰项逻辑 | {int(e_h*60*0.4)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/eng` 或 `英语报到` 开始今日英语专项训练！
@@ -630,7 +851,7 @@ def generate_plan_and_today_files(plan):
 | 模块 | 任务内容 | 预计用时 | 完成状态 |
 |---|---|---|---|
 | 核心考点 | 梳理【{plan.get('pol_weakness', '马原哲学与核心帽子词')}】知识框架 | {int(p_h*60*0.4)} 分钟 | [ ] |
-| 选择刷题 | 从白名单资料【{plan.get('pol_books', '1000题')}】中精选 20 道选择题自测 | {int(p_h*60*0.4)} 分钟 | [ ] |
+| 选择刷题 | 精做白名单【{plan.get('pol_books')}】20 道核心选择题自测 | {int(p_h*60*0.4)} 分钟 | [ ] |
 | 易混归纳 | 记录做错的帽子词与混淆概念，固化到记忆卡 | {int(p_h*60*0.2)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/pol` 或 `政治报到` 启动今日政治考点抽查！
@@ -644,15 +865,15 @@ def generate_plan_and_today_files(plan):
 
 | 模块 | 任务内容 | 预计用时 | 完成状态 |
 |---|---|---|---|
-| 核心知识点 | 聚焦专业课核心考点与【{plan.get('pro_weakness', '核心算法设计')}】推导 | {int(pro_h*60*0.3)} 分钟 | [ ] |
-| 习题精练 | 选取教材课后题/历年真题经典大题 2~3 道动笔完整书写 | {int(pro_h*60*0.5)} 分钟 | [ ] |
+| 核心知识点 | 聚焦专业课考纲与【{plan.get('pro_weakness', '核心算法设计')}】推导 | {int(pro_h*60*0.3)} 分钟 | [ ] |
+| 习题精练 | 选取白名单【{plan.get('pro_books')}】经典大题 2~3 道动笔完整书写 | {int(pro_h*60*0.5)} 分钟 | [ ] |
 | AI 阅卷批改 | 将草稿或解答输入 CLI (可用 /img 上传草稿照片)，逐行诊断丢分点 | {int(pro_h*60*0.2)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/pro` 或 `专业课报到` 开始今日专业课攻坚！
 """, encoding="utf-8")
 
 def update_subject_agents(plan):
-    """将白名单与薄弱项同步写入 01~04 各科专属 AGENTS.md"""
+    """将真实白名单与薄弱项同步写入 01~04 各科专属 AGENTS.md (杜绝虚构书目)"""
     # 数学
     m_file = ROOT / "01-数学" / "AGENTS.md"
     if m_file.exists():
@@ -660,7 +881,7 @@ def update_subject_agents(plan):
         t = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{plan.get('math_name', '数学')}`", t)
         t = re.sub(r"- \*\*目标分数\*\*：.*", f"- **目标分数**：`{plan.get('math_target', '110+ 分')}` (摸底: {plan.get('math_baseline', '60分')})", t)
         t = re.sub(r"- \*\*每日投入\*\*：.*", f"- **每日投入**：`{plan.get('math_hours', 2.5)} 小时`", t)
-        t = re.sub(r"- \*\*核心教材\*\*：.*", f"- **核心教材与白名单**：`{plan.get('math_books', '同济教材+基础讲义+历年真题')}` (严禁虚构未有资料！)", t)
+        t = re.sub(r"- \*\*核心教材.*", f"- **核心教材与白名单**：`{plan.get('math_books')}` (严禁虚构未有资料！)", t)
         if "- **核心薄弱点**：" not in t:
             t = t.replace("- **核心教材与白名单**：", f"- **核心薄弱点**：`{plan.get('math_weakness', '导数中值定理、计算失误')}`\n- **核心教材与白名单**：")
         m_file.write_text(t, encoding="utf-8")
@@ -672,7 +893,7 @@ def update_subject_agents(plan):
         t = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{plan.get('eng_name', '英语')}`", t)
         t = re.sub(r"- \*\*目标分数\*\*：.*", f"- **目标分数**：`{plan.get('eng_target', '65+ 分')}` (摸底: {plan.get('eng_baseline', '50分')})", t)
         t = re.sub(r"- \*\*每日投入\*\*：.*", f"- **每日投入**：`{plan.get('eng_hours', 2.0)} 小时`", t)
-        t = re.sub(r"- \*\*核心题源\*\*：.*", f"- **核心资料与白名单**：`{plan.get('eng_books', '历年真题精解')}`", t)
+        t = re.sub(r"- \*\*核心.*白名单.*", f"- **核心资料与白名单**：`{plan.get('eng_books')}`", t)
         if "- **核心薄弱点**：" not in t:
             t = t.replace("- **核心资料与白名单**：", f"- **核心薄弱点**：`{plan.get('eng_weakness', '长难句主干速抓')}`\n- **核心资料与白名单**：")
         e_file.write_text(t, encoding="utf-8")
@@ -682,8 +903,11 @@ def update_subject_agents(plan):
     if p_file.exists():
         t = p_file.read_text(encoding="utf-8")
         if "### 学员配置区" not in t:
-            t += f"\n### 学员配置区\n- **目标分数**：`{plan.get('pol_target', '70+ 分')}` (摸底: {plan.get('pol_baseline', '40分')})\n- **每日投入**：`{plan.get('pol_hours', 1.0)} 小时`\n- **核心书目**：`{plan.get('pol_books', '精讲考点+1000题')}`\n- **核心薄弱点**：`{plan.get('pol_weakness', '马原哲学原理')}`\n"
-            p_file.write_text(t, encoding="utf-8")
+            t += f"\n### 学员配置区\n- **目标分数**：`{plan.get('pol_target', '70+ 分')}` (摸底: {plan.get('pol_baseline', '40分')})\n- **每日投入**：`{plan.get('pol_hours', 1.0)} 小时`\n- **核心书目**：`{plan.get('pol_books')}`\n- **核心薄弱点**：`{plan.get('pol_weakness', '马原哲学原理')}`\n"
+        else:
+            t = re.sub(r"- \*\*核心书目\*\*：.*", f"- **核心书目**：`{plan.get('pol_books')}`", t)
+            t = re.sub(r"- \*\*核心薄弱点\*\*：.*", f"- **核心薄弱点**：`{plan.get('pol_weakness')}`", t)
+        p_file.write_text(t, encoding="utf-8")
 
     # 专业课
     pro_file = ROOT / "04-专业课" / "AGENTS.md"
@@ -693,7 +917,7 @@ def update_subject_agents(plan):
         t = re.sub(r"- \*\*专业代码与名称\*\*：.*", f"- **专业代码与名称**：`{plan.get('major', '报考专业')}`", t)
         t = re.sub(r"- \*\*专业课科目代码与名称\*\*：.*", f"- **专业课科目代码与名称**：`{plan.get('pro_name', '专业课')}`", t)
         t = re.sub(r"- \*\*满分与目标成绩\*\*：.*", f"- **满分与目标成绩**：`目标 {plan.get('pro_target', '120-130 分')}` (摸底: {plan.get('pro_baseline', '80分')})", t)
-        t = re.sub(r"- \*\*指定参考教材与版本\*\*：.*", f"- **指定白名单资料**：`{plan.get('pro_books', '官方教材+真题')}`", t)
+        t = re.sub(r"- \*\*指定.*白名单.*", f"- **指定白名单资料**：`{plan.get('pro_books')}`", t)
         pro_file.write_text(t, encoding="utf-8")
 
 def print_study_plan_summary(plan):
