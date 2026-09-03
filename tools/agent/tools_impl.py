@@ -1,0 +1,564 @@
+# -*- coding: utf-8 -*-
+"""
+考研学习链 (ky-cli) · 标准工具实现库 (Tools Implementation & Registry)
+包含:
+1. 文件工具 (read_file, write_file, edit_file, delete_file, list_directory, search_files)
+2. 搜索工具 (grep)
+3. Shell与系统工具 (run_command)
+4. Git 工具 (git_status, git_diff, git_log)
+5. 网络工具 (fetch_url)
+6. 考研专属能力工具 (read_exam_paper, verify_math, socratic_hint, log_mistake, review_mistakes)
+"""
+
+import os
+import sys
+import json
+import fnmatch
+import subprocess
+import urllib.request
+from pathlib import Path
+from typing import Dict, Any, Callable, List, Optional
+
+from .sandbox import Sandbox, SecurityException
+from .permissions import PermissionLevel, PermissionManager
+
+# 引入现有考研 Skills 模块
+ROOT = Path(__file__).resolve().parent.parent.parent
+SKILLS_DIR = ROOT / "tools" / "skills"
+if str(ROOT / "tools") not in sys.path:
+    sys.path.insert(0, str(ROOT / "tools"))
+
+try:
+    from skills import math_verifier
+    from skills import socratic_tutor
+    from skills import error_logger
+    from skills import pdf_extractor
+except ImportError:
+    math_verifier = None
+    socratic_tutor = None
+    error_logger = None
+    pdf_extractor = None
+
+class ToolDefinition:
+    def __init__(self, name: str, desc: str, params_schema: Dict[str, Any], func: Callable, level: int):
+        self.name = name
+        self.desc = desc
+        self.params_schema = params_schema
+        self.func = func
+        self.level = level
+
+    def to_openai_dict(self) -> Dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.desc,
+                "parameters": self.params_schema
+            }
+        }
+
+class ToolRegistry:
+    def __init__(self, sandbox: Sandbox, permissions: PermissionManager):
+        self.sandbox = sandbox
+        self.permissions = permissions
+        self.tools: Dict[str, ToolDefinition] = {}
+        self._register_all_tools()
+
+    def register(self, name: str, desc: str, params_schema: Dict[str, Any], level: int):
+        def decorator(func: Callable):
+            self.tools[name] = ToolDefinition(name, desc, params_schema, func, level)
+            return func
+        return decorator
+
+    def get_openai_tools(self) -> List[Dict[str, Any]]:
+        return [t.to_openai_dict() for t in self.tools.values()]
+
+    def execute_tool(self, name: str, args: Dict[str, Any], interactive: bool = True) -> str:
+        """统一执行入口: 经过沙箱与权限验证"""
+        tool_def = self.tools.get(name)
+        if not tool_def:
+            return f"Error: 未知工具 [{name}]"
+
+        # 1. 权限审批检查
+        allowed, reason = self.permissions.check_permission(name, tool_def.level, args, interactive=interactive)
+        if not allowed:
+            return f"PermissionDenied: 操作被拦截 ({reason})"
+
+        # 2. 执行工具
+        try:
+            result = tool_def.func(**args)
+            return str(result)
+        except SecurityException as se:
+            return f"SecurityError: {se}"
+        except Exception as e:
+            return f"ExecutionError in [{name}]: {type(e).__name__} - {str(e)}"
+
+    def _register_all_tools(self):
+        # ─────────────────────────────────────────────────────────────
+        # 1. 文件工具
+        # ─────────────────────────────────────────────────────────────
+
+        @self.register(
+            name="read_file",
+            desc="读取本地文本或PDF文件。若路径为.pdf，将自动提取前若干页或指定页码的文本内容。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "目标文件相对或绝对路径"},
+                    "offset": {"type": "integer", "description": "起始字符偏移行 (默认0)"},
+                    "limit": {"type": "integer", "description": "最大读取行数/字数 (默认2000)"}
+                },
+                "required": ["path"]
+            },
+            level=PermissionLevel.READ_ONLY
+        )
+        def read_file(path: str, offset: int = 0, limit: int = 2000) -> str:
+            p = self.sandbox.resolve_safe_path(path)
+            if not p.exists():
+                return f"Error: 文件不存在 [{p}]"
+
+            # 智能 PDF 格式处理
+            if p.suffix.lower() == ".pdf":
+                if pdf_extractor:
+                    pdf_info = pdf_extractor.extract_pdf_pages(str(p), max_pages=8)
+                    if pdf_info.get("success"):
+                        pages_txt = "\n".join([f"--- 第 {pg['page']} 页 ---\n{pg['text']}" for pg in pdf_info.get("pages", [])])
+                        return f"【PDF文档自动提取: {p.name} (共 {pdf_info.get('total_pages', 0)} 页，提取前8页)】\n\n{pages_txt[:limit]}"
+                    else:
+                        return f"PDF提取失败: {pdf_info.get('error')}"
+                return f"Error: 未检测到 PDF 提取模块"
+
+            # 纯文本读取
+            for enc in ("utf-8", "utf-8-sig", "gbk"):
+                try:
+                    lines = p.read_text(encoding=enc).splitlines()
+                    selected = lines[offset: offset + limit]
+                    return "\n".join(selected)
+                except UnicodeDecodeError:
+                    continue
+            return f"Error: 文件解码失败，请确认是否为有效文本格式"
+
+        @self.register(
+            name="write_file",
+            desc="新建或覆盖写入文件。在创建错题记录、规划表或作业文件时使用。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "目标文件路径"},
+                    "content": {"type": "string", "description": "待写入的完整文本内容"},
+                    "overwrite": {"type": "boolean", "description": "若文件已存在是否覆盖 (默认False)"}
+                },
+                "required": ["path", "content"]
+            },
+            level=PermissionLevel.SAFE_EDIT
+        )
+        def write_file(path: str, content: str, overwrite: bool = False) -> str:
+            p = self.sandbox.resolve_safe_path(path, allow_create=True)
+            if p.exists() and not overwrite:
+                return f"Error: 文件已存在且 overwrite=False [{p}]"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content, encoding="utf-8")
+            return f"Success: 成功写入文件 [{p.name}] ({len(content)} 字符)"
+
+        @self.register(
+            name="edit_file",
+            desc="精确替换文件中的特定文本块，实现安全的文件修改。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "目标文件路径"},
+                    "target_content": {"type": "string", "description": "需要被替换的原文内容 (必须精确匹配)"},
+                    "replacement": {"type": "string", "description": "替换后的新内容"}
+                },
+                "required": ["path", "target_content", "replacement"]
+            },
+            level=PermissionLevel.SAFE_EDIT
+        )
+        def edit_file(path: str, target_content: str, replacement: str) -> str:
+            p = self.sandbox.resolve_safe_path(path)
+            if not p.exists():
+                return f"Error: 文件不存在 [{p}]"
+            raw = p.read_text(encoding="utf-8")
+            if target_content not in raw:
+                return f"Error: 在文件中未找到指定的 target_content 文本"
+            updated = raw.replace(target_content, replacement, 1)
+            p.write_text(updated, encoding="utf-8")
+            return f"Success: 成功修改文件 [{p.name}]"
+
+        @self.register(
+            name="delete_file",
+            desc="删除指定文件。受 Level 5 最高安全策略管控。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "待删除文件路径"}
+                },
+                "required": ["path"]
+            },
+            level=PermissionLevel.DANGEROUS
+        )
+        def delete_file(path: str) -> str:
+            p = self.sandbox.resolve_safe_path(path)
+            if not p.exists():
+                return f"Error: 文件不存在 [{p}]"
+            p.unlink()
+            return f"Success: 文件已删除 [{p.name}]"
+
+        @self.register(
+            name="list_directory",
+            desc="列出指定目录下的文件与子目录清单。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "目录路径 (默认当前工作区)"},
+                    "max_depth": {"type": "integer", "description": "递归深度 (默认2)"}
+                }
+            },
+            level=PermissionLevel.READ_ONLY
+        )
+        def list_directory(path: str = ".", max_depth: int = 2) -> str:
+            target_dir = self.sandbox.resolve_safe_path(path)
+            if not target_dir.is_dir():
+                return f"Error: 路径不是有效目录 [{target_dir}]"
+
+            entries = []
+            for root, dirs, files in os.walk(target_dir):
+                rel_p = Path(root).relative_to(target_dir)
+                depth = len(rel_p.parts)
+                if depth >= max_depth:
+                    dirs.clear()
+                    continue
+                indent = "  " * depth
+                if depth > 0:
+                    entries.append(f"{indent}📁 {rel_p.name}/")
+                for f in files:
+                    if f.startswith(".git"):
+                        continue
+                    f_size = (Path(root) / f).stat().st_size
+                    entries.append(f"{indent}  📄 {f} ({f_size} bytes)")
+
+            return f"目录列表 [{target_dir.name}]:\n" + ("\n".join(entries[:60]) or "空目录")
+
+        @self.register(
+            name="search_files",
+            desc="按文件名模式通配搜索工作区内的文件 (例如 *.pdf, *真题*, *中值定理*)。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string", "description": "文件名匹配通配符 (如 *.pdf 或 *真题*)"},
+                    "path": {"type": "string", "description": "搜索起始目录 (默认当前目录)"}
+                },
+                "required": ["pattern"]
+            },
+            level=PermissionLevel.READ_ONLY
+        )
+        def search_files(pattern: str, path: str = ".") -> str:
+            start_dir = self.sandbox.resolve_safe_path(path)
+            matched = []
+            for root, dirs, files in os.walk(start_dir):
+                for f in files:
+                    if fnmatch.fnmatch(f.lower(), pattern.lower()):
+                        full_p = Path(root) / f
+                        matched.append(str(full_p.relative_to(self.sandbox.workspace_root) if full_p.is_relative_to(self.sandbox.workspace_root) else full_p))
+                        if len(matched) >= 30:
+                            break
+            if not matched:
+                return f"未找到匹配模式 [{pattern}] 的文件"
+            return f"搜索结果 (找到 {len(matched)} 项):\n" + "\n".join(matched)
+
+        # ─────────────────────────────────────────────────────────────
+        # 2. 全文检索 (grep)
+        # ─────────────────────────────────────────────────────────────
+
+        @self.register(
+            name="grep",
+            desc="在指定目录或文件中搜索包含特定关键词或公式的文本行。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "搜索文本或关键词"},
+                    "path": {"type": "string", "description": "搜索文件或目录路径 (默认当前目录)"},
+                    "case_sensitive": {"type": "boolean", "description": "是否区分大小写 (默认False)"}
+                },
+                "required": ["query"]
+            },
+            level=PermissionLevel.READ_ONLY
+        )
+        def grep(query: str, path: str = ".", case_sensitive: bool = False) -> str:
+            target = self.sandbox.resolve_safe_path(path)
+            results = []
+            q_comp = query if case_sensitive else query.lower()
+
+            def scan_file(fp: Path):
+                if fp.suffix.lower() not in (".md", ".txt", ".py", ".json", ".template", ".tex"):
+                    return
+                try:
+                    lines = fp.read_text(encoding="utf-8", errors="ignore").splitlines()
+                    for idx, line in enumerate(lines, 1):
+                        target_line = line if case_sensitive else line.lower()
+                        if q_comp in target_line:
+                            rel_p = str(fp.relative_to(self.sandbox.workspace_root) if fp.is_relative_to(self.sandbox.workspace_root) else fp)
+                            results.append(f"{rel_p}:{idx}: {line.strip()[:100]}")
+                            if len(results) >= 25:
+                                return
+                except Exception:
+                    pass
+
+            if target.is_file():
+                scan_file(target)
+            else:
+                for root, dirs, files in os.walk(target):
+                    if ".git" in root:
+                        continue
+                    for f in files:
+                        scan_file(Path(root) / f)
+                        if len(results) >= 25:
+                            break
+
+            if not results:
+                return f"在 [{path}] 中未找到包含 [{query}] 的匹配行"
+            return f"Grep 搜索命中:\n" + "\n".join(results)
+
+        # ─────────────────────────────────────────────────────────────
+        # 3. 命令行工具 (run_command)
+        # ─────────────────────────────────────────────────────────────
+
+        @self.register(
+            name="run_command",
+            desc="在工作区安全子进程中执行 Shell/PowerShell 命令 (如运行测试 py tools/test_ky_suite.py)。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "待执行的命令字符串"},
+                    "timeout": {"type": "integer", "description": "超时秒数 (默认30)"}
+                },
+                "required": ["command"]
+            },
+            level=PermissionLevel.SHELL_EXEC
+        )
+        def run_command(command: str, timeout: int = 30) -> str:
+            self.sandbox.check_command_safety(command)
+            try:
+                proc = subprocess.run(
+                    command,
+                    shell=True,
+                    cwd=str(self.sandbox.workspace_root),
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    encoding="utf-8",
+                    errors="replace"
+                )
+                out = (proc.stdout or "").strip()
+                err = (proc.stderr or "").strip()
+                return f"ReturnCode: {proc.returncode}\nStdout: {out[:1500]}\nStderr: {err[:800]}"
+            except subprocess.TimeoutExpired:
+                return f"Error: 命令执行超时 ({timeout}秒)"
+            except Exception as e:
+                return f"Error: 执行异常 - {e}"
+
+        # ─────────────────────────────────────────────────────────────
+        # 4. Git 工具
+        # ─────────────────────────────────────────────────────────────
+
+        @self.register(
+            name="git_status",
+            desc="查看当前工作区 Git 版本控制状态与未暂存修改。",
+            params_schema={"type": "object", "properties": {}},
+            level=PermissionLevel.READ_ONLY
+        )
+        def git_status() -> str:
+            res = subprocess.run("git status --short", shell=True, cwd=str(self.sandbox.workspace_root), capture_output=True, text=True, errors="replace")
+            return res.stdout.strip() or "工作区干净，无未提交更改"
+
+        @self.register(
+            name="git_diff",
+            desc="查看当前工作区修改的代码与文档差异。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "指定比较的文件路径 (可选)"}
+                }
+            },
+            level=PermissionLevel.READ_ONLY
+        )
+        def git_diff(path: str = "") -> str:
+            cmd = f"git diff {path}".strip()
+            res = subprocess.run(cmd, shell=True, cwd=str(self.sandbox.workspace_root), capture_output=True, text=True, errors="replace")
+            return res.stdout[:2000].strip() or "无 Diff 差异"
+
+        # ─────────────────────────────────────────────────────────────
+        # 5. 网络工具 (fetch_url)
+        # ─────────────────────────────────────────────────────────────
+
+        @self.register(
+            name="fetch_url",
+            desc="获取公开网络 URL 的网页文本内容 (例如查询真题解析或考纲最新动态)。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "目标网页 HTTP/HTTPS URL"}
+                },
+                "required": ["url"]
+            },
+            level=PermissionLevel.NETWORK
+        )
+        def fetch_url(url: str) -> str:
+            if not url.startswith(("http://", "https://")):
+                return "Error: 仅支持 http:// 或 https:// 协议"
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 Kaoyan-Tutor/1.0"})
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    html_bytes = resp.read(60000)
+                    text = html_bytes.decode("utf-8", errors="ignore")
+                    # 极简正则去除 html 标签
+                    import re
+                    clean_txt = re.sub(r"<[^>]+>", " ", text)
+                    clean_txt = re.sub(r"\s+", " ", clean_txt).strip()
+                    return clean_txt[:2500]
+            except Exception as e:
+                return f"Error 访问网页失败: {e}"
+
+        # ─────────────────────────────────────────────────────────────
+        # 6. 考研专属能力工具 (针对用户痛点定制)
+        # ─────────────────────────────────────────────────────────────
+
+        @self.register(
+            name="read_exam_paper",
+            desc="专门从考研真题或习题集 PDF 中检索并提取指定年份、题号或知识点的原版题干。专门用于解决从真题集抽题需求！",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "pdf_path": {"type": "string", "description": "真题 PDF 相对或绝对路径 (例如 01-数学/参考资料/xxx.pdf)"},
+                    "year": {"type": "string", "description": "真题年份 (例如 2018, 2021 等)"},
+                    "question_no": {"type": "string", "description": "题目序号 (例如 第15题, 3, 大题 等)"},
+                    "keyword": {"type": "string", "description": "考点关键词 (例如 中值定理, 泰勒, 二重积分)"}
+                },
+                "required": ["pdf_path"]
+            },
+            level=PermissionLevel.READ_ONLY
+        )
+        def read_exam_paper(pdf_path: str, year: str = "", question_no: str = "", keyword: str = "") -> str:
+            p = self.sandbox.resolve_safe_path(pdf_path)
+            if not p.exists() or p.suffix.lower() != ".pdf":
+                return f"Error: 指定的真题 PDF 不存在或格式不正确 [{pdf_path}]"
+
+            if not pdf_extractor:
+                return f"Error: 未挂载 PDF 提取技能 pdf_extractor"
+
+            # 提取前 40 页或全量轻量扫描
+            res = pdf_extractor.extract_pdf_pages(str(p), max_pages=35)
+            if not res.get("success"):
+                return f"PDF提取失败: {res.get('error')}"
+
+            pages = res.get("pages", [])
+            matched_snippets = []
+
+            search_terms = [t.strip() for t in (year, question_no, keyword) if t.strip()]
+
+            for pg in pages:
+                pg_num = pg["page"]
+                pg_txt = pg["text"]
+                # 检查是否命中全部搜索词
+                if search_terms:
+                    hit = all(term.lower() in pg_txt.lower() for term in search_terms)
+                    if hit:
+                        matched_snippets.append(f"=== [命中真题页面: 第 {pg_num} 页] ===\n{pg_txt[:1200]}")
+                        if len(matched_snippets) >= 3:
+                            break
+                else:
+                    matched_snippets.append(f"=== [试卷页面: 第 {pg_num} 页] ===\n{pg_txt[:800]}")
+                    if len(matched_snippets) >= 2:
+                        break
+
+            if not matched_snippets:
+                # 若完全匹配失败，退回第一页和前文说明
+                sample = pages[0]["text"][:600] if pages else "无内容"
+                return f"提示: 在试卷前35页中未精确定位到检索词 {search_terms}。试卷首部样例:\n{sample}"
+
+            return f"【从真题合集 ({p.name}) 成功调出真实试卷题干】:\n\n" + "\n\n".join(matched_snippets)
+
+        @self.register(
+            name="verify_math",
+            desc="高精度符号运算引擎。支持常微分方程(ODE)、二次型正定性判断、级数求和、方程驻点求解与微积分严格推导，杜绝算力幻觉。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "expression": {"type": "string", "description": "数学式或运算命令 (如 ode y''+4*y=0, quad [[2,1],[1,2]], sum 1/n^2 from 1 to oo, diff x^3*sin(x))"}
+                },
+                "required": ["expression"]
+            },
+            level=PermissionLevel.READ_ONLY
+        )
+        def verify_math(expression: str) -> str:
+            if not math_verifier:
+                return "Error: 未加载 math_verifier 技能"
+            return math_verifier.run_math_query(expression)
+
+        @self.register(
+            name="socratic_hint",
+            desc="苏格拉底三级微步骤脚手架引导。当学员做题卡壳时分级提供提示，严禁直接剧透最终答案。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string", "description": "卡壳题目的题干"},
+                    "level": {"type": "integer", "description": "提示级别 (1: 破题定性; 2: 首步搭桥; 3: 命题避坑指南)"}
+                },
+                "required": ["question"]
+            },
+            level=PermissionLevel.READ_ONLY
+        )
+        def socratic_hint(question: str, level: int = 1) -> str:
+            if not socratic_tutor:
+                return "Error: 未加载 socratic_tutor 技能"
+            return socratic_tutor.build_hint_prompt(question, hint_level=level)
+
+        @self.register(
+            name="log_mistake",
+            desc="将学员做错的题目规范归档沉淀到科目错题本 Markdown 文件中，记录错因五分类与改进处方。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "subject": {"type": "string", "description": "科目代码: math, eng, pol, pro"},
+                    "title": {"type": "string", "description": "错题标题 (如 2018数学二中值定理第15题)"},
+                    "mistake_type": {"type": "string", "description": "错因五分类之一: 概念漏洞 / 审题偏差 / 公式记错 / 计算失误 / 书写丢分"},
+                    "card_content": {"type": "string", "description": "错误点与改进处方分析"},
+                    "question": {"type": "string", "description": "完整原题目设问 (供盲盒重测使用)"}
+                },
+                "required": ["subject", "title", "mistake_type", "card_content"]
+            },
+            level=PermissionLevel.SAFE_EDIT
+        )
+        def log_mistake(subject: str, title: str, mistake_type: str, card_content: str, question: str = "") -> str:
+            if not error_logger:
+                return "Error: 未加载 error_logger 技能"
+            fp = error_logger.log_error_record(
+                subject=subject,
+                title=title,
+                mistake_type=mistake_type,
+                card_content=card_content,
+                expert_prescription="严格对照采分点复盘",
+                question=question
+            )
+            return f"Success: 错题已成功归档入库 [{fp}]"
+
+        @self.register(
+            name="review_mistakes",
+            desc="扫描错题本并提取艾宾浩斯记忆周期到期的题目，生成抹去历史推导的盲盒重测试卷。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "subject": {"type": "string", "description": "科目代码: math, eng, pol, pro"}
+                }
+            },
+            level=PermissionLevel.READ_ONLY
+        )
+        def review_mistakes(subject: str = "math") -> str:
+            if not error_logger:
+                return "Error: 未加载 error_logger 技能"
+            due_list = error_logger.get_due_reviews(subject)
+            if not due_list:
+                return f"恭喜！当前科目【{subject}】暂无到期待复测错题，所有薄弱点均已攻克！"
+            first = due_list[0]
+            card = error_logger.generate_blind_quiz(first)
+            return f"【艾宾浩斯盲盒复测 (共待测 {len(due_list)} 题)】:\n\n{card}"
