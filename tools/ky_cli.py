@@ -26,8 +26,8 @@ from datetime import datetime
 # Windows 控制台安全编码
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     try:
-        sys.stdout.reconfigure(encoding="utf-8")
-        sys.stderr.reconfigure(encoding="utf-8")
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
@@ -333,7 +333,8 @@ def stream_chat(messages, config):
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
-        "User-Agent": "Kaoyan-Study-Chain-CLI/1.0"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Kaoyan-Study-Chain/1.0",
+        "Accept": "application/json, text/event-stream"
     }
 
     payload = {
@@ -1473,8 +1474,14 @@ def run_repl():
 # 6. Webhook 网关模式 (`ky serve --port 8088`)
 # ════════════════════════════════════════════════════════════════
 
-def query_llm_reply(user_msg, cfg):
-    """网关统一调用私教大模型生成详细讲题回复"""
+def query_llm_reply(user_msg, cfg=None):
+    """网关统一调用私教大模型生成详细讲题回复 (支持 Web 伴侣上下文记忆与防 403 拦截)"""
+    # 动态加载最新配置，避免使用启动时的陈旧配置
+    latest_cfg = load_config()
+    if cfg:
+        latest_cfg.update({k: v for k, v in cfg.items() if v})
+    cfg = latest_cfg
+
     active_subj = cfg.get("active_subject", "math")
     if "英语" in user_msg or "/eng" in user_msg: active_subj = "eng"
     elif "政治" in user_msg or "/pol" in user_msg: active_subj = "pol"
@@ -1496,27 +1503,61 @@ def query_llm_reply(user_msg, cfg):
             pass
 
     sys_prompt = build_system_prompt(active_subj)
-    messages = [
-        {"role": "system", "content": sys_prompt},
-        {"role": "user", "content": user_msg}
-    ]
+    messages = [{"role": "system", "content": sys_prompt}]
 
-    if not cfg.get("api_key"):
-        return f"🎓【考研私教】收到提问: \"{user_msg}\"\n⚠️ 尚未配置大模型 API Key，请在电脑端终端运行 `ky config` 设置密钥后即可畅享群内对话讲题！"
+    # 挂载 Web 伴侣最近多轮会话上下文 (提取最近 6 轮对话)，确保“选C”等后续选项或追问能精准关联题目
+    import re
+    for m in LIVE_SESSION_MESSAGES[-6:]:
+        c = m.get("content", "")
+        if '<img' in c:
+            c = re.sub(r'<img[^>]*>', '[学员手写草稿图片]', c)
+        if c.strip():
+            messages.append({"role": m.get("role", "user"), "content": c})
+
+    # 避免当前用户消息被重复追加
+    if not messages or messages[-1].get("content") != user_msg:
+        messages.append({"role": "user", "content": user_msg})
+
+    api_key = cfg.get("api_key", "").strip()
+    if not api_key:
+        return f"🎓【考研私教】收到提问: \"{user_msg}\"\n⚠️ 尚未配置大模型 API Key，请在电脑端终端运行 `ky config` 设置密钥后即可畅享网页端与群聊对话讲题！"
+
+    base_url = cfg.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
+    url = f"{base_url}/chat/completions"
+    model = cfg.get("model", "deepseek-chat")
+
+    # 标配浏览器真实 User-Agent 与 Accept 标头，严防云厂商 WAF 将 Python-urllib 拦截为 403 Forbidden
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Kaoyan-Study-Chain/1.0",
+        "Accept": "application/json"
+    }
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": cfg.get("temperature", 0.3),
+        "stream": False
+    }
 
     try:
-        base_url = cfg.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
-        url = f"{base_url}/chat/completions"
-        req = urllib.request.Request(
-            url,
-            data=json.dumps({"model": cfg.get("model", "deepseek-chat"), "messages": messages, "stream": False}).encode("utf-8"),
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {cfg.get('api_key','')}"}
-        )
-        with urllib.request.urlopen(req, timeout=40) as resp:
+        data_bytes = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=60) as resp:
             res_json = json.loads(resp.read().decode("utf-8"))
             return res_json["choices"][0]["message"]["content"]
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="ignore")
+        detail = ""
+        try:
+            err_json = json.loads(err_body)
+            detail = err_json.get("error", {}).get("message") or err_json.get("message") or ""
+        except Exception:
+            detail = err_body[:200]
+        return f"🎓【考研私教解答异常】：模型服务请求失败 (HTTP {e.code}: {e.reason})。\n错误详情: {detail or '服务商拒绝访问，请检查 API Key 余额或权限'}\n建议：请在终端输入 /config 检查模型与密钥配置。"
     except Exception as e:
-        return f"🎓【考研私教解答异常】: {e}"
+        return f"🎓【考研私教网络连接异常】: {e}"
 
 def create_gateway_handler():
     from http.server import BaseHTTPRequestHandler
@@ -1569,6 +1610,7 @@ def create_gateway_handler():
                 self.end_headers()
 
         def do_POST(self):
+            cfg = load_config()
             parsed = urllib.parse.urlparse(self.path)
             content_length = int(self.headers.get("Content-Length", 0))
             post_data = self.rfile.read(content_length).decode("utf-8", errors="ignore")
