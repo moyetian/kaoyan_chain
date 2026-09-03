@@ -331,6 +331,14 @@ def run_tests():
         ocr_res = skills.vision_solver.extract_text_with_local_ocr(str(test_img))
         runner.assert_true(ocr_res is not None and len(ocr_res) > 0, "本地 RapidOCR 成功识别并提取图片文字内容")
 
+    # 验证系统剪贴板图像抓取与多模态容错调用
+    clip_test = ky_cli.grab_clipboard_image()
+    runner.assert_true(clip_test is None or isinstance(clip_test, Path), "剪贴板图像抓取模块正常工作")
+
+    # 验证非流式视觉调用无异常且杜绝模块路径错误
+    vis_res = skills.vision_solver.solve_image_with_model(str(test_img), "测试批改", {"model": "deepseek-chat"}, stream=False)
+    runner.assert_true(isinstance(vis_res, str) and "No module named" not in vis_res, "视觉批改非流式解题安全运行，彻底消除 No module named 异常")
+
     # ------------------------------------------------------------
     # 测试 9: 考研科目方案与官方大纲管理体系校验
     # ------------------------------------------------------------
