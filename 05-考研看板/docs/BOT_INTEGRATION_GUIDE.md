@@ -5,7 +5,7 @@
 ---
 
 ## 目录
-1. [📱 微信个人号：WeChat ClawBot 扫码直连（腾讯官方 · 强烈推荐）](#一微信个人号wechat-clawbot-手机扫码直连腾讯官方)
+1. [📱 微信个人号：WeChat ClawBot 扫码直连（腾讯官方扫码直连）](#一微信个人号wechat-clawbot-手机扫码直连腾讯官方)
 2. [📌 钉钉群：自定义机器人双向对话（2分钟搞定）](#二钉钉群自定义机器人双向对话)
 3. [🐦 飞书群：自建企业应用与事件订阅](#三飞书群自建企业应用与事件订阅)
 4. [🐧 QQ 群：NapCat / OneBot 11 本地模式（无需公网）](#四qq-群napcat--onebot-11-本地极速模式)
@@ -72,7 +72,7 @@ npx -y @tencent-weixin/openclaw-weixin-cli@latest install
 #### 1. 开启公网穿透（获取公网回调 URL）
 钉钉服务器位于阿里云，需要能访问到您本机的 `8088` 端口。使用免费穿透工具映射：
 ```bash
-# 推荐 cpolar:
+# 使用 cpolar:
 cpolar http 8088
 # 或 Cloudflare Tunnel (免费不限速):
 cloudflared tunnel --url http://localhost:8088

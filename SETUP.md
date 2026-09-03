@@ -22,7 +22,7 @@ py --version
 ### 步骤 A：在 GitHub 上创建仓库
 1. 打开 [GitHub 新建仓库页面](https://github.com/new)；
 2. 输入仓库名（如 `kaoyan-study-chain`）；
-3. **推荐选择 Private（私有仓库）**，因为错题记录和个人复习分数属于个人隐私数据；
+3. **选择 Private（私有仓库）**，因为错题记录和个人复习分数属于个人隐私数据；
 4. **不要勾选** "Initialize this repository with a README"（本地已具备完备结构）。
 
 ### 步骤 B：本地初始化与关联远程
@@ -63,9 +63,9 @@ git push -u origin main
 4. 发布完成后，页面上方会显示你的访问网址（例如：`https://<username>.github.io/<repo>/`）。
 
 > [!NOTE]
-> 如果仓库设为 Private，免费版 GitHub 账户可能需要升级为 Pro 才能开启 Pages。如果你使用的是免费版私有仓库，强烈推荐使用**方案 B（Cloudflare Pages）**。
+> 如果仓库设为 Private，免费版 GitHub 账户可能需要升级为 Pro 才能开启 Pages。如果你使用的是免费版私有仓库，可选用**方案 B（Cloudflare Pages）**。
 
-### 方案 B：Cloudflare Pages 部署（推荐私有仓库使用，完全免费）
+### 方案 B：Cloudflare Pages 部署（私有仓库免费部署方案）
 
 Cloudflare Pages 支持直接连接 GitHub 私有仓库并免费部署：
 
