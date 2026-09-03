@@ -1,0 +1,89 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+ENV/
+
+# ==========================================
+# 隐私防泄露铁律 (Privacy Guardrails)
+# 真实个人学情状态、做题记录、作业与错题保留在本地，不上传云端
+# ==========================================
+*_状态/今日任务.md
+*_状态/当前进度.md
+*_状态/学员档案.md
+*_状态/薄弱点雷达.md
+*_状态/日程表.md
+*_状态/每周压缩快照.md
+*学情档案.md
+!*.example.md
+!*.template.md
+!*核心速记*.md
+
+# 个人每日笔记与作业
+*每日笔记/*.md
+!*每日笔记/_模板.md
+!*每日笔记/README.md
+
+*每日作业/*.md
+!*每日作业/_模板.md
+!*每日作业/README.md
+
+*错题本/*.md
+!*错题本/_模板.md
+!*错题本/_索引.md
+!*错题本/README.md
+
+*错题与长难句本/*.md
+!*错题与长难句本/_模板.md
+!*错题与长难句本/_索引.md
+!*错题与长难句本/README.md
+
+# Large binary files & PDFs (Keep local for copyright & storage)
+*.pdf
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# OCR & Temporary Scratch Images
+scratch/
+scratch_*.png
+scratch_*.jpg
+temp_*.png
+temp_*.jpg
+*.tmp
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.workbuddy/
+.claude/
+.agents/
