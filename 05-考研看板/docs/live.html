@@ -370,6 +370,79 @@
     .btn-send:hover {
       background: var(--primary-hover);
     }
+    .btn-send.loading {
+      opacity: 0.85;
+      pointer-events: none;
+      cursor: not-allowed;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .spinner-btn {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-radius: 50%;
+      border-top-color: #ffffff;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* 正在批改与推导思考中动画 (Typing / Thinking Indicator) */
+    .thinking-bubble {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 12px 18px;
+      background: var(--bubble-ai);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      border-bottom-left-radius: 4px;
+      box-shadow: var(--shadow);
+      animation: fadeIn 0.2s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .thinking-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--primary);
+    }
+    .thinking-dots {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .thinking-dots span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--primary);
+      display: inline-block;
+      animation: bounce 1.4s infinite ease-in-out both;
+    }
+    .thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
+    .thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
+    .thinking-dots span:nth-child(3) { animation-delay: 0s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0.3); opacity: 0.35; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+    .thinking-hint {
+      font-size: 12px;
+      color: var(--subtext);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
 
     /* 空态提示 */
     .empty-state {
@@ -623,7 +696,84 @@
       return html;
     }
 
-    // 发送消息到后端 (支持图文混合发送)
+    let isWaitingForAi = false;
+    let thinkingTimer = null;
+    let thinkingStartTime = 0;
+
+    function showThinkingIndicator() {
+      removeThinkingIndicator();
+      isWaitingForAi = true;
+      thinkingStartTime = Date.now();
+
+      const sendBtn = document.getElementById('btn-send');
+      if (sendBtn) {
+        sendBtn.classList.add('loading');
+        sendBtn.innerHTML = '<span class="spinner-btn"></span> 思考中...';
+      }
+
+      const container = document.getElementById('chat-container');
+      const emptyState = document.getElementById('empty-state');
+      if (emptyState) emptyState.style.display = 'none';
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'msg-wrapper ai';
+      wrapper.id = 'thinking-indicator-wrapper';
+
+      wrapper.innerHTML = `
+        <div class="thinking-bubble">
+          <div class="thinking-header">
+            <span>🎓 考研专属私教正在推导与批改</span>
+            <div class="thinking-dots">
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+          <div class="thinking-hint" id="thinking-hint-text">
+            ⏱️ 正在审阅题干条件与采分点 (0.0s)...
+          </div>
+        </div>
+        <div class="msg-meta">考研专属私教 · 正在实时分析</div>
+      `;
+
+      container.appendChild(wrapper);
+      if (autoScroll) {
+        container.scrollTop = container.scrollHeight;
+      }
+
+      const hints = [
+        "正在审阅题干条件与核心考点分布",
+        "正在核验大纲采分点与步骤规范要求",
+        "正在推导各分步计算与解题思路",
+        "正在整理步骤分、丢分点与防坑提示",
+        "正在生成印刷级 KaTeX 规范解答"
+      ];
+
+      thinkingTimer = setInterval(() => {
+        const elapsed = ((Date.now() - thinkingStartTime) / 1000).toFixed(1);
+        const hintIdx = Math.min(hints.length - 1, Math.floor(elapsed / 2.5));
+        const hintEl = document.getElementById('thinking-hint-text');
+        if (hintEl) {
+          hintEl.textContent = `⏱️ ${hints[hintIdx]} (${elapsed}s)...`;
+        }
+      }, 200);
+    }
+
+    function removeThinkingIndicator() {
+      isWaitingForAi = false;
+      if (thinkingTimer) {
+        clearInterval(thinkingTimer);
+        thinkingTimer = null;
+      }
+      const el = document.getElementById('thinking-indicator-wrapper');
+      if (el) el.remove();
+
+      const sendBtn = document.getElementById('btn-send');
+      if (sendBtn) {
+        sendBtn.classList.remove('loading');
+        sendBtn.textContent = '发送';
+      }
+    }
+
+    // 发送消息到后端 (支持图文混合发送与思考中加载指示器)
     async function sendMessage() {
       const input = document.getElementById('user-input');
       const text = input.value.trim();
@@ -643,6 +793,9 @@
       // 立即在前端上屏
       appendMessage('user', userDisplay, new Date().toLocaleTimeString(), true);
 
+      // 立即展示私教推导中加载指示器
+      showThinkingIndicator();
+
       // 发送请求
       try {
         const payload = { message: text };
@@ -653,14 +806,20 @@
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(payload)
         });
+
+        removeThinkingIndicator();
+
         if (resp.ok) {
           const resData = await resp.json();
           if (resData && resData.reply) {
             appendMessage('ai', resData.reply, new Date().toLocaleTimeString());
           }
+        } else {
+          appendMessage('ai', `⚠️ 请求返回状态码 ${resp.status}，请检查后台服务连接。`, new Date().toLocaleTimeString());
         }
       } catch (err) {
-        console.warn('请求发送失败，若未运行后台服务仅本地记录');
+        removeThinkingIndicator();
+        appendMessage('ai', `⚠️ 发送遇到网络异常: ${err.message || err}`, new Date().toLocaleTimeString());
       }
     }
 
@@ -668,6 +827,9 @@
       const container = document.getElementById('chat-container');
       const emptyState = document.getElementById('empty-state');
       if (emptyState) emptyState.style.display = 'none';
+
+      // 插入消息前若存在思考占位符，先移到下方或移除
+      const thinkingEl = document.getElementById('thinking-indicator-wrapper');
 
       const wrapper = document.createElement('div');
       wrapper.className = `msg-wrapper ${role}`;
@@ -687,14 +849,19 @@
 
       wrapper.appendChild(bubble);
       wrapper.appendChild(meta);
-      container.appendChild(wrapper);
+
+      if (thinkingEl && container.contains(thinkingEl)) {
+        container.insertBefore(wrapper, thinkingEl);
+      } else {
+        container.appendChild(wrapper);
+      }
 
       if (autoScroll) {
         container.scrollTop = container.scrollHeight;
       }
     }
 
-    // 轮询同步终端与后台消息流
+    // 轮询同步终端与后台消息流 (智能协同思考中占位符)
     async function pollLiveFeed() {
       try {
         const resp = await fetch('/api/live');
@@ -703,6 +870,8 @@
           const messages = data.messages || [];
           if (messages.length !== lastMessageCount) {
             const container = document.getElementById('chat-container');
+            const wasThinking = isWaitingForAi;
+            
             container.innerHTML = '';
             messages.forEach(m => {
               const isHtml = m.content.startsWith('<img') || m.content.startsWith('<div class="bubble');
@@ -710,6 +879,16 @@
             });
             lastMessageCount = messages.length;
             document.getElementById('sync-status').textContent = '已同步 (' + messages.length + ')';
+
+            // 若原本处于思考中，且收到私教的新回复，则结束思考动画
+            if (wasThinking) {
+              const lastMsg = messages[messages.length - 1];
+              if (lastMsg && lastMsg.role === 'assistant') {
+                removeThinkingIndicator();
+              } else {
+                showThinkingIndicator();
+              }
+            }
           }
         }
       } catch (e) {

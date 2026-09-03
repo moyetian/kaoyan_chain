@@ -161,13 +161,15 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
 
         print("\n  --- 请选择您的数学科目方案 ---")
         for k, info in syllabus_manager.MATH_SYLLABI.items():
-            print(f"    [{k}] {info['name']} - {info['desc']}")
+            m_desc = info.get('description') or info.get('scope') or ''
+            print(f"    [{k}] {info['name']} - {m_desc}")
         print("    [none] 不考数学")
         m_choice = input("  请选择数学科目 (math1/math2/math3/396/none) [默认: math2]: ").strip().lower() or "math2"
 
         print("\n  --- 请选择您的英语科目方案 ---")
         for k, info in syllabus_manager.ENGLISH_SYLLABI.items():
-            print(f"    [{k}] {info['name']} - {info['desc']}")
+            e_desc = info.get('features') or info.get('scope') or ''
+            print(f"    [{k}] {info['name']} - {e_desc}")
         e_choice = input("  请选择英语科目 (eng1/eng2) [默认: eng2]: ").strip().lower() or "eng2"
 
         print("\n  --- 请选择您的专业课方案 ---")
