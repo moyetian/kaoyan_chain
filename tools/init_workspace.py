@@ -238,6 +238,14 @@ def configure_profile(interactive=True, math_key="math2", eng_key="eng2", pro_ty
             except Exception as e:
                 print(f"  [!] Webhook 配置提示: {e}")
 
+        ask_key = input("\n  9. 是否需要现在配置大模型 API 密钥 (可自动直达 DeepSeek/Qwen/GLM 控制台并一键套用)? (y/n) [n]: ").strip().lower()
+        if ask_key == "y":
+            try:
+                import ky_cli
+                ky_cli.configure_llm(ky_cli.load_config())
+            except Exception as e:
+                print(f"  [!] 模型配置提示: {e}")
+
 def build_dashboard():
     """编译看板并生成 docs/index.html"""
     print("\n[步骤 5/5] 编译个人移动端自测看板...")

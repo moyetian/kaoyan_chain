@@ -100,6 +100,64 @@ def grab_clipboard_image():
 
     return None
 
+def get_clipboard_text():
+    """读取系统剪贴板中的纯文本 (跨平台，支持自动捕获复制的 API Key)"""
+    if sys.platform == "win32":
+        try:
+            import subprocess
+            res = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-Clipboard"], capture_output=True, text=True, timeout=2)
+            if res.returncode == 0 and res.stdout:
+                return res.stdout.strip()
+        except Exception:
+            pass
+    elif sys.platform == "darwin":
+        try:
+            import subprocess
+            res = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=2)
+            if res.returncode == 0 and res.stdout:
+                return res.stdout.strip()
+        except Exception:
+            pass
+    elif sys.platform.startswith("linux"):
+        try:
+            import subprocess
+            res = subprocess.run(["xclip", "-selection", "clipboard", "-o"], capture_output=True, text=True, timeout=2)
+            if res.returncode == 0 and res.stdout:
+                return res.stdout.strip()
+        except Exception:
+            pass
+    return ""
+
+def open_provider_console_and_get_key(provider_name, console_url, current_key=""):
+    """
+    自动打开服务商官方认证/API Key 管理页面，并支持一键套用剪贴板密钥
+    """
+    import webbrowser
+    print(colorize(f"\n🌐 正在为您自动打开 {provider_name} 官方控制台: {console_url}", C.CYAN))
+    print(colorize("💡 提示：在网页中登录后，点击「创建 API Key」并复制即可！\n", C.YELLOW))
+    try:
+        webbrowser.open(console_url)
+    except Exception as e:
+        print(colorize(f"   [提示] 自动唤起浏览器受阻: {e}，请手动访问上方链接。", C.DIM))
+
+    # 检测当前系统剪贴板中是否已有密钥
+    time.sleep(0.4)
+    clip_text = get_clipboard_text().strip()
+    is_key_like = bool(clip_text and (clip_text.startswith("sk-") or len(clip_text) >= 20) and "\n" not in clip_text and " " not in clip_text)
+
+    if is_key_like and clip_text != current_key:
+        masked = clip_text[:6] + "..." + clip_text[-4:]
+        print(colorize(f"📋 检测到剪贴板中已有密钥: {masked}", C.GREEN))
+        choice = input(f"👉 直接回车(Enter)立即套用剪贴板密钥，或手动粘贴新密钥: ").strip()
+        if not choice:
+            print(colorize(f"[√] 已成功套用剪贴板密钥！\n", C.GREEN))
+            return clip_text
+        return choice
+
+    curr_display = (current_key[:6] + "..." + current_key[-4:]) if len(current_key) > 10 else (current_key or "未设置")
+    user_key = input(f"请输入 API Key (直接回车保持现有: {curr_display}): ").strip()
+    return user_key if user_key else current_key
+
 def append_live_message(role, content):
     """向网页可视化伴侣推送同步消息"""
     LIVE_SESSION_MESSAGES.append({
@@ -477,55 +535,61 @@ def broadcast_briefing(config, custom_msg=None):
 # ════════════════════════════════════════════════════════════════
 
 def configure_llm(cfg):
-    """配置大模型 API 服务商与密钥"""
+    """配置大模型 API 服务商与密钥 (支持一键直达官方控制台认证与剪贴板密钥捕获)"""
     print(colorize("\n--- 🧠 1. 大模型 API 服务商与密钥配置 ---", C.CYAN))
-    print("支持接入各大主流大模型 API：")
+    print("支持接入各大主流大模型 API (选择后将自动在默认浏览器中打开官方认证与密钥页面)：")
     print("  [1] DeepSeek (api.deepseek.com) (V3/R1 理工科解题)")
     print("  [2] 智谱清言 GLM (open.bigmodel.cn)")
-    print("  [3] 阿里云百炼 Qwen (dashscope.aliyuncs.com)")
-    print("  [4] 月之暗面 Kimi (api.moonshot.cn)")
-    print("  [5] 本地 Ollama (http://localhost:11434/v1)")
-    print("  [6] 自定义 OpenAI 兼容接口 / SiliconFlow / 豆包 等\n")
+    print("  [3] 阿里云百炼通义千问 Qwen (dashscope.aliyuncs.com)")
+    print("  [4] 硅基流动 SiliconFlow (api.siliconflow.cn - 聚合主流开源模型)")
+    print("  [5] 月之暗面 Kimi (api.moonshot.cn)")
+    print("  [6] 本地 Ollama (http://localhost:11434/v1)")
+    print("  [7] 自定义 OpenAI 兼容接口 / 豆包 / Claude / GPT 等\n")
 
-    p_choice = input(f"选择服务商 (1~6，直接回车保持现有: {cfg.get('api_provider','deepseek')}): ").strip()
+    p_choice = input(f"选择服务商 (1~7，直接回车保持现有: {cfg.get('api_provider','deepseek')}): ").strip()
     if p_choice == "1":
         cfg["api_provider"] = "deepseek"
         cfg["base_url"] = "https://api.deepseek.com/v1"
         cfg["model"] = "deepseek-chat"
+        cfg["api_key"] = open_provider_console_and_get_key("DeepSeek", "https://platform.deepseek.com/api_keys", cfg.get("api_key", ""))
     elif p_choice == "2":
         cfg["api_provider"] = "glm"
         cfg["base_url"] = "https://open.bigmodel.cn/api/paas/v4"
         cfg["model"] = "glm-4-plus"
+        cfg["api_key"] = open_provider_console_and_get_key("智谱清言 GLM", "https://open.bigmodel.cn/usercenter/apikeys", cfg.get("api_key", ""))
     elif p_choice == "3":
         cfg["api_provider"] = "qwen"
         cfg["base_url"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
         cfg["model"] = "qwen-plus"
+        cfg["api_key"] = open_provider_console_and_get_key("阿里云百炼 (通义千问)", "https://dashscope.console.aliyun.com/apiKey", cfg.get("api_key", ""))
     elif p_choice == "4":
+        cfg["api_provider"] = "siliconflow"
+        cfg["base_url"] = "https://api.siliconflow.cn/v1"
+        cfg["model"] = "deepseek-ai/DeepSeek-V3"
+        cfg["api_key"] = open_provider_console_and_get_key("硅基流动 SiliconFlow", "https://cloud.siliconflow.cn/account/ak", cfg.get("api_key", ""))
+    elif p_choice == "5":
         cfg["api_provider"] = "kimi"
         cfg["base_url"] = "https://api.moonshot.cn/v1"
         cfg["model"] = "moonshot-v1-32k"
-    elif p_choice == "5":
+        cfg["api_key"] = open_provider_console_and_get_key("月之暗面 Kimi", "https://platform.moonshot.cn/console/api-keys", cfg.get("api_key", ""))
+    elif p_choice == "6":
         cfg["api_provider"] = "ollama"
         cfg["base_url"] = "http://localhost:11434/v1"
         cfg["model"] = "deepseek-r1:14b"
-    elif p_choice == "6":
+        cfg["api_key"] = "ollama"
+        print(colorize("\n[√] 本地 Ollama 接口已配置就绪 (无需 API Key)！", C.GREEN))
+    elif p_choice == "7":
         cfg["api_provider"] = "custom"
-
-    new_url = input(f"Base URL (直接回车保持现有: {cfg['base_url']}): ").strip()
-    if new_url:
-        cfg["base_url"] = new_url
-
-    new_model = input(f"Model 模型代号 (直接回车保持现有: {cfg['model']}): ").strip()
-    if new_model:
-        cfg["model"] = new_model
-
-    curr_key_display = cfg['api_key'][:6] + "..." if len(cfg.get('api_key','')) > 8 else (cfg.get('api_key','') or "未设置")
-    new_key = input(f"API Key (输入新密钥或直接回车保持现有: {curr_key_display}): ").strip()
-    if new_key:
-        cfg["api_key"] = new_key
+        new_url = input(f"Base URL (直接回车保持现有: {cfg.get('base_url', '')}): ").strip()
+        if new_url: cfg["base_url"] = new_url
+        new_model = input(f"Model 模型代号 (直接回车保持现有: {cfg.get('model', '')}): ").strip()
+        if new_model: cfg["model"] = new_model
+        curr_key_display = cfg['api_key'][:6] + "..." if len(cfg.get('api_key','')) > 8 else (cfg.get('api_key','') or "未设置")
+        new_key = input(f"API Key (输入新密钥或直接回车保持现有: {curr_key_display}): ").strip()
+        if new_key: cfg["api_key"] = new_key
 
     save_config(cfg)
-    print(colorize("[√] 模型 API 配置已更新！", C.GREEN))
+    print(colorize(f"[√] 模型 API 配置已更新为 [{cfg['api_provider']} / {cfg['model']}]！", C.GREEN))
 
 def run_wechat_clawbot_install():
     """启动腾讯官方微信 ClawBot 扫码连接工具 (@tencent-weixin/openclaw-weixin-cli)"""
@@ -696,14 +760,14 @@ def show_config(cfg):
     print("本文件已被 .gitignore 严密保护，绝不会被 Git 追踪提交。\n")
 
 def configure_vision_model(cfg):
-    """配置用于视觉识图的多模态大模型"""
+    """配置用于视觉识图的多模态大模型 (支持一键直达官方控制台认证与剪贴板密钥捕获)"""
     print(colorize("\n--- 📸 配置多模态视觉大模型 (Vision Model) ---", C.BOLD))
-    print("可选模型预设：")
-    print("  [1] 智谱清言 GLM-4V-Flash")
-    print("  [2] 阿里通义千问 Qwen2-VL (DashScope / 支持高难度数学手写草稿)")
-    print("  [3] 硅基流动 SiliconFlow Qwen-VL (注册送免费额度 / 国内直连稳定)")
-    print("  [4] 谷歌 Gemini 1.5 Flash (免费层 / 数学公式解析极其强悍)")
-    print("  [5] OpenAI GPT-4o-mini")
+    print("可选模型预设 (选择后将自动在默认浏览器中打开官方认证与密钥页面)：")
+    print("  [1] 智谱清言 GLM-4V-Flash (open.bigmodel.cn)")
+    print("  [2] 阿里通义千问 Qwen2-VL (DashScope / dashscope.console.aliyun.com)")
+    print("  [3] 硅基流动 SiliconFlow Qwen-VL (cloud.siliconflow.cn)")
+    print("  [4] 谷歌 Gemini 1.5 Flash (aistudio.google.com)")
+    print("  [5] OpenAI GPT-4o-mini (platform.openai.com)")
     print("  [6] 自定义 Vision API (兼容 OpenAI 规范)")
     print("  [7] 清空配置 (使用主模型 + 本地 RapidOCR 引擎)")
     print("  [0] 取消返回")
@@ -714,28 +778,23 @@ def configure_vision_model(cfg):
     elif c == "1":
         cfg["vision_model"] = "glm-4v-flash"
         cfg["vision_base_url"] = "https://open.bigmodel.cn/api/paas/v4"
-        k = input("请输入智谱 API Key (若与主模型相同直接回车): ").strip()
-        if k: cfg["vision_api_key"] = k
+        cfg["vision_api_key"] = open_provider_console_and_get_key("智谱清言 GLM-4V", "https://open.bigmodel.cn/usercenter/apikeys", cfg.get("vision_api_key") or cfg.get("api_key", ""))
     elif c == "2":
         cfg["vision_model"] = "qwen-vl-max"
         cfg["vision_base_url"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        k = input("请输入通义千问 API Key: ").strip()
-        if k: cfg["vision_api_key"] = k
+        cfg["vision_api_key"] = open_provider_console_and_get_key("阿里云百炼 (通义千问)", "https://dashscope.console.aliyun.com/apiKey", cfg.get("vision_api_key") or cfg.get("api_key", ""))
     elif c == "3":
         cfg["vision_model"] = "Qwen/Qwen2-VL-72B-Instruct"
         cfg["vision_base_url"] = "https://api.siliconflow.cn/v1"
-        k = input("请输入 SiliconFlow API Key: ").strip()
-        if k: cfg["vision_api_key"] = k
+        cfg["vision_api_key"] = open_provider_console_and_get_key("硅基流动 SiliconFlow", "https://cloud.siliconflow.cn/account/ak", cfg.get("vision_api_key") or cfg.get("api_key", ""))
     elif c == "4":
         cfg["vision_model"] = "gemini-1.5-flash"
         cfg["vision_base_url"] = "https://generativelanguage.googleapis.com/v1beta/openai"
-        k = input("请输入 Google Gemini API Key: ").strip()
-        if k: cfg["vision_api_key"] = k
+        cfg["vision_api_key"] = open_provider_console_and_get_key("Google AI Studio", "https://aistudio.google.com/app/apikey", cfg.get("vision_api_key") or cfg.get("api_key", ""))
     elif c == "5":
         cfg["vision_model"] = "gpt-4o-mini"
         cfg["vision_base_url"] = "https://api.openai.com/v1"
-        k = input("请输入 OpenAI API Key: ").strip()
-        if k: cfg["vision_api_key"] = k
+        cfg["vision_api_key"] = open_provider_console_and_get_key("OpenAI", "https://platform.openai.com/api-keys", cfg.get("vision_api_key") or cfg.get("api_key", ""))
     elif c == "6":
         cfg["vision_model"] = input("请输入模型代号 (如 claude-3-5-sonnet): ").strip()
         cfg["vision_base_url"] = input("请输入 Base URL: ").strip()
