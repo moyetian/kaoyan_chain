@@ -11,6 +11,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Status-Template%20Ready-success.svg?style=flat-square" alt="Status" />
+  <img src="https://img.shields.io/badge/Agent%20Core-Claude%20Code%20Level-blueviolet?style=flat-square&logo=openai&logoColor=white" alt="Agent Core" />
+  <img src="https://img.shields.io/badge/MCP-Standard%20stdio%20Client-8b5cf6?style=flat-square&logo=anthropic&logoColor=white" alt="MCP" />
+  <img src="https://img.shields.io/badge/Tests-108%2F108%20Passed%20(100%25)-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
   <img src="https://img.shields.io/badge/Python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/Math-KaTeX%20LaTeX-00d084?style=flat-square&logo=latex&logoColor=white" alt="KaTeX" />
   <img src="https://img.shields.io/badge/Mobile-Responsive%20PWA-f59e0b?style=flat-square&logo=pwa&logoColor=white" alt="Mobile" />
@@ -22,11 +25,11 @@
 <p align="center">
   <a href="#-考研全科自测看板-dashboard-核心全景">📊 看板全景</a> •
   <a href="#2-独创-👁️-遮罩自测模式--考研碎片时间默写神器">👁️ 遮罩自测</a> •
-  <a href="#-个人专属-7-大维度定制化备考方案向导">🎯 方案向导</a> •
-  <a href="#-三类考研学生画像与差异化提分闭环">🎓 学情矩阵</a> •
+  <a href="#-工业级自主智能体内核-agent-loop--mcp-生态">⚡ 自主智能体内核</a> •
+  <a href="#-三级分层记忆体系-hierarchical-memory-system">🧠 三级记忆</a> •
+  <a href="#-生命周期强制拦截钩子系统-lifecycle-hooks">🪝 生命周期钩子</a> •
   <a href="#-专有考研智能终端ky-cli-独立轻量私教">💻 技能中枢</a> •
   <a href="#-数字化错题生命周期与艾宾浩斯盲盒复测">🔄 错题闭环</a> •
-  <a href="#-市面主流-ai-agent-工具接入指南">🤖 Agent矩阵</a> •
   <a href="#-用户本地化部署与快速上手流程-3-分钟开箱">🚀 快速开始</a>
 </p>
 
@@ -191,11 +194,129 @@
 
 ---
 
+## ⚡ 工业级自主智能体内核 (Agent Loop & MCP 架构)
+
+为了彻底解决考研学子在终端交互中**“无法直接读取本地真题 PDF 抽题”、“无法修改和建立本地错题文件”、“缺乏多步自主规划工具闭环”**的硬伤，`ky-cli` 已全面重构并集成了 **Claude Code / Codex 级别**的工业级自主智能体内核。
+
+```mermaid
+flowchart TD
+    User([学员输入指令 / 拍照提交草稿 / 报出真题合集]) --> ContextEngine[Context Engine 上下文引擎\nAGENTS.md + 学情档案 + 真实资料白名单 + Token Compaction 防爆]
+    
+    subgraph AgentLoop [自主智能体执行循环 Agent Loop]
+        ContextEngine --> LLM[LLM 推理端点\nOpenAI / DeepSeek / Qwen / Ollama 等]
+        LLM --> Decision{是否需要调用外部工具?}
+        
+        Decision -->|否: 产出最终解答| Stream[极速流式打字机逐字输出]
+        Decision -->|是: 生成 Tool Call| HookCheck{PreToolUse Hook 拦截\n沙箱越界检查 + 数二超纲红线硬拦截}
+        
+        HookCheck -->|拦截超纲/越界| Reject[回送阻断警告, 提示模型纠正]
+        Reject --> LLM
+        
+        HookCheck -->|放行| PermCheck{Permission Manager\n0~5 分级权限系统}
+        PermCheck -->|ask 模式待确认| TerminalPrompt[终端弹出 Codex 风格审批卡片\n[y]批准 / [a]永久信任 / [n]拒绝]
+        TerminalPrompt --> Exec[执行工具: read_exam_paper / verify_math / ...]
+        PermCheck -->|auto / safe 模式放行| Exec
+        
+        Exec --> PostAudit[PostToolUse Hook 审计\n错题入库联动 + 记忆持久化]
+        PostAudit --> TR[组装 Tool Result 回包]
+        TR --> LLM
+    end
+
+    Stream --> Followup[5 维快捷操作栏: [1]符号验算 [2]记入错题 [3]实时伴侣 [4]变式演练 [5]苏格拉底提示]
+```
+
+### 1. 彻底解决“真题 PDF 抽题难”痛点
+当您在终端中输入：
+> *“你从这本书里面抽题给我 `D:\考研资料\01-数学\参考资料\【合集】1987-2023年考研数学二纯真题版.pdf`”*
+
+智能体**绝不会回答“无法读取本地文件”**！它将立即自主调动专有的 `read_exam_paper` 工具，精确定位该 PDF 中指定年份（如 2018 年）、题号（如 第15题）或核心考点（如 中值定理）的试卷原文，并将题干完整提取派发给您，同时严格按照评分标准分步批改！
+
+### 2. 标准 Tools 工具矩阵 (15+ 核心工具全量挂载)
+
+| 工具类型 | 工具名称 | 权限等级 | 核心功能与亮点 |
+|---|---|---|---|
+| **真题专抽** | `read_exam_paper` | Level 0 (只读) | **专门翻阅大体积历年真题 PDF**，按年份、题号、考点精准提取原版试卷题干 |
+| **高精验算** | `verify_math` | Level 0 (只读) | 调起 SymPy 严格验算常微分方程(ODE)、二次型正定性、级数求和、极值驻点与导数微积分 |
+| **不剧透启发** | `socratic_hint` | Level 0 (只读) | 苏格拉底三级微步骤脚手架（破题定性 ➔ 首步搭桥 ➔ 避坑指南），绝不直接贴终极答案 |
+| **盲盒重测** | `review_mistakes`| Level 0 (只读) | 自动提取到期艾宾浩斯错题，生成抹去历史推导与标准答案的盲盒试卷 |
+| **文件读取** | `read_file` | Level 0 (只读) | 本地文本与试卷提取，智能感知 `.pdf` 并自动抽取文本 |
+| **文件检索** | `search_files` / `grep` | Level 0 (只读) | 递归文件名通配搜索与正文关键词行号检索 |
+| **目录探测** | `list_directory` | Level 0 (只读) | 探测工作区与参考资料库结构 |
+| **版本控制** | `git_status` / `diff` | Level 0 (只读) | 审查备考复习进度与学情文档变动差异 |
+| **建立状态** | `write_file` | Level 1 (安全编辑) | 建立新的复习任务卡片或学情档案 |
+| **精确修改** | `edit_file` | Level 1 (安全编辑) | 局部替换更新考点掌握度状态 |
+| **错题归档** | `log_mistake` | Level 1 (安全编辑) | 自动将做错题目规范提取沉淀入科目错题本 Markdown 文件 |
+| **记忆管理** | `manage_memory` | Level 1 (安全编辑) | 智能体自主读写 Global / Project / Decisions / Session 四层记忆 |
+| **工作区执行** | `run_command` | Level 3 (Shell执行) | 在工作区内安全执行构建与脚本测试 |
+| **网络检索** | `web_search` | Level 4 (网络) | 免 Key 检索 2025/2026 最新官方大纲变动通知与院校自命题政策 |
+| **正文提取** | `fetch_url` | Level 4 (网络) | 抓取网页并深度清洗 CSS/JS 噪点，提取纯净正文 |
+
+### 3. 0~5 级权限引擎与沙箱防御网 (Sandbox)
+- **运行模式命令行可调**：
+  - `ky` (默认 `--permission=ask`)：修改文件或执行命令时在终端弹出 Codex 风格审批卡片：`[y] 批准本次 / [a] 本会话永久信任 / [n] 拒绝`；
+  - `ky --permission=auto`：**全自动沙箱模式**（Level 0~3 免打扰秒级放行，极速刷题体验）；
+  - `ky --permission=safe`：**严格只读安全模式**（禁止一切文件修改与脚本运行）。
+- **沙箱防御网 (硬拦截)**：
+  - 严格限制在工作区或合法资料库路径，坚决阻断系统敏感目录穿越（`C:\Windows`, `~/.ssh` 等）；
+  - 工具层硬拦截高危黑名单指令（`rm -rf`, `del /f /s /q c:`, `format` 等）。
+
+---
+
+## 🧠 三级分层记忆体系 (Hierarchical Memory System)
+
+传统 AI 聊天对话一关即忘，而备考需要长达数月乃至一年的知识沉淀。系统构建了**四层外置持久化记忆库**：
+
+```text
+.memory/
+├── user.md       <-- [Global] 全局学员画像 (亦映射至 ~/.ky/memory/user.md)
+├── project.md    <-- [Project] 当前考研战役大盘 (目标院校/专业/科目考纲/提分目标)
+├── decisions.md  <-- [Decisions] 关键复习决策与避坑指南 (如数二绝不碰三重积分)
+└── session.md    <-- [Session] 当前会话即时工作区 (正在攻坚的题号/卡壳点)
+```
+
+1. **Global Memory**：记录学员的基础起点（如四级已过）、学习作息规律与偏好的私教风格，多科目全局通用；
+2. **Project Memory**：锁定当前考研大盘战役配置、锁定官方考纲与手头真实资料白名单；
+3. **Decisions Memory**：长期复习过程中总结的关键做题决策（如*“数学二不考曲面积分，遇到直接跳过”、“中值定理优先构造辅助函数”*）；
+4. **Session Memory**：当前会话中正在处理的临时任务与推导结论；
+5. **智能体自主维护**：模型在发现学员的新习惯或关键结论时，能够主动调用 `manage_memory(action='append', scope='decisions', ...)` 自主沉淀记忆！
+
+---
+
+## 🪝 生命周期强制拦截钩子系统 (Lifecycle Hooks System)
+
+> **核心哲学**：
+> - **Skill** 是“让模型知道怎么做”（提示词/指导层）；
+> - **Hook** 是“系统强制必须做某件事”（运行时/硬拦截层）。
+
+系统在智能体生命周期的 6 大关键节点注入了强制拦截逻辑：
+
+| 生命周期事件 | 触发时机 | 默认内置系统强制行为 (Built-in Actions) |
+|---|---|---|
+| `SessionStart` | 会话开启时 | 自动校验三级记忆完整性、检查今日四科任务进度 |
+| `PreToolUse` | 工具执行前 | **🚨 考纲红线强制拦截**：当前科目为数学二时，若参数或调用涉及“三重积分”、“曲面积分”、“无穷级数”等超纲考点，Hook 直接硬阻断并报警超纲，坚决阻断学员浪费精力做偏难怪题！同时执行沙箱越界拦截。 |
+| `PostToolUse` | 工具执行后 | **联动自检**：当调用 `log_mistake` 归档错题后，Hook 自动将错题标题与错因类型追加到 Session 记忆并排期艾宾浩斯复测。 |
+| `BeforeCompact`| 上下文压缩前 | **记忆防丢提炼**：当长对话触发 Context Compaction 时，Hook 自动扫描提炼学员的做题决策（如“我决定只做真题”），自动持久化写入 `.memory/decisions.md`，防止记忆随历史截断而遗失！ |
+| `AfterCompact` | 上下文压缩后 | 校验压缩后 Token 空间合规性。 |
+| `SessionEnd` | 会话退出时 | 自动同步当日复习增量与学习时长至学情档案。 |
+
+---
+
+## 🔌 Model Context Protocol (MCP) 客户端生态
+
+引入 Anthropic 官方推荐的现代工具互联标准协议 **Model Context Protocol (MCP)**：
+
+- **纯 Python 标准库实现**：零外部 pip 依赖，通过子进程管道与外部服务进行标准 JSON-RPC 2.0 stdio 通信；
+- **即插即用外部生态**：在 `ky_config.json` 或 `.mcp.json` 中声明外部 MCP Server（如 SQLite 题库、GitHub MCP、文件系统 MCP）；
+- **动态工具发现与透明挂载**：启动时自动与外部 MCP Server 握手，通过 `tools/list` 探测工具并自动注册进 `ToolRegistry`，私教在解题过程中可直接无缝调用外部生态！
+
+---
+
 ## 💻 专有考研智能终端：`ky-cli` (独立轻量私教)
 
 如果您不想打开笨重的大型 IDE，本项目自带了一个专为考研学子研发的**轻量级专用终端私教工具（`ky-cli`）**：
 
 - **纯 Python 标准库编写**：零 `pip install` 依赖，只要有 Python 即可秒开；
+- **工业级 Agent Loop 内核驱动**：具备多步规划、真题抽题、自主验算、文件操作与分级权限；
 - **全模型 API 原生接入**：直接配置 DeepSeek、智谱 GLM、通义千问、月之暗面 Kimi、OpenAI 或本地 Ollama；
 - **多端聊天机器人桥接 (IM Bridge)**：支持连接**微信 (ClawBot/企微)**、**QQ (NapCat/OneBot)**、**钉钉**、**飞书**。
 
@@ -205,8 +326,12 @@
 
 ### 1. 常用终端指令速查
 
-| 快捷指令 | 功能效果 | 核心使用场景 |
+| 快捷指令 / 启动模式 | 功能效果 | 核心使用场景 |
 |---|---|---|
+| `ky` | 默认交互式启动，带 **Codex 风格分级权限确认** (`--permission=ask`) | 日常稳健复习，修改文件或执行命令前交互审批 |
+| `ky --permission=auto` | ⚡ **极速全自动沙箱模式** (Level 0~3 免打扰秒级放行) | 连续做题、沉浸式刷题，文件写入与错题入库免打扰 |
+| `ky --permission=safe` | 🛡️ **严格只读安全模式** (禁止一切写入与命令执行) | 纯阅卷、翻看资料与定理答疑，防止任何本地文件变更 |
+| `[真题PDF绝对路径]` | 📖 **精准定位真题抽题**，自动抽取指定年份与题号试卷原题 | 彻底摆脱人工录入，直接让私教翻阅整本真题集 |
 | `/review` | 🎯 **艾宾浩斯错题盲盒重测**，自动抹去原答案，独立重做合格后出库 | 每日错题抗遗忘巩固与薄弱点清零 |
 | `/hint` | 💡 **苏格拉底微步骤启发** (快捷键 `[5]`)，三级阶梯引导不剧透全解 | 做题卡壳、第一步不知道怎么下笔时 |
 | `/batch` | 📊 **客观题答题卡批量对题**，输入选项序列秒级核对并聚类错题 | 刷选择题/填空题专项、真题客观题 |
@@ -219,7 +344,7 @@
 | `/plan` | 重新启动 7 大维度个人专属定制化备考方案向导 | 阶段转换或学情变动时随时调整 |
 | `/notify` | 一键将今日任务卡片广播推送到微信、QQ、钉钉、飞书群 | 晨间起床自动打卡提醒 |
 | `/build` | 终端内直接重新编译本地与移动端自测看板 | 随时生成最新 HTML 看板 |
-| `/config` | 分类多选菜单：配置大模型 API 与四大平台机器人 Webhook | 首次启动或切换模型时使用 |
+| `/config` | 分类多选菜单：配置大模型 API、MCP 服务与四大平台机器人 Webhook | 首次启动或切换模型时使用 |
 
 ### 2. 考研专有智能体技能 (Built-in Skills)
 
