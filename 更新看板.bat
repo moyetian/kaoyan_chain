@@ -1,11 +1,11 @@
-﻿@echo off
+@echo off
 chcp 65001 >nul
 cd /d "%~dp0"
 
 rem ---- locate python ----
-set PY=D:\Python\Python312\python.exe
-if not exist "%PY%" set PY=python
-if not exist "%PY%" set PY=py
+set PY=python
+where python >nul 2>nul || set PY=py
+if exist "D:\Python\Python312\python.exe" set PY=D:\Python\Python312\python.exe
 
 echo ========================================================
 echo   考研学习链 (Kaoyan Study Chain) - 一键构建与推送到 GitHub
