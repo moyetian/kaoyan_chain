@@ -525,6 +525,8 @@ def build():
     today_html = []
     notes_html = {"memo": [], "weak": []}
     subj_meta = []
+    parse_warnings = []        # ← 新增：解析告警收集
+    sections_status = []       # ← 新增：每个 section 解析状态（用于快照诊断）
 
     for s in SUBJECTS:
         ok = s["dir"].is_dir()
@@ -535,17 +537,28 @@ def build():
             "notes": count_notes(s) if ok else None, "ok": ok,
         })
         if not ok:
+            for rel, kw, tab, ov in SECTIONS.get(s["key"], []):
+                warn_msg = f"[{s['name']}] 目录不存在：{rel}"
+                parse_warnings.append({"severity": "error", "subject": s["key"], "kw": kw, "msg": warn_msg})
+                sections_status.append({"subject": s["key"], "kw": kw, "status": "missing_dir"})
             continue
 
         for rel, kw, tab, ov in SECTIONS.get(s["key"], []):
             md = read(s["dir"] / rel)
             if md is None:
+                warn_msg = f"[{s['name']}] 源文件不存在或读取失败：{rel}（kw={kw!r}）"
+                parse_warnings.append({"severity": "error", "subject": s["key"], "kw": kw, "msg": warn_msg})
+                sections_status.append({"subject": s["key"], "kw": kw, "status": "file_missing", "path": rel})
                 continue
             sec = get_section(md, kw)
             if not sec or len(sec.strip()) < 20:
+                warn_msg = f"[{s['name']}] 未找到或过短的章节：{kw!r}（源: {rel}）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
+                parse_warnings.append({"severity": "warn", "subject": s["key"], "kw": kw, "msg": warn_msg})
+                sections_status.append({"subject": s["key"], "kw": kw, "status": "section_missing", "path": rel})
                 continue
             title = kw if kw else pathlib.Path(rel).stem
             title = re.sub(r"^\d+[-_.]?\s*", "", title)
+            sections_status.append({"subject": s["key"], "kw": kw, "status": "ok", "path": rel, "tab": tab})
 
             if tab == "today":
                 today_html.append((s, md2html(sec)))
@@ -553,6 +566,8 @@ def build():
 
             tables = parse_tables(sec)
             if tab == "stat":
+                if not tables:
+                    parse_warnings.append({"severity": "warn", "subject": s["key"], "kw": kw, "msg": f"[{s['name']}] 指标页签未解析出任何表格（kw={kw!r}）"})
                 for head, rows in tables:
                     items = build_metrics(head, rows, ov)
                     if items:
@@ -561,6 +576,8 @@ def build():
                             "color": s["color"], "dark": s["dark"], "icon": s["icon"],
                             "title": title, "items": items,
                         })
+                    else:
+                        parse_warnings.append({"severity": "warn", "subject": s["key"], "kw": kw, "msg": f"[{s['name']}] 指标表格未提取出有效数据（kw={kw!r}）"})
                 continue
 
             cards = []
@@ -577,6 +594,16 @@ def build():
                 body = strip_tables(sec)
                 if len(body) > 40:
                     notes_html[tab].append((s, title, md2html(body)))
+                else:
+                    parse_warnings.append({"severity": "warn", "subject": s["key"], "kw": kw, "msg": f"[{s['name']}] 章节存在但无可提取内容（kw={kw!r}）。可能：表格为空、或格式不被解析。"})
+
+    # 把告警打到 stdout，CI 也能直接看到
+    if parse_warnings:
+        print(f"\n[⚠️ 解析告警 {len(parse_warnings)} 条]")
+        for w in parse_warnings:
+            prefix = "[ERROR]" if w["severity"] == "error" else "[WARN] "
+            print(f"  {prefix} {w['msg']}")
+        print()
 
     # 今日
     if today_html:
@@ -605,12 +632,44 @@ def build():
         h.append("</details>")
         return "".join(h)
 
+    # 知识图谱挂载 (S3-4)
+    k_maps = {}
+    try:
+        if str(ROOT.parent) not in sys.path:
+            sys.path.insert(0, str(ROOT.parent))
+        from tools.skills import knowledge_map
+        for sk in ("math", "eng", "pol", "pro"):
+            k_maps[sk] = knowledge_map.build_knowledge_map(sk)
+    except Exception as e:
+        parse_warnings.append({"severity": "warn", "subject": "all", "kw": "knowledge_map", "msg": f"知识图谱构建失败: {e}"})
+        k_maps = {}
+
+    # 历史趋势挂载 (S3-4)
+    trend_history = []
+    cfg_file = ROOT.parent / "ky_config.json"
+    if cfg_file.exists():
+        try:
+            cfg_obj = json.loads(cfg_file.read_text(encoding="utf-8"))
+            ch = cfg_obj.get("completion_history", {})
+            for d in sorted(ch.keys())[-7:]:
+                trend_history.append({
+                    "date": d,
+                    "short_date": d[-5:],
+                    "rate": float(ch[d].get("rate", 0.0)),
+                    "total": int(ch[d].get("total", 0)),
+                    "completed": int(ch[d].get("completed", 0))
+                })
+        except Exception:
+            trend_history = []
+
     data = {
         "memo": decks["memo"],
         "weak": decks["weak"],
         "metrics": metrics,
         "subjects": subj_meta,
         "plan": {"day": day_no, "total": total_days},
+        "maps": k_maps,
+        "trend": trend_history,
     }
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
 
@@ -624,7 +683,7 @@ def build():
             .replace("{{MEMONOTES}}", notes_out("memo"))
             .replace("{{WEAKNOTES}}", notes_out("weak"))
             .replace("{{DATA}}", payload)
-            .replace("{{STAMP}}", datetime.datetime.now().strftime("%Y-%m-%d %H:%M")))
+            .replace("{{STAMP}}", datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))), data, parse_warnings, sections_status
 
 
 HTML = r"""<!doctype html>
@@ -838,6 +897,26 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .leg{display:flex;gap:16px;font-size:11px;color:var(--mut);padding:4px 0 10px;flex-wrap:wrap}
 .leg i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 
+/* ── 知识图谱 (S3-4) ── */
+.map-summary{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;margin-bottom:14px;box-shadow:var(--sh)}
+.map-badges{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+.mbadge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:11.5px;font-weight:700}
+.mbadge.A{background:rgba(16,185,129,.12);color:var(--ok);border:1px solid rgba(16,185,129,.3)}
+.mbadge.B{background:rgba(59,130,246,.12);color:#3b82f6;border:1px solid rgba(59,130,246,.3)}
+.mbadge.C{background:rgba(245,158,11,.12);color:var(--warn);border:1px solid rgba(245,158,11,.3)}
+.mbadge.D{background:rgba(239,68,68,.12);color:var(--bad);border:1px solid rgba(239,68,68,.3)}
+.map-chap{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:12px;overflow:hidden;box-shadow:var(--sh)}
+.map-chap-h{padding:12px 18px;font-weight:700;font-size:13.5px;background:var(--surf2);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.map-point{padding:10px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
+.map-point:last-child{border-bottom:0}
+.map-point-l{display:flex;align-items:center;gap:8px;flex:1}
+.map-req{font-size:10.5px;color:var(--mut);background:var(--surf2);padding:2px 6px;border-radius:4px}
+.map-err{font-size:11px;color:var(--bad);font-weight:600}
+
+/* ── 趋势曲线 (S3-4) ── */
+.trend-card{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;margin-bottom:16px;box-shadow:var(--sh)}
+.trend-card h3{margin:0 0 10px;font-size:13px;color:var(--mut);font-weight:700;display:flex;align-items:center;gap:6px}
+
 footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opacity:.7}
 </style>
 </head>
@@ -889,6 +968,7 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
 </div>
 
 <div id="p-stat" class="pane">
+  <div id="stat-trend"></div>
   <div class="leg">
     <span><i style="background:var(--ok)"></i>达标</span>
     <span><i style="background:var(--warn)"></i>接近</span>
@@ -896,6 +976,14 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
     <span>│ 竖线 = 目标线</span>
   </div>
   <div id="stat"></div>
+</div>
+
+<div id="p-map" class="pane">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 10px">
+    <div class="decks" id="dk-map"></div>
+  </div>
+  <div id="map-summary-box"></div>
+  <div id="map-tree"></div>
 </div>
 
 <footer>考研学习看板 · 数据驱动 · 稳扎稳打 · 更新于 {{STAMP}}</footer>
@@ -906,6 +994,7 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
   <button data-p="memo"><i>🧠</i>必背</button>
   <button data-p="weak"><i>🎯</i>薄弱</button>
   <button data-p="stat"><i>📊</i>数据</button>
+  <button data-p="map"><i>🗺️</i>图谱</button>
 </nav>
 
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -913,18 +1002,64 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
 <script>
 var D = {{DATA}};
 
+function fallbackMathUnicode(el){
+  if(!el) return;
+  function cleanLatex(s){
+    return s
+      .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1)/($2)')
+      .replace(/\\sqrt\{([^}]+)\}/g, '√($1)')
+      .replace(/\\iint/g, '∬').replace(/\\int/g, '∫')
+      .replace(/\\sum/g, '∑').replace(/\\prod/g, '∏').replace(/\\infty/g, '∞')
+      .replace(/\\lim_?\{([^}]*)\}/g, 'lim($1)').replace(/\\lim/g, 'lim')
+      .replace(/\\alpha/g, 'α').replace(/\\beta/g, 'β').replace(/\\gamma/g, 'γ')
+      .replace(/\\delta/g, 'δ').replace(/\\epsilon/g, 'ε').replace(/\\theta/g, 'θ')
+      .replace(/\\lambda/g, 'λ').replace(/\\pi/g, 'π').replace(/\\sigma/g, 'σ')
+      .replace(/\\xi/g, 'ξ').replace(/\\eta/g, 'η').replace(/\\phi/g, 'φ')
+      .replace(/\\le(q)?/g, '≤').replace(/\\ge(q)?/g, '≥').replace(/\\ne(q)?/g, '≠')
+      .replace(/\\approx/g, '≈').replace(/\\pm/g, '±').replace(/\\times/g, '×')
+      .replace(/\\cdot/g, '·').replace(/\\to/g, '→').replace(/\\rightarrow/g, '→')
+      .replace(/\\in/g, '∈').replace(/\\subset/g, '⊂').replace(/\\cap/g, '∩').replace(/\\cup/g, '∪')
+      .replace(/\^2/g, '²').replace(/\^3/g, '³').replace(/\^n/g, 'ⁿ')
+      .replace(/_([0-9a-z])/g, '₍$1₎')
+      .replace(/\\[a-zA-Z]+/g, '')
+      .replace(/[{}]/g, '');
+  }
+  function walk(node){
+    if(node.nodeType === 3){
+      var txt = node.nodeValue;
+      if(/\$|\\\(|\\\[/.test(txt)){
+        var rep = txt.replace(/\$\$([\s\S]*?)\$\$/g, function(_, m){
+          return '【 ' + cleanLatex(m) + ' 】';
+        }).replace(/\$([\s\S]*?)\$/g, function(_, m){
+          return cleanLatex(m);
+        });
+        if(rep !== txt) node.nodeValue = rep;
+      }
+    }else if(node.nodeType === 1 && node.nodeName !== 'SCRIPT' && node.nodeName !== 'STYLE'){
+      for(var i=0; i<node.childNodes.length; i++){
+        walk(node.childNodes[i]);
+      }
+    }
+  }
+  walk(el);
+}
+
 function tex(el){
-  if(!el || typeof renderMathInElement !== 'function') return;
-  try{
-    renderMathInElement(el,{
-      delimiters:[
-        {left:'$$',right:'$$',display:true},
-        {left:'$',right:'$',display:false}
-      ],
-      throwOnError:false,
-      errorColor:'#f87171'
-    });
-  }catch(e){console.warn('KaTeX render warning:', e);}
+  if(!el) return;
+  if(typeof renderMathInElement === 'function'){
+    try{
+      renderMathInElement(el,{
+        delimiters:[
+          {left:'$$',right:'$$',display:true},
+          {left:'$',right:'$',display:false}
+        ],
+        throwOnError:false,
+        errorColor:'#f87171'
+      });
+      return;
+    }catch(e){console.warn('KaTeX render warning, fallback to Unicode:', e);}
+  }
+  fallbackMathUnicode(el);
 }
 function esc(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
 function isDark(){
@@ -1170,6 +1305,123 @@ function animate(){
   });
 }
 
+/* ── 趋势曲线 SVG (S3-4) ── */
+(function(){
+  var host=document.getElementById('stat-trend');
+  if(!host) return;
+  var trend = D.trend || [];
+  if(!trend.length){
+    host.innerHTML = "<div class='trend-card'><h3>📈 近 7 日完成率趋势</h3><div style='font-size:12px;color:var(--mut);text-align:center;padding:12px 0;'>暂无历史打卡记录，坚持复习将在此汇聚成长曲线。</div></div>";
+    return;
+  }
+  var w = 480, h = 120, padL = 36, padR = 24, padT = 20, padB = 28;
+  var chartW = w - padL - padR, chartH = h - padT - padB;
+  var n = trend.length;
+  var pts = [];
+  trend.forEach(function(d, i){
+    var x = padL + (n === 1 ? chartW / 2 : (i / (n - 1)) * chartW);
+    var y = padT + (1 - (Math.min(100, Math.max(0, d.rate)) / 100)) * chartH;
+    pts.push({x: x, y: y, rate: d.rate, date: d.short_date || d.date});
+  });
+  var pathD = pts.map(function(p, i){ return (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
+  var areaD = pathD + ' L' + pts[pts.length-1].x.toFixed(1) + ',' + (padT + chartH) + ' L' + pts[0].x.toFixed(1) + ',' + (padT + chartH) + ' Z';
+  
+  var svg = "<svg viewBox='0 0 " + w + " " + h + "' style='width:100%;height:auto;overflow:visible'>"
+    + "<defs><linearGradient id='tg' x1='0' y1='0' x2='0' y2='1'><stop offset='0%' stop-color='var(--acc)' stop-opacity='0.35'/><stop offset='100%' stop-color='var(--acc)' stop-opacity='0.0'/></linearGradient></defs>"
+    + "<line x1='" + padL + "' y1='" + (padT + chartH) + "' x2='" + (padL + chartW) + "' y2='" + (padT + chartH) + "' stroke='var(--line)' stroke-width='1'/>"
+    + "<line x1='" + padL + "' y1='" + (padT + chartH/2) + "' x2='" + (padL + chartW) + "' y2='" + (padT + chartH/2) + "' stroke='var(--line)' stroke-width='1' stroke-dasharray='3,3'/>"
+    + "<text x='" + (padL - 6) + "' y='" + (padT + 4) + "' font-size='9' fill='var(--mut)' text-anchor='end'>100%</text>"
+    + "<text x='" + (padL - 6) + "' y='" + (padT + chartH/2 + 3) + "' font-size='9' fill='var(--mut)' text-anchor='end'>50%</text>"
+    + "<path d='" + areaD + "' fill='url(#tg)'/>"
+    + "<path d='" + pathD + "' fill='none' stroke='var(--acc)' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/>";
+  
+  pts.forEach(function(p){
+    svg += "<circle cx='" + p.x.toFixed(1) + "' cy='" + p.y.toFixed(1) + "' r='3.5' fill='var(--surf)' stroke='var(--acc)' stroke-width='2'/>"
+         + "<text x='" + p.x.toFixed(1) + "' y='" + (p.y - 7).toFixed(1) + "' font-size='10' font-weight='700' fill='var(--fg)' text-anchor='middle'>" + Math.round(p.rate) + "%</text>"
+         + "<text x='" + p.x.toFixed(1) + "' y='" + (h - 8) + "' font-size='10' fill='var(--mut)' text-anchor='middle'>" + p.date + "</text>";
+  });
+  svg += "</svg>";
+  host.innerHTML = "<div class='trend-card'><h3>📈 近 7 日任务完成率趋势 (Trend)</h3>" + svg + "</div>";
+})();
+
+/* ── 知识图谱渲染 (S3-4) ── */
+(function(){
+  var subjs = [
+    {key:'math', name:'数学', color:'#2563eb'},
+    {key:'eng', name:'英语', color:'#e11d48'},
+    {key:'pol', name:'政治', color:'#d97706'},
+    {key:'pro', name:'专业课', color:'#059669'}
+  ];
+  var currSubj = 'math';
+  var maps = D.maps || {};
+
+  function renderMap(subjKey){
+    var m = maps[subjKey];
+    var dk = document.getElementById('dk-map');
+    if(dk){
+      dk.innerHTML = subjs.map(function(s){
+        return "<div class='chip" + (s.key === subjKey ? " on" : "") + "' style='--c:" + s.color + "' data-s='" + s.key + "'>"
+             + "<span class='dot'></span>" + esc(s.name) + "</div>";
+      }).join('');
+      dk.querySelectorAll('.chip').forEach(function(c){
+        c.onclick = function(){
+          currSubj = c.dataset.s;
+          renderMap(currSubj);
+        };
+      });
+    }
+
+    var sumBox = document.getElementById('map-summary-box');
+    var treeBox = document.getElementById('map-tree');
+    if(!sumBox || !treeBox) return;
+
+    if(!m || !m.chapters || !m.chapters.length){
+      sumBox.innerHTML = '';
+      treeBox.innerHTML = "<div class='empty'><div class='ei'>🗺️</div>暂无该科目考纲图谱数据</div>";
+      return;
+    }
+
+    var gc = m.grade_counts || {A:0,B:0,C:0,D:0};
+    sumBox.innerHTML = "<div class='map-summary'>"
+      + "<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px'>"
+      + "<div><b style='font-size:15px'>" + esc(m.subject_name) + " · 考纲全景掌握大盘</b></div>"
+      + "<div style='font-size:12px;color:var(--mut)'>大纲掌握率 <b style='font-size:16px;color:var(--ok)'>" + m.mastery_rate + "%</b></div></div>"
+      + "<div class='ptrack' style='height:6px;margin-bottom:10px'><div class='pfill' style='width:" + m.mastery_rate + "%;background:var(--ok)'></div></div>"
+      + "<div class='map-badges'>"
+      + "<span class='mbadge A'>● A 熟练 " + gc.A + "</span>"
+      + "<span class='mbadge B'>● B 巩固 " + gc.B + "</span>"
+      + "<span class='mbadge C'>● C 生疏 " + gc.C + "</span>"
+      + "<span class='mbadge D'>● D 盲区 " + gc.D + "</span>"
+      + "<span style='margin-left:auto;font-size:11.5px;color:var(--mut)'>共 " + m.total_points + " 个核心考点</span>"
+      + "</div></div>";
+
+    var h = '';
+    m.chapters.forEach(function(chap){
+      h += "<div class='map-chap'><div class='map-chap-h'><span>" + esc(chap.title) + "</span>"
+        + "<span style='font-size:11px;color:var(--mut);font-weight:normal'>" + (chap.points ? chap.points.length : 0) + " 个考点</span></div>";
+      if(chap.points && chap.points.length){
+        chap.points.forEach(function(pt){
+          var g = pt.grade || 'A';
+          var errTag = pt.error_count > 0 ? ("<span class='map-err'>⚠ " + pt.error_count + " 错题</span>") : "";
+          h += "<div class='map-point'>"
+             + "<div class='map-point-l'>"
+             + "<span class='mbadge " + g + "'>" + g + "</span>"
+             + "<span style='font-weight:600'>" + esc(pt.name) + "</span>"
+             + (pt.req_type ? ("<span class='map-req'>" + esc(pt.req_type) + "</span>") : "")
+             + "</div>"
+             + errTag
+             + "</div>";
+        });
+      }
+      h += "</div>";
+    });
+    treeBox.innerHTML = h;
+    tex(treeBox);
+  }
+
+  renderMap(currSubj);
+})();
+
 /* ── 页签切换 ── */
 document.querySelectorAll('.bar button').forEach(function(b){
   b.onclick=function(){
@@ -1177,7 +1429,10 @@ document.querySelectorAll('.bar button').forEach(function(b){
     document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('on')});
     b.classList.add('on');
     var targetPane=document.getElementById('p-'+b.dataset.p);
-    if(targetPane) targetPane.classList.add('on');
+    if(targetPane){
+      targetPane.classList.add('on');
+      tex(targetPane);
+    }
     window.scrollTo(0,0);
     if(b.dataset.p==='stat') animate();
     try{localStorage.setItem('kytab',b.dataset.p)}catch(e){}
@@ -1195,12 +1450,100 @@ try{
 </html>"""
 
 
+def _write_state_snapshot(data: dict, snapshot_path: "Path", parse_warnings=None, sections_status=None):
+    """
+    把 build 出来的 data 序列化到 state_snapshot.json，作为 Pages 部署时的"真相源"。
+    行为受 KY_SNAPSHOT_OPT_IN 控制：
+      - KY_SNAPSHOT_OPT_IN=1 → 写出"可发布"快照（脱敏，不含任何可识别字符串）
+      - 未设置/=0 → 仍然写出快照但打 WARNING，提示用户不要把未脱敏版本推送到公开仓库
+    parse_warnings / sections_status 由 build() 提供，会一并写入 meta 便于诊断。
+    """
+    import os
+    opt_in = os.environ.get("KY_SNAPSHOT_OPT_IN", "").lower() in ("1", "true", "yes", "on")
+
+    snapshot_data = dict(data)  # 浅拷贝
+
+    meta = {
+        "snapshot_version": "ky-snapshot/1.0",
+        "generated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "opt_in": opt_in,
+        "subjects_count": len(data.get("subjects", [])),
+        "memo_cards": sum(len(d.get("cards", [])) for d in data.get("memo", [])),
+        "weak_cards": sum(len(d.get("cards", [])) for d in data.get("weak", [])),
+        "metrics_count": len(data.get("metrics", [])),
+        "parse_warnings": parse_warnings or [],
+        "sections_status": sections_status or [],
+    }
+
+    if not opt_in:
+        # 公开版会泄露个人学情；打印强提示并把 full 字段置空作为警示
+        print("[WARNING] KY_SNAPSHOT_OPT_IN 未开启。")
+        print("          docs/state_snapshot.json 当前包含完整学情数据。")
+        print("          若要推送到 GitHub Pages 等公开环境，请设置 KY_SNAPSHOT_OPT_IN=1 重新生成。")
+        print("          例如: set KY_SNAPSHOT_OPT_IN=1 && python build.py   (Windows)")
+        print("                 export KY_SNAPSHOT_OPT_IN=1 && python build.py   (macOS/Linux)")
+        snapshot_payload = {"meta": meta, "data": snapshot_data}
+    else:
+        # 脱敏：去除卡片的"back"详情（可能含个人化 weakness 文本），保留 front 与指标
+        safe_memo, safe_weak = [], []
+        for d in data.get("memo", []):
+            d2 = dict(d)
+            d2["cards"] = [{"f": c.get("f", ""), "b": []} for c in d.get("cards", [])]
+            safe_memo.append(d2)
+        for d in data.get("weak", []):
+            d2 = dict(d)
+            d2["cards"] = [{"f": c.get("f", ""), "b": []} for c in d.get("cards", [])]
+            safe_weak.append(d2)
+        # 指标只保留 label/text/pct/count/target/dir（去掉可能含个人化描述的字段）
+        safe_metrics = []
+        for g in data.get("metrics", []):
+            g2 = {k: v for k, v in g.items() if k != "title"}
+            safe_items = []
+            for it in g.get("items", []):
+                safe_items.append({k: v for k, v in it.items() if k in ("label", "text", "pct", "count", "target", "dir")})
+            g2["items"] = safe_items
+            safe_metrics.append(g2)
+        # subject 列表只保留聚合信息（去掉具体目标分数/满分）
+        safe_subjects = []
+        for s in data.get("subjects", []):
+            safe_subjects.append({
+                "key": s.get("key"),
+                "name": s.get("name"),
+                "icon": s.get("icon"),
+                "color": s.get("color"),
+                "dark": s.get("dark"),
+                "notes": s.get("notes"),
+                "ok": s.get("ok"),
+            })
+        meta["sanitized"] = True
+        snapshot_payload = {
+            "meta": meta,
+            "data": {
+                "memo": safe_memo,
+                "weak": safe_weak,
+                "metrics": safe_metrics,
+                "subjects": safe_subjects,
+                "plan": data.get("plan", {}),
+                "maps": data.get("maps", {}),
+                "trend": data.get("trend", []),
+            }
+        }
+        print("[OK] 已生成 KY_SNAPSHOT_OPT_IN=1 脱敏快照。可安全提交至公开仓库。")
+
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot_path.write_text(
+        json.dumps(snapshot_payload, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+    return True
+
+
 if __name__ == "__main__":
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-    content = build()
+    content, data_obj, parse_warnings, sections_status = build()
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(content, encoding="utf-8")
     print(f"[OK] generated: {OUT}  ({OUT.stat().st_size/1024:.1f} KB)")
@@ -1208,3 +1551,20 @@ if __name__ == "__main__":
         ROOT_DOCS.parent.mkdir(parents=True, exist_ok=True)
         ROOT_DOCS.write_text(content, encoding="utf-8")
         print(f"[OK] synced to root docs: {ROOT_DOCS}")
+
+    # ── 新增：生成 state_snapshot.json（Pages 部署的真相源）──
+    snapshot_path = OUT.parent / "state_snapshot.json"
+    try:
+        _write_state_snapshot(data_obj, snapshot_path,
+                               parse_warnings=parse_warnings,
+                               sections_status=sections_status)
+        print(f"[OK] state snapshot: {snapshot_path}  ({snapshot_path.stat().st_size/1024:.1f} KB)")
+        # 同步到根 docs/（与 index.html 同样的同步策略）
+        if ROOT_DOCS.parent.parent == ROOT.parent and (ROOT.parent / "01-数学").exists():
+            ROOT_DOCS_SNAPSHOT = ROOT_DOCS.parent / "state_snapshot.json"
+            ROOT_DOCS_SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
+            ROOT_DOCS_SNAPSHOT.write_text(snapshot_path.read_text(encoding="utf-8"), encoding="utf-8")
+            print(f"[OK] synced snapshot to root docs: {ROOT_DOCS_SNAPSHOT}")
+    except Exception as e:
+        print(f"[!] state snapshot 写入失败: {e}")
+        raise

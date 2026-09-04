@@ -133,9 +133,28 @@ class ContextEngine:
         system_msg = messages[0] if messages and messages[0].get("role") == "system" else None
         non_system = messages[1:] if system_msg else messages
 
-        # 保留最后 6 条消息
-        keep_tail = non_system[-6:]
-        history_to_compress = non_system[:-6]
+        # 安全切分：保证 assistant(tool_calls) 与其匹配的 tool 结果成对保留，杜绝孤儿消息
+        total_len = len(non_system)
+        cut = max(0, total_len - 6)
+
+        # 若 cut 指向 tool 消息，优先向前追溯至发起调用的 assistant
+        step_back_cut = cut
+        while step_back_cut > 0 and non_system[step_back_cut].get("role") == "tool":
+            step_back_cut -= 1
+        if step_back_cut > 0 and non_system[step_back_cut - 1].get("role") == "assistant" and non_system[step_back_cut - 1].get("tool_calls"):
+            step_back_cut -= 1
+
+        # 若向前回溯导致保留全部消息且历史很长，则向后越过当前 tool 消息组
+        if step_back_cut == 0 and total_len > 8:
+            step_forward_cut = cut
+            while step_forward_cut < total_len and non_system[step_forward_cut].get("role") == "tool":
+                step_forward_cut += 1
+            cut = step_forward_cut if step_forward_cut < total_len else 0
+        else:
+            cut = step_back_cut
+
+        keep_tail = non_system[cut:]
+        history_to_compress = non_system[:cut]
 
         compressed_summary_lines = []
         for msg in history_to_compress:

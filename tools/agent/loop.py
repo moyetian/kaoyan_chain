@@ -74,7 +74,13 @@ class AgentRunner:
 
     def run(self, user_input: str, interactive: bool = True) -> str:
         """运行完整的 Agent Loop 交互循环"""
-        ctx = {"active_subject": self.config.get("active_subject", "math"), "user_input": user_input}
+        # 把当前数学科目编码注入 ctx，便于 hooks.py 的考纲红线区分 math1/2/3/396
+        study_plan = self.config.get("study_plan") or {}
+        ctx = {
+            "active_subject": self.config.get("active_subject", "math"),
+            "math_key": study_plan.get("math_key", "math2") if self.config.get("active_subject") == "math" else None,
+            "user_input": user_input,
+        }
         self.hooks.trigger_session_start(ctx)
 
         api_key = self.config.get("api_key", "").strip()

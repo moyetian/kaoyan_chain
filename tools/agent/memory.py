@@ -144,3 +144,123 @@ class MemoryManager:
             return ""
 
         return "=== 🧠【三级分层智能记忆体系 (Memory Context)】===\n" + "\n\n".join(sections)
+
+    def get_memory_health(self) -> Dict[str, Any]:
+        """
+        评估三级记忆体系健康度 (S3-2 记忆治理)
+        统计各层文件大小、行数、Token估算与健康预警
+        """
+        scopes = [MemoryScope.GLOBAL, MemoryScope.PROJECT, MemoryScope.DECISIONS, MemoryScope.SESSION]
+        details = {}
+        total_chars = 0
+        total_tokens = 0
+        has_warning = False
+
+        for sc in scopes:
+            content = self.read_memory(sc)
+            fp = self.get_file_path(sc)
+            c_len = len(content)
+            lines = [l for l in content.splitlines() if l.strip()]
+            line_count = len(lines)
+            est_tokens = c_len // 2  # 中文汉字粗估约为 1 token / 1.5~2 字符
+
+            total_chars += c_len
+            total_tokens += est_tokens
+
+            status = "良好"
+            if sc == MemoryScope.SESSION and line_count > 50:
+                status = "需修剪 (条目超过50条)"
+                has_warning = True
+            elif est_tokens > 2000:
+                status = "偏大 (占用上下文较多)"
+                has_warning = True
+
+            details[sc] = {
+                "file": str(fp),
+                "path": str(fp),
+                "exists": fp.exists(),
+                "line_count": line_count,
+                "char_count": c_len,
+                "chars": c_len,
+                "estimated_tokens": est_tokens,
+                "tokens": est_tokens,
+                "status": status,
+                "status_code": "warning" if has_warning else "ok"
+            }
+
+        return {
+            "total_chars": total_chars,
+            "total_tokens": total_tokens,
+            "overall_status": "警告" if has_warning else "优良",
+            "details": details
+        }
+
+    def prune_memory(self, scope: str = MemoryScope.SESSION, max_items: int = 50, archive_to_decisions: bool = True) -> Dict[str, Any]:
+        """
+        对指定记忆进行滚动修剪与价值提炼 (S3-2 记忆治理)
+        超出 max_items 时，将早期条目中有价值的决策自动归档至 decisions.md，保留最新的上下文
+        """
+        content = self.read_memory(scope)
+        if not content:
+            return {
+                "scope": scope,
+                "original_count": 0,
+                "pruned_count": 0,
+                "kept_count": 0,
+                "archived_count": 0,
+                "message": f"记忆作用域 [{scope}] 当前为空"
+            }
+
+        # 区分标题头与列表条目
+        header_lines = []
+        item_lines = []
+        for line in content.splitlines():
+            s_line = line.strip()
+            if not s_line:
+                continue
+            if s_line.startswith("#"):
+                header_lines.append(line)
+            else:
+                item_lines.append(line)
+
+        original_count = len(item_lines)
+        if original_count <= max_items:
+            return {
+                "scope": scope,
+                "pruned": False,
+                "original_count": original_count,
+                "pruned_count": 0,
+                "kept_count": original_count,
+                "remaining_count": original_count,
+                "archived_count": 0,
+                "message": f"当前条目数 ({original_count}) 未达到上限 ({max_items})，记忆状态健康！"
+            }
+
+        # 超出阈值，执行滚动淘汰
+        to_prune = item_lines[:-max_items]
+        to_keep = item_lines[-max_items:]
+
+        # 提炼高价值决策项 (包含避坑、决策、规则等)
+        archived_items = []
+        if archive_to_decisions and scope != MemoryScope.DECISIONS:
+            for item in to_prune:
+                if any(kw in item for kw in ("决策", "避坑", "难点", "红线", "掌握", "错题", "公式", "约定")):
+                    archived_items.append(item)
+            if archived_items:
+                for a_item in archived_items:
+                    self.append_memory(MemoryScope.DECISIONS, f"[从{scope}归档]: {a_item.lstrip('- ').strip()}")
+
+        # 回写修剪后的记忆
+        new_content = "\n".join(header_lines + to_keep) if header_lines else "\n".join(to_keep)
+        self.write_memory(scope, new_content)
+
+        return {
+            "scope": scope,
+            "pruned": True,
+            "original_count": original_count,
+            "pruned_count": len(to_prune),
+            "kept_count": len(to_keep),
+            "remaining_count": len(to_keep),
+            "archived_count": len(archived_items),
+            "message": f"成功修剪 {len(to_prune)} 条旧记忆，保留最新 {len(to_keep)} 条；并已沉淀 {len(archived_items)} 条核心规则至 decisions.md"
+        }

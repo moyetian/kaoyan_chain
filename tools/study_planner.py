@@ -675,6 +675,38 @@ def apply_study_plan(plan, interactive=True):
         except Exception:
             pass
 
+def _safe_write_today_task(task_file: Path, today_str: str, content: str) -> str:
+    """
+    写今日任务文件，避免覆盖用户已勾选/已编辑的当日任务：
+      - 文件不存在 → 写入
+      - 文件已存在且首行日期与 today_str 匹配 → 备份为 今日任务_<日期>_backup_<时间>.md 后覆盖
+      - 文件已存在但日期不符（昨日/更早任务遗留）→ 直接覆盖为今日
+    返回状态描述，便于日志显示。
+    """
+    import shutil
+    if not task_file.exists():
+        task_file.parent.mkdir(parents=True, exist_ok=True)
+        task_file.write_text(content, encoding="utf-8")
+        return "已创建"
+    try:
+        existing_first = task_file.read_text(encoding="utf-8").splitlines()[0]
+    except Exception:
+        existing_first = ""
+    if f"({today_str})" in existing_first:
+        # 同日 → 备份旧版再写新版（保护完成勾选等个性化）
+        ts = datetime.now().strftime("%H%M%S")
+        backup = task_file.with_name(task_file.stem + f"_backup_{today_str}_{ts}.md")
+        try:
+            shutil.copy2(task_file, backup)
+        except Exception:
+            pass
+        task_file.write_text(content, encoding="utf-8")
+        return f"已备份到 {backup.name} 后覆盖"
+    # 不同日 → 旧文件已被搁置，直接覆盖
+    task_file.write_text(content, encoding="utf-8")
+    return "已覆盖（非同日任务）"
+
+
 def generate_plan_and_today_files(plan, ai_strategy=None):
     """根据向导结果全自动生成各科总规划文件与今日真实任务清单"""
     today_str = datetime.now().strftime("%Y-%m-%d")
@@ -814,7 +846,7 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
     # 3. 自动生成四科真实今日任务文件
     m_task_file = ROOT / "01-数学" / "_状态" / "今日任务.md"
     m_task_file.parent.mkdir(parents=True, exist_ok=True)
-    m_task_file.write_text(f"""# 今日数学任务 ({today_str})
+    m_status = _safe_write_today_task(m_task_file, today_str, f"""# 今日数学任务 ({today_str})
 
 > 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{int(m_h*60)} 分钟
 
@@ -825,11 +857,12 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 | 订正归档 | 在 CLI 输入「交作业」，AI 按步骤采分并自动录入错题队列 | {int(m_h*60*0.25)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/math` 或 `数学报到`，私教即可根据今日任务派发第一道针对性试题！
-""", encoding="utf-8")
+""")
+    print(f"  - 数学今日任务: {m_status}")
 
     e_task_file = ROOT / "02-英语" / "_状态" / "今日任务.md"
     e_task_file.parent.mkdir(parents=True, exist_ok=True)
-    e_task_file.write_text(f"""# 今日英语任务 ({today_str})
+    e_status = _safe_write_today_task(e_task_file, today_str, f"""# 今日英语任务 ({today_str})
 
 > 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{int(e_h*60)} 分钟
 
@@ -840,11 +873,12 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 | 真题阅读 | 精读 1 篇历年真题阅读并定位干扰项逻辑 | {int(e_h*60*0.4)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/eng` 或 `英语报到` 开始今日英语专项训练！
-""", encoding="utf-8")
+""")
+    print(f"  - 英语今日任务: {e_status}")
 
     p_task_file = ROOT / "03-思想政治理论" / "_状态" / "今日任务.md"
     p_task_file.parent.mkdir(parents=True, exist_ok=True)
-    p_task_file.write_text(f"""# 今日政治任务 ({today_str})
+    p_status = _safe_write_today_task(p_task_file, today_str, f"""# 今日政治任务 ({today_str})
 
 > 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{int(p_h*60)} 分钟
 
@@ -855,11 +889,12 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 | 易混归纳 | 记录做错的帽子词与混淆概念，固化到记忆卡 | {int(p_h*60*0.2)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/pol` 或 `政治报到` 启动今日政治考点抽查！
-""", encoding="utf-8")
+""")
+    print(f"  - 政治今日任务: {p_status}")
 
     pro_task_file = ROOT / "04-专业课" / "_状态" / "今日任务.md"
     pro_task_file.parent.mkdir(parents=True, exist_ok=True)
-    pro_task_file.write_text(f"""# 今日专业课任务 ({today_str})
+    pro_status = _safe_write_today_task(pro_task_file, today_str, f"""# 今日专业课任务 ({today_str})
 
 > 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{int(pro_h*60)} 分钟
 
@@ -870,7 +905,8 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 | AI 阅卷批改 | 将草稿或解答输入 CLI (可用 /img 上传草稿照片)，逐行诊断丢分点 | {int(pro_h*60*0.2)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/pro` 或 `专业课报到` 开始今日专业课攻坚！
-""", encoding="utf-8")
+""")
+    print(f"  - 专业课今日任务: {pro_status}")
 
 def update_subject_agents(plan):
     """将真实白名单与薄弱项同步写入 01~04 各科专属 AGENTS.md (杜绝虚构书目)"""
@@ -979,6 +1015,124 @@ def print_study_plan_summary(plan):
 
 ✨ 所有规划文件已在各科目目录下生成完毕！
 """)
+
+def record_daily_completion(rate: float, total: int = 0, completed: int = 0, date_str: str = None):
+    """记录指定日期的任务完成率到 ky_config.json"""
+    d_str = date_str or datetime.now().strftime("%Y-%m-%d")
+    cfg_path = ROOT / "ky_config.json"
+    if not cfg_path.exists():
+        return
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except Exception:
+        cfg = {}
+
+    hist = cfg.get("completion_history", {})
+    hist[d_str] = {
+        "rate": float(rate),
+        "total": int(total),
+        "completed": int(completed),
+        "recorded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    cfg["completion_history"] = hist
+    cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def check_fatigue_alert(cfg: dict = None) -> dict:
+    """
+    检查是否连续 2 天今日任务完成率低于 60%
+    兑现 AGENTS.md 减负保障机制与豆包/阿福防疲劳设计
+    """
+    if cfg is None:
+        cfg_path = ROOT / "ky_config.json"
+        if cfg_path.exists():
+            try:
+                cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            except Exception:
+                cfg = {}
+        else:
+            cfg = {}
+
+    hist = cfg.get("completion_history", {})
+    sorted_dates = sorted(hist.keys())
+    if len(sorted_dates) < 2:
+        return {
+            "alert": False,
+            "consecutive_low_days": 0,
+            "recent_rates": [hist[d].get("rate", 0.0) for d in sorted_dates],
+            "message": "暂无连续低完成率记录，复习节奏保持良好！"
+        }
+
+    last_two_dates = sorted_dates[-2:]
+    rates = [hist[d].get("rate", 0.0) for d in last_two_dates]
+    all_below_60 = all(r < 60.0 for r in rates)
+
+    if all_below_60:
+        avg_r = round(sum(rates) / len(rates), 1)
+        msg = (
+            f"⚠️ 【防疲劳保障提醒】：检测到您最近连续 2 天 ({last_two_dates[0]}, {last_two_dates[1]}) "
+            f"任务完成率均低于 60% (均值 {avg_r}%)！\n"
+            f"💡 科学备考铁律：过度疲劳会导致学习吸收率断崖式下滑。\n"
+            f"👉 建议输入 /relieve 启动【智能减负模式】：自动下调任务量 25%，并切换为温和启发辅导风格。"
+        )
+        return {
+            "alert": True,
+            "consecutive_low_days": 2,
+            "recent_dates": last_two_dates,
+            "recent_rates": rates,
+            "avg_rate": avg_r,
+            "message": msg
+        }
+
+    return {
+        "alert": False,
+        "consecutive_low_days": 0,
+        "recent_rates": rates,
+        "message": "复习节奏健康稳健！"
+    }
+
+def apply_relief_mode(scale: float = 0.75) -> dict:
+    """
+    一键启动减负模式：下调每日各科复习投入时间，并将辅导风格切换为「温和启发·减负鼓励型」
+    """
+    cfg_path = ROOT / "ky_config.json"
+    if not cfg_path.exists():
+        return {"success": False, "message": "未找到配置文件"}
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+    plan = cfg.get("study_plan", {})
+    old_hours = plan.get("total_hours", 8.5)
+    new_hours = round(old_hours * scale, 1)
+
+    plan["total_hours"] = new_hours
+    plan["math_hours"] = round(plan.get("math_hours", 3.0) * scale, 1)
+    plan["eng_hours"] = round(plan.get("eng_hours", 2.0) * scale, 1)
+    plan["pol_hours"] = round(plan.get("pol_hours", 1.0) * scale, 1)
+    plan["pro_hours"] = round(plan.get("pro_hours", 2.5) * scale, 1)
+
+    relief_style = "温和启发·减负鼓励型 (Encouraging Mentor)"
+    plan["style_name"] = relief_style
+    cfg["coaching_style"] = relief_style
+    cfg["study_plan"] = plan
+    cfg["relief_mode_active"] = True
+    cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    agents_file = ROOT / "AGENTS.md"
+    if agents_file.exists():
+        content = agents_file.read_text(encoding="utf-8", errors="ignore")
+        content = re.sub(r"- \*\*当前激活辅导风格\*\*：.*", f"- **当前激活辅导风格**：`{relief_style}`", content)
+        content = re.sub(r"每日投入 `[\d\.]+ 小时`", f"每日投入 `{new_hours} 小时`", content)
+        agents_file.write_text(content, encoding="utf-8")
+
+    return {
+        "success": True,
+        "old_hours": old_hours,
+        "new_hours": new_hours,
+        "style": relief_style,
+        "message": f"减负模式已成功启动！每日总投入已调整为 {new_hours}h (原 {old_hours}h)，私教辅导风格已切换为「{relief_style}」。保持好心情，轻装上阵！"
+    }
 
 if __name__ == "__main__":
     run_study_plan_wizard(interactive=True)

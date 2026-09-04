@@ -33,11 +33,15 @@ try:
     from skills import socratic_tutor
     from skills import error_logger
     from skills import pdf_extractor
+    from skills import variant_retriever
+    from skills import exam_composer
 except ImportError:
     math_verifier = None
     socratic_tutor = None
     error_logger = None
     pdf_extractor = None
+    variant_retriever = None
+    exam_composer = None
 
 class ToolDefinition:
     def __init__(self, name: str, desc: str, params_schema: Dict[str, Any], func: Callable, level: int):
@@ -572,16 +576,21 @@ class ToolRegistry:
             },
             level=PermissionLevel.SAFE_EDIT
         )
-        def log_mistake(subject: str, title: str, mistake_type: str, card_content: str, question: str = "") -> str:
+        def log_mistake(subject: str, title: str, mistake_type: str = "", card_content: str = "", question: str = "", **kwargs) -> str:
             if not error_logger:
                 return "Error: 未加载 error_logger 技能"
+            final_err_type = mistake_type or kwargs.get("error_type", "概念漏洞")
+            final_detail = card_content or kwargs.get("detail", "")
+            final_prescription = kwargs.get("prescription", "严格对照采分点复盘")
+            final_question = question or kwargs.get("question", "")
+
             fp = error_logger.log_error_record(
                 subject=subject,
                 title=title,
-                mistake_type=mistake_type,
-                card_content=card_content,
-                expert_prescription="严格对照采分点复盘",
-                question=question
+                error_type=final_err_type,
+                detail=final_detail,
+                prescription=final_prescription,
+                question=final_question
             )
             return f"Success: 错题已成功归档入库 [{fp}]"
 
@@ -605,6 +614,47 @@ class ToolRegistry:
             first = due_list[0]
             card = error_logger.generate_blind_quiz(first)
             return f"【艾宾浩斯盲盒复测 (共待测 {len(due_list)} 题)】:\n\n{card}"
+
+        @self.register(
+            name="search_variant",
+            desc="按考点关键词检索真实参考资料或真题变式题；若本地未挂载实体书则生成带防虚构水印的自拟变式，严禁虚构题源。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "subject": {"type": "string", "description": "科目代码: math, eng, pol, pro"},
+                    "keyword": {"type": "string", "description": "考点关键词 (如 中值定理、泰勒公式、定积分物理应用)"}
+                },
+                "required": ["subject", "keyword"]
+            },
+            level=PermissionLevel.READ_ONLY
+        )
+        def search_variant(subject: str, keyword: str) -> str:
+            if not variant_retriever:
+                return "Error: 未加载 variant_retriever 技能"
+            res = variant_retriever.search_real_variant(subject, keyword)
+            out = [f"【变式题检索结果 · {res['subject_name']} · 考点: {res.get('keyword', keyword)}】({res['source_status']}):\n"]
+            for v in res.get("variants", []):
+                out.append(f"出处: {v.get('source_name')}\n{v.get('question')}\n")
+            return "\n".join(out)
+
+        @self.register(
+            name="compose_exam",
+            desc="从艾宾浩斯到期错题与薄弱点雷达中抽取题目拼装一张盲盒自测试卷。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "subject": {"type": "string", "description": "科目代码: math, eng, pol, pro"},
+                    "count": {"type": "integer", "description": "出卷题量，默认 3 题"}
+                },
+                "required": ["subject"]
+            },
+            level=PermissionLevel.SAFE_EDIT
+        )
+        def compose_exam(subject: str, count: int = 3) -> str:
+            if not exam_composer:
+                return "Error: 未加载 exam_composer 技能"
+            res = exam_composer.compose_exam_paper(subject=subject, count=count, save_file=True)
+            return f"【自测卷已生成】编号: {res['paper_id']} (共 {res['count']} 题)\n保存路径: {res['saved_path']}\n\n试卷内容概览:\n{res['content'][:500]}..."
 
         # ─────────────────────────────────────────────────────────────
         # 7. 三级记忆自主管理工具
