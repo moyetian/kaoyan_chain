@@ -353,7 +353,7 @@ python -m http.server 8080 --directory docs
 | 🐦 **飞书群** | **企业自建应用** + 事件订阅 | 内置握手校验，群内艾特自动分步赋分 | `ky bridge` |
 | 🐧 **QQ 群** | **NapCat / OneBot 11** 本地模式 | **无需任何公网穿透**，本地局域网秒级双向收发与题解推送 | `ky bridge` |
 
-> 📖 **完整保姆级图文配置教程**：请参阅 [`docs/BOT_INTEGRATION_GUIDE.md`](docs/BOT_INTEGRATION_GUIDE.md)
+> 📖 **完整保姆级图文配置教程**：请参阅 [`../docs/BOT_INTEGRATION_GUIDE.md`](../docs/BOT_INTEGRATION_GUIDE.md)
 
 ---
 
