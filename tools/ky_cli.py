@@ -2676,11 +2676,12 @@ def show_bridge_guide():
 ────────────────────────────────────────────────────────────────────────
 """)
 
-def run_server(port=8088, host="127.0.0.1"):
+def run_server(port=8088, host="127.0.0.1", gateway_token=None):
     """
     启动轻量级 HTTP Webhook 接收网关（ThreadingHTTPServer 支持并发请求）。
     默认仅监听 127.0.0.1；如需对外（IM 群机器人从其他机器回调）请显式传入 host='0.0.0.0'
     并配套 KY_GATEWAY_TOKEN。
+    token 优先级: 显式传入 gateway_token (CLI --gateway-token) > 环境变量 KY_GATEWAY_TOKEN > ky_config.json
     """
     from http.server import ThreadingHTTPServer
     cfg = load_config()
@@ -2696,7 +2697,10 @@ def run_server(port=8088, host="127.0.0.1"):
             f"  [!] 已对外暴露 {host}:{port}。强烈建议设置环境变量 KY_GATEWAY_TOKEN 启用鉴权。\n",
             C.RED))
 
-    handler_class = create_gateway_handler(token=os.environ.get("KY_GATEWAY_TOKEN", "") or cfg.get("gateway_token", ""))
+    effective_token = gateway_token if gateway_token else (
+        os.environ.get("KY_GATEWAY_TOKEN", "") or cfg.get("gateway_token", "")
+    )
+    handler_class = create_gateway_handler(token=effective_token)
     httpd = ThreadingHTTPServer((host, port), handler_class)
     try:
         httpd.serve_forever()
@@ -2920,7 +2924,8 @@ def main():
         # serve 接受附加参数 --host=0.0.0.0
         if len(args) > 1 and args[-1].startswith("--host="):
             gateway_host = args[-1].split("=", 1)[1].strip() or gateway_host
-        run_server(port=port, host=gateway_host)
+        # 显式传递 CLI 解析出的 gateway_token（此前被丢弃，导致 --gateway-token 不生效）
+        run_server(port=port, host=gateway_host, gateway_token=gateway_token)
     elif args[0] in ("status", "--status"):
         print_status_summary()
     elif args[0] in ("memory", "--memory"):

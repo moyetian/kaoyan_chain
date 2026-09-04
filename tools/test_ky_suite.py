@@ -465,18 +465,38 @@ def run_tests():
     runner.assert_true("Level 3" in p_lvl3 and "陷阱" in p_lvl3, "苏格拉底脚手架：Level 3 命题避坑指南规范")
 
     # 4. 检验 error_logger 盲盒抽题与闭环状态回写
-    el_test.log_error_record("math", "泰勒展开阶数匹配失误", "审题偏差", "展开至3阶漏掉余项", "严格对照分母极限阶数", question="求极限 lim (tan(x)-x)/x^3")
-    rec_list = el_test.scan_error_records("math")
-    runner.assert_true(len(rec_list) > 0, "错题解析引擎：成功结构化提取 Markdown 错题卡片")
+    #    【隔离沙箱】error_logger 的 ROOT 指向真实工作区，直接调用会把测试错题
+    #    写进学员真实的「01-数学/错题本/」造成数据污染（曾积累 30+ 条假错题）。
+    #    此处将 ROOT 临时指向系统临时目录，测试结束后自动还原。
+    import tempfile as _tempfile
+    _el_real_root = el_test.ROOT
+    _el_sandbox = Path(_tempfile.mkdtemp(prefix="ky_test_errlog_"))
+    el_test.ROOT = _el_sandbox
+    try:
+        el_test.log_error_record("math", "泰勒展开阶数匹配失误", "审题偏差", "展开至3阶漏掉余项", "严格对照分母极限阶数", question="求极限 lim (tan(x)-x)/x^3")
+        # 新记录的下次到期日是「明天」，会被艾宾浩斯严格日期门控滤掉（该门控本身也是被测行为）。
+        # 为使复测队列可测，把沙箱内记录的到期日回拨至今日。
+        import datetime as _dt
+        _today = _dt.date.today().strftime("%Y-%m-%d")
+        _tmrw = (_dt.date.today() + _dt.timedelta(days=1)).strftime("%Y-%m-%d")
+        for _f in (_el_sandbox / "01-数学" / "错题本").glob("错题记录_*.md"):
+            _txt = _f.read_text(encoding="utf-8").replace(_tmrw, _today)
+            _f.write_text(_txt, encoding="utf-8")
+        rec_list = el_test.scan_error_records("math")
+        runner.assert_true(len(rec_list) > 0, "错题解析引擎：成功结构化提取 Markdown 错题卡片")
 
-    due_list = el_test.get_due_reviews("math")
-    runner.assert_true(len(due_list) > 0, "艾宾浩斯复测：成功提取待复测到期错题队列")
+        due_list = el_test.get_due_reviews("math")
+        runner.assert_true(len(due_list) > 0, "艾宾浩斯复测：成功提取待复测到期错题队列")
 
-    blind_card = el_test.generate_blind_quiz(due_list[0])
-    runner.assert_true("盲盒重测" in blind_card and "隐去历史推导过程" in blind_card, "错题盲盒引擎：成功生成无答案的盲盒复测试题")
+        blind_card = el_test.generate_blind_quiz(due_list[0])
+        runner.assert_true("盲盒重测" in blind_card and "隐去历史推导过程" in blind_card, "错题盲盒引擎：成功生成无答案的盲盒复测试题")
 
-    up_ok, up_msg = el_test.mark_error_status("math", due_list[0]["file_name"], due_list[0]["title"], new_status="已掌握")
-    runner.assert_true(up_ok is True, "闭环状态回写：成功将复测合格题目更新标记为 [已掌握]")
+        up_ok, up_msg = el_test.mark_error_status("math", due_list[0]["file_name"], due_list[0]["title"], new_status="已掌握")
+        runner.assert_true(up_ok is True, "闭环状态回写：成功将复测合格题目更新标记为 [已掌握]")
+    finally:
+        el_test.ROOT = _el_real_root
+        import shutil as _shutil
+        _shutil.rmtree(_el_sandbox, ignore_errors=True)
 
     # ------------------------------------------------------------
     # 测试 12: 工业级 Agent Loop、工具分发、权限安全与沙箱拦截全链路回归
@@ -649,21 +669,34 @@ def run_tests():
     print("\n[测试组 14: Agent 关键工具真实执行级校验 (防止签名漂移与隐藏崩溃)]")
     pm_auto.force_allow_all = True
 
-    # 1. 真实执行 log_mistake 并断言返回 Success (C-2 彻底绝护)
-    mistake_res = tr_auto.execute_tool("log_mistake", {
-        "subject": "math",
-        "title": "测试自动化执行级错题",
-        "error_type": "概念漏洞",
-        "mistake_type": "概念漏洞",  # 别名兼容
-        "detail": "对泰勒公式麦克劳林展开余项理解偏差",
-        "prescription": "强化佩亚诺余项阶数匹配训练",
-        "question": "求 lim (x->0) (sin x - x) / x^3"
-    })
-    runner.assert_true("成功归档入库" in mistake_res and "TypeError" not in mistake_res, "执行级校验：log_mistake 真实归档成功且无参数漂移异常")
+    # 【隔离沙箱】log_mistake 会真实写入学员错题本，此处将 error_logger.ROOT
+    # 临时指向系统临时目录（tools_impl 引用的 skills.error_logger 与本文件 476 行
+    # 是同一模块实例，patch 即全局生效），测试结束还原。
+    import tempfile as _tempfile14
+    _el_real_root14 = el_test.ROOT
+    _el_sandbox14 = Path(_tempfile14.mkdtemp(prefix="ky_test_t14_"))
+    el_test.ROOT = _el_sandbox14
 
-    # 2. 真实执行 review_mistakes
-    review_res = tr_auto.execute_tool("review_mistakes", {"subject": "math"})
-    runner.assert_true(isinstance(review_res, str) and ("错题" in review_res or "掌握度" in review_res), "执行级校验：review_mistakes 真实提取错题队列成功")
+    try:
+        # 1. 真实执行 log_mistake 并断言返回 Success (C-2 彻底绝护)
+        mistake_res = tr_auto.execute_tool("log_mistake", {
+            "subject": "math",
+            "title": "测试自动化执行级错题",
+            "error_type": "概念漏洞",
+            "mistake_type": "概念漏洞",  # 别名兼容
+            "detail": "对泰勒公式麦克劳林展开余项理解偏差",
+            "prescription": "强化佩亚诺余项阶数匹配训练",
+            "question": "求 lim (x->0) (sin x - x) / x^3"
+        })
+        runner.assert_true("成功归档入库" in mistake_res and "TypeError" not in mistake_res, "执行级校验：log_mistake 真实归档成功且无参数漂移异常")
+
+        # 2. 真实执行 review_mistakes
+        review_res = tr_auto.execute_tool("review_mistakes", {"subject": "math"})
+        runner.assert_true(isinstance(review_res, str) and ("错题" in review_res or "掌握度" in review_res), "执行级校验：review_mistakes 真实提取错题队列成功")
+    finally:
+        el_test.ROOT = _el_real_root14
+        import shutil as _shutil14
+        _shutil14.rmtree(_el_sandbox14, ignore_errors=True)
 
     # 3. 真实执行 read_exam_paper 与 pdf_extractor
     pdf_res = tr_auto.execute_tool("read_exam_paper", {"subject": "math", "keyword": "2024", "max_pages": 2})
@@ -739,7 +772,7 @@ def run_tests():
         runner.assert_true(paper["count"] == 2 and "EXAM-MATH" in paper["paper_id"], "教学闭环 S2-1：自动从错题与薄弱点抽取试题拼装盲盒自测试卷")
         runner.assert_true("EXAM_ANSWER_KEYS" in paper["content"], "教学闭环 S2-1：自测卷正确嵌入加密采分点与题解元数据")
 
-        grade_res = exam_composer.grade_exam_paper(paper["content"], "1. 答案推导步骤充分有效，得出极限为 1/3")
+        grade_res = exam_composer.grade_exam_paper(paper["content"], "1. 答案推导步骤充分有效，得出极限为 1/3", auto_advance=False)
         runner.assert_true(grade_res.get("success") is True and grade_res.get("score") > 0, "教学闭环 S2-1：自动批改自测卷作答并计算得分与通过率")
         runner.assert_true("自动阅卷与采分诊断报告" in grade_res.get("report", ""), "教学闭环 S2-1：生成规范采分点批改诊断报告")
 
@@ -786,7 +819,7 @@ def run_tests():
 
         # 6. Agent 工具层调用闭环
         pm_auto.force_allow_all = True
-        agent_exam_res = tr_auto.execute_tool("compose_exam", {"subject": "math", "count": 1})
+        agent_exam_res = tr_auto.execute_tool("compose_exam", {"subject": "math", "count": 1, "save_file": False})
         runner.assert_true("自测卷" in agent_exam_res or "EXAM-MATH" in agent_exam_res, "智能体工具：compose_exam 智能体自主靶向组卷执行成功")
 
         agent_var_res = tr_auto.execute_tool("search_variant", {"subject": "math", "keyword": "泰勒展开"})

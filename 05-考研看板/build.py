@@ -905,6 +905,7 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .mbadge.B{background:rgba(59,130,246,.12);color:#3b82f6;border:1px solid rgba(59,130,246,.3)}
 .mbadge.C{background:rgba(245,158,11,.12);color:var(--warn);border:1px solid rgba(245,158,11,.3)}
 .mbadge.D{background:rgba(239,68,68,.12);color:var(--bad);border:1px solid rgba(239,68,68,.3)}
+.mbadge.U{background:rgba(148,163,184,.12);color:#64748b;border:1px solid rgba(148,163,184,.35)}
 .map-chap{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:12px;overflow:hidden;box-shadow:var(--sh)}
 .map-chap-h{padding:12px 18px;font-weight:700;font-size:13.5px;background:var(--surf2);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
 .map-point{padding:10px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
@@ -1381,17 +1382,21 @@ function animate(){
       return;
     }
 
-    var gc = m.grade_counts || {A:0,B:0,C:0,D:0};
+    var gc = m.grade_counts || {A:0,B:0,C:0,D:0,U:0};
+    var _assessed = (typeof m.assessed_count === 'number') ? m.assessed_count : (m.total_points - (gc.U||0));
+    var _arate = (typeof m.assessed_rate === 'number') ? m.assessed_rate : 0;
     sumBox.innerHTML = "<div class='map-summary'>"
       + "<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px'>"
       + "<div><b style='font-size:15px'>" + esc(m.subject_name) + " · 考纲全景掌握大盘</b></div>"
-      + "<div style='font-size:12px;color:var(--mut)'>大纲掌握率 <b style='font-size:16px;color:var(--ok)'>" + m.mastery_rate + "%</b></div></div>"
-      + "<div class='ptrack' style='height:6px;margin-bottom:10px'><div class='pfill' style='width:" + m.mastery_rate + "%;background:var(--ok)'></div></div>"
+      + "<div style='font-size:12px;color:var(--mut)'>已练考点掌握率 <b style='font-size:16px;color:var(--ok)'>" + m.mastery_rate + "%</b></div></div>"
+      + "<div class='ptrack' style='height:6px;margin-bottom:6px'><div class='pfill' style='width:" + m.mastery_rate + "%;background:var(--ok)'></div></div>"
+      + "<div style='font-size:11.5px;color:var(--mut);margin-bottom:10px'>已评估 " + _assessed + " / " + m.total_points + " 个考点 (覆盖率 " + _arate + "%)，未练习考点不计入掌握率</div>"
       + "<div class='map-badges'>"
       + "<span class='mbadge A'>● A 熟练 " + gc.A + "</span>"
       + "<span class='mbadge B'>● B 巩固 " + gc.B + "</span>"
       + "<span class='mbadge C'>● C 生疏 " + gc.C + "</span>"
       + "<span class='mbadge D'>● D 盲区 " + gc.D + "</span>"
+      + "<span class='mbadge U'>○ U 未练 " + (gc.U||0) + "</span>"
       + "<span style='margin-left:auto;font-size:11.5px;color:var(--mut)'>共 " + m.total_points + " 个核心考点</span>"
       + "</div></div>";
 

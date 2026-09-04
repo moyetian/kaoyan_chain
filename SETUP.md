@@ -1,103 +1,353 @@
-# 考研学习链 (Kaoyan Study Chain) · 部署与环境配置指引
+# 考研学习链 (Kaoyan AI Study Chain) · 部署与日常操作全流程手册
 
-本文档指导你如何将本项目部署到 GitHub、配置 GitHub Pages 或 Cloudflare Pages 移动端看板，并与你的 AI 辅助编程环境（Antigravity、Cursor、VS Code、Claude Code 等）协同运作。
+> **【系统最高目标】** 本文档为考研学子提供保姆级操作指南，涵盖环境安装、专属备考方案定制、终端私教日常交互、IM 聊天机器人讲题网关打通、移动端自测看板发布与考研日常标准操作程序 (Daily SOP)。
 
 ---
 
-## 1. 极速环境依赖（零额外三方包）
+## 📑 目录索引
 
-本项目看板构建器 `build.py` 采用 **Python 3.8+ 原生标准库**（`re`, `json`, `html`, `datetime`, `pathlib`），**无需任何 `pip install` 繁琐依赖**，开箱即用。
+- [1. 极速环境准备与项目初始化](#1-极速环境准备与项目初始化)
+- [2. 每日标准操作程序 (Daily SOP)](#2-每日标准操作程序-daily-sop)
+- [3. 终端专用私教 (ky-cli) 实操全指南](#3-终端专用私教-ky-cli-实操全指南)
+- [4. 靶向组卷、变式检索与诊断实战](#4-靶向组卷变式检索与诊断实战)
+- [5. 聊天软件 (微信/QQ/钉钉/飞书) 双向讲题配置](#5-聊天软件-微信qq钉钉飞书-双向讲题配置)
+- [6. 移动端看板部署 (GitHub / Cloudflare Pages)](#6-移动端看板部署-github--cloudflare-pages)
+- [7. 自动化测试与系统体检](#7-自动化测试与系统体检)
+- [8. 常见问题排查与避坑指南 (Troubleshooting)](#8-常见问题排查与避坑指南-troubleshooting)
 
-只需确保本地已安装 Python：
+---
+
+## 1. 极速环境准备与项目初始化
+
+### 1.1 系统要求
+- **操作系统**：Windows 10/11、macOS 或 Linux
+- **Python 运行时**：Python 3.8+（推荐 Python 3.10+，纯标准库支持，**核心运行零依赖**）
+- **Git**：用于版本管理与多设备同步
+
+> [!TIP]
+> 考研专有高级技能（如数学高精符号验算、真题 PDF 抽取、草稿图像识别）为可选依赖。如需启用：
+> ```bash
+> pip install -r requirements.txt
+> ```
+
+---
+
+### 1.2 三分钟开箱初始化
+
+在项目工作区根目录下，打开终端运行工作区全自动初始化向导：
+
 ```bash
-python --version
-# 或
-py --version
+# 启动全自动向导 (Windows / macOS / Linux 通用)
+python tools/init_workspace.py
+```
+
+向导将自动引导：
+1. **状态文件实例化**：安全拷贝四科 `*.template.md` 模板为本地 `*.md` 工作文件（已有进度绝不覆盖）；
+2. **私密资料库建立**：为数学、英语、政治、专业课自动创建被 `.gitignore` 保护的 `参考资料/` 目录；
+3. **7 大维度个性化方案设计**：锁定初试倒计时、科目考纲、真实教材白名单、摸底痛点、每日时间预算、作息与辅导风格；
+4. **编译首版看板**：自动生成 `docs/index.html`。
+
+---
+
+## 2. 每日标准操作程序 (Daily SOP)
+
+考研成功重在每天稳定、闭环、不内耗地推进。推荐如下标准一日复习流：
+
+```mermaid
+flowchart TD
+    Morning["🌅 晨间 (7:30~8:00)\nky status 掌握倒计时\nky today 查看当日攻坚清单\nky notify 推送晨报到群聊"]
+    Study["✍️ 日间 (8:00~21:30)\n启动 ky 交互私教\n输入 [科目]报到 获取针对性派题\n独立草稿作答，输入 交作业 步骤赋分\n遇到错题按 [2] 或 /save 一键归档"]
+    Evening["🌙 晚间 (21:30~22:30)\nky review 艾宾浩斯错题盲盒重测\nky exam 靶向组卷限时攻坚\nky fatigue 监测连续完成率"]
+    Night["📱 睡前 (22:30~23:00)\n运行 更新看板.bat (ky build)\n手机打开看板 👁️ 遮罩自测 10 分钟\n公式与帽子词默写后安心休息"]
+
+    Morning --> Study --> Evening --> Night
+```
+
+1. **晨间（确认与广播）**：
+   - 运行 `ky status` 确认当前倒计时与作息节律；
+   - 运行 `ky today` 查阅今日四科攻坚任务；
+   - 运行 `ky notify` 一键将任务广播推送到微信、钉钉或 QQ 备考群，开启自律打卡；
+2. **日间（攻坚与采分）**：
+   - 运行 `ky`（默认 `--permission=ask`）进入交互式私教；
+   - 输入 `数学报到` 或 `英语报到`，AI 私教自动调取档案，基于考纲与错题针对性派题；
+   - 在纸上推导作答，完成后输入 `交作业`（支持文字或 `/img <草稿路径>` 照片）；
+   - 私教按照真题评分标准逐行标注 `[+2分]` / `[-1分]`，指出错因五分类并提供处方；
+   - 敲击快捷键 `[2]` 一键将错题归入本地 `错题本/`；
+3. **晚间（复测与诊断）**：
+   - 运行 `ky review` 查看今日艾宾浩斯抗遗忘待复测队列；
+   - 运行 `ky exam [科目] --count=3` 随机抽取 3 道盲盒错题限时独立重测；
+   - 运行 `ky fatigue` 查看近期任务完成率，确保不陷入过度疲劳；
+4. **睡前（同步与遮罩自测）**：
+   - 双击根目录下 `更新看板.bat`（或运行 `ky build`）重新编译看板；
+   - 手机浏览器打开自测看板（或从手机主屏幕图标打开），点击“👁️ 开启遮罩自测”，单手轻触卡片默写公式、高频词汇与政治帽子词 10 分钟。
+
+---
+
+## 3. 终端专用私教 (ky-cli) 实操全指南
+
+本项目配备了专有终端私教工具 `ky`（Windows 批处理 `ky.bat` / Linux `ky` / `python tools/ky_cli.py`）。
+
+### 3.1 首次模型与参数配置 (`ky config`)
+
+在终端输入：
+```bash
+ky config
+```
+弹出分类交互式配置菜单：
+- **1. 大模型提供商 (API Provider)**：支持 DeepSeek、智谱 GLM、通义千问、Kimi、OpenAI、本地 Ollama 等；
+- **2. 模型接入点与密钥**：填入 Base URL（如 `https://api.deepseek.com/v1`）与 API Key；
+- **3. 推理模型选择**：如 `deepseek-chat` 或 `deepseek-reasoner`；
+- **4. 严谨度温度 (Temperature)**：默认 `0.3`（理科计算推荐 0.1~0.3，避免大模型随意发散）；
+- **5. 聊天机器人 Webhook**：配置微信、QQ OneBot、钉钉、飞书机器人地址。
+
+---
+
+### 3.2 运行模式与权限控制
+
+| 启动命令 | 模式名称 | 运行机制与核心场景 |
+|---|---|---|
+| `ky` | 默认询问模式 (`--permission=ask`) | 工具修改文件或执行命令前，在终端弹出 Codex 风格卡片：`[y] 批准 / [a] 永久信任 / [n] 拒绝` |
+| `ky --permission=plan` | **计划模式 (Plan Mode)** | 写操作前出具变更计划，**自动在 `.checkpoint/` 创建原子快照**；如遇误改可输入 `ky rollback` 秒级撤销！ |
+| `ky --permission=auto` | 极速全自动沙箱 (`--permission=auto`) | 免交互审批（0~3级工具秒级放行），专为沉浸式连续刷题设计 |
+| `ky --permission=safe` | 严格只读模式 (`--permission=safe`) | 禁止一切文件写入与命令执行，仅供阅读笔记、大纲与定理答疑 |
+
+---
+
+### 3.3 核心 CLI 子命令矩阵速查
+
+```bash
+# 查看总战役态势、倒计时、连续打卡天数与作息节律
+ky status
+
+# 查看今日四科任务清单 (加 --json 输出机读数据)
+ky today
+ky today --json
+
+# 快速完成任务打卡并回写状态
+ky done "概念精讲"
+
+# 查看各科艾宾浩斯待复测错题
+ky review math
+ky review eng
+
+# 查看或切换私教辅导风格 (1:严格把关 2:高效秒杀 3:温和启发 4:学霸溯源)
+ky style
+ky style 2
+
+# 疲劳度检测与一键减负
+ky fatigue
+ky relieve
+
+# 三级分层记忆健康度诊断与超量滚动修剪
+ky memory status
+ky memory prune
+
+# 秒级回滚 Plan 模式修改的文件快照
+ky rollback
+
+# 一键系统健康体检
+ky doctor
+
+# 编译并刷新看板
+ky build
+
+# 一键广播晨报到 IM 群聊
+ky notify
 ```
 
 ---
 
-## 2. 首次推送到 GitHub
+## 4. 靶向组卷、变式检索与诊断实战
 
-### 步骤 A：在 GitHub 上创建仓库
-1. 打开 [GitHub 新建仓库页面](https://github.com/new)；
-2. 输入仓库名（如 `kaoyan-study-chain`）；
-3. **选择 Private（私有仓库）**，因为错题记录和个人复习分数属于个人隐私数据；
-4. **不要勾选** "Initialize this repository with a README"（本地已具备完备结构）。
-
-### 步骤 B：本地初始化与关联远程
-在本项目根目录下打开 PowerShell 终端：
-
-```powershell
-# 1. 初始化本地仓库
-git init
-
-# 2. 切换主分支
-git branch -M main
-
-# 3. 关联你的远程仓库
-git remote add origin https://github.com/<你的GitHub用户名>/<你的仓库名>.git
-
-# 4. 提交所有代码与笔记
-git add -A
-git commit -m "feat: initialize kaoyan-study-chain repository"
-
-# 5. 推送到 GitHub
-git push -u origin main
+### 4.1 靶向自测组卷 (`ky exam`)
+基于你的历史错题本和薄弱考点，动态生成全真盲盒小测卷：
+```bash
+# 针对数学随机抽取 3 道盲盒试题并保存为文件
+ky exam math --count=3 --save
 ```
+- 试卷自动抹去你之前的所有错误记录与解题线索；
+- 试卷末尾嵌入了加密的采分点元数据；
+- 独立完成后，提交批改：
+```bash
+ky exam-submit "EXAM-MATH-20260904-1655.md" "你的作答文本或答案"
+```
+系统将逐步比对采分点，输出正答率、诊断报告并自动记录错因。
 
 ---
 
-## 3. 配置移动端在线看板
+### 4.2 真题同类变式检索 (`ky variant`)
+当某个考点卡壳时，立即检索同类变式进行举一反三：
+```bash
+# 检索关于“拉格朗日中值定理”的同考点变式
+ky variant "拉格朗日"
+```
+- **防伪水印门禁**：若本地未放入实体真题书，系统绝对不会凭空捏造《李林880》等书名，而是明示 **`【私教自拟变式】` 水印**，确保题源透明真实。
 
-你可以通过 **GitHub Pages** 或 **Cloudflare Pages** 获得一个完全属于你自己的手机端看板网址。
+---
 
-### 方案 A：GitHub Pages 自动部署（内置 Actions 工作流）
+### 4.3 官方考纲树状图谱与掌握度 (`ky map`)
+```bash
+# 调取数学二官方大纲 66 个细分考点全景树
+ky map math
+```
+- 清晰标注每个细分考点为 **[A]熟练 / [B]巩固 / [C]生疏 / [D]盲区**；
+- 自动关联该考点下学员的累计错题数，重点歼灭 [C] 和 [D] 考点。
 
-本项目已在 `.github/workflows/deploy-pages.yml` 内置了自动构建与发布流水线：
+---
 
-1. 进入 GitHub 仓库页面 -> 点击 **Settings** -> 侧边栏选择 **Pages**；
-2. 在 **Build and deployment** 下：
-   - **Source** 下拉菜单选择 **GitHub Actions**；
-3. 之后只要推送更新，GitHub Actions 就会自动执行 `build.py` 并将编译好的 `docs/` 发布到 Pages；
-4. 发布完成后，页面上方会显示你的访问网址（例如：`https://<username>.github.io/<repo>/`）。
+### 4.4 模考整卷多题诊断 (`ky diagnose`)
+完成整套模拟试卷客观题后，一次性输入答题序列：
+```bash
+ky diagnose "1-5: A B C D A; 6-10: C B A D C"
+```
+系统自动比对标准答案，输出：
+1. 本套试卷总得分与正答率；
+2. **章节失分排行榜**（如：高等数学多元积分学失分 10 分，占比 40%）；
+3. 下周突破处方与学习时间重分配建议。
 
-> [!NOTE]
-> 如果仓库设为 Private，免费版 GitHub 账户可能需要升级为 Pro 才能开启 Pages。如果你使用的是免费版私有仓库，可选用**方案 B（Cloudflare Pages）**。
+---
 
-### 方案 B：Cloudflare Pages 部署（私有仓库免费部署方案）
+## 5. 聊天软件 (微信/QQ/钉钉/飞书) 双向讲题配置
 
-Cloudflare Pages 支持直接连接 GitHub 私有仓库并免费部署：
+终端私教不仅能在电脑命令行运行，还能作为本地网关与常用即时通讯聊天软件打通，让你在手机微信或群聊里随时 @私教 讲题！
 
-1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/) -> 进入 **Workers & Pages** -> 点击 **Create application** -> 选择 **Pages** -> **Connect to Git**；
-2. 授权访问你的 GitHub 账号并选中本仓库；
-3. 构建配置填入：
+```bash
+# 启动本地网关服务器 (默认端口 8088)
+ky serve
+```
+
+### 5.1 微信个人号 (WeChat ClawBot 扫码直连 · 推荐)
+- **核心亮点**：**无需公网 IP**，手机微信扫一扫即可将微信个人号变身 24h 考研私教！
+- **操作步骤**：
+  1. 在终端直接运行：
+     ```bash
+     ky clawbot
+     ```
+  2. 终端将输出一个微信登录二维码，打开手机微信【扫一扫】授权登录；
+  3. 私教网关自动接管该微信账号，你在手机微信上给该账号发题目或草稿，私教即刻分步推导讲题！
+
+---
+
+### 5.2 钉钉群 (DingTalk Outgoing 机器人)
+1. 打开钉钉电脑端 -> 进入你的考研备考群 -> 【群设置】-> 【智能群助手】；
+2. 添加自定义机器人 -> 开启 **【机器人回调 (Outgoing)】** 开关；
+3. 将 POST 回调地址填入：`http://<你的公网IP或穿透域名>/webhook`；
+4. 在群里直接输入 `@机器人 学数学：请问罗尔定理的核心条件是什么？`，私教自动异步分步批改推回群聊。
+
+---
+
+### 5.3 飞书群 (Feishu 企业自建应用)
+1. 登录 [飞书开放平台 (open.feishu.cn)](https://open.feishu.cn) 创建自建企业应用；
+2. 添加【机器人】能力；
+3. 在【事件与回调】页面中，请求网址填入：`http://<你的公网IP或穿透域名>/webhook`（网关已内置 `url_verification` 握手）；
+4. 订阅 `im.message.receive_v1` 事件并发布应用；
+5. 在群聊中添加该机器人，直接艾特即可讲题！
+
+---
+
+### 5.4 QQ 群 (NapCat / OneBot 11 本地模式)
+1. 在本地启动 NapCat QQ 机器人框架；
+2. 在 HTTP 事件上报中填入：`http://127.0.0.1:8088/webhook`；
+3. **无需任何公网穿透**，本地毫秒级双向收发，群内随时刷题。
+
+> 📖 **完整保姆级图文配置**：详见 [`docs/BOT_INTEGRATION_GUIDE.md`](docs/BOT_INTEGRATION_GUIDE.md)
+
+---
+
+## 6. 移动端看板部署 (GitHub / Cloudflare Pages)
+
+自测看板 `docs/index.html` 采用单文件自包含原生架构，零外部框架依赖，秒开秒测。
+
+### 方案 A：GitHub Pages 自动部署 (公开/免费)
+本项目已在 `.github/workflows/deploy-pages.yml` 内置自动构建流水线：
+1. 在 GitHub 建立仓库并推送：
+   ```bash
+   git remote set-url origin https://github.com/<你的用户名>/<你的仓库名>.git
+   git push -u origin main
+   ```
+2. 在 GitHub 仓库页面 -> **Settings** -> **Pages** -> **Source** 选择 **GitHub Actions**；
+3. 推送更新后，GitHub Actions 会自动运行构建并发布到 `https://<用户名>.github.io/<仓库名>/`；
+4. **隐私脱敏提示**：如部署至公开仓库，请在本地运行：
+   ```bash
+   set KY_SNAPSHOT_OPT_IN=1 && python tools/update_dashboard.py --local
+   ```
+   编译引擎会自动对个人错题明细脱敏，保护备考隐私。
+
+---
+
+### 方案 B：Cloudflare Pages 部署 (私有仓库完全免费推荐)
+若你的 GitHub 仓库为 **Private（私有）**，GitHub Pages 需付费 Pro 会员，推荐使用完全免费的 Cloudflare Pages：
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/) -> **Workers & Pages** -> **Create application** -> **Pages** -> **Connect to Git**；
+2. 授权选中你的私有考研仓库；
+3. 构建参数设置：
    - **Framework preset**: `None`
    - **Build command**: `python 05-考研看板/build.py`
    - **Build output directory**: `docs`
-4. 点击 **Save and Deploy** 即可完成部署！
-5. **安全保护（可选）**：在 Cloudflare Zero Trust -> Access -> Applications 中，可以一键为该域名增加邮箱验证码登录，防止未授权访问。
+4. 点击 **Save and Deploy**，即可获得专属个性化域名（支持在 Cloudflare Access 中设置邮箱验证码访问白名单）。
 
 ---
 
-## 4. 手机端“PWA 级”体验设置
-
-1. 使用手机浏览器（iOS Safari 或 Android Chrome/Edge）打开部署好的网页；
-2. 点击浏览器的 **分享**（或菜单按钮） -> 选择 **添加到主屏幕**（Add to Home Screen）；
-3. 手机桌面将生成一个独立的考研看板图标，打开即为全屏自适应 App 体验：
-   - 支持单手切换今日任务、必背卡片、薄弱雷达与数据统计；
-   - 支持离线 KaTeX 数学公式渲染；
-   - 支持遮罩自测默写模式。
+### 6.1 手机添加到主屏幕 (PWA 原生 App 体验)
+1. 手机 Safari (iOS) 或 Chrome/Edge (Android) 打开你的看板网址；
+2. 点击浏览器底部或右上角 **分享**（或菜单）按钮；
+3. 选择 **“添加到主屏幕” (Add to Home Screen)**；
+4. 手机主屏即生成一个独立的“考研看板”App 图标，全屏沉浸式刷卡背诵，支持离线 KaTeX 公式渲染与触碰遮罩默写！
 
 ---
 
-## 5. 日常使用与复盘工作流
+## 7. 自动化测试与系统体检
 
-1. **日常学习**：
-   - 在 VS Code / Antigravity / Cursor 中打开本仓库；
-   - 输入口令（如 `数学报到`、`派题`、`交作业`），AI 私教会按照你的 `AGENTS.md` 协议进行互动，并将错题与掌握度记录到本地状态；
-2. **隐私隔离**：
-   - 你的实际做题记录和状态受 `.gitignore` 保护，只保留在你的本地电脑中，不会意外泄漏到 GitHub；
-3. **更新看板**：
-   - 每天复盘完毕，双击运行根目录下的 `更新看板.bat`（或在终端运行 `python 05-考研看板/build.py`）；
-   - 脚本会自动解析最新的本地状态，重新编译 `docs/index.html` 并推送至 GitHub，手机端约 1 分钟后自动同步最新自测卡片与掌握度！
+为了确保大模型提示词装配、状态机读写、沙箱权限与考研技能库在高频备考中绝不出错，系统内置了工业级测试与体检工具：
+
+### 7.1 一键健康体检 (`ky doctor`)
+```bash
+ky doctor
+```
+全面排查 6 大维度：
+- [√] Python 3.10+ 版本与执行路径
+- [√] 考研专有依赖 (SymPy, pypdf, Pillow, rapidocr)
+- [√] 四科协议、考纲与状态记忆文件完整性
+- [√] 大模型 API Key 连通性
+- [√] 看板编译引擎与 8088 端口可用性
+- [√] Git 隐私安全隔离 (`ky_config.json` 与 `.memory/` 拦截校验)
+
+---
+
+### 7.2 156 项全自动化回归测试 (`python tools/test_ky_suite.py`)
+```bash
+python tools/test_ky_suite.py
+```
+涵盖 17 大测试组：
+1. 配置文件与容错机制
+2. 四科系统提示词组装 (防捏造李林/张宇书目红线)
+3. 四大 IM 平台 Webhook 校验与加签计算
+4. 每日晨报卡片提取
+5. Webhook 双向网关与 OpenAI 兼容端点
+6. 看板编译生成与体积控制
+7. Git 隐私安全门禁实测
+8. 数学高精符号验算 (SymPy)
+9. 真题 PDF 题号与页码抽取 (pypdf)
+10. 视觉草稿预处理与苏格拉底三级脚手架
+11. 官方大纲注入与 7 维度备考方案持久化
+12. 工业级 Agent Loop、多轮推理与工具调用
+13. 沙箱防御网：敏感路径穿越与高危指令硬拦截
+14. 权限分级审批引擎与 MCP 客户端
+15. 上下文压缩配对保护 (防孤儿 Tool) 与 CLI 命令回归
+16. Sprint 2 教学闭环 (靶向组卷/防伪变式/考纲图谱/整卷诊断/防疲劳减负)
+17. Sprint 3 体验生态 (每日复盘/分层记忆修剪/Plan快照回滚/5Tab看板/FSRS)
+
+---
+
+## 8. 常见问题排查与避坑指南 (Troubleshooting)
+
+### Q1: 运行 `ky` 提示 `尚未配置 API Key`？
+- **解答**：在终端运行 `ky config`，按提示填入你的大模型 API 密钥（如 DeepSeek、GLM 或通义千问）即可立即唤醒 AI 私教。
+
+### Q2: 为什么推送到 GitHub 后看不到我的个人做题记录和资料？
+- **解答**：这是本系统的 **Local-First 隐私防泄露铁律**。`.gitignore` 自动拦截了你的 `今日任务.md`、`学员档案.md`、`错题本/` 下的具体题目以及 `参考资料/` 下的教材 PDF。你的备考数据与版权资产永远安全保存在本地。
+
+### Q3: 切换了报考院校或考试科目怎么办？
+- **解答**：在终端运行 `ky subject`，交互式重新选择科目（如从数学一切换为数学二，或从英语一切换为英语二），系统会自动加载对应的官方考纲并更新防超纲红线禁区。
+
+### Q4: 连续复习几天感觉压力大、任务做不完怎么办？
+- **解答**：在终端运行 `ky relieve` 一键启动减负模式！系统会自动将每日时间预算下调 25%，并无缝切换为「温和启发·减负鼓励型」私教风格，帮你卸下内耗包袱，稳步复苏状态！
