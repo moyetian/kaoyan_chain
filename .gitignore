@@ -102,3 +102,8 @@ desktop.ini
 
 # Plan Mode 快照备份沙箱 (本地独占，不上传云端)
 .checkpoint/
+
+# 临时分析报告、竞品方案与搜索规划文件
+*审查报告*.md
+*路线图*.md
+*规划.txt

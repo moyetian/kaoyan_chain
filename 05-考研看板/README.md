@@ -380,11 +380,16 @@ kaoyan_chain/
 ├── .cursorrules                         # Cursor 编辑器智能加载协议
 ├── .clinerules                          # Roo Code / Cline 编辑器加载协议
 ├── LICENSE                              # MIT 开源许可证
-├── README.md                            # 项目总说明与详细部署指南（本文档）
+├── README.md                            # 项目总说明与详细部署指南
 ├── SETUP.md                             # 进阶配置与看板自定义手册
 ├── AGENTS.md                            # 全科总教练 Agent 路由中枢与风格设定
 ├── GEMINI.md                            # Gemini / Antigravity 入口配置
 ├── 更新看板.bat                         # Windows 一键编译看板并提交推送脚本
+│
+├── data/                                # 高校研招权威数据库
+│   └── universities/                    # 全国高校研招名录与站点拓扑
+│       ├── registry.json                # 全国55+研招高校代码、别名与官网二级域名库
+│       └── school_data/                 # 各高校结构化招生简章与专业目录缓存
 │
 ├── 01-数学/                             # 数学专属私教体系（数一/二/三/396通用）
 │   ├── AGENTS.md                        # 防超纲、解题步骤规范、防计算失误协议
@@ -424,6 +429,8 @@ kaoyan_chain/
 │   ├── 01_考纲拆解与分值地图模板.md     # 考纲分值拆解模板
 │   ├── 02_核心公式与考点速查模板.md     # 核心结论速记模板
 │   ├── 03_题源核验与抽题协议模板.md     # 权威题源白名单门禁
+│   ├── 双校考情对比_华中科技大学_VS_武汉大学_计算机.md # ky compare 自动生成横向对标研报
+│   ├── 目标院校情报_华中科技大学_计算机.md # ky scout / admission 权威招考情报研报
 │   ├── 学情档案.template.md             # 章节掌握度记忆中枢模板
 │   ├── 每日作业/                        # 每日作业记录模板
 │   └── 错题本/                          # 错题记录模板与索引
@@ -431,14 +438,40 @@ kaoyan_chain/
 ├── 05-考研看板/                         # 看板构建工程
 │   ├── build.py                         # 双模自适应构建引擎（纯 Python 标准库）
 │   ├── docs/index.html                  # 编译生成的单文件移动端看板
-│   └── README.md                        # 看板二次开发指引
+│   └── README.md                        # 看板二次开发指引（本文档）
 │
-├── docs/index.html                      # GitHub Pages 发布源镜像
+├── docs/                                # GitHub Pages 发布源镜像与高清矢量图谱
+│   ├── assets/                          # 印刷级 SVG 架构图与演示素材
+│   │   ├── intelligence_architecture.svg# 研招情报与证据链架构图
+│   │   ├── school_comparator_matrix.svg # 双校横向对标决策矩阵
+│   │   ├── dashboard_5tabs_architecture.svg # 看板 5Tab 全景架构图
+│   │   └── ...                          # 技能、记忆、生命周期架构矢量图
+│   ├── index.html                       # 移动端自测看板发布源
+│   ├── live.html                        # 印刷级 KaTeX 实时可视化网页伴侣
+│   └── state_snapshot.json              # 学情脱敏快照数据集
+│
 └── tools/                               # 跨平台运维与管理工具包
+    ├── agent/                           # 工业级自主智能体内核 (Agent Loop, Hooks, Memory, MCP, Sandbox, Permissions)
+    ├── intelligence/                    # KaoYan Intelligence 招考全景情报与证据链引擎
+    │   ├── chsi_connector.py            # 研招网 S 级权威目录参数化连接器
+    │   ├── comparator.py                # 双校招考核心指标横向深度对标引擎
+    │   ├── discovery.py                 # 官方研究生院与二级学院站点拓扑发现
+    │   ├── evidence_engine.py           # S/A/B/C/D 证据链构建与多源冲突仲裁
+    │   ├── extractor.py                 # 网页/PDF 专业代码与拟招指标智能提取
+    │   ├── fetcher.py                   # 智能重试与网页深度降噪正文提取
+    │   ├── models.py                    # 证据对象、高校实体与冲突判定数据模型
+    │   ├── registry.py                  # 高校代码解析与通用自适应实体合成器
+    │   ├── scout_engine.py              # 社媒(知乎/B站/小红书)就读体验口碑引擎
+    │   └── watcher.py                   # 招生简章动态指纹监控与变动雷达
+    ├── skills/                          # 考研专有能力技能中枢 (SymPy验算, PDF抽题, 盲盒组卷, 变式检索, 考纲图谱, 院校侦察)
+    │   ├── school_scout.py              # 目标高校研招与社媒口碑侦察专属技能
+    │   └── ...                          # 验算/抽题/组卷/变式/图谱/诊断各技能实现
+    ├── doctor.py                        # 6 维度全链路系统体检工具 (Python/依赖/状态/API/端口/Git隐私)
     ├── init_workspace.py                # 跨平台工作区全能初始化向导
-    ├── ky_cli.py                        # 专有终端私教与多端 IM 网关
-    ├── study_planner.py                 # 7维度个人定制化方案设计引擎
+    ├── ky_cli.py                        # 专有终端私教 (REPL) 与多端 IM 网关 (WeChat/QQ/DingTalk/Feishu)
+    ├── study_planner.py                 # 7维度个人定制化方案设计引擎与防疲劳预警
     ├── syllabus_manager.py              # 官方考纲智能匹配与切换管理器
+    ├── test_ky_suite.py                 # 198项全自动化工程回归测试套件 (19大测试组)
     ├── update_dashboard.py              # 跨平台一键编译更新与推送脚本
     └── verify_health.py                 # 全科规范与关键文件健康度巡检脚本
 ```
