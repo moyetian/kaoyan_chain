@@ -10,7 +10,9 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Status-Template%20Ready-success.svg?style=flat-square" alt="Status" />
+  <img src="https://img.shields.io/badge/Status-Sprint%203%20%2B%20Intelligence%20Ready-success.svg?style=flat-square" alt="Status" />
+  <img src="https://img.shields.io/badge/Tests-198%2F198%20Passed%20(100%25)-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
+  <img src="https://img.shields.io/badge/Dashboard-5%20Tabs%20(%E5%9B%BE%E8%B0%B1%2B%E8%B6%8B%E5%8A%BF%E7%BA%BF%2B%E7%AE%80%E7%AB%A0%E9%80%9F%E9%80%92)-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
   <img src="https://img.shields.io/badge/Python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/Math-KaTeX%20LaTeX-00d084?style=flat-square&logo=latex&logoColor=white" alt="KaTeX" />
   <img src="https://img.shields.io/badge/Mobile-Responsive%20PWA-f59e0b?style=flat-square&logo=pwa&logoColor=white" alt="Mobile" />
@@ -63,14 +65,15 @@
   <img src="docs/assets/dashboard_showcase.jpg" alt="移动端自测看板与遮罩默写功能演示" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
 </p>
 
-### 1. 四大核心交互页签图解
+### 1. 五大核心交互页签图解
 
 | 页签 | 功能定位 | 核心特性与交互设计 | 核心使用场景 |
 |---|---|---|---|
-| 📋 **今日**<br>*(Today)* | 每日攻坚任务卡 | • 四科当日复习分钟预算进度条<br>• 针对学员个性化薄弱项的精准攻坚清单<br>• 点击即时打勾打卡，初试倒计时毫秒感知 | 晨起确认当日任务，晚间核对执行闭环 |
+| 📋 **今日**<br>*(Today)* | 每日攻坚任务卡 | • 四科当日复习分钟预算进度条<br>• 针对学员个性化薄弱项的精准攻坚清单<br>• 🔥 **招生简章与自命题突发速递卡片**（第一时间预警高校招考动态）<br>• 点击即时打勾打卡，初试倒计时毫秒感知 | 晨起确认当日任务，晚间核对执行闭环 |
 | 🧠 **必背**<br>*(Flashcards)* | 核心速记与 3D 翻转卡 | • 数学高频定理推导、积分表、泰勒展开公式卡<br>• 英语高频词汇与作文功能句型速查<br>• 政治核心帽子词与历史时间线<br>• 专业课高频大题答题模板与算法三段式规范 | ★ **碎片时间主力**：排队、通勤、自习室休息、睡前默写 |
-| 🎯 **薄弱**<br>*(Radar & Queue)* | 掌握度雷达与错题队列 | • 章节掌握度阶梯雷达图，直观暴露丢分洼地<br>• **艾宾浩斯记忆周期循环复习**，未掌握错题强制置顶<br>• 标星攻坚难点定向突破 | 每周/每月全科复盘时定向爆破 |
-| 📊 **数据**<br>*(Analytics)* | 全科学情诊断与态势 | • **错因五分类分布占比**（概念漏洞/审题偏差/公式记错/计算失误/书写丢分）<br>• 计算失误量化指标与步骤丢分追踪<br>• 深浅色护眼主题一键无缝切换 | 阶段性评估各科复习重心，动态调整时间预算 |
+| 🎯 **薄弱**<br>*(Radar & Queue)* | 掌握度雷达与错题队列 | • 章节掌握度阶梯雷达图，直观暴露丢分洼地<br>• **艾宾浩斯与 FSRS 记忆周期循环复习**，未掌握错题强制置顶<br>• 标星攻坚难点定向突破 | 每周/每月全科复盘时定向爆破 |
+| 📊 **数据**<br>*(Analytics)* | 全科学情诊断与态势 | • **错因五分类分布占比**（概念漏洞/审题偏差/公式记错/计算失误/书写丢分）<br>• **7 日任务完成率趋势 SVG 曲线**，直观反映近期学习平稳度与自律节律<br>• 计算失误量化指标与步骤丢分追踪，深浅色护眼主题一键无缝切换 | 阶段性评估各科复习重心，动态调整时间预算 |
+| 🗺️ **图谱**<br>*(Knowledge Map)* | 官方考纲全景树图 | • **全量解析教育部官方考纲知识点树结构**，一级二级模块清晰分层<br>• 智能映射错题到细分考点，标记 **A(熟练) / B(巩固) / C(生疏) / D(盲区)**<br>• 点击细分考点即可一键唤醒终端针对性变式演练 | 阶段性清点大纲死角，确保初试无盲区覆盖 |
 
 ---
 
