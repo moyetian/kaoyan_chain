@@ -1,0 +1,1696 @@
+{
+  "10001": {
+    "chsi_code": "10001",
+    "name": "北京大学",
+    "aliases": [
+      "北大",
+      "PKU",
+      "Peking University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线",
+      "C9联盟"
+    ],
+    "region": "北京",
+    "official_domain": "https://www.pku.edu.cn",
+    "graduate_domain": "https://admission.pku.edu.cn",
+    "admission_domain": "https://admission.pku.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机学院 / 软件与微电子学院",
+        "college_domain": "https://cs.pku.edu.cn",
+        "default_majors": [
+          "081200",
+          "085400",
+          "085404",
+          "085405"
+        ]
+      },
+      "医学": {
+        "college_name": "北京大学医学部",
+        "college_domain": "https://yjsy.bjmu.edu.cn",
+        "default_majors": [
+          "100200",
+          "105100"
+        ]
+      }
+    }
+  },
+  "10002": {
+    "chsi_code": "10002",
+    "name": "中国人民大学",
+    "aliases": [
+      "人大",
+      "RUC",
+      "Renmin University of China"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "北京",
+    "official_domain": "https://www.ruc.edu.cn",
+    "graduate_domain": "https://pgs.ruc.edu.cn",
+    "admission_domain": "https://pgs.ruc.edu.cn",
+    "departments": {
+      "经济": {
+        "college_name": "经济学院",
+        "college_domain": "http://econ.ruc.edu.cn",
+        "default_majors": [
+          "020100",
+          "020200"
+        ]
+      },
+      "金融": {
+        "college_name": "财政金融学院",
+        "college_domain": "http://cj.ruc.edu.cn",
+        "default_majors": [
+          "025100"
+        ]
+      },
+      "信息": {
+        "college_name": "信息学院 / 高瓴人工智能学院",
+        "college_domain": "http://info.ruc.edu.cn",
+        "default_majors": [
+          "081200",
+          "085400"
+        ]
+      }
+    }
+  },
+  "10003": {
+    "chsi_code": "10003",
+    "name": "清华大学",
+    "aliases": [
+      "清华",
+      "THU",
+      "Tsinghua University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线",
+      "C9联盟"
+    ],
+    "region": "北京",
+    "official_domain": "https://www.tsinghua.edu.cn",
+    "graduate_domain": "https://yz.tsinghua.edu.cn",
+    "admission_domain": "https://yz.tsinghua.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与技术系",
+        "college_domain": "https://www.cs.tsinghua.edu.cn",
+        "default_majors": [
+          "081200",
+          "085400"
+        ]
+      },
+      "电子": {
+        "college_name": "电子工程系",
+        "college_domain": "https://www.ee.tsinghua.edu.cn",
+        "default_majors": [
+          "080900",
+          "081000"
+        ]
+      },
+      "经管": {
+        "college_name": "经济管理学院",
+        "college_domain": "https://www.sem.tsinghua.edu.cn",
+        "default_majors": [
+          "120100",
+          "120200",
+          "025100"
+        ]
+      }
+    }
+  },
+  "10004": {
+    "chsi_code": "10004",
+    "name": "北京交通大学",
+    "aliases": [
+      "北交",
+      "北交大",
+      "BJTU"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "北京",
+    "official_domain": "https://www.bjtu.edu.cn",
+    "graduate_domain": "https://gs.bjtu.edu.cn",
+    "admission_domain": "https://gs.bjtu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机与信息技术学院",
+        "college_domain": "https://cs.bjtu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10006": {
+    "chsi_code": "10006",
+    "name": "北京航空航天大学",
+    "aliases": [
+      "北航",
+      "BUAA",
+      "Beihang University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "北京",
+    "official_domain": "https://www.buaa.edu.cn",
+    "graduate_domain": "https://yzb.buaa.edu.cn",
+    "admission_domain": "https://yzb.buaa.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机学院 / 软件学院",
+        "college_domain": "http://scse.buaa.edu.cn",
+        "default_majors": [
+          "081200",
+          "085400",
+          "085404"
+        ]
+      },
+      "自动化": {
+        "college_name": "自动化科学与电气工程学院",
+        "college_domain": "http://ase.buaa.edu.cn",
+        "default_majors": [
+          "081100"
+        ]
+      }
+    }
+  },
+  "10007": {
+    "chsi_code": "10007",
+    "name": "北京理工大学",
+    "aliases": [
+      "北理工",
+      "BIT",
+      "Beijing Institute of Technology"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "北京",
+    "official_domain": "https://www.bit.edu.cn",
+    "graduate_domain": "https://grd.bit.edu.cn",
+    "admission_domain": "https://grd.bit.edu.cn/zsgz",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机学院",
+        "college_domain": "https://cs.bit.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10013": {
+    "chsi_code": "10013",
+    "name": "北京邮电大学",
+    "aliases": [
+      "北邮",
+      "BUPT",
+      "两电一邮"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "北京",
+    "official_domain": "https://www.bupt.edu.cn",
+    "graduate_domain": "https://yzb.bupt.edu.cn",
+    "admission_domain": "https://yzb.bupt.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机学院 (国家示范性软件学院)",
+        "college_domain": "https://scs.bupt.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      },
+      "信息与通信": {
+        "college_name": "信息与通信工程学院",
+        "college_domain": "https://sice.bupt.edu.cn",
+        "default_majors": [
+          "081000",
+          "085401"
+        ]
+      }
+    }
+  },
+  "10055": {
+    "chsi_code": "10055",
+    "name": "南开大学",
+    "aliases": [
+      "南开",
+      "NKU",
+      "Nankai University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "天津",
+    "official_domain": "https://www.nankai.edu.cn",
+    "graduate_domain": "https://yzb.nankai.edu.cn",
+    "admission_domain": "https://yzb.nankai.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机学院 / 网络空间安全学院",
+        "college_domain": "https://cc.nankai.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085412"
+        ]
+      }
+    }
+  },
+  "10056": {
+    "chsi_code": "10056",
+    "name": "天津大学",
+    "aliases": [
+      "天大",
+      "TJU",
+      "Tianjin University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "天津",
+    "official_domain": "https://www.tju.edu.cn",
+    "graduate_domain": "http://yzb.tju.edu.cn",
+    "admission_domain": "http://yzb.tju.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "智能与计算学部",
+        "college_domain": "http://cic.tju.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10141": {
+    "chsi_code": "10141",
+    "name": "大连理工大学",
+    "aliases": [
+      "大工",
+      "DUT",
+      "Dalian University of Technology"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "辽宁大连",
+    "official_domain": "https://www.dlut.edu.cn",
+    "graduate_domain": "http://gs.dlut.edu.cn",
+    "admission_domain": "http://gs.dlut.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与技术学院 / 软件学院",
+        "college_domain": "http://cs.dlut.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10145": {
+    "chsi_code": "10145",
+    "name": "东北大学",
+    "aliases": [
+      "东大",
+      "NEU",
+      "Northeastern University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流B类",
+      "自划线"
+    ],
+    "region": "辽宁沈阳",
+    "official_domain": "https://www.neu.edu.cn",
+    "graduate_domain": "http://graduate.neu.edu.cn",
+    "admission_domain": "http://graduate.neu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与工程学院 / 软件学院",
+        "college_domain": "http://cse.neu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10183": {
+    "chsi_code": "10183",
+    "name": "吉林大学",
+    "aliases": [
+      "吉大",
+      "JLU",
+      "Jilin University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "吉林长春",
+    "official_domain": "https://www.jlu.edu.cn",
+    "graduate_domain": "https://yjsy.jlu.edu.cn",
+    "admission_domain": "https://yjsy.jlu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与技术学院 / 软件学院",
+        "college_domain": "https://ccst.jlu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10213": {
+    "chsi_code": "10213",
+    "name": "哈尔滨工业大学",
+    "aliases": [
+      "哈工大",
+      "HIT",
+      "C9联盟"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线",
+      "C9联盟"
+    ],
+    "region": "黑龙江哈尔滨",
+    "official_domain": "https://www.hit.edu.cn",
+    "graduate_domain": "http://yzb.hit.edu.cn",
+    "admission_domain": "http://yzb.hit.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算学部",
+        "college_domain": "http://foc.hit.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10217": {
+    "chsi_code": "10217",
+    "name": "哈尔滨工程大学",
+    "aliases": [
+      "哈工程",
+      "HEU",
+      "三海一核"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "黑龙江哈尔滨",
+    "official_domain": "http://www.hrbeu.edu.cn",
+    "graduate_domain": "http://yjsy.hrbeu.edu.cn",
+    "admission_domain": "http://yzb.hrbeu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与技术学院",
+        "college_domain": "http://cst.hrbeu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10246": {
+    "chsi_code": "10246",
+    "name": "复旦大学",
+    "aliases": [
+      "复旦",
+      "FDU",
+      "C9联盟"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线",
+      "C9联盟"
+    ],
+    "region": "上海",
+    "official_domain": "https://www.fudan.edu.cn",
+    "graduate_domain": "http://www.gsao.fudan.edu.cn",
+    "admission_domain": "http://www.gsao.fudan.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学技术学院",
+        "college_domain": "http://www.cs.fudan.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10247": {
+    "chsi_code": "10247",
+    "name": "同济大学",
+    "aliases": [
+      "同济",
+      "Tongji",
+      "TJU-SH"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "上海",
+    "official_domain": "https://www.tongji.edu.cn",
+    "graduate_domain": "https://yz.tongji.edu.cn",
+    "admission_domain": "https://yz.tongji.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "电子与信息工程学院",
+        "college_domain": "https://see.tongji.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10248": {
+    "chsi_code": "10248",
+    "name": "上海交通大学",
+    "aliases": [
+      "上交",
+      "上交大",
+      "SJTU",
+      "C9联盟"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线",
+      "C9联盟"
+    ],
+    "region": "上海",
+    "official_domain": "https://www.sjtu.edu.cn",
+    "graduate_domain": "https://yzb.sjtu.edu.cn",
+    "admission_domain": "https://yzb.sjtu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "电子信息与电气工程学院 (电院)",
+        "college_domain": "https://seiee.sjtu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10251": {
+    "chsi_code": "10251",
+    "name": "华东理工大学",
+    "aliases": [
+      "华理",
+      "ECUST"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "上海",
+    "official_domain": "https://www.ecust.edu.cn",
+    "graduate_domain": "https://gschool.ecust.edu.cn",
+    "admission_domain": "https://gschool.ecust.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "信息科学与工程学院",
+        "college_domain": "https://info.ecust.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10269": {
+    "chsi_code": "10269",
+    "name": "华东师范大学",
+    "aliases": [
+      "华东师大",
+      "ECNU"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "上海",
+    "official_domain": "https://www.ecnu.edu.cn",
+    "graduate_domain": "https://yjsy.ecnu.edu.cn",
+    "admission_domain": "https://yjszs.ecnu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与技术学院 / 软件工程学院",
+        "college_domain": "https://cs.ecnu.edu.cn",
+        "default_majors": [
+          "081200",
+          "083500",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10284": {
+    "chsi_code": "10284",
+    "name": "南京大学",
+    "aliases": [
+      "南大",
+      "NJU",
+      "C9联盟"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线",
+      "C9联盟"
+    ],
+    "region": "江苏南京",
+    "official_domain": "https://www.nju.edu.cn",
+    "graduate_domain": "https://grawww.nju.edu.cn",
+    "admission_domain": "https://grawww.nju.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与技术系 / 人工智能学院",
+        "college_domain": "https://cs.nju.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10285": {
+    "chsi_code": "10285",
+    "name": "苏州大学",
+    "aliases": [
+      "苏大",
+      "Soochow",
+      "SZU-JS"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "江苏苏州",
+    "official_domain": "https://www.suda.edu.cn",
+    "graduate_domain": "http://yjs.suda.edu.cn",
+    "admission_domain": "http://yjs.suda.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与技术学院",
+        "college_domain": "http://scst.suda.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10286": {
+    "chsi_code": "10286",
+    "name": "东南大学",
+    "aliases": [
+      "东大",
+      "SEU",
+      "东南"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "江苏南京",
+    "official_domain": "https://www.seu.edu.cn",
+    "graduate_domain": "https://yzb.seu.edu.cn",
+    "admission_domain": "https://yzb.seu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与工程学院 / 软件学院",
+        "college_domain": "https://cse.seu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10287": {
+    "chsi_code": "10287",
+    "name": "南京航空航天大学",
+    "aliases": [
+      "南航",
+      "NUAA"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "江苏南京",
+    "official_domain": "http://www.nuaa.edu.cn",
+    "graduate_domain": "http://www.graduate.nuaa.edu.cn",
+    "admission_domain": "http://zs.nuaa.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与技术学院",
+        "college_domain": "http://cs.nuaa.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10288": {
+    "chsi_code": "10288",
+    "name": "南京理工大学",
+    "aliases": [
+      "南理工",
+      "NUST"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "江苏南京",
+    "official_domain": "https://www.njust.edu.cn",
+    "graduate_domain": "https://gs.njust.edu.cn",
+    "admission_domain": "https://gs.njust.edu.cn/zsgz",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与工程学院",
+        "college_domain": "https://cs.njust.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10335": {
+    "chsi_code": "10335",
+    "name": "浙江大学",
+    "aliases": [
+      "浙大",
+      "ZJU",
+      "C9联盟"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线",
+      "C9联盟"
+    ],
+    "region": "浙江杭州",
+    "official_domain": "https://www.zju.edu.cn",
+    "graduate_domain": "http://grs.zju.edu.cn",
+    "admission_domain": "http://grs.zju.edu.cn/yjszs",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与技术学院 / 软件学院 (宁波)",
+        "college_domain": "http://www.cs.zju.edu.cn",
+        "default_majors": [
+          "081200",
+          "085400",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10358": {
+    "chsi_code": "10358",
+    "name": "中国科学技术大学",
+    "aliases": [
+      "中科大",
+      "USTC",
+      "C9联盟"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线",
+      "C9联盟"
+    ],
+    "region": "安徽合肥",
+    "official_domain": "https://www.ustc.edu.cn",
+    "graduate_domain": "https://yz.ustc.edu.cn",
+    "admission_domain": "https://yz.ustc.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与技术学院 / 先进技术研究院 / 软件学院 (苏州)",
+        "college_domain": "http://cs.ustc.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10359": {
+    "chsi_code": "10359",
+    "name": "合肥工业大学",
+    "aliases": [
+      "合工大",
+      "HFUT"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "安徽合肥",
+    "official_domain": "https://www.hfut.edu.cn",
+    "graduate_domain": "http://yjszs.hfut.edu.cn",
+    "admission_domain": "http://yjszs.hfut.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机与信息学院",
+        "college_domain": "http://ci.hfut.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10384": {
+    "chsi_code": "10384",
+    "name": "厦门大学",
+    "aliases": [
+      "厦大",
+      "XMU",
+      "Xiamen University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "福建厦门",
+    "official_domain": "https://www.xmu.edu.cn",
+    "graduate_domain": "https://zs.xmu.edu.cn",
+    "admission_domain": "https://zs.xmu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "信息学院",
+        "college_domain": "https://informatics.xmu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      },
+      "经济": {
+        "college_name": "经济学院 / 王亚南经济研究院",
+        "college_domain": "https://econ.xmu.edu.cn",
+        "default_majors": [
+          "020100",
+          "020200",
+          "025100"
+        ]
+      }
+    }
+  },
+  "10422": {
+    "chsi_code": "10422",
+    "name": "山东大学",
+    "aliases": [
+      "山大",
+      "SDU",
+      "Shandong University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "山东济南",
+    "official_domain": "https://www.sdu.edu.cn",
+    "graduate_domain": "https://www.yz.sdu.edu.cn",
+    "admission_domain": "https://www.yz.sdu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与技术学院 / 软件学院",
+        "college_domain": "https://www.cs.sdu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10423": {
+    "chsi_code": "10423",
+    "name": "中国海洋大学",
+    "aliases": [
+      "海大",
+      "OUC",
+      "中国海大"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类"
+    ],
+    "region": "山东青岛",
+    "official_domain": "https://www.ouc.edu.cn",
+    "graduate_domain": "http://yz.ouc.edu.cn",
+    "admission_domain": "http://yz.ouc.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "信息科学与工程学部",
+        "college_domain": "http://it.ouc.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10486": {
+    "chsi_code": "10486",
+    "name": "武汉大学",
+    "aliases": [
+      "武大",
+      "WHU",
+      "Wuhan University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "湖北武汉",
+    "official_domain": "https://www.whu.edu.cn",
+    "graduate_domain": "http://gs.whu.edu.cn",
+    "admission_domain": "http://gs.whu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机学院 / 国家网络安全学院",
+        "college_domain": "http://cs.whu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085412"
+        ]
+      }
+    }
+  },
+  "10487": {
+    "chsi_code": "10487",
+    "name": "华中科技大学",
+    "aliases": [
+      "华科",
+      "华科大",
+      "HUST"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "湖北武汉",
+    "official_domain": "https://www.hust.edu.cn",
+    "graduate_domain": "http://gszs.hust.edu.cn",
+    "admission_domain": "http://gszs.hust.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与技术学院",
+        "college_domain": "http://cs.hust.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405",
+          "085412"
+        ]
+      }
+    }
+  },
+  "10497": {
+    "chsi_code": "10497",
+    "name": "武汉理工大学",
+    "aliases": [
+      "武汉理工",
+      "WUT"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "湖北武汉",
+    "official_domain": "http://www.whut.edu.cn",
+    "graduate_domain": "http://gd.whut.edu.cn",
+    "admission_domain": "http://gd.whut.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机与人工智能学院",
+        "college_domain": "http://cst.whut.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10532": {
+    "chsi_code": "10532",
+    "name": "湖南大学",
+    "aliases": [
+      "湖大",
+      "HNU",
+      "Hunan University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流B类",
+      "自划线"
+    ],
+    "region": "湖南长沙",
+    "official_domain": "https://www.hnu.edu.cn",
+    "graduate_domain": "http://gra.hnu.edu.cn",
+    "admission_domain": "http://gra.hnu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "信息科学与工程学院",
+        "college_domain": "http://csee.hnu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10533": {
+    "chsi_code": "10533",
+    "name": "中南大学",
+    "aliases": [
+      "中南",
+      "CSU",
+      "Central South University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "湖南长沙",
+    "official_domain": "https://www.csu.edu.cn",
+    "graduate_domain": "https://gra.csu.edu.cn",
+    "admission_domain": "https://gra.csu.edu.cn/yjsy/yzb",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机学院",
+        "college_domain": "https://cse.csu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      },
+      "医学": {
+        "college_name": "湘雅医学院",
+        "college_domain": "https://xysm.csu.edu.cn",
+        "default_majors": [
+          "100200",
+          "105100"
+        ]
+      }
+    }
+  },
+  "10558": {
+    "chsi_code": "10558",
+    "name": "中山大学",
+    "aliases": [
+      "中大",
+      "SYSU",
+      "Sun Yat-sen University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "广东广州",
+    "official_domain": "https://www.sysu.edu.cn",
+    "graduate_domain": "https://graduate.sysu.edu.cn",
+    "admission_domain": "https://graduate.sysu.edu.cn/zsw",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机学院 / 软件工程学院",
+        "college_domain": "https://cse.sysu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10561": {
+    "chsi_code": "10561",
+    "name": "华南理工大学",
+    "aliases": [
+      "华工",
+      "SCUT",
+      "South China University of Technology"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "广东广州",
+    "official_domain": "https://www.scut.edu.cn",
+    "graduate_domain": "https://yz.scut.edu.cn",
+    "admission_domain": "https://yz.scut.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与工程学院 / 软件学院",
+        "college_domain": "http://www2.scut.edu.cn/cs",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10590": {
+    "chsi_code": "10590",
+    "name": "深圳大学",
+    "aliases": [
+      "深大",
+      "SZU"
+    ],
+    "level": [
+      "双非顶流",
+      "地方高水平大学"
+    ],
+    "region": "广东深圳",
+    "official_domain": "https://www.szu.edu.cn",
+    "graduate_domain": "https://yz.szu.edu.cn",
+    "admission_domain": "https://yz.szu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机与软件学院",
+        "college_domain": "https://csse.szu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10610": {
+    "chsi_code": "10610",
+    "name": "四川大学",
+    "aliases": [
+      "川大",
+      "SCU",
+      "Sichuan University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "四川成都",
+    "official_domain": "https://www.scu.edu.cn",
+    "graduate_domain": "https://yz.scu.edu.cn",
+    "admission_domain": "https://yz.scu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机学院 / 软件学院",
+        "college_domain": "http://cs.scu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      },
+      "医学": {
+        "college_name": "华西临床医学院 (华西医院)",
+        "college_domain": "http://yjs.cd120.com",
+        "default_majors": [
+          "100200",
+          "105100"
+        ]
+      }
+    }
+  },
+  "10611": {
+    "chsi_code": "10611",
+    "name": "重庆大学",
+    "aliases": [
+      "重大",
+      "CQU",
+      "Chongqing University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "重庆",
+    "official_domain": "https://www.cqu.edu.cn",
+    "graduate_domain": "http://yz.cqu.edu.cn",
+    "admission_domain": "http://yz.cqu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "大数据与软件学院 / 计算机学院",
+        "college_domain": "http://www.cs.cqu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10613": {
+    "chsi_code": "10613",
+    "name": "西南交通大学",
+    "aliases": [
+      "西南交大",
+      "SWJTU"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "四川成都",
+    "official_domain": "https://www.swjtu.edu.cn",
+    "graduate_domain": "http://yjsy.swjtu.edu.cn",
+    "admission_domain": "http://yz.swjtu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机与人工智能学院",
+        "college_domain": "http://scai.swjtu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10614": {
+    "chsi_code": "10614",
+    "name": "电子科技大学",
+    "aliases": [
+      "成电",
+      "电子科大",
+      "UESTC",
+      "两电一邮"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "四川成都",
+    "official_domain": "https://www.uestc.edu.cn",
+    "graduate_domain": "https://yz.uestc.edu.cn",
+    "admission_domain": "https://yz.uestc.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与工程学院 (网络空间安全学院) / 信息与软件工程学院",
+        "college_domain": "http://www.scse.uestc.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405",
+          "085412"
+        ]
+      },
+      "信通": {
+        "college_name": "信息与通信工程学院",
+        "college_domain": "http://www.sice.uestc.edu.cn",
+        "default_majors": [
+          "081000",
+          "085401"
+        ]
+      }
+    }
+  },
+  "10698": {
+    "chsi_code": "10698",
+    "name": "西安交通大学",
+    "aliases": [
+      "西交",
+      "西交大",
+      "XJTU",
+      "C9联盟"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线",
+      "C9联盟"
+    ],
+    "region": "陕西西安",
+    "official_domain": "https://www.xjtu.edu.cn",
+    "graduate_domain": "http://yz.xjtu.edu.cn",
+    "admission_domain": "http://yz.xjtu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "电子与信息学部 (计算机科学与技术学院)",
+        "college_domain": "http://eie.xjtu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10699": {
+    "chsi_code": "10699",
+    "name": "西北工业大学",
+    "aliases": [
+      "西工大",
+      "NPU",
+      "国防七子"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "陕西西安",
+    "official_domain": "https://www.nwpu.edu.cn",
+    "graduate_domain": "https://yzb.nwpu.edu.cn",
+    "admission_domain": "https://yzb.nwpu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机学院 / 软件学院",
+        "college_domain": "http://jsj.nwpu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10701": {
+    "chsi_code": "10701",
+    "name": "西安电子科技大学",
+    "aliases": [
+      "西电",
+      "XIDIAN",
+      "XDU",
+      "两电一邮"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "陕西西安",
+    "official_domain": "https://www.xidian.edu.cn",
+    "graduate_domain": "https://yz.xidian.edu.cn",
+    "admission_domain": "https://yz.xidian.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机科学与技术学院 / 网络与信息安全学院",
+        "college_domain": "https://cs.xidian.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085412"
+        ]
+      },
+      "通信": {
+        "college_name": "通信工程学院",
+        "college_domain": "https://ste.xidian.edu.cn",
+        "default_majors": [
+          "081000",
+          "085401"
+        ]
+      }
+    }
+  },
+  "10730": {
+    "chsi_code": "10730",
+    "name": "兰州大学",
+    "aliases": [
+      "兰大",
+      "LZU",
+      "Lanzhou University"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "甘肃兰州",
+    "official_domain": "https://www.lzu.edu.cn",
+    "graduate_domain": "http://yz.lzu.edu.cn",
+    "admission_domain": "http://yz.lzu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "信息科学与工程学院",
+        "college_domain": "http://xxxy.lzu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "12111": {
+    "chsi_code": "12111",
+    "name": "南方医科大学",
+    "aliases": [
+      "南医大",
+      "SMU",
+      "第一军医大学"
+    ],
+    "level": [
+      "省部共建",
+      "全国首批卓越医生教育培养计划"
+    ],
+    "region": "广东广州",
+    "official_domain": "https://www.smu.edu.cn",
+    "graduate_domain": "https://portal.smu.edu.cn/yjsy",
+    "admission_domain": "https://portal.smu.edu.cn/yjsy/zsxx.htm",
+    "departments": {
+      "医学": {
+        "college_name": "第一临床医学院 / 南方医院",
+        "college_domain": "https://portal.smu.edu.cn/yjsy",
+        "default_majors": [
+          "100200",
+          "105100"
+        ]
+      },
+      "计算机与生工": {
+        "college_name": "生物医学工程学院",
+        "college_domain": "http://bme.smu.edu.cn",
+        "default_majors": [
+          "083100",
+          "085409"
+        ]
+      }
+    }
+  },
+  "10008": {
+    "chsi_code": "10008",
+    "name": "北京科技大学",
+    "aliases": [
+      "北科",
+      "北科大",
+      "USTB"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "北京",
+    "official_domain": "https://www.ustb.edu.cn",
+    "graduate_domain": "https://yzxc.ustb.edu.cn",
+    "admission_domain": "https://yzxc.ustb.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机与通信工程学院",
+        "college_domain": "https://scce.ustb.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10027": {
+    "chsi_code": "10027",
+    "name": "北京师范大学",
+    "aliases": [
+      "北师大",
+      "BNU"
+    ],
+    "level": [
+      "985",
+      "211",
+      "双一流A类",
+      "自划线"
+    ],
+    "region": "北京",
+    "official_domain": "https://www.bnu.edu.cn",
+    "graduate_domain": "https://yz.bnu.edu.cn",
+    "admission_domain": "https://yz.bnu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "人工智能学院",
+        "college_domain": "http://ai.bnu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10252": {
+    "chsi_code": "10252",
+    "name": "上海大学",
+    "aliases": [
+      "上大",
+      "SHU"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "上海",
+    "official_domain": "https://www.shu.edu.cn",
+    "graduate_domain": "https://yjszs.shu.edu.cn",
+    "admission_domain": "https://yjszs.shu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机工程与科学学院",
+        "college_domain": "https://cs.shu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10280": {
+    "chsi_code": "10280",
+    "name": "上海财经大学",
+    "aliases": [
+      "上财",
+      "SUFE"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "上海",
+    "official_domain": "https://www.sufe.edu.cn",
+    "graduate_domain": "https://gs.sufe.edu.cn",
+    "admission_domain": "https://gs.sufe.edu.cn",
+    "departments": {
+      "金融与经管": {
+        "college_name": "金融学院 / 经济学院",
+        "college_domain": "https://fin.sufe.edu.cn",
+        "default_majors": [
+          "020204",
+          "025100"
+        ]
+      }
+    }
+  },
+  "10336": {
+    "chsi_code": "10336",
+    "name": "杭州电子科技大学",
+    "aliases": [
+      "杭电",
+      "HDU"
+    ],
+    "level": [
+      "省属重点",
+      "IT名校"
+    ],
+    "region": "浙江杭州",
+    "official_domain": "https://www.hdu.edu.cn",
+    "graduate_domain": "http://grs.hdu.edu.cn",
+    "admission_domain": "http://grs.hdu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机学院",
+        "college_domain": "http://computer.hdu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404",
+          "085405"
+        ]
+      }
+    }
+  },
+  "10459": {
+    "chsi_code": "10459",
+    "name": "郑州大学",
+    "aliases": [
+      "郑大",
+      "ZZU"
+    ],
+    "level": [
+      "211",
+      "双一流B类"
+    ],
+    "region": "河南郑州",
+    "official_domain": "https://www.zzu.edu.cn",
+    "graduate_domain": "http://gs.zzu.edu.cn",
+    "admission_domain": "http://gs.zzu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机与人工智能学院",
+        "college_domain": "http://www5.zzu.edu.cn/ci",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10635": {
+    "chsi_code": "10635",
+    "name": "西南大学",
+    "aliases": [
+      "西大",
+      "SWU"
+    ],
+    "level": [
+      "211",
+      "双一流"
+    ],
+    "region": "重庆",
+    "official_domain": "https://www.swu.edu.cn",
+    "graduate_domain": "http://yanzhao.swu.edu.cn",
+    "admission_domain": "http://yanzhao.swu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "计算机与信息科学学院",
+        "college_domain": "http://cis.swu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  },
+  "10673": {
+    "chsi_code": "10673",
+    "name": "云南大学",
+    "aliases": [
+      "云大",
+      "YNU"
+    ],
+    "level": [
+      "211",
+      "双一流B类"
+    ],
+    "region": "云南昆明",
+    "official_domain": "https://www.ynu.edu.cn",
+    "graduate_domain": "http://www.grs.ynu.edu.cn",
+    "admission_domain": "http://www.grs.ynu.edu.cn",
+    "departments": {
+      "计算机": {
+        "college_name": "信息学院 / 软件学院",
+        "college_domain": "http://www.is.ynu.edu.cn",
+        "default_majors": [
+          "081200",
+          "085404"
+        ]
+      }
+    }
+  }
+}

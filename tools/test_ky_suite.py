@@ -981,6 +981,75 @@ def run_tests():
         finally:
             shutil.rmtree(test_sandbox_dir, ignore_errors=True)
 
+        # =========================================================================
+        # 19. KaoYan Intelligence 考研招考情报与证据链引擎测试
+        # =========================================================================
+        print("\n[测试组 19: KaoYan Intelligence 考研招考情报与证据链引擎 (21 项验证)]")
+        try:
+            import intelligence as ki
+            
+            # 19-1: 院校注册表与别名模糊解析
+            reg = ki.get_registry()
+            runner.assert_true(reg.count() >= 50, f"Intelligence 19-1：注册表高校数量达标 ({reg.count()} >= 50 所)")
+            
+            hust = reg.resolve("华科")
+            runner.assert_true(hust is not None and hust.name == "华中科技大学" and hust.chsi_code == "10487", "Intelligence 19-2：华科 成功解析为 华中科技大学 (10487)")
+            
+            smu = reg.resolve("南医大")
+            runner.assert_true(smu is not None and smu.name == "南方医科大学" and smu.chsi_code == "12111", "Intelligence 19-3：南医大 成功解析为 南方医科大学 (12111)")
+
+            uestc = reg.resolve("成电")
+            runner.assert_true(uestc is not None and uestc.name == "电子科技大学", "Intelligence 19-4：成电 成功解析为 电子科技大学")
+
+            # 19-5: 官方站点有向图谱
+            site_graph = reg.build_site_graph(hust, "计算机")
+            runner.assert_true(site_graph["domains"]["graduate_school"] == "http://gszs.hust.edu.cn", "Intelligence 19-5：成功提取华科研究生院官方招生域名")
+            runner.assert_true("cs.hust.edu.cn" in str(site_graph["domains"]["college"]), "Intelligence 19-6：成功构建计算机二级学院有向站点入口")
+            runner.assert_true("yz.chsi.com.cn" in site_graph["chsi_portals"]["zsml_catalog"], "Intelligence 19-7：成功生成研招网官方目录直达通道")
+
+            # 19-8: 证据对象与信源分级
+            ev_s = ki.build_evidence("招生人数", 60, "人", 2027, "chsi", "研招网", "https://yz.chsi.com.cn")
+            runner.assert_true(ev_s.source.level == "S" and ev_s.confidence == 1.0 and ev_s.status == "VERIFIED", "Intelligence 19-8：研招网生成 S 级证据且置信度为 100%")
+
+            ev_c = ki.build_evidence("就读评价", "学风良好", "项", 2027, "social_media", "知乎", "https://zhihu.com")
+            runner.assert_true(ev_c.source.level == "C" and ev_c.confidence == 0.30, "Intelligence 19-9：社媒信源生成 C 级证据且置信度为 30%")
+
+            # 19-10: 年份锁定机制 (Exam Year Locking)
+            ev_old = ki.build_evidence("招生人数", 50, "人", 2024, "graduate_school", "研究生院", "http://test.edu.cn", target_year=2027)
+            runner.assert_true(ev_old.status == "OUTDATED" and "年份预警" in (ev_old.conflict_detail or ""), "Intelligence 19-10：历史旧年份数据触发 OUTDATED 年份锁预警")
+
+            # 19-11: 字段级多源冲突仲裁 (Conflict Resolver)
+            ev_a = ki.build_evidence("招生人数", 58, "人", 2027, "college_official", "计算机学院", "http://cs.test.edu.cn")
+            conflicts = ki.resolve_conflicts([ev_s, ev_a])
+            runner.assert_true(len(conflicts) == 2, "Intelligence 19-11：多源冲突时保留全部双方证据链")
+            runner.assert_true(all(c.status == "CONFLICT" for c in conflicts), "Intelligence 19-12：冲突证据状态显式标记为 CONFLICT")
+            runner.assert_true("研招网" in conflicts[0].conflict_detail and "学院" in conflicts[0].conflict_detail, "Intelligence 19-13：冲突仲裁生成双源比对与研判建议")
+
+            # 19-14: 研招网连接器 (CHSI Connector)
+            connector = ki.CHSIConnector()
+            chsi_url = connector.build_catalog_url("华中科技大学", "085404", "湖北武汉")
+            runner.assert_true("dwmc=%E5%8D%8E%E4%B8%AD%E7%A7%91%E6%8A%80%E5%A4%A7%E5%AD%A6" in chsi_url and "ssdm=42" in chsi_url, "Intelligence 19-14：研招网专业目录精确参数化构造成功")
+            chsi_evs = connector.query_catalog("华中科技大学", "085404", target_year=2027)
+            runner.assert_true(len(chsi_evs) > 0 and chsi_evs[0].source.level == "S", "Intelligence 19-15：研招网目录抽取返回 S 级权威科目与招生指标")
+
+            # 19-16: 文档抽取器 (Document Extractor)
+            mock_html = "<html><head><title>2027年硕士研究生招生简章 - 华中科技大学研究生院</title></head><body><p>拟招收硕士研究生 150 人，初试科目包含(101)思想政治理论、(204)英语(二)、(302)数学(二)、(408)计算机学科专业基础。</p><a href='/doc/2027_zsml.pdf'>2027招生专业目录.pdf</a></body></html>"
+            extractor = ki.DocumentExtractor()
+            ext_evs = extractor.extract_from_html(mock_html, "http://gszs.hust.edu.cn/notice/1.htm", "华中科技大学", target_year=2027)
+            runner.assert_true(any(e.field == "拟招生人数" and e.value == 150 for e in ext_evs), "Intelligence 19-16：成功从 HTML 中抽取拟招生人数 150 人")
+            runner.assert_true(any("408" in str(e.value) for e in ext_evs), "Intelligence 19-17：成功从 HTML 中抽取初试 408 统考科目")
+            runner.assert_true(any(e.field == "官方PDF招生目录附件" for e in ext_evs), "Intelligence 19-18：成功捕获招生专业目录 PDF 附件")
+
+            # 19-19: 招生动态监控器 (Admission Watcher)
+            watcher = ki.AdmissionWatcher()
+            add_res = watcher.add_watch("华科")
+            runner.assert_true(add_res["success"] is True, "Intelligence 19-19：AdmissionWatcher 成功将华科纳入动态监控雷达")
+            runner.assert_true(len(watcher.list_watched()) >= 1, "Intelligence 19-20：list_watched 正确返回已监控高校列表")
+            runner.assert_true(watcher.remove_watch("华科") is True, "Intelligence 19-21：remove_watch 成功解除高校监控")
+
+        except Exception as e:
+            runner.assert_true(False, f"Intelligence 引擎测试异常: {e}")
+
     finally:
         # 还原现场配置与大盘
         if cfg_backup:
