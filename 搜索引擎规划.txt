@@ -1,0 +1,1000 @@
+不要把高校信息查询做成普通搜索，而应该做成一个“高校招生信息检索 Agent”，核心目标是：
+
+> 找到官方来源 → 进入官方页面 → 提取结构化数据 → 多源交叉验证 → 给出来源和时间 → 无法确认时明确告诉用户。
+
+
+
+这正好可以成为 kaoyan_chain 的核心差异化能力。
+
+目前研招网本身已经提供招生单位、硕士专业目录等结构化入口，而且明确说明数据由招生单位上报；研招信息公开平台的录取公开信息也由各招生单位提供并在其网站公示。
+
+
+---
+
+一、不要采用“搜索 → LLM总结”的传统方案
+
+例如用户输入：
+
+南方医科大学 085409 2026年招多少人？
+
+最普通的实现是：
+
+用户
+ ↓
+搜索引擎
+ ↓
+搜索结果
+ ↓
+LLM
+ ↓
+回答
+
+这个方案的问题非常明显：
+
+搜索结果 ≠ 官方事实
+
+尤其高校网站存在：
+
+页面需要 JavaScript 渲染
+
+招生信息藏在二级学院
+
+PDF 而不是 HTML
+
+页面 URL 命名混乱
+
+网站改版
+
+搜索引擎没有收录
+
+robots / WAF / CDN
+
+内容在动态接口中加载
+
+同一个学校同时存在研究生院、研招网、学院招生网
+
+同一信息出现多个年份版本
+
+
+你自己已经遇到的“搜索到了但打不开高校网站”，实际上是这个领域最核心的技术问题之一。
+
+甚至几年前的高校信息爬虫项目就明确指出，不同高校的链接命名和网页内部组织方式差异非常大，难以用简单规则统一抓取。
+
+所以不要做：
+
+SearchTool
+
+而应该做：
+
+UniversityResearchEngine
+
+
+---
+
+二、我建议你把它设计成 6 层
+
+整体架构：
+
+┌──────────────────────┐
+                  │      用户自然语言      │
+                  │ 南医大085409招多少人？ │
+                  └──────────┬───────────┘
+                             ↓
+                 ┌─────────────────────┐
+                 │ ① Intent Parser     │
+                 │ 学校/年份/专业/字段   │
+                 └──────────┬──────────┘
+                            ↓
+                 ┌─────────────────────┐
+                 │ ② University        │
+                 │     Resolver        │
+                 │ 找到学校官方域名     │
+                 └──────────┬──────────┘
+                            ↓
+          ┌─────────────────┼──────────────────┐
+          ↓                 ↓                  ↓
+     研招网              官方高校站点        学院网站
+     CHSI                graduate.xxx       yjs.xxx
+          │                 │                  │
+          └─────────────────┼──────────────────┘
+                            ↓
+                ┌─────────────────────┐
+                │ ③ Browser / Fetcher  │
+                │ requests + Playwright│
+                └──────────┬──────────┘
+                           ↓
+                ┌─────────────────────┐
+                │ ④ Document Extractor│
+                │ HTML/PDF/JS/API/OCR │
+                └──────────┬──────────┘
+                           ↓
+                ┌─────────────────────┐
+                │ ⑤ Evidence Engine   │
+                │ 来源/时间/可信度/冲突 │
+                └──────────┬──────────┘
+                           ↓
+                ┌─────────────────────┐
+                │ ⑥ Structured Answer │
+                │ 数据 + 来源 + 结论   │
+                └─────────────────────┘
+
+这个架构比“给 Claude 一个浏览器”强得多。
+
+
+---
+
+三、第一步：建立“高校注册表”
+
+这是我最建议你做的事情。
+
+不要每次都让 Agent：
+
+> “帮我搜索南方医科大学官网。”
+
+
+
+而是建立：
+
+university_registry.json
+
+例如：
+
+{
+  "12111": {
+    "name": "南方医科大学",
+    "aliases": [
+      "南医大",
+      "南方医科大学"
+    ],
+    "official_domains": [
+      "https://www.smu.edu.cn"
+    ],
+    "graduate_domains": [
+      "https://yjs.smu.edu.cn"
+    ],
+    "admission_domains": [
+      "https://portal.smu.edu.cn"
+    ],
+    "chsi_code": "12111"
+  }
+}
+
+再例如：
+
+{
+  "10248": {
+    "name": "上海交通大学",
+    "official_domains": [
+      "https://www.sjtu.edu.cn"
+    ],
+    "graduate_domains": [
+      "https://www.gs.sjtu.edu.cn"
+    ]
+  }
+}
+
+这个数据库以后会成为 kaoyan_chain 非常重要的基础设施。
+
+
+---
+
+四、为什么一定要有 University Resolver
+
+用户说：
+
+华南理工研究生院
+
+你的系统不能直接搜索这个字符串。
+
+应该首先解析成：
+
+{
+  "university": "华南理工大学",
+  "university_code": "10561",
+  "target": "graduate_admission"
+}
+
+然后：
+
+华南理工大学
+       ↓
+官方域名
+       ↓
+研究生院
+       ↓
+招生办公室
+       ↓
+具体学院
+
+这是一个有向站点图。
+
+例如：
+
+学校
+ ├── 官网
+ │
+ ├── 研究生院
+ │    ├── 招生
+ │    ├── 通知公告
+ │    ├── 硕士
+ │    └── 博士
+ │
+ └── 信息学院
+      ├── 通知公告
+      ├── 招生
+      └── 复试
+
+这比单纯搜索引擎强很多。
+
+
+---
+
+五、第二步：搜索引擎只负责“发现”，不能负责“证明”
+
+这是你的系统最重要的设计原则：
+
+> Search = Discovery
+
+Official page = Evidence
+
+
+
+例如：
+
+搜索：
+
+site:smu.edu.cn 2026 硕士 招生简章
+
+得到：
+
+https://yjs.smu.edu.cn/xxx/2026.html
+
+搜索引擎的作用只是：
+
+发现 URL
+
+然后：
+
+Playwright
+      ↓
+打开 URL
+      ↓
+读取真实页面
+      ↓
+验证标题
+      ↓
+验证年份
+      ↓
+提取信息
+
+最终才允许进入答案。
+
+这其实就是一个：
+
+Evidence First Retrieval
+
+
+---
+
+六、第三步：不要只用 requests，要加入 Playwright
+
+这一点非常重要。
+
+高校网站存在很多：
+
+HTML
+JS
+Ajax
+XHR
+PDF
+iframe
+动态接口
+
+普通：
+
+requests.get(url)
+
+可能只得到：
+
+<div id="content"></div>
+
+而浏览器实际加载之后才出现：
+
+2026年硕士研究生招生专业目录
+
+Playwright 可以直接执行真实浏览器流程，而且可以监听页面网络请求，包括 XHR/fetch；官方文档也提供了网络监听和响应等待机制。
+
+所以你的 Fetcher 应该分为：
+
+HTTPFetcher
+BrowserFetcher
+PDFFetcher
+
+优先：
+
+HTTP
+ ↓失败
+Browser
+ ↓发现PDF
+PDF
+
+
+---
+
+七、甚至可以直接“监听高校网站自己的 API”
+
+这是我非常推荐你的一个增强点。
+
+假设：
+
+https://xxx.edu.cn/admission
+
+表面上没有招生信息。
+
+但页面可能请求：
+
+/api/news/list
+/api/article?id=12345
+/api/admission/search
+
+Playwright 可以监听 network：
+
+page.on("response", ...)
+
+例如：
+
+async def capture_api(page):
+    responses = []
+
+    page.on(
+        "response",
+        lambda response:
+            responses.append(response.url)
+            if "/api/" in response.url
+            else None
+    )
+
+    await page.goto(url)
+
+    return responses
+
+然后发现：
+
+/api/article/20260904/1234
+
+再直接读取 JSON。
+
+这通常比：
+
+解析复杂网页
+
+稳定很多。
+
+Playwright 官方文档明确支持监听 request / response 以及等待特定 response。
+
+
+---
+
+八、第四步：建立“高校页面爬虫策略”
+不要写：
+crawl(url)
+应该写：
+UniversityCrawler
+里面针对不同高校动态选择策略：
+Strategy A
+静态 HTML
+
+Strategy B
+JS 页面
+
+Strategy C
+Ajax API
+
+Strategy D
+PDF
+
+Strategy E
+iframe
+
+Strategy F
+搜索引擎发现
+
+Strategy G
+研招网
+例如：
+class UniversityCrawler:
+
+    async def crawl(self, university, query):
+
+        urls = await resolver.discover(university)
+
+        for url in urls:
+
+            result = await http_fetch(url)
+
+            if result.is_valid:
+                return result
+
+            result = await playwright_fetch(url)
+
+            if result.is_valid:
+                return result
+
+        return None
+九、第五步：建立“来源等级”
+这个对于你的考研项目极其重要。
+我建议：
+等级
+来源
+可信度
+S
+教育部/研招网
+100
+A
+学校研究生院
+95
+A
+学校招生办
+95
+A
+学院官方招生网站
+90
+B
+学校官方公众号
+85
+C
+中国教育在线等
+60
+C
+知乎/小红书/B站
+30
+D
+博客/论坛
+10
+不要让 LLM 自己决定。
+写死规则：
+SOURCE_SCORE = {
+    "chsi": 100,
+    "university": 95,
+    "school": 90,
+    "official_wechat": 85,
+    "education_platform": 60,
+    "social_media": 30
+}
+十、再做一个“字段级可信度”
+这个甚至比来源可信度更重要。
+例如：
+招生人数
+同时找到：
+研招网：60
+学院官网：58
+某考研论坛：60
+那么：
+研招网 60
+学院官网 58
+发生冲突。
+系统不能直接：
+60
+而应该：
+招生人数存在来源冲突：
+
+研招网：
+拟招生 60 人
+
+学院招生公告：
+拟招生 58 人
+
+建议以最新学院正式招生公告为准。
+
+状态：CONFLICT
+十一、建立 Evidence Object
+建议你给所有抓取结果统一成：
+{
+  "field": "招生人数",
+  "value": 58,
+  "unit": "人",
+
+  "source": {
+    "type": "university",
+    "name": "南方医科大学研究生院",
+    "url": "https://xxx.edu.cn/xxx",
+    "published_at": "2026-09-01"
+  },
+
+  "retrieved_at": "2026-09-04T18:30:00+08:00",
+
+  "confidence": 0.96,
+
+  "status": "verified"
+}
+这以后会非常强。
+因为：
+AI说：
+“南医大招58人”
+变成：
+南方医科大学
+085409
+
+拟招生：
+58人
+
+来源：
+南方医科大学研究生院
+2026-09-01
+
+抓取：
+2026-09-04
+
+可信度：
+96%
+
+状态：
+已验证
+这才是真正的“考研信息查询工具”。
+十二、你还应该做“年份锁定”
+这是考研系统非常特殊的一点。
+用户问：
+南方医科大学 085409 招多少人
+AI 很容易拿到：
+2024
+然后回答成：
+2026
+因此查询必须自动补充：
+exam_year
+内部对象：
+{
+  "school": "南方医科大学",
+  "major": "085409",
+  "exam_year": 2027,
+  "field": "招生人数"
+}
+然后检索：
+2027
+如果 2027 没有：
+2026
+但是必须输出：
+⚠️ 未找到2027官方数据
+以下数据为2026年，仅供参考。
+不要让 LLM“猜今年”。
+十三、建立“页面健康检测”
+你之前遇到：
+无法进入高校网站
+我建议系统不要简单返回：
+访问失败
+而是诊断：
+UniversityAccessResult
+比如：
+{
+  "url": "https://xxx.edu.cn",
+  "dns": true,
+  "tcp": true,
+  "http": 403,
+  "browser": true,
+  "javascript": true,
+  "pdf": false,
+  "status": "browser_required"
+}
+CLI 就可以显示：
+[University Resolver]
+
+✓ DNS
+✓ HTTPS
+✗ HTTP 403
+✓ Browser access
+
+→ 自动切换 Playwright
+这种体验会非常专业。
+十四、完整的 fallback 策略
+我建议 kaoyan_chain 的高校查询采用：
+                 用户问题
+                    │
+                    ↓
+              Intent Parser
+                    │
+                    ↓
+            University Resolver
+                    │
+         ┌──────────┴─────────┐
+         ↓                    ↓
+      研招网              官方学校域名
+         │                    │
+         │              ┌─────┴─────┐
+         │              ↓           ↓
+         │           HTTP       Browser
+         │              │           │
+         │              │        Playwright
+         │              │           │
+         │              └─────┬─────┘
+         │                    ↓
+         │               PDF/API/HTML
+         │                    │
+         └──────────┬─────────┘
+                    ↓
+              Evidence Engine
+                    ↓
+              Conflict Resolver
+                    ↓
+              Structured Answer
+十五、再加入一个“官方站点发现器”
+这是你这个工具最值得做的部分之一。
+第一次遇到：
+东北大学
+系统可以执行：
+搜索：
+东北大学 官方网站
+然后找到：
+https://www.neu.edu.cn
+接着：
+东北大学 研究生院
+找到：
+https://www.graduate.neu.edu.cn
+再：
+site:graduate.neu.edu.cn 招生
+找到：
+招生管理
+硕士招生
+博士招生
+通知公告
+最终形成：
+{
+  "university": "东北大学",
+  "official": "...",
+  "graduate_school": "...",
+  "admission": "...",
+  "master": "...",
+  "doctor": "..."
+}
+以后查询就不需要重新搜索。
+十六、这里可以引入 Sitemap
+如果学校网站提供：
+/robots.txt
+其中可能存在：
+Sitemap: https://xxx.edu.cn/sitemap.xml
+robots.txt 标准本身支持 Sitemap 字段，搜索引擎也可以据此发现网站地图。
+那么你的 crawler 可以：
+robots.txt
+ ↓
+sitemap.xml
+ ↓
+抓取URL
+ ↓
+过滤关键词
+ ↓
+招生页面
+例如：
+master
+admission
+graduate
+enrollment
+招生
+研究生
+硕士
+复试
+拟录取
+这样你甚至可以主动发现：
+2027年硕士研究生招生简章  
+
+十七、不要一开始就“爬完整个学校”
+这是非常重要的工程建议。
+不要：
+爬大学官网全部页面
+成本太高。
+应该：
+Query-driven crawling
+比如用户查询：
+南医大 085409 2027 招生人数
+系统只寻找：
+2027
+085409
+招生
+硕士
+研究生
+相关页面。
+这会让成本下降一个数量级。
+十八、CLI 设计我建议这样做
+你可以设计：
+kaoyan university search "南方医科大学"
+输出：
+南方医科大学
+
+学校代码：12111
+
+官方：
+https://www.smu.edu.cn
+
+研究生院：
+https://yjs.smu.edu.cn
+
+招生：
+✓ 已发现
+
+数据状态：
+● Official
+然后：
+kaoyan university query \
+  --school "南方医科大学" \
+  --major 085409 \
+  --year 2027 \
+  --field enrollment
+输出：
+南方医科大学
+085409 生物医学工程
+2027年招生人数
+
+⚠️ 暂未发现2027官方数据
+
+最近官方数据：
+
+2026年
+拟招生：XX人
+
+来源：
+南方医科大学研究生院
+URL: ...
+发布时间：2025-XX-XX
+
+可信度：95%
+十九、最好再提供自然语言模式
+这样：
+kaoyan ask "南方医科大学085409今年招多少人？"
+Agent 自动解析：
+{
+  "task": "university_query",
+  "school": "南方医科大学",
+  "major": "085409",
+  "year": 2027,
+  "field": "enrollment"
+}
+然后调用：
+university.resolve
+university.search
+university.browse
+university.extract
+evidence.verify
+二十、建议你的 Tool API 长这样
+你的 Agent Tools 可以直接定义：
+university.resolve
+作用：
+学校名 → 官方域名
+university.search
+作用：
+学校 + 年份 + 关键词 → 候选页面
+university.open
+作用：
+URL → 页面
+university.extract
+作用：
+页面 → 招生字段
+university.verify
+作用：
+多来源交叉验证
+university.watch
+作用：
+监控高校招生网站
+最后一个非常重要。
+二十一、你实际上可以做成“招生信息监控系统”
+例如：
+kaoyan university watch "南方医科大学"
+然后每天：
+研究生院
+招生网
+学院网站
+自动检查。
+一旦出现：
+2027硕士招生简章
+2027专业目录
+复试分数线
+复试名单
+拟录取名单
+调剂公告
+就生成：
+NEW
+
+南方医科大学
+2027年硕士研究生招生简章
+
+发现时间：
+2026-09-04 18:42
+
+来源：
+研究生院官网
+
+变化：
+新增 2027 招生公告
+这就从：
+“AI 查询工具”
+升级成：
+“考研招生情报系统”
+这会比简单 CLI 强很多。
+二十二、最关键的是：让 AI 不负责“事实”，负责“解释”
+这是我非常建议你在架构上坚持的原则。
+错误方式：
+LLM
+ ↓
+“我认为南医大招58人”
+正确方式：
+Crawler
+ ↓
+Evidence
+ ↓
+Structured Data
+ ↓
+LLM
+ ↓
+解释/分析
+例如：
+事实层：
+
+招生人数 = 58
+来源 = 南方医科大学研究生院
+时间 = 2026-09-03
+然后 AI：
+根据该招生人数以及近几年复试线，
+分析你的报考风险。
+因此：
+LLM 不应该成为数据库。
+它应该成为：
+数据库之上的推理层。
+二十三、我建议你在 kaoyan_chain 中把这个模块单独抽出来
+目录可以直接这样设计：
+kaoyan_chain/
+│
+├── cli/
+│
+├── agent/
+│
+├── tools/
+│
+│   └── university/
+│       ├── resolver.py
+│       ├── searcher.py
+│       ├── crawler.py
+│       ├── browser.py
+│       ├── sitemap.py
+│       ├── pdf.py
+│       ├── extractor.py
+│       └── verifier.py
+│
+├── data/
+│
+│   ├── universities/
+│   │   ├── registry.json
+│   │   ├── domains.json
+│   │   └── aliases.json
+│   │
+│   └── sources/
+│
+├── evidence/
+│   ├── model.py
+│   ├── scorer.py
+│   └── conflict.py
+│
+├── workflows/
+│   ├── university_query.yaml
+│   ├── admission_monitor.yaml
+│   └── school_selection.yaml
+│
+└── skills/
+    └── university-research/
+二十四、最终形成三层数据体系
+这是我认为 kaoyan_chain 可以建立技术壁垒的地方。
+Layer 1：University Knowledge
+学校
+学院
+研究生院
+招生办
+专业
+专业代码
+官方域名
+Layer 2：Evidence
+公告
+招生简章
+招生目录
+复试办法
+拟录取名单
+分数线
+PDF
+网页
+更新时间
+Layer 3：User State
+用户分数
+目标院校
+目标专业
+本科背景
+复习进度
+风险偏好
+最后可以实现：
+University Knowledge
+        +
+Evidence
+        +
+User State
+        ↓
+      Agent
+        ↓
+报考建议
+这才是你项目真正有价值的地方。
+二十五、这个方向和你目前的竞品研究也能对上
+你之前调研到的 kaoyan-navigator-skill 已经在做一个很重要的方向：优先寻找高校研究生院、招生网、学院公告和拟录取公示，并保留来源、缺失项、置信度等信息。
+因此你不能只做：
+“我也能搜索高校”
+而应该进一步做到：
+Navigator Skill
+        ↓
+找到信息
+
+kaoyan_chain
+        ↓
+找到信息
+        +
+浏览器兜底
+        +
+高校站点解析
+        +
+结构化数据库
+        +
+证据链
+        +
+历史版本
+        +
+变化检测
+        +
+自动监控
+这才有明显差异。
+二十六、我最推荐的 MVP
+不要一开始做 50 个学校。
+先做：
+20～50 所热门高校
+建立高质量：
+大学 → 研究生院 → 招生网站 → 学院
+映射。
+然后只实现：
+university.resolve
+university.search
+university.open
+university.extract
+university.verify
+支持：
+招生简章
+招生目录
+招生人数
+考试科目
+参考书
+复试线
+复试名单
+拟录取名单
+这样你的 MVP 就已经非常有用了。
+我认为最值得你做的一个核心功能
+可以把整个东西命名成：
+KaoYan Intelligence
+CLI：
+ky university 南方医科大学
+ky admission 南方医科大学 085409
+ky compare 南方医科大学 085409
+ky watch 南方医科大学
+其中：
+ky admission
+负责查询。
+ky watch
+负责监控。
+ky compare
+负责分析多个学校。
+最终形成：
+搜索
+ ↓
+发现
+ ↓
+浏览
+ ↓
+提取
+ ↓
+验证
+ ↓
+结构化
+ ↓
+监控
+ ↓
+分析
+这套能力非常适合成为 kaoyan_chain 的核心基础设施，而不是一个普通 Skill。
+另外，研招网目前已经有“招生单位”“硕士目录”等官方结构化入口，且明确说明数据由招生单位上报；这意味着你的系统可以把 研招网作为第一层基准数据源，高校官网作为第二层权威证据源。
+如果按这个方向继续开发，我会优先把它做成 “Resolver + Browser + Extractor + Evidence” 四个核心模块，而不是先做复杂的多 Agent。
