@@ -22,6 +22,7 @@ from . import exam_composer
 from . import variant_retriever
 from . import knowledge_map
 from . import exam_diagnoser
+from . import school_scout
 
 SKILLS_REGISTRY = {
     "vision_solver": {
@@ -88,6 +89,12 @@ SKILLS_REGISTRY = {
         "name": "🩺 整卷级多题诊断与失分聚类引擎 (Exam Diagnoser)",
         "desc": "分析模考整卷答题情况，输出章节失分排行、错因分布与薄弱攻坚战术",
         "command": "ky diagnose <试卷文本/路径> 或 /diagnose",
+        "status": "已就绪"
+    },
+    "school_scout": {
+        "name": "🎯 目标高校与社媒考研情报侦察引擎 (School Scout)",
+        "desc": "定向检索官方招生简章、自命题大纲、拟招人数与报录比，聚合知乎/B站/小红书就读体验与避坑指南",
+        "command": "ky scout <高校> [专业] 或 /scout",
         "status": "已就绪"
     }
 }

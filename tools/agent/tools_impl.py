@@ -35,6 +35,7 @@ try:
     from skills import pdf_extractor
     from skills import variant_retriever
     from skills import exam_composer
+    from skills import school_scout
 except ImportError:
     math_verifier = None
     socratic_tutor = None
@@ -42,6 +43,7 @@ except ImportError:
     pdf_extractor = None
     variant_retriever = None
     exam_composer = None
+    school_scout = None
 
 class ToolDefinition:
     def __init__(self, name: str, desc: str, params_schema: Dict[str, Any], func: Callable, level: int):
@@ -657,6 +659,29 @@ class ToolRegistry:
             res = exam_composer.compose_exam_paper(subject=subject, count=count, save_file=save_file)
             saved_path = res.get("saved_path", "(内存态，未落盘)")
             return f"【自测卷已生成】编号: {res['paper_id']} (共 {res['count']} 题)\n保存路径: {saved_path}\n\n试卷内容概览:\n{res['content'][:500]}..."
+
+        @self.register(
+            name="scout_school",
+            desc="定向侦察目标高校考研招生简章、自命题考试大纲、拟招人数、历年报录比，以及知乎/B站/小红书上的就读体验与避坑警示。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "school": {"type": "string", "description": "目标高校名称 (例如 华中科技大学, 浙江大学, 清华大学)"},
+                    "major": {"type": "string", "description": "报考专业或方向 (例如 计算机科学与技术, 软件工程, 电子信息)"},
+                    "include_social": {"type": "boolean", "description": "是否聚合知乎/B站/小红书学生评价与避坑讨论 (默认 true)"}
+                },
+                "required": ["school"]
+            },
+            level=PermissionLevel.NETWORK
+        )
+        def scout_school_tool(school: str, major: str = "", include_social: bool = True) -> str:
+            if not school_scout:
+                return "Error: 未挂载 school_scout 技能模块"
+            try:
+                res = school_scout.scout_school(school=school, major=major, include_social=include_social, save_report=False, apply_to_config=False, use_llm=False)
+                return res.get("formatted_report", "未获取到有效研报")
+            except Exception as e:
+                return f"Error 院校情报侦察失败: {e}"
 
         # ─────────────────────────────────────────────────────────────
         # 7. 三级记忆自主管理工具
