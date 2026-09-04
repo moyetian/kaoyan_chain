@@ -1,150 +1,98 @@
-# 配置指南：私有 GitHub 仓库 + Cloudflare Pages
+# 05-考研看板 · 模块架构与构建配置手册
 
-> 一次性配置，约 15 分钟。配完之后每天由 Antigravity 自动推送，你只管在手机上看。
+> [!NOTE]
+> **【全局提示】** 考研学习链是一体化工作区，若需查阅整个备考系统的部署、Daily SOP、终端私教使用及完整 Cloudflare/GitHub Pages 配置，请优先查阅根目录官方主手册：
+> 👉 **[根目录主操作手册 (`../SETUP.md`)](../SETUP.md)**
 
----
-
-## 为什么是这个组合
-
-看板里有你的**分数、错因、薄弱点**（数学 62、英语 26、各科正确率），不适合公开。
-
-| | 私有仓库 | 费用 | 密码保护 |
-|---|---|---|---|
-| **Cloudflare Pages** | ✅ | **免费** | ✅ 免费版 Access |
-| GitHub Pages | ❌ 需 Pro | $4/月 | ❌ |
-
-GitHub Pages 对私有仓库要收费，Cloudflare Pages 不要 —— 这是唯一的理由。
+本文档专为对 **考研看板构建引擎 (`build.py`)** 进行本地二次开发、自定义抽取规则或排查前端渲染问题的同学提供技术参考。
 
 ---
 
-## 第一步 · 建私有 GitHub 仓库（5 分钟）
+## 一、 模块核心定位
 
-1. 打开 https://github.com/new
-2. **Repository name**：`kaoyan-dashboard`（随意，但别用中文）
-3. **★ 选中 Private**（这一步别选错）
-4. **不要**勾选 "Add a README file"、"Add .gitignore"、"Choose a license" —— 本地已经有了，勾了会冲突
-5. 点 **Create repository**
-
-创建后页面会显示仓库地址，形如：
-```
-https://github.com/你的用户名/kaoyan-dashboard.git
-```
+本模块是考研学习链的**静态网站生成器 (Static Site Generator)**：
+- **数据源输入**：扫描 `01-数学/`、`02-英语/`、`03-思想政治理论/`、`04-专业课/` 中的最新学情 Markdown 状态文件；
+- **核心构建引擎**：`build.py`（纯 Python 3.8+ 原生标准库编写，零 pip 依赖）；
+- **产物输出**：
+  - `docs/index.html`（单文件自包含 HTML5 页面，原生内嵌 5 大 Tab、3D 翻转卡与毛玻璃遮罩）；
+  - `docs/state_snapshot.json`（学情脱敏状态快照，供公开环境或第三方工具消费）。
 
 ---
 
-## 第二步 · 把本地仓库推上去（3 分钟）
+## 二、 本地独立编译与运行
 
-在 Antigravity 里按 <kbd>Ctrl</kbd>+<kbd>`</kbd> 打开终端，执行：
+在根目录下或本子目录内均可一键触发看板编译：
 
 ```bash
-cd 05-考研看板
-git remote add origin https://github.com/你的用户名/kaoyan-dashboard.git
-git push -u origin main
+# 方式 1：使用 ky-cli 终端命令编译 (推荐)
+ky build
+
+# 方式 2：使用项目一键批处理 (Windows 双击即可)
+更新看板.bat
+
+# 方式 3：直接调用 Python 原生脚本编译
+python 05-考研看板/build.py
 ```
 
-**首次 push 会弹出浏览器让你登录 GitHub 授权**（Git Credential Manager 自动处理），
-授权一次之后以后都不用再输密码。
-
-> 如果没弹窗、而是要求输入 username/password：GitHub 已不支持密码推送，
-> 需要去 https://github.com/settings/tokens 生成一个 **Personal Access Token（classic）**，
-> 勾选 `repo` 权限，然后把 token 当密码粘进去。
-
-**验证**：刷新 GitHub 仓库页面，应该能看到 `build.py`、`docs/index.html` 等文件。
+编译成功后，双击打开 `docs/index.html` 即可在任意浏览器中离线查看看板。
 
 ---
 
-## 第三步 · Cloudflare Pages 部署（5 分钟）
+## 三、 自定义章节提取规则 (`SECTION_MAP`)
 
-1. 注册/登录 https://dash.cloudflare.com
-2. 左侧菜单 → **Workers & Pages** → **Create** → 选 **Pages** 标签 → **Connect to Git**
-3. 点 **Connect GitHub**，授权 Cloudflare 访问。授权范围选 **Only select repositories** → 只勾 `kaoyan-dashboard`
-4. 选中该仓库 → **Begin setup**
-5. 构建配置**照抄下面这三项**：
+`build.py` 通过顶部的 `SECTION_MAP` 字典定义从各科 Markdown 状态文件中提取哪些表格与内容块。
 
-| 字段 | 填什么 |
-|---|---|
-| Framework preset | **None** |
-| Build command | **留空**（什么都不填） |
-| Build output directory | **`docs`** |
+若您自行修改了各科 `_状态/薄弱点雷达.md` 或 `核心速记.md` 的二级标题，请同步检查并修改 `build.py` 中的匹配关键词：
 
-6. 点 **Save and Deploy**
-
-约 1 分钟后会给你一个地址，形如：
+```python
+# build.py 中的核心映射表
+SECTION_MAP = {
+    # 抽取为必背 3D 翻转卡 (memo)
+    "公式": {"tab": "memo", "type": "formula"},
+    "必背": {"tab": "memo", "type": "table"},
+    "帽子词": {"tab": "memo", "type": "table"},
+    
+    # 抽取为薄弱掌握度雷达与错题队列 (weak)
+    "掌握度": {"tab": "weak", "type": "radar"},
+    "错题": {"tab": "weak", "type": "queue"},
+    
+    # 抽取为学情数据与错因五分类 (stat)
+    "错因": {"tab": "stat", "type": "metric"},
+    "失误": {"tab": "stat", "type": "metric"},
+}
 ```
-https://kaoyan-dashboard.pages.dev
-```
-
-**之后每次 `git push`，Cloudflare 会自动重新部署**，不需要任何操作。
 
 ---
 
-## 第四步 · 加密码保护（可选但强烈建议，5 分钟）
+## 四、 隐私边界与脱敏模式
 
-`*.pages.dev` 地址虽然不会被搜索引擎收录，但知道地址的人就能打开。加一道锁：
+为杜绝个人真实错题或做题草稿外泄，系统定义了严格的隐私边界：
 
-1. Cloudflare 控制台左侧 → **Zero Trust**（首次进入会让你起一个 team name，随便取）
-2. **Access** → **Applications** → **Add an application** → 选 **Self-hosted**
-3. 填写：
-   - Application name：`考研看板`
-   - Session Duration：**1 month**（免得天天验证）
-   - Application domain：填你的 `kaoyan-dashboard.pages.dev`
-4. 下一步 **Add policy**：
-   - Policy name：`only me`
-   - Action：**Allow**
-   - Include → **Emails** → 填你自己的邮箱
-5. 保存
+1. **绝对不会被上传的资产**：
+   - 四科原始草稿、每日作业全文、教材与真题大体积 PDF 等（全部被根目录 `.gitignore` 阻断在本地）；
+2. **编译产物的公开脱敏 (`KY_SNAPSHOT_OPT_IN`)**：
+   - 默认模式下，生成的 `state_snapshot.json` 包含详细学情；
+   - 若需将仓库推送到公开 GitHub Pages，建议开启脱敏开关：
+     ```bash
+     # Windows PowerShell
+     $env:KY_SNAPSHOT_OPT_IN="1"; python tools/update_dashboard.py --local
 
-之后打开看板会先要求邮箱验证码，验证一次管一个月。
-
----
-
-## 第五步 · 手机上加到主屏（1 分钟）
-
-用手机浏览器打开看板地址：
-
-- **iPhone Safari**：底部分享按钮 → 下滑找到「添加到主屏幕」
-- **Android Chrome**：右上角三个点 → 「添加到主屏幕」
-
-之后桌面上就有一个图标，点开即是看板，跟 App 一样。
+     # macOS / Linux
+     KY_SNAPSHOT_OPT_IN=1 python tools/update_dashboard.py --local
+     ```
+     开启后，引擎会自动模糊处理学员真实错题描述与笔记，仅输出结构化百分比指标。
 
 ---
 
-## 完成后的日常
+## 五、 常见构建与渲染排错
 
-```
-在 Antigravity 学完 → 四科分别「交作业」
-        ↓
-AI 批改 → 写回状态文件 → 自动运行 auto-update.bat
-        ↓
-生成看板 → git push → Cloudflare 自动部署（约1分钟）
-        ↓
-手机点开主屏图标 → 看今日任务 / 必背 / 薄弱点
-```
-
-**你什么都不用做。**
-
-如果哪天 AI 忘了运行，或者你想手动刷新：双击 `更新看板.bat` 即可。
-
----
-
-## 排错
-
-| 现象 | 原因 | 处理 |
+| 现象 | 可能原因 | 解决办法 |
 |---|---|---|
-| `push failed - remote not configured` | 第二步没做 | 执行 `git remote add origin ...` |
-| push 时反复要密码 | 用了密码而非 token | 去 GitHub 生成 PAT（见第二步注释） |
-| Cloudflare 部署成功但页面 404 | Build output directory 填错 | 必须是 `docs`，不是 `/docs` 也不是空 |
-| 页面能开但公式显示成 `\frac{...}` | 断网，KaTeX CDN 没加载 | 联网后刷新即可 |
-| 看板数据是旧的 | AI 在写回状态文件**之前**跑了脚本 | 手动双击 `更新看板.bat` 重新生成 |
-| 某科内容块消失了 | 该科笔记的章节标题改了 | 改 `build.py` 里 `SECTION_MAP` 的关键词 |
+| 页面能打开但数学公式显示为原始 LaTeX | 离线无网且 CDN 无法加载 | 无需担心，看板已内置 `fallbackMathUnicode` 符号降级解析器，关键公式仍可正常阅读 |
+| 看板中的任务依然是昨天的旧数据 | 在保存状态文件之前就运行了构建 | 确认各科 `今日任务.md` 已保存后，再次运行 `ky build` |
+| 某科目的特定表格没有出现在看板中 | 表格的 Markdown 表头格式不标准，或章节标题被修改 | 确保使用标准 `\| col1 \| col2 \|` 表格语法，并对照 `SECTION_MAP` 检查标题 |
 
 ---
 
-## 隐私边界（明确一下）
+> 📖 **完整全流程操作与多端 IM 机器人打通指南**，请参阅：👉 **[根目录主操作手册 (../SETUP.md)](../SETUP.md)**
 
-**会上传的**：`docs/index.html` —— 即看板页面本身，含各科今日任务、必背清单、薄弱点表格、错因统计。
-
-**不会上传的**：四科的原始笔记、每日批改全文、错题本详情、真题与教辅 PDF、题源核验记录。
-`build.py` 只读取这些文件并抽取指定章节，从不复制原文件。
-
-如果你觉得某个章节不该出现在看板上，删掉 `build.py` 里 `SECTION_MAP` 中对应的那一行即可。
