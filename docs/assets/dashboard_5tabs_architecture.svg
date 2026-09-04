@@ -1,0 +1,208 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#060913" />
+      <stop offset="50%" stop-color="#0b1120" />
+      <stop offset="100%" stop-color="#080c16" />
+    </linearGradient>
+    <linearGradient id="tabGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <filter id="shadow3" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.3" />
+    </filter>
+  </defs>
+
+  <style>
+    .t-main3 { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 800; fill: #f8fafc; font-size: 24px; }
+    .t-sub3 { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; fill: #94a3b8; font-size: 13px; }
+    .tab-t { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 700; font-size: 14px; }
+    .tab-d { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-size: 11px; fill: #94a3b8; }
+    .feat-tag { font-family: "JetBrains Mono", Consolas, monospace; font-size: 9.5px; font-weight: 700; }
+  </style>
+
+  <rect width="960" height="560" rx="16" fill="url(#bg3)" stroke="#1e293b" stroke-width="1.5" />
+
+  <!-- 标题 -->
+  <g transform="translate(480, 42)" text-anchor="middle">
+    <text class="t-main3" y="0">考研全科自测看板 · 五大核心交互页签与考纲图谱架构</text>
+    <text class="t-sub3" y="24">单文件静态免部署 · 移动端 PWA 丝滑自测 · 7日完成率趋势 · 考纲全景图谱 · 👁️ 毛玻璃遮罩自测</text>
+  </g>
+
+  <!-- ══════════════ 五大页签卡片矩阵 ══════════════ -->
+  <g transform="translate(40, 85)">
+    <!-- 页签 1: 今日 (Today) -->
+    <g transform="translate(0, 0)">
+      <rect width="168" height="310" rx="10" fill="url(#tabGrad1)" stroke="#38bdf8" stroke-width="1.2" filter="url(#shadow3)" />
+      <rect x="12" y="12" width="144" height="28" rx="6" fill="#0284c7" />
+      <text x="84" y="31" text-anchor="middle" fill="#fff" class="tab-t">📋 今日 (Today)</text>
+      
+      <g transform="translate(12, 52)">
+        <rect width="144" height="42" rx="5" fill="#1e293b" />
+        <text x="8" y="16" fill="#38bdf8" class="feat-tag">⏱️ 8.5h 时间预算条</text>
+        <text x="8" y="32" class="tab-d">四科时长动态进度柱</text>
+      </g>
+      <g transform="translate(12, 102)">
+        <rect width="144" height="50" rx="5" fill="#1e293b" />
+        <text x="8" y="16" fill="#38bdf8" class="feat-tag">🎯 薄弱攻坚清单</text>
+        <text x="8" y="32" class="tab-d">中值定理/长难句</text>
+        <text x="8" y="44" class="tab-d">支持即时打勾回写</text>
+      </g>
+      <g transform="translate(12, 160)">
+        <rect width="144" height="80" rx="5" fill="#2d1525" stroke="#db2777" stroke-width="0.8" />
+        <text x="8" y="18" fill="#f472b6" class="feat-tag">🔥 突发简章速递</text>
+        <text x="8" y="34" class="tab-d" fill="#fbcfe8">• 研究生院简章变动</text>
+        <text x="8" y="50" class="tab-d" fill="#fbcfe8">• 专业大纲调整提醒</text>
+        <text x="8" y="68" class="tab-d" fill="#fbcfe8">• 置顶晨报红字告警</text>
+      </g>
+      <g transform="translate(12, 250)">
+        <text x="72" y="24" text-anchor="middle" fill="#94a3b8" font-size="10.5">倒计时毫秒感知</text>
+        <text x="72" y="40" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="700">距初试 106 天</text>
+      </g>
+    </g>
+
+    <!-- 页签 2: 必背 (Flashcards) -->
+    <g transform="translate(178, 0)">
+      <rect width="168" height="310" rx="10" fill="url(#tabGrad1)" stroke="#10b981" stroke-width="1.2" filter="url(#shadow3)" />
+      <rect x="12" y="12" width="144" height="28" rx="6" fill="#059669" />
+      <text x="84" y="31" text-anchor="middle" fill="#fff" class="tab-t">🧠 必背 (Cards)</text>
+
+      <g transform="translate(12, 52)">
+        <rect width="144" height="42" rx="5" fill="#1e293b" />
+        <text x="8" y="16" fill="#34d399" class="feat-tag">🗂️ 四科 3D 翻转卡</text>
+        <text x="8" y="32" class="tab-d">定理/积分表/单词句型</text>
+      </g>
+      <g transform="translate(12, 102)">
+        <rect width="144" height="66" rx="5" fill="#064e3b" stroke="#10b981" stroke-width="1" />
+        <text x="8" y="18" fill="#6ee7b7" class="feat-tag">👁️ 独创遮罩自测</text>
+        <text x="8" y="34" class="tab-d" fill="#a7f3d0">• 高斯模糊虚化答案</text>
+        <text x="8" y="48" class="tab-d" fill="#a7f3d0">• 单手点击瞬间揭晓</text>
+        <text x="8" y="60" class="tab-d" fill="#a7f3d0">• 碎片默写神器</text>
+      </g>
+      <g transform="translate(12, 176)">
+        <rect width="144" height="52" rx="5" fill="#1e293b" />
+        <text x="8" y="16" fill="#34d399" class="feat-tag">📐 印刷级 KaTeX</text>
+        <text x="8" y="32" class="tab-d">离线稳健数学降级</text>
+        <text x="8" y="44" class="tab-d">无网环境符号正常</text>
+      </g>
+      <g transform="translate(12, 238)">
+        <text x="72" y="28" text-anchor="middle" fill="#94a3b8" font-size="10.5">睡前与通勤利器</text>
+        <text x="72" y="46" text-anchor="middle" fill="#10b981" font-size="11" font-weight="700">拒绝“假看懂”</text>
+      </g>
+    </g>
+
+    <!-- 页签 3: 薄弱 (Radar) -->
+    <g transform="translate(356, 0)">
+      <rect width="168" height="310" rx="10" fill="url(#tabGrad1)" stroke="#f59e0b" stroke-width="1.2" filter="url(#shadow3)" />
+      <rect x="12" y="12" width="144" height="28" rx="6" fill="#d97706" />
+      <text x="84" y="31" text-anchor="middle" fill="#fff" class="tab-t">🎯 薄弱 (Radar)</text>
+
+      <g transform="translate(12, 52)">
+        <rect width="144" height="42" rx="5" fill="#1e293b" />
+        <text x="8" y="16" fill="#fbbf24" class="feat-tag">📈 掌握度阶梯雷达</text>
+        <text x="8" y="32" class="tab-d">章节量化直暴洼地</text>
+      </g>
+      <g transform="translate(12, 102)">
+        <rect width="144" height="52" rx="5" fill="#1e293b" />
+        <text x="8" y="16" fill="#fbbf24" class="feat-tag">🔄 FSRS 记忆周期</text>
+        <text x="8" y="32" class="tab-d">1/3/7/15/28天衰减</text>
+        <text x="8" y="44" class="tab-d">自适应调节复测间隔</text>
+      </g>
+      <g transform="translate(12, 162)">
+        <rect width="144" height="52" rx="5" fill="#1e293b" />
+        <text x="8" y="16" fill="#fbbf24" class="feat-tag">⚠️ 错题强制置顶</text>
+        <text x="8" y="32" class="tab-d">未掌握标星题库</text>
+        <text x="8" y="44" class="tab-d">出库方可消除预警</text>
+      </g>
+      <g transform="translate(12, 230)">
+        <text x="72" y="32" text-anchor="middle" fill="#94a3b8" font-size="10.5">全科阶段性复盘</text>
+        <text x="72" y="50" text-anchor="middle" fill="#f59e0b" font-size="11" font-weight="700">靶向消灭错题</text>
+      </g>
+    </g>
+
+    <!-- 页签 4: 数据 (Analytics) -->
+    <g transform="translate(534, 0)">
+      <rect width="168" height="310" rx="10" fill="url(#tabGrad1)" stroke="#ec4899" stroke-width="1.2" filter="url(#shadow3)" />
+      <rect x="12" y="12" width="144" height="28" rx="6" fill="#db2777" />
+      <text x="84" y="31" text-anchor="middle" fill="#fff" class="tab-t">📊 数据 (Data)</text>
+
+      <g transform="translate(12, 52)">
+        <rect width="144" height="42" rx="5" fill="#1e293b" />
+        <text x="8" y="16" fill="#f472b6" class="feat-tag">🥧 错因五分类分布</text>
+        <text x="8" y="32" class="tab-d">概念/审题/公式/计算/书写</text>
+      </g>
+      <g transform="translate(12, 102)">
+        <rect width="144" height="56" rx="5" fill="#2d1525" stroke="#ec4899" stroke-width="0.8" />
+        <text x="8" y="16" fill="#f472b6" class="feat-tag">📉 7日完成率趋势</text>
+        <text x="8" y="32" class="tab-d">原生 SVG 平滑曲线</text>
+        <text x="8" y="46" class="tab-d">感知连续攻坚律动</text>
+      </g>
+      <g transform="translate(12, 166)">
+        <rect width="144" height="48" rx="5" fill="#1e293b" />
+        <text x="8" y="16" fill="#f472b6" class="feat-tag">🌿 防疲劳监控</text>
+        <text x="8" y="32" class="tab-d">连续2天&lt;60%告警</text>
+        <text x="8" y="44" class="tab-d">一键 ky relieve 减负</text>
+      </g>
+      <g transform="translate(12, 230)">
+        <text x="72" y="32" text-anchor="middle" fill="#94a3b8" font-size="10.5">理性实证主义</text>
+        <text x="72" y="50" text-anchor="middle" fill="#ec4899" font-size="11" font-weight="700">用数据击碎焦虑</text>
+      </g>
+    </g>
+
+    <!-- 页签 5: 图谱 (Map) -->
+    <g transform="translate(712, 0)">
+      <rect width="168" height="310" rx="10" fill="url(#tabGrad1)" stroke="#8b5cf6" stroke-width="1.2" filter="url(#shadow3)" />
+      <rect x="12" y="12" width="144" height="28" rx="6" fill="#7c3aed" />
+      <text x="84" y="31" text-anchor="middle" fill="#fff" class="tab-t">🗺️ 图谱 (Map)</text>
+
+      <g transform="translate(12, 52)">
+        <rect width="144" height="42" rx="5" fill="#1e293b" />
+        <text x="8" y="16" fill="#c084fc" class="feat-tag">🌳 官方大纲知识树</text>
+        <text x="8" y="32" class="tab-d">全科章节知识全景分层</text>
+      </g>
+      <g transform="translate(12, 102)">
+        <rect width="144" height="56" rx="5" fill="#1f1538" stroke="#8b5cf6" stroke-width="0.8" />
+        <text x="8" y="16" fill="#c084fc" class="feat-tag">🏷️ A/B/C/D 四维分级</text>
+        <text x="8" y="32" class="tab-d">A熟练 ｜ B巩固</text>
+        <text x="8" y="46" class="tab-d">C生疏 ｜ D盲区死角</text>
+      </g>
+      <g transform="translate(12, 166)">
+        <rect width="144" height="48" rx="5" fill="#1e293b" />
+        <text x="8" y="16" fill="#c084fc" class="feat-tag">⚡ 一键变式联动</text>
+        <text x="8" y="32" class="tab-d">点击盲区考点</text>
+        <text x="8" y="44" class="tab-d">终端秒级唤醒变式演练</text>
+      </g>
+      <g transform="translate(12, 230)">
+        <text x="72" y="32" text-anchor="middle" fill="#94a3b8" font-size="10.5">初试无死角保障</text>
+        <text x="72" y="50" text-anchor="middle" fill="#8b5cf6" font-size="11" font-weight="700">考点掌握率 100%</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ══════════════ 底部全端生态说明 ══════════════ -->
+  <g transform="translate(40, 420)">
+    <rect width="880" height="105" rx="10" fill="#0f172a" stroke="#334155" stroke-width="1.2" filter="url(#shadow3)" />
+    
+    <g transform="translate(30, 18)">
+      <rect width="250" height="70" rx="6" fill="#1e293b" stroke="#38bdf8" stroke-width="1" />
+      <text x="15" y="24" fill="#38bdf8" font-size="12" font-weight="700">📱 手机端 PWA 沉浸式应用</text>
+      <text x="15" y="44" class="tab-d">Safari/Chrome “添加到主屏幕”</text>
+      <text x="15" y="60" class="tab-d">全屏无缝运行，与原生 App 体验一致</text>
+    </g>
+
+    <g transform="translate(315, 18)">
+      <rect width="250" height="70" rx="6" fill="#1e293b" stroke="#10b981" stroke-width="1" />
+      <text x="15" y="24" fill="#34d399" font-size="12" font-weight="700">🌐 印刷级 Web 伴侣 (live.html)</text>
+      <text x="15" y="44" class="tab-d">终端与浏览器双端毫秒级同步</text>
+      <text x="15" y="60" class="tab-d">动态 KaTeX 渲染矩阵/积分/长难句</text>
+    </g>
+
+    <g transform="translate(600, 18)">
+      <rect width="250" height="70" rx="6" fill="#1e293b" stroke="#f59e0b" stroke-width="1" />
+      <text x="15" y="24" fill="#fbbf24" font-size="12" font-weight="700">🛡️ 隐私脱敏与快照保护</text>
+      <text x="15" y="44" class="tab-d">本地完整模式 vs GitHub 脱敏模式</text>
+      <text x="15" y="60" class="tab-d">KY_SNAPSHOT_OPT_IN=1 护航数据安全</text>
+    </g>
+  </g>
+</svg>

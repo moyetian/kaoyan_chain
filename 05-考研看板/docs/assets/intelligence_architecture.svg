@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070a12" />
+      <stop offset="50%" stop-color="#0d1322" />
+      <stop offset="100%" stop-color="#080c18" />
+    </linearGradient>
+    <linearGradient id="sGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#064e3b" />
+      <stop offset="100%" stop-color="#022c22" />
+    </linearGradient>
+    <linearGradient id="aGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a8a" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="cGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4c1d95" />
+      <stop offset="100%" stop-color="#2e1065" />
+    </linearGradient>
+    <filter id="shadow1" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.4" />
+    </filter>
+  </defs>
+
+  <style>
+    .t-main { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 800; fill: #f8fafc; font-size: 24px; }
+    .t-sub { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; fill: #94a3b8; font-size: 13px; }
+    .b-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 700; font-size: 13.5px; }
+    .b-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-size: 11px; fill: #94a3b8; }
+    .badge { font-family: "JetBrains Mono", Consolas, monospace; font-size: 10px; font-weight: 700; }
+  </style>
+
+  <rect width="960" height="560" rx="16" fill="url(#bg1)" stroke="#1e293b" stroke-width="1.5" />
+  
+  <!-- 网格 -->
+  <path d="M 0 80 L 960 80 M 0 175 L 960 175 M 0 325 L 960 325 M 0 435 L 960 435" stroke="#334155" stroke-opacity="0.15" stroke-width="1" />
+  <path d="M 160 0 L 160 560 M 320 0 L 320 560 M 480 0 L 480 560 M 640 0 L 640 560 M 800 0 L 800 560" stroke="#334155" stroke-opacity="0.15" stroke-width="1" />
+
+  <!-- 标题 -->
+  <g transform="translate(480, 42)" text-anchor="middle">
+    <text class="t-main" y="0">KaoYan Intelligence · 考研招考情报与权威证据链中枢</text>
+    <text class="t-sub" y="24">Search = Discovery · Official Page = Evidence · LLM = Reasoner · 全国 800+ 高校自适应全覆盖</text>
+  </g>
+
+  <!-- 1. 输入与实体解析层 -->
+  <g transform="translate(40, 85)">
+    <rect width="880" height="62" rx="10" fill="#0f172a" stroke="#334155" stroke-width="1.2" filter="url(#shadow1)" />
+    <g transform="translate(20, 18)">
+      <rect width="170" height="26" rx="5" fill="#1e293b" stroke="#3b82f6" stroke-width="1" />
+      <text x="85" y="17" text-anchor="middle" fill="#93c5fd" font-size="11.5" font-weight="700">🎯 学员输入 (高校/专业/代码)</text>
+    </g>
+    <path d="M 205 31 L 235 31" stroke="#60a5fa" stroke-width="2" />
+    <g transform="translate(245, 10)">
+      <rect width="380" height="42" rx="6" fill="#172554" stroke="#2563eb" stroke-width="1.2" />
+      <text x="15" y="18" fill="#bfdbfe" font-size="12" font-weight="700">🏛️ 高校实体解析器 &amp; 通用自适应推断器</text>
+      <text x="15" y="33" fill="#93c5fd" font-size="10.5">55+ 重点高校注册表 ＋ 800+ 双非自适应推导 (省市识别 / A区/B区判定 / 代码补全)</text>
+    </g>
+    <g transform="translate(640, 10)">
+      <rect width="220" height="42" rx="6" fill="#1f1538" stroke="#8b5cf6" stroke-width="1.2" />
+      <text x="15" y="18" fill="#ddd6fe" font-size="12" font-weight="700">🌲 四级有向官方站点图谱</text>
+      <text x="15" y="33" fill="#a78bfa" font-size="10.5">官网 → 研究生院 → 招生网 → 学院</text>
+    </g>
+  </g>
+
+  <!-- 2. 三源采集矩阵 -->
+  <g transform="translate(40, 170)">
+    <!-- S级 -->
+    <g transform="translate(0, 0)">
+      <rect width="275" height="135" rx="10" fill="url(#sGrad)" stroke="#059669" stroke-width="1.2" filter="url(#shadow1)" />
+      <rect x="12" y="12" width="68" height="20" rx="4" fill="#065f46" />
+      <text x="46" y="26" text-anchor="middle" fill="#34d399" class="badge">S 级权威</text>
+      <text x="88" y="27" fill="#6ee7b7" class="b-title">教育部研招网直连</text>
+      <text x="15" y="55" class="b-desc">• yz.chsi.com.cn 专业目录参数化对接</text>
+      <text x="15" y="75" class="b-desc">• 锁定全国统考科目 (101/204/302/408)</text>
+      <text x="15" y="95" class="b-desc">• 提取研招单位、院系所、研究方向</text>
+      <text x="15" y="115" class="b-desc" fill="#10b981">• 置信度: 100% ｜ 裁决性最高基准</text>
+    </g>
+    <!-- A级 -->
+    <g transform="translate(295, 0)">
+      <rect width="290" height="135" rx="10" fill="url(#aGrad)" stroke="#3b82f6" stroke-width="1.2" filter="url(#shadow1)" />
+      <rect x="12" y="12" width="68" height="20" rx="4" fill="#1e40af" />
+      <text x="46" y="26" text-anchor="middle" fill="#60a5fa" class="badge">A 级官方</text>
+      <text x="88" y="27" fill="#93c5fd" class="b-title">高校研究生院/招生网</text>
+      <text x="15" y="55" class="b-desc">• 探测 Robots.txt &amp; Sitemap.xml 简章链接</text>
+      <text x="15" y="75" class="b-desc">• 智能正则抽取拟招人数与自命题科目</text>
+      <text x="15" y="95" class="b-desc" fill="#38bdf8">• 📑 PDF 专业目录深度解析 (表格/代码)</text>
+      <text x="15" y="115" class="b-desc" fill="#93c5fd">• 置信度: 90%~95% ｜ 官方一手事实</text>
+    </g>
+    <!-- C级 -->
+    <g transform="translate(605, 0)">
+      <rect width="275" height="135" rx="10" fill="url(#cGrad)" stroke="#8b5cf6" stroke-width="1.2" filter="url(#shadow1)" />
+      <rect x="12" y="12" width="68" height="20" rx="4" fill="#5b21b6" />
+      <text x="46" y="26" text-anchor="middle" fill="#c084fc" class="badge">C 级民间</text>
+      <text x="88" y="27" fill="#c4b5fd" class="b-title">三大社媒实名直通车</text>
+      <text x="15" y="55" class="b-desc">• 💡 知乎：就读体验、导师风评、实验室</text>
+      <text x="15" y="75" class="b-desc">• 📺 B站：高分复盘、复试回忆、真题拆解</text>
+      <text x="15" y="95" class="b-desc">• 📕 小红书：压分排查、一志愿保护避坑</text>
+      <text x="15" y="115" class="b-desc" fill="#e879f9">• 置信度: 30% ｜ 辅助研判与避雷防雷</text>
+    </g>
+  </g>
+
+  <!-- 3. 证据裁决与监控中枢 -->
+  <g transform="translate(40, 325)">
+    <rect width="880" height="75" rx="10" fill="#09101f" stroke="#22d3ee" stroke-width="1.2" filter="url(#shadow1)" />
+    <g transform="translate(20, 15)">
+      <rect width="180" height="45" rx="6" fill="#132338" stroke="#0284c7" stroke-width="1" />
+      <text x="12" y="20" fill="#38bdf8" font-size="11.5" font-weight="700">🔒 年份锁定机制 (Year Lock)</text>
+      <text x="12" y="36" fill="#94a3b8" font-size="10">锁死 2027，历史旧数据打 OUTDATED 标</text>
+    </g>
+    <g transform="translate(220, 15)">
+      <rect width="210" height="45" rx="6" fill="#2d1525" stroke="#db2777" stroke-width="1" />
+      <text x="12" y="20" fill="#f472b6" font-size="11.5" font-weight="700">⚖️ 多源冲突仲裁 (Resolver)</text>
+      <text x="12" y="36" fill="#94a3b8" font-size="10">学院微调与研招网冲突打 CONFLICT 标</text>
+    </g>
+    <g transform="translate(450, 15)">
+      <rect width="200" height="45" rx="6" fill="#1c1917" stroke="#ea580c" stroke-width="1" />
+      <text x="12" y="20" fill="#fb923c" font-size="11.5" font-weight="700">📡 简章指纹雷达 (Watcher)</text>
+      <text x="12" y="36" fill="#94a3b8" font-size="10">SHA256 哈希比对，第一时间告警新简章</text>
+    </g>
+    <g transform="translate(670, 15)">
+      <rect width="190" height="45" rx="6" fill="#14231b" stroke="#16a34a" stroke-width="1" />
+      <text x="12" y="20" fill="#4ade80" font-size="11.5" font-weight="700">📊 学情量化诊断 (Gap Analysis)</text>
+      <text x="12" y="36" fill="#94a3b8" font-size="10">联动目标分测算复试安全缓冲垫</text>
+    </g>
+  </g>
+
+  <!-- 4. 命令行输出层 -->
+  <g transform="translate(40, 425)">
+    <rect width="880" height="95" rx="10" fill="#0f172a" stroke="#334155" stroke-width="1.2" filter="url(#shadow1)" />
+    <g transform="translate(20, 15)">
+      <rect width="265" height="65" rx="6" fill="#1e293b" stroke="#38bdf8" stroke-width="1" />
+      <text x="15" y="22" fill="#38bdf8" font-size="12" font-weight="700">📋 ky admission &lt;高校&gt; [专业]</text>
+      <text x="15" y="40" fill="#cbd5e1" font-size="10.5">S/A级信源证据链卡片 ＋ 04-专业课/ 研报</text>
+      <text x="15" y="56" fill="#94a3b8" font-size="9.5">精准锁定初试统考/自命题科目与招生人数</text>
+    </g>
+    <g transform="translate(305, 15)">
+      <rect width="270" height="65" rx="6" fill="#1e293b" stroke="#a855f7" stroke-width="1" />
+      <text x="15" y="22" fill="#c084fc" font-size="12" font-weight="700">⚔️ ky compare &lt;校1&gt; &lt;校2&gt; [专业]</text>
+      <text x="15" y="40" fill="#cbd5e1" font-size="10.5">双校 6 维横向深度对标 ＋ 落地 Markdown</text>
+      <text x="15" y="56" fill="#94a3b8" font-size="9.5">408差异 / 国家A区B区 / 复试线 / 一志愿保护</text>
+    </g>
+    <g transform="translate(595, 15)">
+      <rect width="265" height="65" rx="6" fill="#1e293b" stroke="#f59e0b" stroke-width="1" />
+      <text x="15" y="22" fill="#fbbf24" font-size="12" font-weight="700">🔥 ky watch &amp; ky today</text>
+      <text x="15" y="40" fill="#cbd5e1" font-size="10.5">招生动态监控雷达 ＋ 晨报突发情报速递</text>
+      <text x="15" y="56" fill="#94a3b8" font-size="9.5">每天起床第一眼捕获最新简章与考纲异动</text>
+    </g>
+  </g>
+</svg>

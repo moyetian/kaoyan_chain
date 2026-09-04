@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b0f19" />
+      <stop offset="50%" stop-color="#111827" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="cardBad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b22" />
+      <stop offset="100%" stop-color="#18131a" />
+    </linearGradient>
+    <linearGradient id="cardGood" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d1f2d" />
+      <stop offset="100%" stop-color="#0c261e" />
+    </linearGradient>
+    <linearGradient id="goodAccent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="50%" stop-color="#06b6d4" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <style>
+    .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 800; fill: #f8fafc; font-size: 26px; }
+    .subtitle { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; fill: #94a3b8; font-size: 13.5px; }
+    .col-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 700; font-size: 18px; }
+    .item-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 700; font-size: 14px; }
+    .item-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-size: 12px; fill: #94a3b8; }
+    .badge-bad { fill: #ef4444; font-size: 11px; font-weight: 700; font-family: sans-serif; }
+    .badge-good { fill: #10b981; font-size: 11px; font-weight: 700; font-family: sans-serif; }
+    
+    @keyframes pulse {
+      0% { opacity: 0.8; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.02); }
+      100% { opacity: 0.8; transform: scale(1); }
+    }
+    .flow-glow { animation: pulse 3s infinite ease-in-out; }
+  </style>
+
+  <!-- 背景 -->
+  <rect width="960" height="480" rx="20" fill="url(#bgGrad)" stroke="#1e293b" stroke-width="1.5" />
+  
+  <!-- 装饰网格背景线 -->
+  <path d="M 0 80 L 960 80 M 0 160 L 960 160 M 0 240 L 960 240 M 0 320 L 960 320 M 0 400 L 960 400" stroke="#334155" stroke-opacity="0.15" stroke-width="1" />
+  <path d="M 160 0 L 160 480 M 320 0 L 320 480 M 480 0 L 480 480 M 640 0 L 640 480 M 800 0 L 800 480" stroke="#334155" stroke-opacity="0.15" stroke-width="1" />
+
+  <!-- 顶部标题 -->
+  <g transform="translate(480, 46)" text-anchor="middle">
+    <text class="title" y="0">为什么考研备考需要「工程化学习链」？</text>
+    <text class="subtitle" y="24">告别低效泛聊与幻觉超纲 · 用软件工程思想打造高确定性上岸闭环</text>
+  </g>
+
+  <!-- 左侧：传统普通 AI 模式 (红色调) -->
+  <g transform="translate(40, 95)" filter="url(#shadow)">
+    <rect width="420" height="345" rx="16" fill="url(#cardBad)" stroke="#451a1a" stroke-width="1.5" />
+    
+    <!-- 头部标签 -->
+    <rect x="24" y="20" width="10" height="20" rx="3" fill="#ef4444" />
+    <text class="col-title" x="42" y="36" fill="#fca5a5">普通 AI 对话 (传统泛聊模式)</text>
+    <text x="396" y="36" text-anchor="end" class="badge-bad">痛点频发</text>
+    <line x1="24" y1="52" x2="396" y2="52" stroke="#372121" stroke-width="1" />
+
+    <!-- 痛点 1 -->
+    <g transform="translate(24, 72)">
+      <circle cx="10" cy="10" r="10" fill="#2d1515" />
+      <text x="10" y="14" text-anchor="middle" fill="#ef4444" font-size="11" font-weight="bold">✕</text>
+      <text class="item-title" x="30" y="10" fill="#f87171">幻觉自编偏怪题，严重超纲</text>
+      <text class="item-desc" x="30" y="26">缺少官方大纲与白名单门禁，浪费宝贵复习时间</text>
+    </g>
+
+    <!-- 痛点 2 -->
+    <g transform="translate(24, 134)">
+      <circle cx="10" cy="10" r="10" fill="#2d1515" />
+      <text x="10" y="14" text-anchor="middle" fill="#ef4444" font-size="11" font-weight="bold">✕</text>
+      <text class="item-title" x="30" y="10" fill="#f87171">上下文失忆，无法跨天跟踪进度</text>
+      <text class="item-desc" x="30" y="26">每次开启新对话都得重头交代，错题没有记忆沉淀</text>
+    </g>
+
+    <!-- 痛点 3 -->
+    <g transform="translate(24, 196)">
+      <circle cx="10" cy="10" r="10" fill="#2d1515" />
+      <text x="10" y="14" text-anchor="middle" fill="#ef4444" font-size="11" font-weight="bold">✕</text>
+      <text class="item-title" x="30" y="10" fill="#f87171">直接贴终极答案，缺失采分点拆解</text>
+      <text class="item-desc" x="30" y="26">不知道具体哪一步该得公式分、哪一步因书写扣分</text>
+    </g>
+
+    <!-- 痛点 4 -->
+    <g transform="translate(24, 258)">
+      <circle cx="10" cy="10" r="10" fill="#2d1515" />
+      <text x="10" y="14" text-anchor="middle" fill="#ef4444" font-size="11" font-weight="bold">✕</text>
+      <text class="item-title" x="30" y="10" fill="#f87171">形式主义抄写，碎片时间难以抽测</text>
+      <text class="item-desc" x="30" y="26">被动阅读大段笔记，排队通勤时无法随时精准刷卡</text>
+    </g>
+  </g>
+
+  <!-- 右侧：考研学习链 (绿色/靛蓝调) -->
+  <g transform="translate(500, 95)" filter="url(#shadow)">
+    <rect width="420" height="345" rx="16" fill="url(#cardGood)" stroke="#065f46" stroke-width="1.5" />
+    
+    <!-- 头部标签 -->
+    <rect x="24" y="20" width="10" height="20" rx="3" fill="#10b981" />
+    <text class="col-title" x="42" y="36" fill="#6ee7b7">考研学习链 (工程化 AI 私教)</text>
+    <text x="396" y="36" text-anchor="end" class="badge-good">结构化提分</text>
+    <line x1="24" y1="52" x2="396" y2="52" stroke="#13382c" stroke-width="1" />
+
+    <!-- 亮点 1 -->
+    <g transform="translate(24, 72)">
+      <circle cx="10" cy="10" r="10" fill="#063826" />
+      <text x="10" y="14" text-anchor="middle" fill="#10b981" font-size="11" font-weight="bold">✓</text>
+      <text class="item-title" x="30" y="10" fill="#34d399">白名单题源抽题门禁，坚决防超纲</text>
+      <text class="item-desc" x="30" y="26">严禁自编题，所有题目来自历年真题与官方指定教材</text>
+    </g>
+
+    <!-- 亮点 2 -->
+    <g transform="translate(24, 134)">
+      <circle cx="10" cy="10" r="10" fill="#063826" />
+      <text x="10" y="14" text-anchor="middle" fill="#10b981" font-size="11" font-weight="bold">✓</text>
+      <text class="item-title" x="30" y="10" fill="#34d399">外置 Markdown 记忆，持久保存学情</text>
+      <text class="item-desc" x="30" y="26">薄弱点雷达与错题重做队列，跨天跨会话无缝记忆</text>
+    </g>
+
+    <!-- 亮点 3 -->
+    <g transform="translate(24, 196)">
+      <circle cx="10" cy="10" r="10" fill="#063826" />
+      <text x="10" y="14" text-anchor="middle" fill="#10b981" font-size="11" font-weight="bold">✓</text>
+      <text class="item-title" x="30" y="10" fill="#34d399">真题评分细则批改 + 错因五分类</text>
+      <text class="item-desc" x="30" y="26">标出公式分与步骤分，精准判定概念/计算/审题失误</text>
+    </g>
+
+    <!-- 亮点 4 -->
+    <g transform="translate(24, 258)">
+      <circle cx="10" cy="10" r="10" fill="#063826" />
+      <text x="10" y="14" text-anchor="middle" fill="#10b981" font-size="11" font-weight="bold">✓</text>
+      <text class="item-title" x="30" y="10" fill="#34d399">移动端自测看板 + 独创遮罩默写</text>
+      <text class="item-desc" x="30" y="26">纯静态单文件，手机添加到主屏幕，碎片时间单手自测</text>
+    </g>
+  </g>
+
+  <!-- 底部渐变强调条 -->
+  <rect x="40" y="452" width="880" height="4" rx="2" fill="url(#goodAccent)" opacity="0.8" />
+</svg>
