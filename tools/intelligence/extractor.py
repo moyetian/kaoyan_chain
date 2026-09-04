@@ -161,3 +161,110 @@ class DocumentExtractor:
                 full_url = urllib.parse.urljoin(base_url, link)
             results.append({"name": clean_text, "url": full_url})
         return results
+
+    def extract_from_pdf(
+        self,
+        pdf_path_or_bytes: Any,
+        school_name: str,
+        source_url: str = "",
+        target_year: int = 2027,
+        major_keyword: Optional[str] = None
+    ) -> List[EvidenceObject]:
+        """
+        从招生专业目录或大纲 PDF 纯文本中抽取初试科目组合、专业方向与拟招计划
+        """
+        from pathlib import Path
+        text = ""
+        
+        # 1. 尝试使用 pypdf 提取
+        try:
+            import io
+            import pypdf
+            source_input = io.BytesIO(pdf_path_or_bytes) if isinstance(pdf_path_or_bytes, bytes) else str(pdf_path_or_bytes)
+            reader = pypdf.PdfReader(source_input)
+            extracted_pages = []
+            for page in reader.pages[:25]:
+                t = page.extract_text()
+                if t:
+                    extracted_pages.append(t)
+            text = "\n".join(extracted_pages)
+        except Exception:
+            # 2. 降级容错：直接从文件字节串或纯文本中抽取
+            if isinstance(pdf_path_or_bytes, bytes):
+                raw = pdf_path_or_bytes
+                matches = re.findall(rb"\((.*?)\)\s*Tj", raw)
+                if matches:
+                    text = " ".join([m.decode("utf-8", errors="ignore") for m in matches if len(m) > 2])
+                else:
+                    text = raw.decode("utf-8", errors="ignore")
+            elif isinstance(pdf_path_or_bytes, (str, Path)):
+                p = Path(pdf_path_or_bytes)
+                if p.exists():
+                    raw = p.read_bytes()
+                    matches = re.findall(rb"\((.*?)\)\s*Tj", raw)
+                    if matches:
+                        text = " ".join([m.decode("utf-8", errors="ignore") for m in matches if len(m) > 2])
+                    else:
+                        text = raw.decode("utf-8", errors="ignore")
+                elif isinstance(pdf_path_or_bytes, str) and ("\n" in pdf_path_or_bytes or " " in pdf_path_or_bytes):
+                    text = pdf_path_or_bytes
+
+        if not text:
+            return []
+
+        evidences = []
+
+        # 抽取专业代码与名称 (例如 085404 计算机技术)
+        majors_found = re.findall(r"(\d{6})\s*([^\d\s\n,，。]{2,15})", text)
+        if majors_found:
+            filtered = []
+            for code, name in majors_found:
+                if not major_keyword or (major_keyword in code or major_keyword in name):
+                    filtered.append(f"{code} {name}")
+            if filtered:
+                ev_majors = build_evidence(
+                    field_name="PDF招生目录专业清单",
+                    value=filtered[:8],
+                    unit="个",
+                    exam_year=target_year,
+                    source_type="graduate_school",
+                    source_name=f"{school_name} 官方招生简章/专业目录 (PDF文件)",
+                    source_url=source_url,
+                    target_year=target_year
+                )
+                evidences.append(ev_majors)
+
+        # 抽取初试科目 (408、政治、英语等)
+        subjects = self._extract_subjects(text)
+        if subjects:
+            ev_sub = build_evidence(
+                field_name="PDF大纲/目录初试科目",
+                value=subjects,
+                unit="门",
+                exam_year=target_year,
+                source_type="graduate_school",
+                source_name=f"{school_name} 官方初试大纲 (PDF文件)",
+                source_url=source_url,
+                target_year=target_year
+            )
+            evidences.append(ev_sub)
+
+        # 抽取拟招生计划
+        quota_match = re.search(r"拟[招录收][收录取]?\s*(?:全日制|非全日制)?\s*(?:硕士)?(?:研究生)?(?:人数|计划)?[:：\s]*(\d+)\s*人", text)
+        if not quota_match:
+            quota_match = re.search(r"(?:招生计划|招生规模|拟招)[:：\s]*(\d+)\s*人", text)
+        if quota_match:
+            quota = int(quota_match.group(1))
+            ev_quota = build_evidence(
+                field_name="PDF拟招生计划人数",
+                value=quota,
+                unit="人",
+                exam_year=target_year,
+                source_type="graduate_school",
+                source_name=f"{school_name} 官方招生简章 (PDF文件)",
+                source_url=source_url,
+                target_year=target_year
+            )
+            evidences.append(ev_quota)
+
+        return evidences
