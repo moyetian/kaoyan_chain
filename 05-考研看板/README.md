@@ -65,6 +65,10 @@
   <img src="docs/assets/dashboard_showcase.jpg" alt="移动端自测看板与遮罩默写功能演示" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
 </p>
 
+<p align="center">
+  <img src="docs/assets/dashboard_5tabs_architecture.svg" alt="考研全科自测看板五大核心交互页签与考纲图谱架构" style="max-width:100%;" />
+</p>
+
 ### 1. 五大核心交互页签图解
 
 | 页签 | 功能定位 | 核心特性与交互设计 | 核心使用场景 |

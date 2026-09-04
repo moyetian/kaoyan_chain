@@ -303,6 +303,10 @@ flowchart TD
   <img src="docs/assets/dashboard_showcase.jpg" alt="移动端自测看板与遮罩默写功能演示" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
 </p>
 
+<p align="center">
+  <img src="docs/assets/dashboard_5tabs_architecture.svg" alt="考研全科自测看板五大核心交互页签与考纲图谱架构" style="max-width:100%;" />
+</p>
+
 ### 1. 五大核心交互页签图解
 
 | 页签 | 功能定位 | 核心特性与交互设计 | 核心使用场景 |
@@ -429,6 +433,10 @@ flowchart TD
 > 1. **Search = Discovery, Official Page = Evidence**：通用搜索仅用于发掘候选 URL，只有**教育部研招网**与**高校官方站点**抽取出的数据才被视为裁决性事实！
 > 2. **LLM as Reasoner, not Database**：大模型绝不充当招考数据存储库（杜绝幻觉捏造招生指标），大模型仅在证据确认后，负责结合学员模考水平进行报考风险评估与策略推荐。
 
+<p align="center">
+  <img src="docs/assets/intelligence_architecture.svg" alt="KaoYan Intelligence 考研招考情报与权威证据链中枢架构图" style="max-width:100%;" />
+</p>
+
 - **全国 55+ 所主流高校官方注册表 (`data/universities/registry.json`)**：
   - 预先收录全国 55+ 所顶尖高校的 5 位教育部代码、别名简称（如“华科”、“南医大”、“成电”、“两电一邮”）、官网、研究生院与招生办二级域名；
   - 自动构建有向站点树：`高校官网 → 研究生院 → 招生网 → 二级学院招生专栏`。
@@ -447,6 +455,10 @@ flowchart TD
 - **双校招考深度横向对比引擎 (`ky compare`)**：
   - 执行 `ky compare <高校1> <高校2> [专业] [--save]`，深度横向对标两校的教育部代码、所在城市、办学层次、自划线特征、初试科目差异（如 408 统考 vs 自命题）、近三年复试线走势与**一志愿保护机制**；
   - 自动输出结构化对比表格与私教深度择校处方，支持导出至 `04-专业课/` Markdown 研报。
+
+<p align="center">
+  <img src="docs/assets/school_comparator_matrix.svg" alt="ky compare 考研双校招考横向深度对标与决策矩阵" style="max-width:100%;" />
+</p>
 - **招生动态指纹监控雷达与晨报速递 (`ky watch` & `ky today`)**：
   - 执行 `ky watch <高校名>` 将目标高校纳入动态监控雷达；
   - 执行 `ky watch --check` 自动比对页面标题与 SHA256 指纹，每年 8~10 月第一时间捕捉 2027 新简章、招生目录与自命题大纲发布；
