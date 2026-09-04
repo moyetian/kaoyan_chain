@@ -902,6 +902,82 @@ def run_tests():
             ky_cli.print_status_summary()
             runner.assert_true(True, "体验生态 S3-6：print_status_summary 打印大盘倒计时与作息节律正常不崩溃")
 
+            # ------------------------------------------------------------
+            # 测试 18: 目标高校研招与社媒考研情报侦察引擎 (School Scout)
+            # ------------------------------------------------------------
+            print("\n[测试组 18: 目标高校研招与社媒考研情报侦察引擎 (School Scout)]")
+            try:
+                from skills import school_scout
+            except ImportError:
+                try:
+                    from tools.skills import school_scout
+                except ImportError:
+                    school_scout = None
+
+            runner.assert_true(school_scout is not None, "School Scout 18-1：成功载入 school_scout 技能模块")
+
+            # 验证 SKILLS_REGISTRY 中包含 school_scout
+            skills_all = ky_cli.list_skills()
+            runner.assert_true("school_scout" in skills_all, "School Scout 18-2：SKILLS_REGISTRY 正确注册 school_scout 技能")
+
+            # 验证 URL 清洗与 DDG 链接解包
+            raw_ddg_sample = "//duckduckgo.com/l/?uddg=https%3A%2F%2Fgs.hust.edu.cn%2Finfo%2F1010%2F123.htm&rut=..."
+            cleaned_url = school_scout._clean_ddg_url(raw_ddg_sample)
+            runner.assert_true(cleaned_url.startswith("https://gs.hust.edu.cn/info/1010/123.htm"), "School Scout 18-3：_clean_ddg_url 正确还原真实目标 URL")
+
+            # 验证核心指标与避坑关键词启发式提取
+            mock_official = [
+                {"title": "华中科技大学 2026 年硕士研究生招生专业目录 (081200 计算机科学与技术)", "url": "https://gs.hust.edu.cn", "snippet": "拟招生 35 人，初试科目：101思想政治理论、201英语一、301数学一、408计算机学科专业基础"}
+            ]
+            mock_social = {
+                "zhihu": [{"title": "在华中科技大学读计算机是什么体验？", "url": "https://zhihu.com/p/1", "snippet": "不看本科出身，复试公平，保护一志愿，导师人好"}],
+                "bilibili": [{"title": "华科计算机考研备考经验与专业课复习规划", "url": "https://bilibili.com/v/1", "snippet": "专业课考408统考，不压分"}],
+                "xiaohongshu": [{"title": "华科软工考研避坑提醒", "url": "https://xhs.com/1", "snippet": "复试晚，差额比高，竞争激烈"}]
+            }
+            metrics = school_scout.extract_key_metrics("华中科技大学", "计算机", mock_official, mock_social)
+            runner.assert_true("35" in metrics["quota_hint"], "School Scout 18-4：extract_key_metrics 准确提取拟招生人数线索")
+            runner.assert_true(any("408" in s for s in metrics["subjects_hint"]), "School Scout 18-5：准确识别 408 统考科目")
+            runner.assert_true("保护一志愿" in metrics["positive_signals"], "School Scout 18-6：准确捕获正向口碑信号 (保护一志愿)")
+            runner.assert_true(any(w in metrics["risk_signals"] for w in ("差额比高", "复试晚")), "School Scout 18-7：准确捕获避坑与风险警示信号")
+
+            # 验证研报生成与 Markdown 卡片排版
+            mock_data = {
+                "school": "华中科技大学",
+                "major": "计算机",
+                "official_data": mock_official,
+                "social_data": mock_social,
+                "metrics": metrics,
+                "llm_report": None
+            }
+            report_md = school_scout.format_scout_report(mock_data)
+            runner.assert_true("华中科技大学" in report_md and "核心招考指标透视" in report_md, "School Scout 18-8：format_scout_report 成功生成结构化离线情报卡片")
+            runner.assert_true("知乎" in report_md and "哔哩哔哩" in report_md and "小红书" in report_md, "School Scout 18-9：情报卡片完整覆盖知乎/B站/小红书三大社媒板块")
+
+            # 验证 ToolRegistry 中 scout_school 工具注册与调用
+            from agent.tools_impl import ToolRegistry, PermissionManager, Sandbox
+            pm_test = PermissionManager(workspace_root=test_sandbox_dir, mode="auto")
+            pm_test.force_allow_all = True
+            sb_test = Sandbox(workspace_root=test_sandbox_dir)
+            tr_test = ToolRegistry(sandbox=sb_test, permissions=pm_test)
+            runner.assert_true("scout_school" in tr_test.tools, "School Scout 18-10：ToolRegistry 成功注册 scout_school 专属能力工具")
+
+            tool_out = tr_test.execute_tool("scout_school", {"school": "测试大学", "major": "软件工程", "include_social": False}, interactive=False)
+            runner.assert_true("测试大学" in tool_out or "研招" in tool_out, "School Scout 18-11：scout_school Agent 工具执行流畅无异常")
+
+            # 验证 apply_scout_to_config 配置同步回写
+            test_cfg_file = test_sandbox_dir / "ky_config.json"
+            test_cfg_file.write_text(json.dumps({"study_plan": {"school": "原目标", "major": "原专业"}}, ensure_ascii=False), encoding="utf-8")
+            orig_cfg_file = school_scout.CONFIG_FILE
+            school_scout.CONFIG_FILE = test_cfg_file
+            try:
+                apply_ok = school_scout.apply_scout_to_config("浙江大学", "人工智能", metrics={"subjects_hint": ["408 计算机学科专业基础 (全国统考)"]})
+                runner.assert_true(apply_ok is True, "School Scout 18-12：apply_scout_to_config 执行返回成功")
+                saved_cfg = json.loads(test_cfg_file.read_text(encoding="utf-8"))
+                runner.assert_true(saved_cfg["study_plan"]["school"] == "浙江大学" and saved_cfg["study_plan"]["major"] == "人工智能", "School Scout 18-12：成功同步更新目标院校与专业")
+                runner.assert_true("408" in saved_cfg.get("pro_name", ""), "School Scout 18-12：成功同步识别并更新专业课代码科目")
+            finally:
+                school_scout.CONFIG_FILE = orig_cfg_file
+
         finally:
             shutil.rmtree(test_sandbox_dir, ignore_errors=True)
 

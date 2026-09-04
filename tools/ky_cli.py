@@ -43,10 +43,10 @@ for p_item in (str(ROOT), str(tools_dir)):
         sys.path.insert(0, p_item)
 
 try:
-    from skills import vision_solver, math_verifier, english_dissector, socratic_tutor, pdf_extractor, error_logger, latex_beautifier, list_skills, exam_composer, variant_retriever, knowledge_map, exam_diagnoser
+    from skills import vision_solver, math_verifier, english_dissector, socratic_tutor, pdf_extractor, error_logger, latex_beautifier, list_skills, exam_composer, variant_retriever, knowledge_map, exam_diagnoser, school_scout
 except Exception as _e:
     try:
-        from tools.skills import vision_solver, math_verifier, english_dissector, socratic_tutor, pdf_extractor, error_logger, latex_beautifier, list_skills, exam_composer, variant_retriever, knowledge_map, exam_diagnoser
+        from tools.skills import vision_solver, math_verifier, english_dissector, socratic_tutor, pdf_extractor, error_logger, latex_beautifier, list_skills, exam_composer, variant_retriever, knowledge_map, exam_diagnoser, school_scout
     except Exception:
         list_skills = lambda: {}
         vision_solver = None
@@ -60,6 +60,7 @@ except Exception as _e:
         variant_retriever = None
         knowledge_map = None
         exam_diagnoser = None
+        school_scout = None
 
 try:
     from agent import AgentRunner, Sandbox, PermissionManager, ToolRegistry, ContextEngine
@@ -981,7 +982,7 @@ def print_welcome(live_port=8088, animate=True):
     if animate:
         steps = [
             ("装载考研全科中枢总控协议 (AGENTS.md)...", 0.04),
-            ("唤醒 11 项考研专有技能 (Vision/Math/Composer/Variant/Map/Diagnose)...", 0.04),
+            ("唤醒 12 项考研专有技能 (Vision/Math/Composer/Variant/Map/Scout)...", 0.04),
             (f"启动 Web 实时可视化伴侣 (:{live_port}/live)...", 0.04)
         ]
         for step, delay in steps:
@@ -1024,11 +1025,11 @@ def print_welcome(live_port=8088, animate=True):
     print(f"""{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮{C.RESET}
 {C.CYAN}│{C.RESET}  {C.BOLD}🎓 考研全科 AI 专属私教终端 · Kaoyan CLI (Claude Code / Gemini 体验版){C.RESET}  {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}  [ 专属私教: {C.GREEN}{subj_short}{C.RESET} · {C.YELLOW}{style_short}{C.RESET} ]   [ 🎯 研考初试倒计时: {C.MAGENTA}{days_left} 天{C.RESET} ]          {C.CYAN}│{C.RESET}
-{C.CYAN}│{C.RESET}  [ 🧠 模型: {C.BLUE}{provider}/{model_name}{C.RESET} ]   [ 🌐 伴侣: {C.CYAN}:{live_port}/live{C.RESET} ]   [ 🧩 技能: {C.GREEN}11项全就绪{C.RESET} ]{C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  [ 🧠 模型: {C.BLUE}{provider}/{model_name}{C.RESET} ]   [ 🌐 伴侣: {C.CYAN}:{live_port}/live{C.RESET} ]   [ 🧩 技能: {C.GREEN}12项全就绪{C.RESET} ]{C.CYAN}│{C.RESET}
 {C.CYAN}├────────────────────────────────────────────────────────────────────────┤{C.RESET}
 {C.CYAN}│{C.RESET}  {C.BOLD}快捷指令速查 (随时输入 / 展开完整指令大盘)：                            {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}   {C.GREEN}/math{C.RESET} 数学  {C.GREEN}/eng{C.RESET} 英语  {C.GREEN}/pol{C.RESET} 政治  {C.GREEN}/pro{C.RESET} 专业课  {C.CYAN}/view{C.RESET} 网页伴侣            {C.CYAN}│{C.RESET}
-{C.CYAN}│{C.RESET}   {C.YELLOW}/exam{C.RESET} 靶向组卷  {C.YELLOW}/variant{C.RESET} 真题变式  {C.YELLOW}/map{C.RESET} 知识图谱  {C.YELLOW}/calc{C.RESET} 符号验算 {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}   {C.YELLOW}/scout{C.RESET} 院校侦察  {C.YELLOW}/exam{C.RESET} 靶向组卷  {C.YELLOW}/variant{C.RESET} 真题变式  {C.YELLOW}/map{C.RESET} 知识图谱  {C.CYAN}│{C.RESET}
 {C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
 """)
 
@@ -1233,6 +1234,7 @@ def print_command_palette():
 {C.CYAN}│{C.RESET}    {C.GREEN}/pro{C.RESET}       切换专业课私教 (或直接输入「专业课报到」/「学专业课」)           {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}  {C.BOLD}🧩 考研专有扩展技能 (Skills):{C.RESET}                                            {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/scout <高校> [专业]{C.RESET}目标院校招生简章、大纲、招生人数与知乎/B站口碑侦察   {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.YELLOW}/exam [科目]{C.RESET}  错题反向靶向组卷 (阶段自测盲盒试卷，支持导出与评分)       {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.YELLOW}/variant <考点>{C.RESET}考研同类真题变式检索与防伪溯源 (优先白名单真题，严禁伪造)   {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.YELLOW}/map [科目]{C.RESET}   官方考纲知识点图谱与四维掌握度映射 (大纲/错题薄弱点对齐)  {C.CYAN}│{C.RESET}
@@ -1998,6 +2000,26 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                         print(colorize(f"[√ 试卷已归档至]: {res['saved_path']}\n", C.GREEN))
                 else:
                     print(colorize("[!] exam_composer 技能未载入", C.RED))
+                continue
+            elif cmd in ("/scout", "/yuanxiao", "/school"):
+                parts = arg.strip().split()
+                target_school = parts[0] if parts else ""
+                target_major = parts[1] if len(parts) > 1 else ""
+                if not target_school:
+                    cfg_tmp = load_config()
+                    target_school = cfg_tmp.get("study_plan", {}).get("school", "")
+                    target_major = cfg_tmp.get("study_plan", {}).get("major", "")
+                if not target_school or target_school == "目标院校":
+                    print(colorize("用法: /scout <高校名> [专业名]\n示例: /scout 华中科技大学 计算机\n提示: 也可在 ky_config.json 中配置目标院校后直接输入 /scout", C.YELLOW))
+                    continue
+                if school_scout:
+                    print(colorize(f"\n[🎯 正在对【{target_school}】{target_major} 启动研招官方与知乎/B站/小红书舆情侦察...]\n", C.CYAN))
+                    res = school_scout.scout_school(school=target_school, major=target_major, include_social=True, save_report=True, apply_to_config=False, use_llm=True)
+                    print(res.get("formatted_report", ""))
+                    if res.get("saved_path"):
+                        print(colorize(f"\n[√ 完整研报已归档至]: {res['saved_path']}\n", C.GREEN))
+                else:
+                    print(colorize("[!] school_scout 技能未载入", C.RED))
                 continue
             elif cmd in ("/variant", "/bianshi"):
                 topic = arg.strip()
@@ -2845,6 +2867,61 @@ def main():
                 print(colorize(f"[!] 批改失败: {res.get('message', '未识别到有效作答')}", C.RED))
         else:
             print("exam_composer 技能模块未载入")
+    elif args[0] in ("scout", "--scout"):
+        school_name = ""
+        major_name = ""
+        include_social = True
+        save_flag = False
+        apply_flag = False
+
+        pos_args = []
+        for a in args[1:]:
+            if a in ("--no-social", "-ns"):
+                include_social = False
+            elif a in ("--save", "-s"):
+                save_flag = True
+            elif a in ("--apply", "-a"):
+                apply_flag = True
+            elif not a.startswith("-"):
+                pos_args.append(a)
+
+        if pos_args:
+            school_name = pos_args[0]
+            if len(pos_args) > 1:
+                major_name = pos_args[1]
+        else:
+            cfg = load_config()
+            school_name = cfg.get("study_plan", {}).get("school", "")
+            major_name = cfg.get("study_plan", {}).get("major", "")
+
+        if "--help" in args or "-h" in args or (not school_name or school_name == "目标院校"):
+            print(colorize("用法: ky scout <高校名> [专业名] [--no-social] [--save] [--apply]\n示例: ky scout 华中科技大学 计算机 --save\n说明: 定向侦察目标院校研究生院官网招生简章、自命题大纲、拟招人数，并聚合知乎/B站/小红书口碑与避坑指南。", C.YELLOW))
+            sys.exit(0 if ("--help" in args or "-h" in args) else 1)
+
+        if school_scout:
+            print(colorize(f"\n[🎯 正在启动考研目标院校与社媒情报侦察: 【{school_name}】{major_name}]", C.CYAN))
+            print("  • 官方研招检索: 研招网 (yz.chsi.com.cn) + 高校研究生院官网 (.edu.cn)")
+            if include_social:
+                print("  • 社交舆情聚合: 知乎就读体验 + 哔哩哔哩备考贴 + 小红书避坑与压分")
+            print("  • 正在提取核心指标与生成情报研报...\n")
+
+            res = school_scout.scout_school(
+                school=school_name,
+                major=major_name,
+                include_social=include_social,
+                save_report=save_flag,
+                apply_to_config=apply_flag,
+                use_llm=True
+            )
+            print(res.get("formatted_report", ""))
+
+            if res.get("saved_path"):
+                print(colorize(f"\n[√ 情报研报已成功落盘至]: {res['saved_path']}", C.GREEN))
+            if res.get("applied"):
+                print(colorize(f"[√ 目标高校与专业已一键同步至 ky_config.json]", C.GREEN))
+            print()
+        else:
+            print("school_scout 技能模块未载入")
     elif args[0] in ("variant", "--variant"):
         if len(args) < 2:
             print(colorize("用法: ky variant <考点关键词或原题干>\n示例: ky variant 导数中值定理", C.YELLOW))
@@ -2998,6 +3075,7 @@ def main():
   style [1/2/3/4]                             查看或动态切换 4 种私教辅导风格
   doctor                                      一键系统健康诊断 (Python环境/依赖/状态/连通性)
   plan                                        启动个人专属定制化必考方案向导
+  scout <高校名> [专业名] [--save] [--apply]  定向侦察目标高校招生简章、考试大纲、报录比与知乎/B站口碑
   exam [科目] [--count=N] [--save]            基于错题库与核心考点反向靶向组卷
   exam-submit <试卷路径> <作答文本>           自动判卷并输出正答率、采分点与错题归因
   variant <考点关键词>                        四科白名单同类真题变式检索与防幻觉溯源
