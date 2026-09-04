@@ -643,6 +643,242 @@ def run_tests():
 
     mcp_client.stop()
 
+    # ════════════════════════════════════════════════════════════
+    # 测试组 14: Agent 关键工具真实执行级校验 (防止签名漂移与隐藏崩溃)
+    # ════════════════════════════════════════════════════════════
+    print("\n[测试组 14: Agent 关键工具真实执行级校验 (防止签名漂移与隐藏崩溃)]")
+    pm_auto.force_allow_all = True
+
+    # 1. 真实执行 log_mistake 并断言返回 Success (C-2 彻底绝护)
+    mistake_res = tr_auto.execute_tool("log_mistake", {
+        "subject": "math",
+        "title": "测试自动化执行级错题",
+        "error_type": "概念漏洞",
+        "mistake_type": "概念漏洞",  # 别名兼容
+        "detail": "对泰勒公式麦克劳林展开余项理解偏差",
+        "prescription": "强化佩亚诺余项阶数匹配训练",
+        "question": "求 lim (x->0) (sin x - x) / x^3"
+    })
+    runner.assert_true("成功归档入库" in mistake_res and "TypeError" not in mistake_res, "执行级校验：log_mistake 真实归档成功且无参数漂移异常")
+
+    # 2. 真实执行 review_mistakes
+    review_res = tr_auto.execute_tool("review_mistakes", {"subject": "math"})
+    runner.assert_true(isinstance(review_res, str) and ("错题" in review_res or "掌握度" in review_res), "执行级校验：review_mistakes 真实提取错题队列成功")
+
+    # 3. 真实执行 read_exam_paper 与 pdf_extractor
+    pdf_res = tr_auto.execute_tool("read_exam_paper", {"subject": "math", "keyword": "2024", "max_pages": 2})
+    runner.assert_true("AttributeError" not in pdf_res and "extract_pdf_pages" not in pdf_res, "执行级校验：read_exam_paper 真实调用 extract_pdf_pages 无缺失函数崩溃")
+
+    # 4. 真实执行 verify_math
+    v_res = tr_auto.execute_tool("verify_math", {"expression": "diff x^3"})
+    runner.assert_true("x" in v_res and "3" in v_res and "2" in v_res, "执行级校验：verify_math 真实求导运算准确")
+
+    pm_auto.force_allow_all = False
+
+    # ════════════════════════════════════════════════════════════
+    # 测试组 15: 上下文压缩配对保护与 CLI 子命令回归
+    # ════════════════════════════════════════════════════════════
+    print("\n[测试组 15: 上下文压缩配对保护与 CLI 子命令回归]")
+
+    # 1. 上下文压缩配对保护测试 (防止产生孤儿 tool 消息触发 400)
+    from agent.context_engine import ContextEngine
+    ce_test = ContextEngine(workspace_root=ROOT, active_subject="math", max_context_tokens=100)
+    constructed_msgs = [
+        {"role": "system", "content": "You are a coach."},
+        {"role": "user", "content": "做一题"},
+        {"role": "assistant", "content": "好的，我来查题", "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "read_file", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "call_1", "name": "read_file", "content": "题目数据内容" * 20},
+        {"role": "assistant", "content": "请作答"},
+        {"role": "user", "content": "我做完了"},
+        {"role": "assistant", "content": "我来判分", "tool_calls": [{"id": "call_2", "type": "function", "function": {"name": "verify_math", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "call_2", "name": "verify_math", "content": "计算结果" * 20},
+        {"role": "assistant", "content": "你做对了！"},
+        {"role": "user", "content": "下一题"}
+    ]
+    compacted_result = ce_test.compact_context(constructed_msgs)
+    orphan_found = False
+    for idx, msg in enumerate(compacted_result):
+        if msg.get("role") == "tool":
+            prev_msg = compacted_result[idx - 1] if idx > 0 else None
+            if not prev_msg or (prev_msg.get("role") != "assistant" and prev_msg.get("role") != "tool"):
+                orphan_found = True
+                break
+    runner.assert_true(not orphan_found, "上下文压缩防护：compact_context 确保 assistant(tool_calls) 与 tool 消息成对保留，杜绝孤儿消息")
+
+    # 2. CLI 子命令数据提取测试
+    tasks_data = ky_cli.get_today_tasks_data()
+    runner.assert_true(isinstance(tasks_data, dict) and "subjects" in tasks_data and "summary" in tasks_data, "CLI 子命令：get_today_tasks_data 成功生成结构化任务概览")
+
+    # 3. 私教风格动态切换测试
+    orig_style, _ = ky_cli.manage_coaching_style()
+    switched_style, changed = ky_cli.manage_coaching_style("2")
+    runner.assert_true(changed and "高效应试" in switched_style, "CLI 子命令：ky style 成功动态切换辅导风格")
+    # 恢复原风格
+    ky_cli.manage_coaching_style(orig_style)
+
+    # 4. 系统体检 doctor 执行测试
+    import doctor
+    doc_res = doctor.run_doctor(return_summary=True)
+    runner.assert_true(isinstance(doc_res, dict) and doc_res["issues"] == 0, "CLI 子命令：ky doctor 一键体检顺利通过且阻断问题为 0")
+
+    # ════════════════════════════════════════════════════════════
+    # 测试组 16: Sprint 2 教学闭环核心功能全量回归
+    # (反向组卷 / 真题变式防幻觉 / 考纲知识图谱 / 模考诊断 / 减负保障)
+    # ════════════════════════════════════════════════════════════
+    print("\n[测试组 16: Sprint 2 教学闭环核心功能全量回归 (组卷/变式/图谱/诊断/减负)]")
+    from skills import exam_composer, variant_retriever, knowledge_map, exam_diagnoser
+    import study_planner
+
+    # 备份配置与 AGENTS.md 以确保测试环境幂等
+    cfg_backup = json.loads((ROOT / "ky_config.json").read_text(encoding="utf-8")) if (ROOT / "ky_config.json").exists() else {}
+    agents_backup = (ROOT / "AGENTS.md").read_text(encoding="utf-8") if (ROOT / "AGENTS.md").exists() else ""
+
+    try:
+        # 1. S2-1 错题反向靶向组卷 (exam_composer)
+        paper = exam_composer.compose_exam_paper("math", count=2, save_file=False)
+        runner.assert_true(paper["count"] == 2 and "EXAM-MATH" in paper["paper_id"], "教学闭环 S2-1：自动从错题与薄弱点抽取试题拼装盲盒自测试卷")
+        runner.assert_true("EXAM_ANSWER_KEYS" in paper["content"], "教学闭环 S2-1：自测卷正确嵌入加密采分点与题解元数据")
+
+        grade_res = exam_composer.grade_exam_paper(paper["content"], "1. 答案推导步骤充分有效，得出极限为 1/3")
+        runner.assert_true(grade_res.get("success") is True and grade_res.get("score") > 0, "教学闭环 S2-1：自动批改自测卷作答并计算得分与通过率")
+        runner.assert_true("自动阅卷与采分诊断报告" in grade_res.get("report", ""), "教学闭环 S2-1：生成规范采分点批改诊断报告")
+
+        # 2. S2-5 变式题真实检索与防虚构溯源 (variant_retriever)
+        v_res = variant_retriever.search_real_variant(subject="math", keyword="导数中值定理")
+        runner.assert_true(v_res["subject"] == "math" and len(v_res.get("variants", [])) > 0, "教学闭环 S2-5：变式题检索成功返回同考点训练题")
+        runner.assert_true(v_res["is_real_source"] is False, "教学闭环 S2-5：本地未挂载实体书时准确识别非真实出处")
+        first_v_text = v_res["variants"][0]["question"]
+        runner.assert_true("【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】" in first_v_text, "教学闭环 S2-5：严格强制烙印防虚构自拟变式水印，杜绝虚构书名幻觉")
+
+        v_formatted = variant_retriever.format_variant_output(v_res)
+        runner.assert_true("考研同类真题变式检索" in v_formatted and "导数中值定理" in v_formatted, "教学闭环 S2-5：格式化变式题卡片输出完整规范")
+
+        # 3. S2-2 官方考纲知识点图谱与掌握度映射 (knowledge_map)
+        k_map = knowledge_map.build_knowledge_map("math")
+        runner.assert_true(k_map["subject"] == "math" and k_map["total_topics"] >= 50, "教学闭环 S2-2：全量解析官方考纲知识点树结构")
+        runner.assert_true("高等数学" in str(k_map["modules"].keys()) and "线性代数" in str(k_map["modules"].keys()), "教学闭环 S2-2：正确拆分科目下属一级与二级考纲模块")
+
+        k_table = knowledge_map.format_knowledge_map_table("math")
+        runner.assert_true("大纲掌握率" in k_table and "熟练" in k_table, "教学闭环 S2-2：大纲掌握度评级大盘输出完整")
+
+        # 4. S2-3 整卷级多题诊断引擎 (exam_diagnoser)
+        diag_sample = """
+1. 极限与连续计算题：选错C，概念漏洞
+2. 微分中值定理大题：求导计算失误，丢分4分
+3. 泰勒展开题目：审题偏差，未展开至三阶
+4. 二重积分计算题：计算失误，对称性遗漏
+"""
+        diag = exam_diagnoser.diagnose_mock_exam(subject="math", exam_input=diag_sample)
+        runner.assert_true(diag["total_errors"] >= 3, "教学闭环 S2-3：聚合解析模考失分样本")
+        runner.assert_true(diag["top_cause"] in ("概念漏洞", "计算失误", "审题偏差"), "教学闭环 S2-3：精准锁定整卷头号丢分杀手")
+        runner.assert_true("整卷级模考诊断报告" in diag["report"] and "精力动态重分配" in diag["report"], "教学闭环 S2-3：生成章节失分排行榜与下周复习处方")
+
+        # 5. S2-4 计划动态调优与防疲劳减负保障 (study_planner)
+        study_planner.record_daily_completion(rate=50.0, total=4, completed=2, date_str="2026-09-01")
+        study_planner.record_daily_completion(rate=40.0, total=5, completed=2, date_str="2026-09-02")
+        fatigue_alert = study_planner.check_fatigue_alert()
+        runner.assert_true(fatigue_alert["alert"] is True and fatigue_alert["consecutive_low_days"] == 2, "教学闭环 S2-4：成功侦测连续 2 天低完成率并触发防疲劳警报")
+        runner.assert_true("防疲劳保障提醒" in fatigue_alert["message"], "教学闭环 S2-4：输出科学减负与心理疏导建议")
+
+        relief_mode = study_planner.apply_relief_mode(scale=0.8)
+        runner.assert_true(relief_mode["success"] is True and relief_mode["new_hours"] < relief_mode["old_hours"], "教学闭环 S2-4：一键启动智能减负模式，下调复习时间预算")
+        runner.assert_true("温和启发·减负鼓励型" in relief_mode["style"], "教学闭环 S2-4：智能平滑切换为温和启发辅导风格")
+
+        # 6. Agent 工具层调用闭环
+        pm_auto.force_allow_all = True
+        agent_exam_res = tr_auto.execute_tool("compose_exam", {"subject": "math", "count": 1})
+        runner.assert_true("自测卷" in agent_exam_res or "EXAM-MATH" in agent_exam_res, "智能体工具：compose_exam 智能体自主靶向组卷执行成功")
+
+        agent_var_res = tr_auto.execute_tool("search_variant", {"subject": "math", "keyword": "泰勒展开"})
+        runner.assert_true("变式题检索结果" in agent_var_res and "泰勒展开" in agent_var_res, "智能体工具：search_variant 变式题检索执行成功")
+        pm_auto.force_allow_all = False
+
+        # ════════════════════════════════════════════════════════════
+        # 测试组 17: Sprint 3 体验与生态增强全量回归
+        # (复盘自动化 / 记忆治理 / Plan沙箱 / 看板5Tab+趋势 / FSRS自适应 / 考前节律)
+        # ════════════════════════════════════════════════════════════
+        print("\n[测试组 17: Sprint 3 体验与生态增强全量回归 (复盘/记忆/Plan/看板/FSRS/心理节律)]")
+        import tempfile
+        import shutil
+        from tools.agent import MemoryManager, PermissionManager, HookEvent, HookManager
+        from tools.skills import error_logger
+
+        test_sandbox_dir = Path(tempfile.mkdtemp(prefix="ky_test_s3_"))
+        try:
+            # 1. S3-1 复盘自动化 (SessionEnd 钩子提取与聚合)
+            hook_mgr = HookManager(workspace_root=ROOT)
+            dummy_context = {"messages": [{"role": "user", "content": "今天完成数学极限"}]}
+            hook_mgr.trigger_session_end(dummy_context)
+            runner.assert_true("debrief_summary" in dummy_context, "体验生态 S3-1：会话结束时自动生成当日学情复盘报告摘要")
+            debrief_txt = dummy_context.get("debrief_summary", "")
+            runner.assert_true("完成率" in debrief_txt or "今日" in debrief_txt, "体验生态 S3-1：复盘报告包含任务达成与待复测核心指标")
+
+            # 2. S3-2 记忆治理 (健康度评估与滚动修剪归档)
+            mem_mgr = MemoryManager(workspace_root=test_sandbox_dir)
+            sess_file = test_sandbox_dir / ".memory" / "session.md"
+            sess_file.parent.mkdir(parents=True, exist_ok=True)
+            items_md = "# 会话记忆\n" + "\n".join([f"- [2026-09-0{i}] 学员总结高数导数公式与易错题决策 #{i}" for i in range(1, 6)])
+            sess_file.write_text(items_md, encoding="utf-8")
+
+            m_health = mem_mgr.get_memory_health()
+            runner.assert_true("details" in m_health and m_health["total_tokens"] > 0, "体验生态 S3-2：成功评估分层记忆健康度与 Token 消耗指标")
+            runner.assert_true("session" in m_health["details"] and m_health["details"]["session"]["status"] in ("ok", "良好"), "体验生态 S3-2：正确诊断各层记忆容量状态")
+
+            prune_res = mem_mgr.prune_memory(scope="session", max_items=2, archive_to_decisions=True)
+            runner.assert_true(prune_res["pruned"] is True and prune_res["pruned_count"] == 3, "体验生态 S3-2：滚动修剪超量记忆条目 (保留最新 2 条)")
+            runner.assert_true(prune_res["remaining_count"] == 2 and prune_res["archived_count"] == 3, "体验生态 S3-2：将修剪条目无损安全归档至 decisions.md")
+            decisions_file = test_sandbox_dir / ".memory" / "decisions.md"
+            runner.assert_true(decisions_file.exists() and "归档" in decisions_file.read_text(encoding="utf-8"), "体验生态 S3-2：决策库正确承接历史归档记忆")
+
+            # 3. S3-3 Plan Mode 审计沙箱与快照回滚
+            pm_plan = PermissionManager(workspace_root=test_sandbox_dir, mode="plan")
+            runner.assert_true(pm_plan.mode == "plan", "体验生态 S3-3：PermissionManager 成功支持 plan 计划模式")
+
+            sample_file = test_sandbox_dir / "math_sample.txt"
+            sample_file.write_text("极限公式：lim sinx/x = 1", encoding="utf-8")
+            ckpt_path = pm_plan.create_checkpoint(sample_file)
+            runner.assert_true(Path(ckpt_path).exists() and (test_sandbox_dir / ".checkpoint").exists(), "体验生态 S3-3：写操作前自动创建原子 Checkpoint 快照")
+
+            # 篡改文件后回滚
+            sample_file.write_text("破坏性修改内容", encoding="utf-8")
+            rollback_res = pm_plan.restore_last_checkpoint()
+            runner.assert_true(rollback_res["success"] is True, "体验生态 S3-3：成功执行 restore_last_checkpoint 回滚")
+            runner.assert_true(sample_file.read_text(encoding="utf-8") == "极限公式：lim sinx/x = 1", "体验生态 S3-3：文件内容百分百精确还原至快照备份状态")
+
+            # 4. S3-4 看板升级 (5 Tab + 离线 KaTeX + 趋势曲线)
+            dash_html = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+            runner.assert_true('data-p="map"' in dash_html and "图谱" in dash_html, "体验生态 S3-4：看板成功装载第 5 页签「🗺️ 图谱」")
+            runner.assert_true("stat-trend" in dash_html and "完成率趋势" in dash_html, "体验生态 S3-4：数据页签成功嵌入 7 日完成率趋势 SVG 曲线")
+            runner.assert_true("fallbackMathUnicode" in dash_html, "体验生态 S3-4：成功内置 KaTeX 离线稳健数学符号降级解析器")
+
+            # 5. S3-5 FSRS 简化自适应间隔算法
+            stage_again, due_again, days_again = error_logger.calc_fsrs_interval(stage=2, rating="again")
+            runner.assert_true(stage_again == 0 and days_again == 1, "体验生态 S3-5：FSRS again 评级重置为 stage 0 且 1 天后立即复测")
+
+            stage_hard, due_hard, days_hard = error_logger.calc_fsrs_interval(stage=1, rating="hard")
+            runner.assert_true(stage_hard == 2 and days_hard == 3, "体验生态 S3-5：FSRS hard 评级按 1.3x 因子自适应延长间隔")
+
+            stage_good, due_good, days_good = error_logger.calc_fsrs_interval(stage=2, rating="good")
+            runner.assert_true(stage_good == 3 and days_good == 7, "体验生态 S3-5：FSRS good 评级平滑推进至 7 天")
+
+            stage_easy, due_easy, days_easy = error_logger.calc_fsrs_interval(stage=2, rating="easy")
+            runner.assert_true(stage_easy == 4 and days_easy == 28, "体验生态 S3-5：FSRS easy 评级跨级跳跃推进至 28 天")
+
+            # 6. S3-6 考前心理节律关怀与 CLI 命令集成
+            runner.assert_true(hasattr(ky_cli, "print_status_summary"), "体验生态 S3-6：ky_cli 成功集成 print_status_summary 态势函数")
+            ky_cli.print_status_summary()
+            runner.assert_true(True, "体验生态 S3-6：print_status_summary 打印大盘倒计时与作息节律正常不崩溃")
+
+        finally:
+            shutil.rmtree(test_sandbox_dir, ignore_errors=True)
+
+    finally:
+        # 还原现场配置与大盘
+        if cfg_backup:
+            (ROOT / "ky_config.json").write_text(json.dumps(cfg_backup, ensure_ascii=False, indent=2), encoding="utf-8")
+        if agents_backup:
+            (ROOT / "AGENTS.md").write_text(agents_backup, encoding="utf-8")
+
     # 统计并返回
     success = runner.print_summary()
     sys.exit(0 if success else 1)

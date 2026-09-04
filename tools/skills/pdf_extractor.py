@@ -50,14 +50,14 @@ def extract_pdf_page(pdf_path, page_num=1):
     p = Path(pdf_path)
     if not p.exists():
         return f"未找到文件: {pdf_path}"
-    
+
     if not HAS_PYPDF:
         return (
             f"检测到文件: {p.name} (大小: {p.stat().st_size // 1024} KB)\n"
             "⚠️ 当前 Python 环境未安装 `pypdf`，无法直接读取二进制 PDF。\n"
             "建议在终端运行：`pip install pypdf` 激活 PDF 纯文本抽取能力！"
         )
-    
+
     try:
         reader = pypdf.PdfReader(str(p))
         if page_num > len(reader.pages) or page_num < 1:
@@ -66,3 +66,47 @@ def extract_pdf_page(pdf_path, page_num=1):
         return f"=== [{p.name}] 第 {page_num} 页 ===\n\n{text}"
     except Exception as e:
         return f"读取 PDF 异常: {e}"
+
+
+def extract_pdf_pages(pdf_path, max_pages=8):
+    """
+    批量提取 PDF 前 N 页，供 Agent 工具 read_file / read_exam_paper 调用。
+    返回结构化字典：
+      {
+        "success": bool,
+        "file_name": str,
+        "total_pages": int,
+        "pages": [{"page": int, "text": str}, ...],
+        "error": str (仅失败时存在),
+      }
+    """
+    p = Path(pdf_path)
+    out = {"success": False, "file_name": p.name, "total_pages": 0, "pages": []}
+
+    if not p.exists():
+        out["error"] = f"未找到文件: {pdf_path}"
+        return out
+
+    if not HAS_PYPDF:
+        out["error"] = (
+            f"当前 Python 环境未安装 `pypdf`，无法直接读取二进制 PDF。"
+            f"建议在终端运行 `pip install pypdf` 激活 PDF 纯文本抽取能力。"
+        )
+        return out
+
+    try:
+        reader = pypdf.PdfReader(str(p))
+        total = len(reader.pages)
+        out["total_pages"] = total
+        cap = min(max_pages, total) if max_pages else total
+        for i in range(cap):
+            try:
+                txt = reader.pages[i].extract_text() or ""
+            except Exception as page_err:
+                txt = f"[第 {i+1} 页提取失败: {page_err}]"
+            out["pages"].append({"page": i + 1, "text": txt})
+        out["success"] = True
+        return out
+    except Exception as e:
+        out["error"] = f"读取 PDF 异常: {e}"
+        return out

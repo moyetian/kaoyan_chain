@@ -11,6 +11,7 @@ Level 5 = Dangerous (删除与破坏性操作)
 """
 
 import sys
+import json
 from typing import Dict, Any, Tuple
 
 class PermissionLevel:
@@ -31,16 +32,89 @@ LEVEL_NAMES = {
 }
 
 class PermissionManager:
-    def __init__(self, mode: str = "ask"):
+    def __init__(self, mode: str = "ask", workspace_root=None):
         """
         mode:
           - 'ask': 默认推荐模式。Level 0 自动执行；Level 1-4 提示用户审批；Level 5 必须高亮确认
           - 'auto': 全自动沙箱模式。Level 0-3 自动执行；Level 4-5 询问
           - 'safe': 严格只读模式。只允许 Level 0，其他全部拒绝
+          - 'plan': 计划审计模式。Level 0 自动放行；非只读修改强制呈现 Plan 审查卡片并在写前创建 Checkpoint 备份
         """
-        self.mode = mode.lower() if mode in ("ask", "auto", "safe") else "ask"
+        from pathlib import Path
+        self.mode = mode.lower() if mode in ("ask", "auto", "safe", "plan") else "ask"
+        self.workspace_root = Path(workspace_root).resolve() if workspace_root else Path.cwd().resolve()
         self.session_allowed_tools = set()  # 会话内用户选择 [a] 记住允许的工具集合
         self.force_allow_all = False        # 测试与全自动沙箱调试开关
+        self.checkpoint_dir = self.workspace_root / ".checkpoint"
+
+    def create_checkpoint(self, file_path) -> str:
+        """在修改文件前自动创建快照备份 (S3-3 Plan Mode 审计沙箱)"""
+        from pathlib import Path
+        import shutil
+        import time
+
+        fp = Path(file_path).resolve()
+        if not fp.exists():
+            return ""
+
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        target_ckpt_dir = self.checkpoint_dir / f"ckpt_{ts}"
+        target_ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            rel_p = fp.relative_to(self.workspace_root)
+        except Exception:
+            rel_p = fp.name
+
+        backup_file = target_ckpt_dir / str(rel_p)
+        backup_file.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(fp, backup_file)
+
+        # 记录元数据
+        meta_file = target_ckpt_dir / "_meta.json"
+        meta = {
+            "timestamp": ts,
+            "original_file": str(fp),
+            "relative_file": str(rel_p),
+            "backup_file": str(backup_file)
+        }
+        meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        return str(backup_file)
+
+    def restore_last_checkpoint(self) -> Dict[str, Any]:
+        """回滚最近一次 Checkpoint 快照 (S3-3 Plan Mode)"""
+        from pathlib import Path
+        import shutil
+
+        if not self.checkpoint_dir.exists():
+            return {"success": False, "message": "未找到任何 Checkpoint 快照备份"}
+
+        ckpts = sorted([d for d in self.checkpoint_dir.iterdir() if d.is_dir() and d.name.startswith("ckpt_")])
+        if not ckpts:
+            return {"success": False, "message": "没有可供回滚的快照目录"}
+
+        latest_ckpt = ckpts[-1]
+        meta_file = latest_ckpt / "_meta.json"
+        if not meta_file.exists():
+            return {"success": False, "message": f"快照 {latest_ckpt.name} 缺失元数据"}
+
+        try:
+            meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            orig_p = Path(meta["original_file"])
+            backup_p = Path(meta["backup_file"])
+            if not backup_p.exists():
+                return {"success": False, "message": f"备份文件不存在: {backup_p}"}
+
+            orig_p.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(backup_p, orig_p)
+            return {
+                "success": True,
+                "timestamp": meta.get("timestamp"),
+                "restored_file": str(orig_p),
+                "message": f"成功将 [{orig_p.name}] 回滚至快照状态 ({meta.get('timestamp')})"
+            }
+        except Exception as e:
+            return {"success": False, "message": f"回滚异常: {e}"}
 
     def check_permission(self, tool_name: str, level: int, tool_args: Dict[str, Any], interactive: bool = True) -> Tuple[bool, str]:
         """
@@ -66,13 +140,19 @@ class PermissionManager:
         if self.mode == "auto" and level <= PermissionLevel.SHELL_EXEC:
             return True, f"全自动模式 (--permission=auto)，已自动执行 [{tool_name}]"
 
-        # 5. 非交互模式 (如单测或后端调用)
+        # 5. plan 模式：强制 Plan 审查与 Checkpoint 备份
+        if self.mode == "plan":
+            if not interactive or not sys.stdin.isatty():
+                return False, f"Plan 模式 (--permission=plan) 下非交互环境禁止自动执行写操作 [{tool_name}]，需出具并确认行动计划"
+            return self._prompt_plan_approval(tool_name, level, tool_args)
+
+        # 6. 非交互模式 (如单测或后端调用)
         if not interactive or not sys.stdin.isatty():
             if self.mode in ("auto", "ask") and level <= PermissionLevel.SAFE_EDIT:
                 return True, "非交互环境安全放行"
             return False, f"非交互环境下无法请求用户批准 Level {level} 操作"
 
-        # 6. 交互式提示用户审批
+        # 7. 交互式提示用户审批
         return self._prompt_user_approval(tool_name, level, tool_args)
 
     def _prompt_user_approval(self, tool_name: str, level: int, tool_args: Dict[str, Any]) -> Tuple[bool, str]:
@@ -119,3 +199,47 @@ class PermissionManager:
             return True, "用户批准本会话永久信任此工具"
         else:
             return False, "用户拒绝执行该操作"
+
+    def _prompt_plan_approval(self, tool_name: str, level: int, tool_args: Dict[str, Any]) -> Tuple[bool, str]:
+        """Plan Mode 专用计划审计与确认卡片 (S3-3)"""
+        args_preview = []
+        target_file = None
+        for k, v in tool_args.items():
+            if k in ("path", "file_name", "target_file"):
+                target_file = str(v)
+            val_str = str(v)
+            if len(val_str) > 60:
+                val_str = val_str[:57] + "..."
+            args_preview.append(f"{k}='{val_str}'")
+        param_line = ", ".join(args_preview)
+
+        # 若操作涉及文件修改，写前自动创建快照
+        backup_hint = ""
+        if target_file and self.workspace_root:
+            try:
+                full_target = (self.workspace_root / target_file).resolve()
+                if full_target.exists():
+                    ckpt_file = self.create_checkpoint(full_target)
+                    if ckpt_file:
+                        backup_hint = f"\n\033[96m│\033[0m  📦 \033[1m[Checkpoint 安全快照已创建]\033[0m: {Path(ckpt_file).name} (随时输入 ky rollback 一键还原)"
+            except Exception:
+                pass
+
+        print(f"\n\033[96m╭── 📋 [Plan Mode 行动计划审计] ────────────────────────────────────────╮\033[0m")
+        print(f"\033[96m│\033[0m  \033[1m智能私教请求执行文件写入或环境变更操作:\033[0m")
+        print(f"\033[96m│\033[0m  • 计划调用: \033[1m{tool_name}\033[0m (Level {level})")
+        print(f"\033[96m│\033[0m  • 涉及参数: {param_line}{backup_hint}")
+        print(f"\033[96m│\033[0m")
+        print(f"\033[96m│\033[0m  选项: [y] 批准计划并执行变更  /  [n] 拒绝本次计划 (默认)")
+        print(f"\033[96m╰────────────────────────────────────────────────────────────────────────╯\033[0m")
+
+        try:
+            choice = input(f"👉 是否批准此项行动计划? [y/n] (默认 n): ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\n已取消执行。")
+            return False, "用户中断 Plan 审批"
+
+        if choice == "y":
+            return True, "用户批准 Plan 模式执行变更"
+        else:
+            return False, "用户拒绝 Plan 模式该项执行计划"

@@ -18,6 +18,10 @@ from . import socratic_tutor
 from . import error_logger
 from . import pdf_extractor
 from . import latex_beautifier
+from . import exam_composer
+from . import variant_retriever
+from . import knowledge_map
+from . import exam_diagnoser
 
 SKILLS_REGISTRY = {
     "vision_solver": {
@@ -60,6 +64,30 @@ SKILLS_REGISTRY = {
         "name": "📚 参考书与真题检索技能 (PDF & Document Extractor)",
         "desc": "快速检索四科「参考资料/」教材与历年真题库内容",
         "command": "/pdf [关键词或页码]",
+        "status": "已就绪"
+    },
+    "exam_composer": {
+        "name": "📝 错题反向靶向组卷技能 (Exam Composer)",
+        "desc": "基于历史高频错因与艾宾浩斯到期错题，靶向生成阶段专项自测卷",
+        "command": "ky exam [科目] [--count=N] 或 /exam",
+        "status": "已就绪"
+    },
+    "variant_retriever": {
+        "name": "🔍 考研同类真题变式检索与防幻觉溯源 (Real Variant Retriever)",
+        "desc": "优先检索白名单题库同类变式题，若无则标注自拟警告，严禁伪造题源",
+        "command": "ky variant <考点> 或 /variant",
+        "status": "已就绪"
+    },
+    "knowledge_map": {
+        "name": "🗺️ 官方考纲知识点图谱与掌握度映射 (Knowledge Map)",
+        "desc": "将官方考试大纲要求、历年题型与学员错题薄弱点多维对齐映射",
+        "command": "ky map [科目] 或 /map",
+        "status": "已就绪"
+    },
+    "exam_diagnoser": {
+        "name": "🩺 整卷级多题诊断与失分聚类引擎 (Exam Diagnoser)",
+        "desc": "分析模考整卷答题情况，输出章节失分排行、错因分布与薄弱攻坚战术",
+        "command": "ky diagnose <试卷文本/路径> 或 /diagnose",
         "status": "已就绪"
     }
 }

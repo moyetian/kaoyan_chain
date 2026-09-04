@@ -95,3 +95,9 @@ desktop.ini
 .workbuddy/
 .claude/
 .agents/
+
+# 三级分层记忆 (学员个人学情与决策，本地独占)
+.memory/
+
+# Plan Mode 快照备份沙箱 (本地独占，不上传云端)
+.checkpoint/

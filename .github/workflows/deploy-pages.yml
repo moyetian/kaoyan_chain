@@ -30,14 +30,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Build Dashboard
+      # 不再在 CI 里重跑 build.py：
+      # - 因为 _状态/*.md 真实数据被 .gitignore 保护，CI 只能用模板重建，会覆盖真实数据
+      # - 改为本地 build 后手动 git push，由 CI 直接把 docs/ 现状上传到 Pages
+      # - 发布前请在本地运行：set KY_SNAPSHOT_OPT_IN=1 && python 05-考研看板/build.py
+      # - 这会把 state_snapshot.json 与 docs/index.html 一起生成并提交
+      - name: Verify docs/ contains built artifacts
         run: |
-          python 05-考研看板/build.py
+            test -f docs/index.html || (echo "[❌] docs/index.html 未找到，请先在本地运行 python 05-考研看板/build.py" && exit 1)
+            test -f docs/state_snapshot.json || echo "[⚠️] docs/state_snapshot.json 未找到，可能错过今日快照"
+            echo "[✅] docs/ 内容检查通过"
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

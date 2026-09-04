@@ -107,20 +107,61 @@ class HookManager:
 
         # ── 1. 考纲超纲红线强制拦截 Hook (PreToolUse) ──
         def syllabus_guard_hook(tool_name: str, tool_args: Dict[str, Any], context: Dict[str, Any]):
+            """
+            根据当前数学科目类型（math1/2/3/396）判断红线：
+              - math2 严禁：三重积分 / 曲面积分 / 曲线积分 / 格林公式 / 高斯公式 / 无穷级数 / 傅里叶级数 / 向量代数与空间解析几何 / 欧拉方程 / 伯努利方程
+              - math3 不允许曲线曲面积分，但允许无穷级数（与数二不同）
+              - math1 / math396 范围最广，几乎全部允许（仅把"超出考纲"情况作为软警告）
+            """
             subj = context.get("active_subject", "math")
-            # 当数学科目且为数学二时
-            if subj == "math":
-                arg_text = str(tool_args).lower()
-                # 数二绝不考的红线超纲词
-                math2_forbidden = ["三重积分", "曲面积分", "曲线积分", "格林公式", "高斯公式", "无穷级数", "傅里叶级数"]
-                for forb in math2_forbidden:
+            if subj != "math":
+                return True, "ok", tool_args
+
+            # 兼容两种来源：context 显式注入 / cfg 隐式查找
+            math_key = (
+                context.get("math_key")
+                or (self.memory_manager and getattr(self.memory_manager, "_current_math_key", None))
+                or "math2"  # 默认按最严的 math2 处理
+            )
+
+            arg_text = str(tool_args).lower()
+            base_reason = ""
+
+            if math_key in ("math2", "math3"):
+                # 数二、数三都不允许：曲线曲面积分 / 格林 / 高斯 / 三重积分
+                forbidden_core = ["三重积分", "曲线积分", "曲面积分", "格林公式", "高斯公式"]
+                # 仅数二不允许：无穷级数 / 傅里叶级数
+                forbidden_math2_only = ["无穷级数", "傅里叶级数"]
+
+                banned = forbidden_core + (forbidden_math2_only if math_key == "math2" else [])
+                for forb in banned:
                     if forb in arg_text:
-                        return (
-                            False,
-                            f"【🚨 考纲红线强制拦截 (Hook 触发)】：当前科目为数学二 (302)，官方大纲明确规定【绝不考{forb}】！"
-                            f"系统已强制阻断该工具调用。严禁让学员做超纲偏难怪题！请立即调整为数二考纲内题型。",
-                            tool_args
+                        base_reason = (
+                            f"【🚨 考纲红线强制拦截 (Hook 触发)】：当前数学科目为 {math_key.upper()}，"
+                            f"官方大纲明确规定【绝不考{forb}】！"
                         )
+                        break
+            elif math_key in ("math1", "math396"):
+                # 数一、数三(396) 范围宽广；这里只记录为提示，不强制拦截
+                # （若未来需要细粒度控制可在此处扩展）
+                pass
+            else:
+                # 未知科目编码：保守按 math2 红线处理
+                for forb in ["三重积分", "曲线积分", "曲面积分", "格林公式", "高斯公式", "无穷级数", "傅里叶级数"]:
+                    if forb in arg_text:
+                        base_reason = (
+                            f"【🚨 考纲红线保守拦截 (未识别科目 {math_key})】：疑似超纲【{forb}】，请确认。\n"
+                        )
+                        break
+
+            if base_reason:
+                return (
+                    False,
+                    base_reason
+                    + "系统已强制阻断该工具调用。严禁让学员做超纲偏难怪题！"
+                    "请立即切换至当前数学科目考纲内的题型。",
+                    tool_args
+                )
             return True, "ok", tool_args
 
         self.register_hook(HookEvent.PRE_TOOL_USE, syllabus_guard_hook, priority=10)
@@ -156,3 +197,75 @@ class HookManager:
                 self.memory_manager.append_memory("decisions", f"[学员自主决策]: {d}")
 
         self.register_hook(HookEvent.BEFORE_COMPACT, compaction_saver_hook, priority=20)
+
+        # ── 4. 会话结束日终复盘与 IM 自动推送 Hook (SessionEnd) ──
+        def session_end_debrief_hook(context: Dict[str, Any]):
+            """
+            S3-1: 每日收工时自动生成当日复盘卡片并保存/推送
+            """
+            from datetime import datetime, date
+            today_str = datetime.now().strftime("%Y-%m-%d")
+
+            summary_lines = [
+                f"🌙 **考研全科 AI 私教 · 今日学习复盘简报 ({today_str})**",
+                f"--------------------------------------------------"
+            ]
+
+            # 1. 读取今日任务完成情况
+            total_tasks = 0
+            done_tasks = 0
+            for d_name in ("01-数学", "02-英语", "03-思想政治理论", "04-专业课"):
+                t_file = self.workspace_root / d_name / "_状态" / "今日任务.md"
+                if t_file.exists():
+                    try:
+                        lines = t_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+                        for l in lines:
+                            if "|" in l and not l.startswith("|---|") and "完成状态" not in l and "模块" not in l:
+                                total_tasks += 1
+                                if "[x]" in l.lower():
+                                    done_tasks += 1
+                    except Exception:
+                        pass
+
+            rate = round(done_tasks / total_tasks * 100, 1) if total_tasks > 0 else 0.0
+            summary_lines.append(f"📋 今日任务达成率: **{rate}%** ({done_tasks}/{total_tasks} 项完成)")
+
+            # 2. 统计到期待复测错题
+            due_total = 0
+            try:
+                from skills import error_logger
+                if error_logger:
+                    for sk in ("math", "eng", "pol", "pro"):
+                        due_items = error_logger.get_due_reviews(sk, max_count=10)
+                        due_total += len(due_items)
+            except Exception:
+                pass
+            summary_lines.append(f"🎯 明日待复测错题: **{due_total}** 道 (艾宾浩斯队列自动监控中)")
+
+            # 3. 记录到 daily completion
+            try:
+                import study_planner
+                study_planner.record_daily_completion(rate=rate, total=total_tasks, completed=done_tasks, date_str=today_str)
+            except Exception:
+                pass
+
+            # 4. 尝试向已配置的 IM 推送日终简报
+            cfg_path = self.workspace_root / "ky_config.json"
+            if cfg_path.exists():
+                try:
+                    import json
+                    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+                    webhooks = cfg.get("webhooks", {})
+                    if any(webhooks.values()):
+                        debrief_text = "\n".join(summary_lines) + "\n\n保持节奏，今日复习圆满收工！🎓"
+                        try:
+                            import ky_cli
+                            ky_cli.broadcast_briefing(cfg, custom_msg=debrief_text)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+            context["debrief_summary"] = "\n".join(summary_lines)
+
+        self.register_hook(HookEvent.SESSION_END, session_end_debrief_hook, priority=10)

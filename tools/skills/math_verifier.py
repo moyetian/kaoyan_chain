@@ -34,6 +34,19 @@ def get_status():
         return "SymPy 高精度符号计算引擎 (已就绪 · 全功能激活 · 含微分方程/二次型/级数)"
     return "轻量级纯 Python 计算引擎 (建议运行: pip install sympy 获取全部高等数学验算能力)"
 
+def _parse_infinity(token: str):
+    """把 'inf' / 'oo' / '-inf' / '-oo' 安全转成 sympy 符号（避免 -inf 被误判为 +oo）。
+    当 sympy 不可用或 token 不是 inf/oo 时，回退到 sp.sympify(token)。"""
+    if not HAS_SYMPY:
+        return token
+    t = (token or "").strip().lower().lstrip("(").rstrip(")")
+    neg = t.startswith("-")
+    t = t.lstrip("-")
+    if t in ("inf", "oo", "infinity"):
+        return -oo if neg else oo
+    return sp.sympify(token)
+
+
 def run_math_query(query_str):
     """
     智能解析并执行数学命令
@@ -102,12 +115,38 @@ def run_math_query(query_str):
                 eigenvals = mat.eigenvals()
                 eval_list = list(eigenvals.keys())
 
-                # 判断正定性 (所有顺序主子式均大于0)
-                is_pos_def = all(m > 0 for m in minors if hasattr(m, '__gt__') and m.is_real)
-                is_semi_pos_def = all(ev >= 0 for ev in eval_list if hasattr(ev, '__ge__') and ev.is_real)
-                
-                status_text = "正定二次型 (Positive Definite)" if is_pos_def else \
-                              ("半正定二次型 (Positive Semi-Definite)" if is_semi_pos_def else "不定或非正定二次型")
+                # 判断正定性：分离符号/复数项，遇符号则保守标注"无法判定"
+                real_minors = []
+                non_real_or_symbolic = False
+                for m in minors:
+                    if hasattr(m, 'is_real') and m.is_real is True and not m.free_symbols:
+                        real_minors.append(float(m))
+                    else:
+                        non_real_or_symbolic = True
+                        break
+
+                if non_real_or_symbolic:
+                    is_pos_def = None
+                    is_semi_pos_def = None
+                else:
+                    is_pos_def = all(m > 0 for m in real_minors)
+                    real_evs, ev_unknown = [], False
+                    for ev in eval_list:
+                        if hasattr(ev, 'is_real') and ev.is_real is True and not ev.free_symbols:
+                            real_evs.append(float(ev))
+                        else:
+                            ev_unknown = True
+                            break
+                    is_semi_pos_def = None if ev_unknown else all(ev >= 0 for ev in real_evs)
+
+                if is_pos_def is None:
+                    status_text = "⚠️ 含符号项或非实数项，无法用主元子式法严格判定（请代入具体数值再验）"
+                elif is_pos_def:
+                    status_text = "正定二次型 (Positive Definite)"
+                elif is_semi_pos_def:
+                    status_text = "半正定二次型 (Positive Semi-Definite)"
+                else:
+                    status_text = "不定或非正定二次型"
 
                 return (
                     f"💎 【二次型矩阵与正定性精准判定】\n"
@@ -125,7 +164,7 @@ def run_math_query(query_str):
                 expr_str, a_str, b_str = m_sum.group(1).strip(), m_sum.group(2).strip(), m_sum.group(3).strip()
                 expr_str = expr_str.replace("^", "**")
                 a = sp.sympify(a_str)
-                b = oo if "inf" in b_str or "oo" in b_str else sp.sympify(b_str)
+                b = _parse_infinity(b_str)
                 expr = sp.sympify(expr_str, locals={'n': n, 'k': k, 'x': x})
                 res = summation(expr, (n, a, b))
                 return (
@@ -181,7 +220,7 @@ def run_math_query(query_str):
             if m:
                 expr_str, dest_str = m.group(1).strip(), m.group(2).strip()
                 expr_str = expr_str.replace("^", "**")
-                dest = oo if "inf" in dest_str or "oo" in dest_str else sp.sympify(dest_str)
+                dest = _parse_infinity(dest_str)
                 expr = sp.sympify(expr_str)
                 res = limit(expr, x, dest)
                 return (
