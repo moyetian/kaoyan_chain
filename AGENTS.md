@@ -112,6 +112,10 @@ flowchart TD
 | `英语报到` / `学英语` | 启动英语训练，拆解长难句与真题阅读 | `02-英语/AGENTS.md`<br>`02-英语/_状态/今日任务.md` |
 | `政治报到` / `学政治` | 启动政治冲刺，刷题与核心考点自测 | `03-思想政治理论/AGENTS.md`<br>`03-思想政治理论/_状态/今日任务.md` |
 | `专业课报到` / `学专业课` | 启动专业课训练，真题与教材习题核验 | `04-专业课/AGENTS.md`<br>`04-专业课/学情档案.md` |
+| `研招证据` / `/admission` | 调取研招网与高校官方招考事实与证据链 | `tools/intelligence/` |
+| `双校对标` / `/compare` | 对标两所目标院校科目差异、复试线与一志愿保护 | `tools/intelligence/comparator.py` |
+| `招生监控` / `/watch` | 监控目标高校研究生院最新简章指纹变动 | `tools/intelligence/watcher.py` |
+| `高校侦察` / `/scout` | 聚合高校招生简章、报录比与知乎/B站口碑研报 | `tools/skills/school_scout.py` |
 | `查漏` | 调取四科薄弱点雷达与错题队列 | 各科 `_状态/薄弱点雷达.md` 与错题索引 |
 | `交作业` | 判分、指出步骤漏洞、归因错因、更新档案 | 各科 `学情档案.md` 或 `当前进度.md` |
 | `更新看板` | 重新生成 HTML 并在本地与 GitHub 同步 | 执行 `python tools/update_dashboard.py` |

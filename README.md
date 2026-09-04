@@ -10,11 +10,11 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Status-Sprint%203%20Delivered-success.svg?style=flat-square" alt="Status" />
+  <img src="https://img.shields.io/badge/Status-Sprint%203%20%2B%20Intelligence%20Delivered-success.svg?style=flat-square" alt="Status" />
   <img src="https://img.shields.io/badge/Agent%20Core-Claude%20Code%20Level-blueviolet?style=flat-square&logo=openai&logoColor=white" alt="Agent Core" />
-  <img src="https://img.shields.io/badge/MCP-Standard%20stdio%20Client-8b5cf6?style=flat-square&logo=anthropic&logoColor=white" alt="MCP" />
-  <img src="https://img.shields.io/badge/Tests-156%2F156%20Passed%20(100%25)-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
-  <img src="https://img.shields.io/badge/Dashboard-5%20Tabs%20(%E5%9B%BE%E8%B0%B1%2B%E8%B6%8B%E5%8A%BF%E7%BA%BF)-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
+  <img src="https://img.shields.io/badge/KaoYan%20Intelligence-全国800%2B高校覆盖%20(985%2F211%2F双非)-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white" alt="KaoYan Intelligence" />
+  <img src="https://img.shields.io/badge/Tests-198%2F198%20Passed%20(100%25)-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
+  <img src="https://img.shields.io/badge/Dashboard-5%20Tabs%20(%E5%9B%BE%E8%B0%B1%2B%E8%B6%8B%E5%8A%BF%E7%BA%BF%2B%E7%AE%80%E7%AB%A0%E9%80%9F%E9%80%92)-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
   <img src="https://img.shields.io/badge/Memory-3--Tier%20Pruning-f59e0b?style=flat-square&logo=speedtest&logoColor=white" alt="Memory" />
   <img src="https://img.shields.io/badge/FSRS-Spaced%20Repetition-10b981?style=flat-square&logo=anki&logoColor=white" alt="FSRS" />
   <img src="https://img.shields.io/badge/Python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
@@ -307,7 +307,7 @@ flowchart TD
 
 | 页签 | 功能定位 | 核心特性与交互设计 | 核心使用场景 |
 |---|---|---|---|
-| 📋 **今日**<br>*(Today)* | 每日攻坚任务卡 | • 四科当日复习分钟预算进度条<br>• 针对学员个性化薄弱项的精准攻坚清单<br>• 点击即时打勾打卡，初试倒计时毫秒感知 | 晨起确认当日任务，晚间核对执行闭环 |
+| 📋 **今日**<br>*(Today)* | 每日攻坚任务卡 | • 四科当日复习分钟预算进度条<br>• 针对学员个性化薄弱项的精准攻坚清单<br>• 🔥 **招生简章与自命题突发速递卡片**（第一时间预警目标高校大纲变动）<br>• 点击即时打勾打卡，初试倒计时毫秒感知 | 晨起确认当日任务，晚间核对执行闭环 |
 | 🧠 **必背**<br>*(Flashcards)* | 核心速记与 3D 翻转卡 | • 数学高频定理推导、积分表、泰勒展开公式卡<br>• 英语高频词汇与作文功能句型速查<br>• 政治核心帽子词与历史时间线<br>• 专业课高频大题答题模板与算法三段式规范 | ★ **碎片时间主力**：排队、通勤、自习室休息、睡前默写 |
 | 🎯 **薄弱**<br>*(Radar & Queue)* | 掌握度雷达与错题队列 | • 章节掌握度阶梯雷达图，直观暴露丢分洼地<br>• **艾宾浩斯与 FSRS 记忆周期循环复习**，未掌握错题强制置顶<br>• 标星攻坚难点定向突破 | 每周/每月全科复盘时定向爆破 |
 | 📊 **数据**<br>*(Analytics)* | 全科学情诊断与态势 | • **错因五分类分布占比**（概念漏洞/审题偏差/公式记错/计算失误/书写丢分）<br>• **7 日任务完成率趋势 SVG 曲线**，直观反映近期学习平稳度与自律节律<br>• 计算失误量化指标与步骤丢分追踪，深浅色护眼主题一键无缝切换 | 阶段性评估各科复习重心，动态调整时间预算 |
@@ -437,6 +437,13 @@ flowchart TD
   - 严格输出带信源评级（S/A/B/C/D）、置信度与发布时间戳的 `EvidenceObject` 证据链；
   - **年份锁定机制 (Exam Year Locking)**：锁定目标年份，严防把往年旧数据冒充为当年招考信息；
   - **多源冲突仲裁 (Conflict Resolver)**：当研招网基准与学院最新通知产生名额微调出入时，标记 `STATUS: CONFLICT` 并出具专业仲裁建议。
+- **全国高校通用自适应推断与实体合成器 (`Universal Heuristic Synthesizer`)**：
+  - 不仅原生预置 985/211 顶尖名校，更全面覆盖全国 800+ 研招单位（含**东莞理工学院、河南科技大学、桂林电子科技大学、长春理工大学、太原科技大学、常州大学等广大非热门/双非高校**）；
+  - 自动根据高校名称推导所在城市省份，智能判定执行**国家一区线 (A区)** 还是 **国家二区线 (B区，享受降分照顾)**，自动匹配教育部 5 位院校代码并直连官方研招通道。
+- **双非院校专属考情画像与防坑处方**：
+  - **单科死穴严防**：针对普通院校复试线通常贴国家线（工科约 265~275 分）的特点，私教在诊断中严格把关，严防“总分 330 超高分、但英语或数学差 1 分未过单科线”导致一票否决；
+  - **自命题真题黑盒破解**：警示非公开自命题的备考偏差，引导获取直系学长学姐回忆卷，并防范 9 月初突然改考统考 408；
+  - **一志愿保护排查**：在社媒专区重点穿透目标学院是否存在“故意压低一志愿给调剂留名额”的恶劣风评，甄选“一志愿上线全收”的黄金神校。
 - **双校招考深度横向对比引擎 (`ky compare`)**：
   - 执行 `ky compare <高校1> <高校2> [专业] [--save]`，深度横向对标两校的教育部代码、所在城市、办学层次、自划线特征、初试科目差异（如 408 统考 vs 自命题）、近三年复试线走势与**一志愿保护机制**；
   - 自动输出结构化对比表格与私教深度择校处方，支持导出至 `04-专业课/` Markdown 研报。
