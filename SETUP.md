@@ -276,14 +276,33 @@ ky serve
 ---
 
 ### 方案 B：Cloudflare Pages 部署 (私有仓库完全免费推荐)
-若你的 GitHub 仓库为 **Private（私有）**，GitHub Pages 需付费 Pro 会员，推荐使用完全免费的 Cloudflare Pages：
-1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/) -> **Workers & Pages** -> **Create application** -> **Pages** -> **Connect to Git**；
-2. 授权选中你的私有考研仓库；
-3. 构建参数设置：
+若你的 GitHub 仓库为 **Private（私有）**，GitHub Pages 免费版无法开启 Pages，推荐使用完全免费的 Cloudflare Pages：
+
+1. **关联 GitHub 仓库**：
+   - 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/) -> **Workers & Pages** -> **Create application** -> **Pages** -> **Connect to Git**；
+   - 授权选中你的私有考研仓库；
+2. **构建参数设置**：
    - **Framework preset**: `None`
-   - **Build command**: `python 05-考研看板/build.py`
+   - **Build command**: `python 05-考研看板/build.py` (或直接留空)
    - **Build output directory**: `docs`
-4. 点击 **Save and Deploy**，即可获得专属个性化域名（支持在 Cloudflare Access 中设置邮箱验证码访问白名单）。
+3. **完成部署**：
+   - 点击 **Save and Deploy**，约 1 分钟后即生成专属域名（如 `https://<你的项目>.pages.dev`）；
+   - 之后本地每次 `git push`，Cloudflare 都会自动同步重新部署。
+
+#### 🔐 进阶：配置 Cloudflare Zero Trust 免费邮箱验证白名单（强烈推荐）
+为防止知道 `*.pages.dev` 网址的人随意查看你的个人分数与错题记录，可通过 Cloudflare 免费加一道邮箱验证锁：
+1. 在 Cloudflare 控制台左侧进入 **Zero Trust**（首次进入会提示创建一个 Team Name，任意填写即可）；
+2. 依次点击 **Access** -> **Applications** -> **Add an application** -> 选择 **Self-hosted**；
+3. 基础配置：
+   - **Application name**：`考研看板`
+   - **Session Duration**：`1 month`（一个月只需验证一次）
+   - **Application domain**：填入你的 `<项目名>.pages.dev`
+4. 配置访问策略 (**Add policy**)：
+   - **Policy name**：`only-me`
+   - **Action**：`Allow`
+   - **Include 规则**：选择 **Emails** -> 填入你自己的常用邮箱地址；
+5. 点击 **Save** 保存。
+> 之后无论在手机还是电脑打开看板，系统会自动发送一个 6 位数一次性验证码到你的邮箱，验证通过后即可免密畅爽刷卡一个月！
 
 ---
 
