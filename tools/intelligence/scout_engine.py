@@ -210,12 +210,66 @@ class KaoYanIntelligenceEngine:
             f"- 💡 **知乎深度讨论**：[{school_name}{kw_part} 考研就读体验与导师评价]({social_links['zhihu']})",
             f"- 📺 **B站高分复盘**：[{school_name}{kw_part} 备考经验贴与真题复盘视频]({social_links['bilibili']})",
             f"- 📕 **小红书避坑帖**：[{school_name}{kw_part} 考研避坑、压分与复试经验]({social_links['xiaohongshu']})",
-            "",
+            ""
+        ])
+
+        # 5. 个人学情量化报考风险与提分门槛诊断 (User State Gap Analysis)
+        lines.extend(self._assess_user_risk(entity, major_query, evidences))
+
+        lines.extend([
             "---",
             f"> 💡 **KaoYan Intelligence 战略提示**：本研报基于权威官方站点生成。可结合自身模考水平，在会话中让 AI 私教为你出具针对 `{school_name}` 的定制备考处方。"
         ])
 
         return "\n".join(lines)
+
+    def _assess_user_risk(
+        self,
+        entity: Optional[UniversityEntity],
+        major_query: Optional[str],
+        evidences: List[EvidenceObject]
+    ) -> List[str]:
+        """结合学员当前基准分与目标分，量化诊断报考冲刺风险与提分阈值"""
+        lines = [
+            "## 🎯 5. 个人学情量化报考风险与提分门槛诊断 (User State Gap Analysis)",
+            "> 联动学员 ky_config.json 设定的初始摸底分与战役目标成绩，提供量化录取门槛研判："
+        ]
+        cfg_path = ROOT / "ky_config.json"
+        cfg = {}
+        if cfg_path.exists():
+            try:
+                cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
+        plan = cfg.get("study_plan", {})
+        math_target = plan.get("math_target", "110+")
+        eng_target = plan.get("english_target", "65+")
+        pol_target = plan.get("politics_target", "70+")
+        pro_target = plan.get("pro_target", "120-130")
+        total_target = plan.get("target_score", "370+")
+
+        is_top_985 = entity and any(t in entity.level for t in ["985", "C9联盟", "双一流A类", "自划线"])
+
+        lines.extend([
+            f"- **当前战役目标成绩**：总分 `{total_target}` ｜ 数学 `{math_target}` ｜ 英语 `{eng_target}` ｜ 政治 `{pol_target}` ｜ 专业课 `{pro_target}`",
+        ])
+
+        sch_title = entity.name if entity else "目标院校"
+        if is_top_985:
+            lines.extend([
+                f"- **院校门槛定位**：`{sch_title}` 属 34 所自主划线 / 顶尖名校，考研竞争处于白热化高压区，通常具备以下硬性门槛：",
+                f"  1. **初试底线**：近三年专硕/学硕复试线通常在 330~355 分高位，设定的 `{total_target}` 目标分处于安全上岸区（具备约 15~25 分复试差额缓冲垫）；",
+                f"  2. **数学与专业课提分死命令**：数学（二/一）必须确保达到 `{math_target}`，专业课（408）必须攻坚至 `{pro_target}`，两门单科合计需贡献 230+ 分基本盘；",
+                f"  3. **复试硬实力储备**：顶尖名校极其看重编程机试与专业素养，初试后需无缝衔接算法题库训练，不可松懈。"
+            ])
+        else:
+            lines.extend([
+                f"- **院校门槛定位**：`{sch_title}` 整体竞争态势相对温和，按照 `{total_target}` 的战役规划，初试基本盘极其扎实，重点在于稳扎稳打规避单科受阻。"
+            ])
+
+        lines.append("")
+        return lines
 
     def _save_report(self, school_name: str, major_query: Optional[str], content: str) -> Path:
         """保存研报到 04-专业课/"""

@@ -37,6 +37,7 @@ from .discovery import OfficialDiscovery
 from .extractor import DocumentExtractor
 from .scout_engine import KaoYanIntelligenceEngine, get_intelligence_engine
 from .watcher import AdmissionWatcher
+from .comparator import SchoolComparator, get_school_comparator
 
 __all__ = [
     "EvidenceSource",
@@ -58,5 +59,7 @@ __all__ = [
     "DocumentExtractor",
     "KaoYanIntelligenceEngine",
     "get_intelligence_engine",
-    "AdmissionWatcher"
+    "AdmissionWatcher",
+    "SchoolComparator",
+    "get_school_comparator"
 ]

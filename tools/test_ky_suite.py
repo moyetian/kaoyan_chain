@@ -984,7 +984,7 @@ def run_tests():
         # =========================================================================
         # 19. KaoYan Intelligence 考研招考情报与证据链引擎测试
         # =========================================================================
-        print("\n[测试组 19: KaoYan Intelligence 考研招考情报与证据链引擎 (21 项验证)]")
+        print("\n[测试组 19: KaoYan Intelligence 考研招考情报与证据链引擎 (28 项验证)]")
         try:
             import intelligence as ki
             
@@ -1046,6 +1046,36 @@ def run_tests():
             runner.assert_true(add_res["success"] is True, "Intelligence 19-19：AdmissionWatcher 成功将华科纳入动态监控雷达")
             runner.assert_true(len(watcher.list_watched()) >= 1, "Intelligence 19-20：list_watched 正确返回已监控高校列表")
             runner.assert_true(watcher.remove_watch("华科") is True, "Intelligence 19-21：remove_watch 成功解除高校监控")
+
+            # 19-22: PDF 深度解析提取器 (extract_from_pdf)
+            mock_pdf_content = (
+                "华中科技大学2027年硕士研究生招生专业目录\n"
+                "085404 计算机技术\n"
+                "初试科目：(101)思想政治理论 (204)英语(二) (302)数学(二) (408)计算机学科专业基础\n"
+                "拟招收人数：85人\n"
+            )
+            pdf_evs = extractor.extract_from_pdf(
+                pdf_path_or_bytes=mock_pdf_content,
+                source_url="http://gszs.hust.edu.cn/doc/2027_zsml.pdf",
+                school_name="华中科技大学",
+                target_year=2027,
+                major_keyword="085404"
+            )
+            runner.assert_true(any("085404" in str(e.value) for e in pdf_evs), "Intelligence 19-22：extract_from_pdf 成功抽取专业代码与名称")
+            runner.assert_true(any(e.field == "PDF拟招生计划人数" and e.value == 85 for e in pdf_evs), "Intelligence 19-23：extract_from_pdf 成功抽取拟招生计划 85 人")
+
+            # 19-24: 双校招考横向对比引擎 (School Comparator)
+            comparator = ki.SchoolComparator()
+            comp_res = comparator.compare("华中科技大学", "武汉大学", "计算机", save_report=True)
+            runner.assert_true(comp_res["school1"] == "华中科技大学" and comp_res["school2"] == "武汉大学", "Intelligence 19-24：SchoolComparator 成功对标双校办学层次与教育部代码")
+            runner.assert_true("408" in comp_res["analysis"]["subject_diff"] or "统考" in comp_res["analysis"]["subject_diff"], "Intelligence 19-25：SchoolComparator 智能识别初试科目与自命题差异")
+            runner.assert_true(comp_res.get("saved_path") and Path(comp_res["saved_path"]).exists(), "Intelligence 19-26：SchoolComparator 成功导出双校横向对标 Markdown 研报至 04-专业课")
+
+            # 19-27: 学情量化报考风险与提分门槛诊断 (User State Gap Analysis)
+            intel_engine = ki.get_intelligence_engine()
+            intel_res = intel_engine.query("华中科技大学", "085404", save_report=False)
+            runner.assert_true("个人学情量化报考风险与提分门槛诊断" in intel_res["markdown_report"], "Intelligence 19-27：研报成功包含 User State Gap Analysis 学情量化诊断")
+            runner.assert_true("370+" in intel_res["markdown_report"] or "目标分" in intel_res["markdown_report"], "Intelligence 19-28：学情诊断成功联动学员目标成绩与名校自划线门槛")
 
         except Exception as e:
             runner.assert_true(False, f"Intelligence 引擎测试异常: {e}")

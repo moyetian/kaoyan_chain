@@ -1208,6 +1208,23 @@ def print_today_tasks_summary(as_json: bool = False):
         ("03-思想政治理论", "思想政治理论", C.RED),
         ("04-专业课", "专业课", C.YELLOW)
     ]
+    # ── 研招动态监控晨报置顶提醒 ──
+    try:
+        if intelligence:
+            watcher = intelligence.AdmissionWatcher()
+            if watcher.list_watched():
+                findings = watcher.check_updates()
+                updated_findings = [f for f in findings if f.get("status") == "UPDATED"]
+                if updated_findings:
+                    print(f"{C.RED}{C.BOLD}╭── 🔥 研招动态突发情报速递 (Admission News Flash) ────────────────────╮{C.RESET}")
+                    for uf in updated_findings:
+                        print(f"{C.YELLOW}│{C.RESET}  📢 【{uf['school']}】官方研究生院发布最新招生变动：")
+                        for tit in uf.get("alert_titles", []):
+                            print(f"{C.YELLOW}│{C.RESET}     • {tit}")
+                    print(f"{C.RED}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}\n")
+    except Exception:
+        pass
+
     today_str = datetime.now().strftime("%Y-%m-%d")
     print(f"\n{C.CYAN}╭── 📋 今日全科复习任务清单 ({today_str}) ─────────────────────────╮{C.RESET}")
     has_any = False
@@ -1244,6 +1261,7 @@ def print_command_palette():
 {C.CYAN}│{C.RESET}  {C.BOLD}🧩 考研专有扩展技能 (Skills):{C.RESET}                                            {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.YELLOW}/admission <校> [专业]{C.RESET}研招网与高校官方招考事实与证据链核验 (S/A级权威)    {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.YELLOW}/watch [高校]{C.RESET}          跟踪目标高校研究生院最新简章与自命题动态指纹监控雷达      {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/compare <校1> <校2>{C.RESET}   双校招考核心指标横向深度对标 (408/自命题/复试线/保护)     {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.YELLOW}/scout <高校> [专业]{C.RESET}目标院校招生简章、大纲、招生人数与知乎/B站口碑侦察   {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.YELLOW}/exam [科目]{C.RESET}  错题反向靶向组卷 (阶段自测盲盒试卷，支持导出与评分)       {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.YELLOW}/variant <考点>{C.RESET}考研同类真题变式检索与防伪溯源 (优先白名单真题，严禁伪造)   {C.CYAN}│{C.RESET}
@@ -2091,6 +2109,23 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                             print(colorize(f"[√ {res.get('msg')}]: 官方入口 {res.get('url')}", C.GREEN))
                         else:
                             print(colorize(f"[!] 添加失败: {res.get('msg')}", C.RED))
+                else:
+                    print(colorize("[!] intelligence 引擎模块未载入", C.RED))
+                continue
+            elif cmd in ("/compare", "/vs", "/pk", "/duibi"):
+                parts = arg.strip().split()
+                if len(parts) < 2:
+                    print(colorize("用法: /compare <高校1> <高校2> [专业关键词]\n示例: /compare 华中科技大学 武汉大学 计算机", C.YELLOW))
+                    continue
+                s1, s2 = parts[0], parts[1]
+                major_kw = parts[2] if len(parts) > 2 else "计算机"
+                if intelligence:
+                    comparator = intelligence.SchoolComparator()
+                    print(colorize(f"\n[⚔️ KaoYan Intelligence: 正在对标【{s1}】与【{s2}】({major_kw}) 考情画像...]\n", C.CYAN))
+                    res = comparator.compare(school1_query=s1, school2_query=s2, major_keyword=major_kw, save_report=True)
+                    print(res.get("terminal_report", ""))
+                    if res.get("saved_path"):
+                        print(colorize(f"\n[√ 双校横向对比研报已归档至]: {res['saved_path']}\n", C.GREEN))
                 else:
                     print(colorize("[!] intelligence 引擎模块未载入", C.RED))
                 continue
@@ -3078,6 +3113,31 @@ def main():
                     print(colorize(f"[!] 添加失败: {res.get('msg')}", C.RED))
         else:
             print(colorize("[!] intelligence 考情引擎模块未载入", C.RED))
+    elif args[0] in ("compare", "--compare", "vs", "--vs"):
+        pos_args = []
+        save_flag = False
+        for a in args[1:]:
+            if a in ("--save", "-s"):
+                save_flag = True
+            elif not a.startswith("-"):
+                pos_args.append(a)
+
+        if "--help" in args or "-h" in args or len(pos_args) < 2:
+            print(colorize("用法: ky compare <高校1> <高校2> [专业关键词] [--save]\n示例: ky compare 华中科技大学 武汉大学 计算机 --save\n说明: 深度横向对标两所高校的办学层次、自划线、初试科目差异 (408/自命题)、复试线与一志愿保护机制。", C.YELLOW))
+            sys.exit(0 if ("--help" in args or "-h" in args) else 1)
+
+        s1, s2 = pos_args[0], pos_args[1]
+        major_kw = pos_args[2] if len(pos_args) > 2 else "计算机"
+
+        if intelligence:
+            print(colorize(f"\n[⚔️ KaoYan Intelligence: 正在对标【{s1}】与【{s2}】({major_kw}) 招考指标与复试保护...]\n", C.CYAN))
+            comparator = intelligence.SchoolComparator()
+            res = comparator.compare(school1_query=s1, school2_query=s2, major_keyword=major_kw, save_report=save_flag)
+            print(res.get("terminal_report", ""))
+            if res.get("saved_path"):
+                print(colorize(f"\n[√ 双校横向对比研报已归档至]: {res['saved_path']}\n", C.GREEN))
+        else:
+            print(colorize("[!] intelligence 考情引擎模块未载入", C.RED))
     elif args[0] in ("variant", "--variant"):
         if len(args) < 2:
             print(colorize("用法: ky variant <考点关键词或原题干>\n示例: ky variant 导数中值定理", C.YELLOW))
@@ -3233,6 +3293,7 @@ def main():
   plan                                        启动个人专属定制化必考方案向导
   admission <高校名> [专业] [--year=2027] [--save] 精准调取研招网与高校官方招考指标与证据链
   watch [高校名] [--check] [--list] [--remove]        高校研究生院最新简章与自命题动态指纹监控雷达
+  compare <校1> <校2> [专业] [--save]          双校招考关键指标横向深度对标 (408/自命题/复试线/保护)
   scout <高校名> [专业名] [--save] [--apply]  定向侦察目标高校招生简章、考试大纲、报录比与知乎/B站口碑
   exam [科目] [--count=N] [--save]            基于错题库与核心考点反向靶向组卷
   exam-submit <试卷路径> <作答文本>           自动判卷并输出正答率、采分点与错题归因

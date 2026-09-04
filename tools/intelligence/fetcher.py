@@ -142,6 +142,34 @@ class HTTPFetcher:
         except Exception:
             return data.decode("latin1", errors="replace")
 
+    def download_file(self, url: str, dest_path: Any, max_bytes: int = 15 * 1024 * 1024) -> bool:
+        """安全下载文件（如招生专业目录与大纲 PDF），防超大文件滥用 (默认限额 15MB)"""
+        try:
+            headers = {
+                "User-Agent": USER_AGENT,
+                "Accept": "*/*"
+            }
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=self.timeout * 2, context=_SSL_CONTEXT) as resp:
+                if resp.status != 200:
+                    return False
+                from pathlib import Path
+                dest = Path(dest_path)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                downloaded = 0
+                with open(dest, "wb") as f:
+                    while True:
+                        chunk = resp.read(64 * 1024)
+                        if not chunk:
+                            break
+                        downloaded += len(chunk)
+                        if downloaded > max_bytes:
+                            return False
+                        f.write(chunk)
+                return True
+        except Exception:
+            return False
+
 
 class BrowserPluginManager:
     """
