@@ -644,17 +644,19 @@ class ToolRegistry:
                 "type": "object",
                 "properties": {
                     "subject": {"type": "string", "description": "科目代码: math, eng, pol, pro"},
-                    "count": {"type": "integer", "description": "出卷题量，默认 3 题"}
+                    "count": {"type": "integer", "description": "出卷题量，默认 3 题"},
+                    "save_file": {"type": "boolean", "description": "是否将试卷保存至错题本目录 (默认 true)"}
                 },
                 "required": ["subject"]
             },
             level=PermissionLevel.SAFE_EDIT
         )
-        def compose_exam(subject: str, count: int = 3) -> str:
+        def compose_exam(subject: str, count: int = 3, save_file: bool = True) -> str:
             if not exam_composer:
                 return "Error: 未加载 exam_composer 技能"
-            res = exam_composer.compose_exam_paper(subject=subject, count=count, save_file=True)
-            return f"【自测卷已生成】编号: {res['paper_id']} (共 {res['count']} 题)\n保存路径: {res['saved_path']}\n\n试卷内容概览:\n{res['content'][:500]}..."
+            res = exam_composer.compose_exam_paper(subject=subject, count=count, save_file=save_file)
+            saved_path = res.get("saved_path", "(内存态，未落盘)")
+            return f"【自测卷已生成】编号: {res['paper_id']} (共 {res['count']} 题)\n保存路径: {saved_path}\n\n试卷内容概览:\n{res['content'][:500]}..."
 
         # ─────────────────────────────────────────────────────────────
         # 7. 三级记忆自主管理工具

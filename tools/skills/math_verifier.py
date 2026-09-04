@@ -178,14 +178,47 @@ def run_math_query(query_str):
             eq_str = re.sub(r"^(solve|方程)\s*", "", query_str, flags=re.IGNORECASE).strip()
             eq_str = eq_str.replace("^", "**")
             if eq_str.startswith("[") and eq_str.endswith("]"):
-                # 方程组
-                eq_list = ast.literal_eval(eq_str)
-                parsed_eqs = [sp.sympify(item) for item in eq_list]
-                res = solve(parsed_eqs, (x, y))
+                # 方程组：按「最外层逗号」安全切分。
+                # 注意：不能用 ast.literal_eval —— 它只能解析字面量，
+                # 遇到 x**2 这类含变量的表达式会抛 malformed node。
+                inner = eq_str[1:-1].strip()
+                parts, depth, cur = [], 0, ""
+                for ch in inner:
+                    if ch in "([{":
+                        depth += 1
+                    elif ch in ")]}":
+                        depth -= 1
+                    if ch == "," and depth == 0:
+                        parts.append(cur.strip())
+                        cur = ""
+                    else:
+                        cur += ch
+                if cur.strip():
+                    parts.append(cur.strip())
+                parsed_eqs = [sp.sympify(p_) for p_ in parts if p_]
+                if not parsed_eqs:
+                    return "❌ 【计算解析异常】: 未能从方程组中解析出任何有效表达式"
+                # 自动推断未知量，避免写死 (x, y) 导致三元以上方程组求解失败
+                syms = set()
+                for e_ in parsed_eqs:
+                    syms |= set(e_.free_symbols)
+                unknowns = tuple(sorted(syms, key=lambda s: s.name)) if syms else (x, y)
+                res = solve(parsed_eqs, unknowns, dict=True)
+                sol_lines = latex(res)
+                if res and isinstance(res[0], dict):
+                    blocks = []
+                    for i, sol in enumerate(res, 1):
+                        line = r", \quad ".join(
+                            [f"{latex(k)} = {latex(v)}" for k, v in sol.items()]
+                        )
+                        # 多解时编号展示，避免只报第一组解造成漏解
+                        blocks.append(f"解 {i}: ${line}$" if len(res) > 1 else f"${line}$")
+                    sol_lines = "\n".join(blocks)
                 return (
                     f"🎯 【代数方程组精确解集】\n"
                     f"方程组: ${latex(parsed_eqs)}$\n"
-                    f"解集驻点: $${latex(res)}$$"
+                    f"未知量: ${latex(unknowns)}$\n"
+                    f"解集驻点:\n{sol_lines}"
                 )
             else:
                 if "=" in eq_str:
@@ -280,13 +313,23 @@ def run_math_query(query_str):
             if m_ord:
                 order = int(m_ord.group(1))
                 expr_str = re.sub(r"order\s+\d+", "", expr_str).strip()
+            # 解析展开点「at <point>」，文档语法示例: taylor exp(x) at 0 order 4
+            # 未指定时默认在 x=0 (麦克劳林) 处展开
+            point = 0
+            m_at = re.search(r"\bat\s+([^\s]+)", expr_str)
+            if m_at:
+                try:
+                    point = sp.sympify(m_at.group(1).replace("^", "**"))
+                except Exception:
+                    point = 0
+                expr_str = re.sub(r"\bat\s+[^\s]+", "", expr_str).strip()
             expr_str = expr_str.replace("^", "**")
             expr = sp.sympify(expr_str)
-            res = series(expr, x, 0, order)
+            res = series(expr, x, point, order)
             return (
                 f"📈 【麦克劳林 / 泰勒级数展开】\n"
                 f"原函数: $f(x) = {latex(expr)}$\n"
-                f"展开至 $O(x^{order})$:\n"
+                f"在 $x = {latex(point)}$ 处展开至 $O(x^{{{order}}})$:\n"
                 f"$${latex(res)}$$"
             )
 

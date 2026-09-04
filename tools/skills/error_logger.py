@@ -332,12 +332,24 @@ def mark_error_status(subject, file_name, title_keyword=None, new_status="已掌
     actual_status = "待复测" if rating == "again" else new_status
 
     # 行级精确替换：仅替换 [xxx] 这一对中括号内的内容
-    new_section = re.sub(
-        r"(-\s+\*\*掌握状态\*\*[：:]\s*`\[)[^\]]*(\])",
+    status_pattern = r"(-\s+\*\*掌握状态\*\*[：:]\s*`\[)[^\]]*(\])"
+    new_section, n_status = re.subn(
+        status_pattern,
         rf"\g<1>{actual_status}\g<2>",
         section_text,
         count=1
     )
+    if n_status == 0:
+        # 容错：历史遗留的损坏行（如 `[已掌握 (艾宾浩斯复测中)` 缺少右中括号）
+        # 精确正则匹配不到时，退化为整行重写，把该行恢复为规范格式
+        new_section, n_status = re.subn(
+            r"(-\s+\*\*掌握状态\*\*[：:]\s*)`?[^\n`]*",
+            rf"\g<1>`[{actual_status}]`",
+            section_text,
+            count=1
+        )
+    if n_status == 0:
+        return False, f"错题卡片中未找到「掌握状态」行，无法更新状态（文件: {file_name}）"
     # 替换复测节奏行
     new_section = re.sub(
         r"(-\s+\*\*复测节奏\*\*[：:]).*",

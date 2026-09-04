@@ -1,116 +1,13 @@
 {
   "meta": {
     "snapshot_version": "ky-snapshot/1.0",
-    "generated_at": "2026-09-04 16:12:39",
+    "generated_at": "2026-09-04 17:16:09",
     "opt_in": false,
     "subjects_count": 4,
-    "memo_cards": 5,
-    "weak_cards": 8,
-    "metrics_count": 0,
-    "parse_warnings": [
-      {
-        "severity": "warn",
-        "subject": "math",
-        "kw": "复发错误",
-        "msg": "[数学] 未找到或过短的章节：'复发错误'（源: _状态/薄弱点雷达.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "math",
-        "kw": "模块掌握度雷达",
-        "msg": "[数学] 未找到或过短的章节：'模块掌握度雷达'（源: _状态/薄弱点雷达.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "math",
-        "kw": "索引表",
-        "msg": "[数学] 未找到或过短的章节：'索引表'（源: 错题本/_索引.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "math",
-        "kw": "错因五分类",
-        "msg": "[数学] 未找到或过短的章节：'错因五分类'（源: _状态/薄弱点雷达.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "math",
-        "kw": "计算失误",
-        "msg": "[数学] 未找到或过短的章节：'计算失误'（源: _状态/薄弱点雷达.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "eng",
-        "kw": "题型能力评估",
-        "msg": "[英语] 未找到或过短的章节：'题型能力评估'（源: _状态/薄弱点雷达.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "eng",
-        "kw": "题型能力评估",
-        "msg": "[英语] 未找到或过短的章节：'题型能力评估'（源: _状态/薄弱点雷达.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "eng",
-        "kw": "错因累计",
-        "msg": "[英语] 未找到或过短的章节：'错因累计'（源: _状态/薄弱点雷达.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "pol",
-        "kw": "史纲",
-        "msg": "[政治] 未找到或过短的章节：'史纲'（源: _状态/核心速记_帽子词与历史节点.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "pol",
-        "kw": "复发易混点",
-        "msg": "[政治] 未找到或过短的章节：'复发易混点'（源: _状态/薄弱点雷达.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "pol",
-        "kw": "模块雷达",
-        "msg": "[政治] 未找到或过短的章节：'模块雷达'（源: _状态/薄弱点雷达.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "pol",
-        "kw": "分析题能力",
-        "msg": "[政治] 未找到或过短的章节：'分析题能力'（源: _状态/薄弱点雷达.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "pol",
-        "kw": "下周优先级",
-        "msg": "[政治] 未找到或过短的章节：'下周优先级'（源: _状态/薄弱点雷达.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "pol",
-        "kw": "总体指标",
-        "msg": "[政治] 未找到或过短的章节：'总体指标'（源: _状态/薄弱点雷达.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "pol",
-        "kw": "七类错因",
-        "msg": "[政治] 未找到或过短的章节：'七类错因'（源: _状态/薄弱点雷达.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "pro",
-        "kw": "错题重做队列",
-        "msg": "[专业课] 未找到或过短的章节：'错题重做队列'（源: 学情档案.md）。可能原因：标题改名、缺失、或仅有占位。卡片静默丢失。"
-      },
-      {
-        "severity": "warn",
-        "subject": "pro",
-        "kw": "错因",
-        "msg": "[专业课] 指标页签未解析出任何表格（kw='错因'）"
-      }
-    ],
+    "memo_cards": 8,
+    "weak_cards": 15,
+    "metrics_count": 7,
+    "parse_warnings": [],
     "sections_status": [
       {
         "subject": "math",
@@ -129,32 +26,37 @@
       {
         "subject": "math",
         "kw": "复发错误",
-        "status": "section_missing",
-        "path": "_状态/薄弱点雷达.md"
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "memo"
       },
       {
         "subject": "math",
         "kw": "模块掌握度雷达",
-        "status": "section_missing",
-        "path": "_状态/薄弱点雷达.md"
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "weak"
       },
       {
         "subject": "math",
         "kw": "索引表",
-        "status": "section_missing",
-        "path": "错题本/_索引.md"
+        "status": "ok",
+        "path": "错题本/_索引.md",
+        "tab": "weak"
       },
       {
         "subject": "math",
         "kw": "错因五分类",
-        "status": "section_missing",
-        "path": "_状态/薄弱点雷达.md"
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "stat"
       },
       {
         "subject": "math",
         "kw": "计算失误",
-        "status": "section_missing",
-        "path": "_状态/薄弱点雷达.md"
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "stat"
       },
       {
         "subject": "eng",
@@ -173,20 +75,23 @@
       {
         "subject": "eng",
         "kw": "题型能力评估",
-        "status": "section_missing",
-        "path": "_状态/薄弱点雷达.md"
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "weak"
       },
       {
         "subject": "eng",
         "kw": "题型能力评估",
-        "status": "section_missing",
-        "path": "_状态/薄弱点雷达.md"
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "stat"
       },
       {
         "subject": "eng",
         "kw": "错因累计",
-        "status": "section_missing",
-        "path": "_状态/薄弱点雷达.md"
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "stat"
       },
       {
         "subject": "pol",
@@ -219,44 +124,51 @@
       {
         "subject": "pol",
         "kw": "史纲",
-        "status": "section_missing",
-        "path": "_状态/核心速记_帽子词与历史节点.md"
+        "status": "ok",
+        "path": "_状态/核心速记_帽子词与历史节点.md",
+        "tab": "memo"
       },
       {
         "subject": "pol",
         "kw": "复发易混点",
-        "status": "section_missing",
-        "path": "_状态/薄弱点雷达.md"
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "memo"
       },
       {
         "subject": "pol",
         "kw": "模块雷达",
-        "status": "section_missing",
-        "path": "_状态/薄弱点雷达.md"
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "weak"
       },
       {
         "subject": "pol",
         "kw": "分析题能力",
-        "status": "section_missing",
-        "path": "_状态/薄弱点雷达.md"
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "weak"
       },
       {
         "subject": "pol",
         "kw": "下周优先级",
-        "status": "section_missing",
-        "path": "_状态/薄弱点雷达.md"
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "weak"
       },
       {
         "subject": "pol",
         "kw": "总体指标",
-        "status": "section_missing",
-        "path": "_状态/薄弱点雷达.md"
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "stat"
       },
       {
         "subject": "pol",
         "kw": "七类错因",
-        "status": "section_missing",
-        "path": "_状态/薄弱点雷达.md"
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "stat"
       },
       {
         "subject": "pro",
@@ -289,8 +201,9 @@
       {
         "subject": "pro",
         "kw": "错题重做队列",
-        "status": "section_missing",
-        "path": "学情档案.md"
+        "status": "ok",
+        "path": "学情档案.md",
+        "tab": "weak"
       },
       {
         "subject": "pro",
@@ -341,7 +254,27 @@
         ]
       },
       {
-        "id": "eng-memo-1",
+        "id": "math-memo-1",
+        "subj": "数学",
+        "key": "math",
+        "icon": "∫",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "title": "复发错误",
+        "cards": [
+          {
+            "f": "漏乘内层导数；先写复合链再代入",
+            "b": [
+              [
+                "题目/概念",
+                "示例：变上限积分求导"
+              ]
+            ]
+          }
+        ]
+      },
+      {
+        "id": "eng-memo-2",
         "subj": "英语",
         "key": "eng",
         "icon": "En",
@@ -365,7 +298,47 @@
         ]
       },
       {
-        "id": "pro-memo-2",
+        "id": "pol-memo-3",
+        "subj": "政治",
+        "key": "pol",
+        "icon": "政",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "title": "史纲",
+        "cards": [
+          {
+            "f": "示例：开天辟地的大事变",
+            "b": [
+              [
+                "对应事件/标准表述",
+                "中国共产党的成立"
+              ]
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pol-memo-4",
+        "subj": "政治",
+        "key": "pol",
+        "icon": "政",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "title": "复发易混点",
+        "cards": [
+          {
+            "f": "示例：矛盾的普遍性与特殊性",
+            "b": [
+              [
+                "区分要点",
+                "共性与个性的辩证关系"
+              ]
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pro-memo-5",
         "subj": "专业课",
         "key": "pro",
         "icon": "★",
@@ -404,7 +377,171 @@
     ],
     "weak": [
       {
-        "id": "pro-weak-0",
+        "id": "math-weak-0",
+        "subj": "数学",
+        "key": "math",
+        "icon": "∫",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "title": "模块掌握度雷达",
+        "cards": [
+          {
+            "f": "示例：多元函数微分学",
+            "b": [
+              [
+                "掌握度(0-100)",
+                "60"
+              ],
+              [
+                "薄弱细节",
+                "拉格朗日乘数法驻点方程组易解错"
+              ]
+            ]
+          }
+        ]
+      },
+      {
+        "id": "math-weak-1",
+        "subj": "数学",
+        "key": "math",
+        "icon": "∫",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "title": "索引表",
+        "cards": [
+          {
+            "f": "计算失误",
+            "b": [
+              [
+                "编号",
+                "M-001"
+              ],
+              [
+                "章节",
+                "极限与连续"
+              ],
+              [
+                "题目出处",
+                "习题册基础篇"
+              ],
+              [
+                "首次日期",
+                "YYYY-MM-DD"
+              ],
+              [
+                "重做状态",
+                "[ ] 待重做"
+              ]
+            ]
+          }
+        ]
+      },
+      {
+        "id": "eng-weak-2",
+        "subj": "英语",
+        "key": "eng",
+        "icon": "En",
+        "color": "#e11d48",
+        "dark": "#fb7185",
+        "title": "题型能力评估",
+        "cards": [
+          {
+            "f": "示例：细节定位",
+            "b": [
+              [
+                "说明",
+                "题干关键词回文定位"
+              ],
+              [
+                "现状(0-10)",
+                "5"
+              ],
+              [
+                "目标策略",
+                "先读题干再扫读定位"
+              ],
+              [
+                "目标(0-10)",
+                "8"
+              ]
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pol-weak-3",
+        "subj": "政治",
+        "key": "pol",
+        "icon": "政",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "title": "模块雷达",
+        "cards": [
+          {
+            "f": "示例：马原",
+            "b": [
+              [
+                "掌握度(0-100)",
+                "55"
+              ],
+              [
+                "备注",
+                "唯物辩证法多选易漏"
+              ]
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pol-weak-4",
+        "subj": "政治",
+        "key": "pol",
+        "icon": "政",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "title": "分析题能力",
+        "cards": [
+          {
+            "f": "示例：原理结合材料",
+            "b": [
+              [
+                "水平(0-100)",
+                "50"
+              ],
+              [
+                "备注",
+                "需背答题模板"
+              ]
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pol-weak-5",
+        "subj": "政治",
+        "key": "pol",
+        "icon": "政",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "title": "下周优先级",
+        "cards": [
+          {
+            "f": "示例：马原多选专练",
+            "b": [
+              [
+                "优先级",
+                "P0"
+              ],
+              [
+                "原因",
+                "漏选率高"
+              ]
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pro-weak-6",
         "subj": "专业课",
         "key": "pro",
         "icon": "★",
@@ -495,7 +632,7 @@
         ]
       },
       {
-        "id": "pro-weak-1",
+        "id": "pro-weak-7",
         "subj": "专业课",
         "key": "pro",
         "icon": "★",
@@ -584,9 +721,159 @@
             ]
           }
         ]
+      },
+      {
+        "id": "pro-weak-8",
+        "subj": "专业课",
+        "key": "pro",
+        "icon": "★",
+        "color": "#059669",
+        "dark": "#34d399",
+        "title": "错题重做队列",
+        "cards": [
+          {
+            "f": "示例：页式地址变换计算题",
+            "b": [
+              [
+                "日期",
+                "YYYY-MM-DD"
+              ],
+              [
+                "状态",
+                "[ ] 待重做"
+              ]
+            ]
+          }
+        ]
       }
     ],
-    "metrics": [],
+    "metrics": [
+      {
+        "subj": "数学",
+        "key": "math",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "icon": "∫",
+        "title": "错因五分类",
+        "items": [
+          {
+            "label": "计算失误",
+            "text": "0",
+            "count": 0.0
+          }
+        ]
+      },
+      {
+        "subj": "数学",
+        "key": "math",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "icon": "∫",
+        "title": "计算失误",
+        "items": [
+          {
+            "label": "示例：符号漏负",
+            "text": "0",
+            "count": 0.0
+          }
+        ]
+      },
+      {
+        "subj": "英语",
+        "key": "eng",
+        "color": "#e11d48",
+        "dark": "#fb7185",
+        "icon": "En",
+        "title": "题型能力评估",
+        "items": [
+          {
+            "label": "示例：细节定位",
+            "text": "5",
+            "count": 5.0
+          }
+        ]
+      },
+      {
+        "subj": "英语",
+        "key": "eng",
+        "color": "#e11d48",
+        "dark": "#fb7185",
+        "icon": "En",
+        "title": "错因累计",
+        "items": [
+          {
+            "label": "示例：定位偏差",
+            "text": "0",
+            "count": 0.0
+          }
+        ]
+      },
+      {
+        "subj": "政治",
+        "key": "pol",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "icon": "政",
+        "title": "总体指标",
+        "items": [
+          {
+            "label": "示例：选择题得分盘",
+            "text": "30",
+            "count": 30.0
+          }
+        ]
+      },
+      {
+        "subj": "政治",
+        "key": "pol",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "icon": "政",
+        "title": "七类错因",
+        "items": [
+          {
+            "label": "漏选",
+            "text": "0",
+            "count": 0.0
+          }
+        ]
+      },
+      {
+        "subj": "专业课",
+        "key": "pro",
+        "color": "#059669",
+        "dark": "#34d399",
+        "icon": "★",
+        "title": "错因",
+        "items": [
+          {
+            "label": "概念漏洞",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "审题偏差",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "公式记错",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "计算失误",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "书写丢分",
+            "text": "0",
+            "count": 0.0
+          }
+        ]
+      }
+    ],
     "subjects": [
       {
         "key": "math",
@@ -644,12 +931,16 @@
         "total_points": 66,
         "total_topics": 66,
         "grade_counts": {
-          "A": 66,
+          "A": 0,
           "B": 0,
-          "C": 0,
-          "D": 0
+          "C": 4,
+          "D": 0,
+          "U": 62
         },
-        "mastery_rate": 100.0,
+        "mastery_rate": 0.0,
+        "assessed_count": 4,
+        "unassessed_count": 62,
+        "assessed_rate": 6.1,
         "chapters": [
           {
             "title": "一、高等数学 (约 78%，116分)",
@@ -662,15 +953,15 @@
                 "name": "极限的性质与四则运算法则",
                 "req_type": "掌握",
                 "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
-                "grade": "A",
-                "error_count": 0,
-                "active_error_count": 0
+                "grade": "C",
+                "error_count": 2,
+                "active_error_count": 1
               },
               {
                 "name": "两个重要极限",
                 "req_type": "掌握",
                 "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -678,7 +969,7 @@
                 "name": "无穷小量的比较与等价无穷小代换",
                 "req_type": "掌握",
                 "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -686,7 +977,7 @@
                 "name": "连续函数的零点定理与介值定理",
                 "req_type": "掌握",
                 "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -694,15 +985,15 @@
                 "name": "极限的概念",
                 "req_type": "理解",
                 "full_desc": "极限的概念、无穷小与无穷大的定义、函数间断点的类型（第一类与第二类）。",
-                "grade": "A",
-                "error_count": 0,
-                "active_error_count": 0
+                "grade": "C",
+                "error_count": 2,
+                "active_error_count": 1
               },
               {
                 "name": "无穷小与无穷大的定义",
                 "req_type": "理解",
                 "full_desc": "极限的概念、无穷小与无穷大的定义、函数间断点的类型（第一类与第二类）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -710,7 +1001,7 @@
                 "name": "函数间断点的类型（第一类与第二类）。",
                 "req_type": "理解",
                 "full_desc": "极限的概念、无穷小与无穷大的定义、函数间断点的类型（第一类与第二类）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -723,7 +1014,7 @@
                 "name": "导数的定义与几何意义",
                 "req_type": "掌握",
                 "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -731,7 +1022,7 @@
                 "name": "求导公式与求导法则",
                 "req_type": "掌握",
                 "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -739,7 +1030,7 @@
                 "name": "复合函数与隐函数求导",
                 "req_type": "掌握",
                 "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -747,7 +1038,7 @@
                 "name": "参数方程确定的函数一阶与二阶求导",
                 "req_type": "掌握",
                 "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -755,7 +1046,7 @@
                 "name": "罗尔定理",
                 "req_type": "熟练应用",
                 "full_desc": "罗尔定理、拉格朗日中值定理、柯西中值定理与泰勒展开定理；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -763,7 +1054,7 @@
                 "name": "拉格朗日中值定理",
                 "req_type": "熟练应用",
                 "full_desc": "罗尔定理、拉格朗日中值定理、柯西中值定理与泰勒展开定理；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -771,15 +1062,15 @@
                 "name": "柯西中值定理与泰勒展开定理",
                 "req_type": "熟练应用",
                 "full_desc": "罗尔定理、拉格朗日中值定理、柯西中值定理与泰勒展开定理；",
-                "grade": "A",
-                "error_count": 0,
-                "active_error_count": 0
+                "grade": "C",
+                "error_count": 1,
+                "active_error_count": 1
               },
               {
                 "name": "洛必达法则求极限",
                 "req_type": "应用能力",
                 "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -787,7 +1078,7 @@
                 "name": "函数的单调性",
                 "req_type": "应用能力",
                 "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -795,7 +1086,7 @@
                 "name": "极值与最值",
                 "req_type": "应用能力",
                 "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -803,7 +1094,7 @@
                 "name": "曲线凹凸性与拐点",
                 "req_type": "应用能力",
                 "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -811,7 +1102,7 @@
                 "name": "渐近线方程",
                 "req_type": "应用能力",
                 "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -819,7 +1110,7 @@
                 "name": "曲率与曲率圆",
                 "req_type": "应用能力",
                 "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -827,7 +1118,7 @@
                 "name": "方程根的存在性与不等式证明。",
                 "req_type": "应用能力",
                 "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -840,7 +1131,7 @@
                 "name": "不定积分公式表",
                 "req_type": "掌握",
                 "full_desc": "不定积分公式表、换元积分法与分部积分法、有理函数积分；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -848,7 +1139,7 @@
                 "name": "换元积分法与分部积分法",
                 "req_type": "掌握",
                 "full_desc": "不定积分公式表、换元积分法与分部积分法、有理函数积分；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -856,7 +1147,7 @@
                 "name": "有理函数积分",
                 "req_type": "掌握",
                 "full_desc": "不定积分公式表、换元积分法与分部积分法、有理函数积分；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -864,7 +1155,7 @@
                 "name": "定积分的概念",
                 "req_type": "掌握",
                 "full_desc": "定积分的概念、性质与微积分基本公式；变上限积分函数的性质与导数；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -872,7 +1163,7 @@
                 "name": "性质与微积分基本公式",
                 "req_type": "掌握",
                 "full_desc": "定积分的概念、性质与微积分基本公式；变上限积分函数的性质与导数；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -880,7 +1171,7 @@
                 "name": "变上限积分函数的性质与导数",
                 "req_type": "掌握",
                 "full_desc": "定积分的概念、性质与微积分基本公式；变上限积分函数的性质与导数；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -888,7 +1179,7 @@
                 "name": "反常积分的敛散性判别与计算",
                 "req_type": "掌握",
                 "full_desc": "反常积分的敛散性判别与计算；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -896,7 +1187,7 @@
                 "name": "定积分几何应用（平面面积",
                 "req_type": "熟练应用",
                 "full_desc": "定积分几何应用（平面面积、旋转体体积、曲线弧长）及物理应用（变力做功、水压力、质心引力）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -904,7 +1195,7 @@
                 "name": "旋转体体积",
                 "req_type": "熟练应用",
                 "full_desc": "定积分几何应用（平面面积、旋转体体积、曲线弧长）及物理应用（变力做功、水压力、质心引力）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -912,7 +1203,7 @@
                 "name": "曲线弧长）及物理应用（变力做功",
                 "req_type": "熟练应用",
                 "full_desc": "定积分几何应用（平面面积、旋转体体积、曲线弧长）及物理应用（变力做功、水压力、质心引力）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -920,7 +1211,7 @@
                 "name": "水压力",
                 "req_type": "熟练应用",
                 "full_desc": "定积分几何应用（平面面积、旋转体体积、曲线弧长）及物理应用（变力做功、水压力、质心引力）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -928,7 +1219,7 @@
                 "name": "质心引力）。",
                 "req_type": "熟练应用",
                 "full_desc": "定积分几何应用（平面面积、旋转体体积、曲线弧长）及物理应用（变力做功、水压力、质心引力）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -941,15 +1232,15 @@
                 "name": "二元函数的极限",
                 "req_type": "掌握",
                 "full_desc": "二元函数的极限、连续、偏导数与全微分的概念及其相互关系；",
-                "grade": "A",
-                "error_count": 0,
-                "active_error_count": 0
+                "grade": "C",
+                "error_count": 2,
+                "active_error_count": 1
               },
               {
                 "name": "连续",
                 "req_type": "掌握",
                 "full_desc": "二元函数的极限、连续、偏导数与全微分的概念及其相互关系；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -957,7 +1248,7 @@
                 "name": "偏导数与全微分的概念及其相互关系",
                 "req_type": "掌握",
                 "full_desc": "二元函数的极限、连续、偏导数与全微分的概念及其相互关系；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -965,7 +1256,7 @@
                 "name": "多元复合函数的高阶偏导数计算",
                 "req_type": "掌握",
                 "full_desc": "多元复合函数的高阶偏导数计算、隐函数求导法则；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -973,7 +1264,7 @@
                 "name": "隐函数求导法则",
                 "req_type": "掌握",
                 "full_desc": "多元复合函数的高阶偏导数计算、隐函数求导法则；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -981,7 +1272,7 @@
                 "name": "二元函数无条件极值",
                 "req_type": "掌握",
                 "full_desc": "二元函数无条件极值、拉格朗日乘数法（条件极值）与闭区域上的最值。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -989,7 +1280,7 @@
                 "name": "拉格朗日乘数法（条件极值）与闭区域上的最值。",
                 "req_type": "掌握",
                 "full_desc": "二元函数无条件极值、拉格朗日乘数法（条件极值）与闭区域上的最值。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -1002,7 +1293,7 @@
                 "name": "二重积分的概念与性质",
                 "req_type": "掌握",
                 "full_desc": "二重积分的概念与性质；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1010,7 +1301,7 @@
                 "name": "利用直角坐标和极坐标计算二重积分",
                 "req_type": "熟练计算",
                 "full_desc": "利用直角坐标和极坐标计算二重积分；利用对称性与奇偶性化简计算；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1018,7 +1309,7 @@
                 "name": "利用对称性与奇偶性化简计算",
                 "req_type": "熟练计算",
                 "full_desc": "利用直角坐标和极坐标计算二重积分；利用对称性与奇偶性化简计算；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -1031,7 +1322,7 @@
                 "name": "变量可分离方程",
                 "req_type": "掌握",
                 "full_desc": "变量可分离方程、齐次微分方程、一阶线性微分方程；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1039,7 +1330,7 @@
                 "name": "齐次微分方程",
                 "req_type": "掌握",
                 "full_desc": "变量可分离方程、齐次微分方程、一阶线性微分方程；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1047,7 +1338,7 @@
                 "name": "一阶线性微分方程",
                 "req_type": "掌握",
                 "full_desc": "变量可分离方程、齐次微分方程、一阶线性微分方程；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1055,7 +1346,7 @@
                 "name": "可降阶的高阶微分方程 ($y''=f(x)$, $y''=f(x,y')$, $y''=f(y,y')$)",
                 "req_type": "掌握",
                 "full_desc": "可降阶的高阶微分方程 ($y''=f(x)$, $y''=f(x,y')$, $y''=f(y,y')$)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1063,7 +1354,7 @@
                 "name": "二阶常系数齐次与非齐次线性微分方程的求解。",
                 "req_type": "掌握",
                 "full_desc": "二阶常系数齐次与非齐次线性微分方程的求解。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -1080,7 +1371,7 @@
                 "name": "行列式的计算（化上三角法",
                 "req_type": "掌握",
                 "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1088,7 +1379,7 @@
                 "name": "按行展开",
                 "req_type": "掌握",
                 "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1096,7 +1387,7 @@
                 "name": "递推法）",
                 "req_type": "掌握",
                 "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1104,7 +1395,7 @@
                 "name": "矩阵的乘法",
                 "req_type": "掌握",
                 "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1112,7 +1403,7 @@
                 "name": "伴随矩阵性质",
                 "req_type": "掌握",
                 "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1120,7 +1411,7 @@
                 "name": "初等行变换与矩阵的秩",
                 "req_type": "掌握",
                 "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1128,7 +1419,7 @@
                 "name": "可逆矩阵的性质与逆矩阵求法。",
                 "req_type": "掌握",
                 "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -1141,7 +1432,7 @@
                 "name": "向量组的线性表出",
                 "req_type": "掌握",
                 "full_desc": "向量组的线性表出、线性相关与线性无关的判定；向量组的极大线性无关组；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1149,7 +1440,7 @@
                 "name": "线性相关与线性无关的判定",
                 "req_type": "掌握",
                 "full_desc": "向量组的线性表出、线性相关与线性无关的判定；向量组的极大线性无关组；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1157,7 +1448,7 @@
                 "name": "向量组的极大线性无关组",
                 "req_type": "掌握",
                 "full_desc": "向量组的线性表出、线性相关与线性无关的判定；向量组的极大线性无关组；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1165,7 +1456,7 @@
                 "name": "齐次线性方程组的基础解系与通解",
                 "req_type": "熟练求解",
                 "full_desc": "齐次线性方程组的基础解系与通解、非齐次线性方程组的通解结构。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1173,7 +1464,7 @@
                 "name": "非齐次线性方程组的通解结构。",
                 "req_type": "熟练求解",
                 "full_desc": "齐次线性方程组的基础解系与通解、非齐次线性方程组的通解结构。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -1186,7 +1477,7 @@
                 "name": "方阵的特征多项式",
                 "req_type": "掌握",
                 "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1194,7 +1485,7 @@
                 "name": "特征值与特征向量的求解",
                 "req_type": "掌握",
                 "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1202,7 +1493,7 @@
                 "name": "相似矩阵的性质",
                 "req_type": "掌握",
                 "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1210,7 +1501,7 @@
                 "name": "方阵相似对角化的充要条件与正交相似对角化",
                 "req_type": "掌握",
                 "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1218,7 +1509,7 @@
                 "name": "二次型化标准型（配方法与正交变换法）",
                 "req_type": "掌握",
                 "full_desc": "二次型化标准型（配方法与正交变换法）、正定二次型与正定矩阵判定。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1226,7 +1517,7 @@
                 "name": "正定二次型与正定矩阵判定。",
                 "req_type": "掌握",
                 "full_desc": "二次型化标准型（配方法与正交变换法）、正定二次型与正定矩阵判定。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -1240,15 +1531,15 @@
               "name": "极限的性质与四则运算法则",
               "req_type": "掌握",
               "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
-              "grade": "A",
-              "error_count": 0,
-              "active_error_count": 0
+              "grade": "C",
+              "error_count": 2,
+              "active_error_count": 1
             },
             {
               "name": "两个重要极限",
               "req_type": "掌握",
               "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1256,7 +1547,7 @@
               "name": "无穷小量的比较与等价无穷小代换",
               "req_type": "掌握",
               "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1264,7 +1555,7 @@
               "name": "连续函数的零点定理与介值定理",
               "req_type": "掌握",
               "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1272,15 +1563,15 @@
               "name": "极限的概念",
               "req_type": "理解",
               "full_desc": "极限的概念、无穷小与无穷大的定义、函数间断点的类型（第一类与第二类）。",
-              "grade": "A",
-              "error_count": 0,
-              "active_error_count": 0
+              "grade": "C",
+              "error_count": 2,
+              "active_error_count": 1
             },
             {
               "name": "无穷小与无穷大的定义",
               "req_type": "理解",
               "full_desc": "极限的概念、无穷小与无穷大的定义、函数间断点的类型（第一类与第二类）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1288,7 +1579,7 @@
               "name": "函数间断点的类型（第一类与第二类）。",
               "req_type": "理解",
               "full_desc": "极限的概念、无穷小与无穷大的定义、函数间断点的类型（第一类与第二类）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -1298,7 +1589,7 @@
               "name": "导数的定义与几何意义",
               "req_type": "掌握",
               "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1306,7 +1597,7 @@
               "name": "求导公式与求导法则",
               "req_type": "掌握",
               "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1314,7 +1605,7 @@
               "name": "复合函数与隐函数求导",
               "req_type": "掌握",
               "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1322,7 +1613,7 @@
               "name": "参数方程确定的函数一阶与二阶求导",
               "req_type": "掌握",
               "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1330,7 +1621,7 @@
               "name": "罗尔定理",
               "req_type": "熟练应用",
               "full_desc": "罗尔定理、拉格朗日中值定理、柯西中值定理与泰勒展开定理；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1338,7 +1629,7 @@
               "name": "拉格朗日中值定理",
               "req_type": "熟练应用",
               "full_desc": "罗尔定理、拉格朗日中值定理、柯西中值定理与泰勒展开定理；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1346,15 +1637,15 @@
               "name": "柯西中值定理与泰勒展开定理",
               "req_type": "熟练应用",
               "full_desc": "罗尔定理、拉格朗日中值定理、柯西中值定理与泰勒展开定理；",
-              "grade": "A",
-              "error_count": 0,
-              "active_error_count": 0
+              "grade": "C",
+              "error_count": 1,
+              "active_error_count": 1
             },
             {
               "name": "洛必达法则求极限",
               "req_type": "应用能力",
               "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1362,7 +1653,7 @@
               "name": "函数的单调性",
               "req_type": "应用能力",
               "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1370,7 +1661,7 @@
               "name": "极值与最值",
               "req_type": "应用能力",
               "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1378,7 +1669,7 @@
               "name": "曲线凹凸性与拐点",
               "req_type": "应用能力",
               "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1386,7 +1677,7 @@
               "name": "渐近线方程",
               "req_type": "应用能力",
               "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1394,7 +1685,7 @@
               "name": "曲率与曲率圆",
               "req_type": "应用能力",
               "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1402,7 +1693,7 @@
               "name": "方程根的存在性与不等式证明。",
               "req_type": "应用能力",
               "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -1412,7 +1703,7 @@
               "name": "不定积分公式表",
               "req_type": "掌握",
               "full_desc": "不定积分公式表、换元积分法与分部积分法、有理函数积分；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1420,7 +1711,7 @@
               "name": "换元积分法与分部积分法",
               "req_type": "掌握",
               "full_desc": "不定积分公式表、换元积分法与分部积分法、有理函数积分；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1428,7 +1719,7 @@
               "name": "有理函数积分",
               "req_type": "掌握",
               "full_desc": "不定积分公式表、换元积分法与分部积分法、有理函数积分；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1436,7 +1727,7 @@
               "name": "定积分的概念",
               "req_type": "掌握",
               "full_desc": "定积分的概念、性质与微积分基本公式；变上限积分函数的性质与导数；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1444,7 +1735,7 @@
               "name": "性质与微积分基本公式",
               "req_type": "掌握",
               "full_desc": "定积分的概念、性质与微积分基本公式；变上限积分函数的性质与导数；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1452,7 +1743,7 @@
               "name": "变上限积分函数的性质与导数",
               "req_type": "掌握",
               "full_desc": "定积分的概念、性质与微积分基本公式；变上限积分函数的性质与导数；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1460,7 +1751,7 @@
               "name": "反常积分的敛散性判别与计算",
               "req_type": "掌握",
               "full_desc": "反常积分的敛散性判别与计算；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1468,7 +1759,7 @@
               "name": "定积分几何应用（平面面积",
               "req_type": "熟练应用",
               "full_desc": "定积分几何应用（平面面积、旋转体体积、曲线弧长）及物理应用（变力做功、水压力、质心引力）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1476,7 +1767,7 @@
               "name": "旋转体体积",
               "req_type": "熟练应用",
               "full_desc": "定积分几何应用（平面面积、旋转体体积、曲线弧长）及物理应用（变力做功、水压力、质心引力）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1484,7 +1775,7 @@
               "name": "曲线弧长）及物理应用（变力做功",
               "req_type": "熟练应用",
               "full_desc": "定积分几何应用（平面面积、旋转体体积、曲线弧长）及物理应用（变力做功、水压力、质心引力）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1492,7 +1783,7 @@
               "name": "水压力",
               "req_type": "熟练应用",
               "full_desc": "定积分几何应用（平面面积、旋转体体积、曲线弧长）及物理应用（变力做功、水压力、质心引力）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1500,7 +1791,7 @@
               "name": "质心引力）。",
               "req_type": "熟练应用",
               "full_desc": "定积分几何应用（平面面积、旋转体体积、曲线弧长）及物理应用（变力做功、水压力、质心引力）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -1510,15 +1801,15 @@
               "name": "二元函数的极限",
               "req_type": "掌握",
               "full_desc": "二元函数的极限、连续、偏导数与全微分的概念及其相互关系；",
-              "grade": "A",
-              "error_count": 0,
-              "active_error_count": 0
+              "grade": "C",
+              "error_count": 2,
+              "active_error_count": 1
             },
             {
               "name": "连续",
               "req_type": "掌握",
               "full_desc": "二元函数的极限、连续、偏导数与全微分的概念及其相互关系；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1526,7 +1817,7 @@
               "name": "偏导数与全微分的概念及其相互关系",
               "req_type": "掌握",
               "full_desc": "二元函数的极限、连续、偏导数与全微分的概念及其相互关系；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1534,7 +1825,7 @@
               "name": "多元复合函数的高阶偏导数计算",
               "req_type": "掌握",
               "full_desc": "多元复合函数的高阶偏导数计算、隐函数求导法则；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1542,7 +1833,7 @@
               "name": "隐函数求导法则",
               "req_type": "掌握",
               "full_desc": "多元复合函数的高阶偏导数计算、隐函数求导法则；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1550,7 +1841,7 @@
               "name": "二元函数无条件极值",
               "req_type": "掌握",
               "full_desc": "二元函数无条件极值、拉格朗日乘数法（条件极值）与闭区域上的最值。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1558,7 +1849,7 @@
               "name": "拉格朗日乘数法（条件极值）与闭区域上的最值。",
               "req_type": "掌握",
               "full_desc": "二元函数无条件极值、拉格朗日乘数法（条件极值）与闭区域上的最值。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -1568,7 +1859,7 @@
               "name": "二重积分的概念与性质",
               "req_type": "掌握",
               "full_desc": "二重积分的概念与性质；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1576,7 +1867,7 @@
               "name": "利用直角坐标和极坐标计算二重积分",
               "req_type": "熟练计算",
               "full_desc": "利用直角坐标和极坐标计算二重积分；利用对称性与奇偶性化简计算；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1584,7 +1875,7 @@
               "name": "利用对称性与奇偶性化简计算",
               "req_type": "熟练计算",
               "full_desc": "利用直角坐标和极坐标计算二重积分；利用对称性与奇偶性化简计算；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -1594,7 +1885,7 @@
               "name": "变量可分离方程",
               "req_type": "掌握",
               "full_desc": "变量可分离方程、齐次微分方程、一阶线性微分方程；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1602,7 +1893,7 @@
               "name": "齐次微分方程",
               "req_type": "掌握",
               "full_desc": "变量可分离方程、齐次微分方程、一阶线性微分方程；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1610,7 +1901,7 @@
               "name": "一阶线性微分方程",
               "req_type": "掌握",
               "full_desc": "变量可分离方程、齐次微分方程、一阶线性微分方程；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1618,7 +1909,7 @@
               "name": "可降阶的高阶微分方程 ($y''=f(x)$, $y''=f(x,y')$, $y''=f(y,y')$)",
               "req_type": "掌握",
               "full_desc": "可降阶的高阶微分方程 ($y''=f(x)$, $y''=f(x,y')$, $y''=f(y,y')$)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1626,7 +1917,7 @@
               "name": "二阶常系数齐次与非齐次线性微分方程的求解。",
               "req_type": "掌握",
               "full_desc": "二阶常系数齐次与非齐次线性微分方程的求解。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -1637,7 +1928,7 @@
               "name": "行列式的计算（化上三角法",
               "req_type": "掌握",
               "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1645,7 +1936,7 @@
               "name": "按行展开",
               "req_type": "掌握",
               "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1653,7 +1944,7 @@
               "name": "递推法）",
               "req_type": "掌握",
               "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1661,7 +1952,7 @@
               "name": "矩阵的乘法",
               "req_type": "掌握",
               "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1669,7 +1960,7 @@
               "name": "伴随矩阵性质",
               "req_type": "掌握",
               "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1677,7 +1968,7 @@
               "name": "初等行变换与矩阵的秩",
               "req_type": "掌握",
               "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1685,7 +1976,7 @@
               "name": "可逆矩阵的性质与逆矩阵求法。",
               "req_type": "掌握",
               "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -1695,7 +1986,7 @@
               "name": "向量组的线性表出",
               "req_type": "掌握",
               "full_desc": "向量组的线性表出、线性相关与线性无关的判定；向量组的极大线性无关组；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1703,7 +1994,7 @@
               "name": "线性相关与线性无关的判定",
               "req_type": "掌握",
               "full_desc": "向量组的线性表出、线性相关与线性无关的判定；向量组的极大线性无关组；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1711,7 +2002,7 @@
               "name": "向量组的极大线性无关组",
               "req_type": "掌握",
               "full_desc": "向量组的线性表出、线性相关与线性无关的判定；向量组的极大线性无关组；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1719,7 +2010,7 @@
               "name": "齐次线性方程组的基础解系与通解",
               "req_type": "熟练求解",
               "full_desc": "齐次线性方程组的基础解系与通解、非齐次线性方程组的通解结构。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1727,7 +2018,7 @@
               "name": "非齐次线性方程组的通解结构。",
               "req_type": "熟练求解",
               "full_desc": "齐次线性方程组的基础解系与通解、非齐次线性方程组的通解结构。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -1737,7 +2028,7 @@
               "name": "方阵的特征多项式",
               "req_type": "掌握",
               "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1745,7 +2036,7 @@
               "name": "特征值与特征向量的求解",
               "req_type": "掌握",
               "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1753,7 +2044,7 @@
               "name": "相似矩阵的性质",
               "req_type": "掌握",
               "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1761,7 +2052,7 @@
               "name": "方阵相似对角化的充要条件与正交相似对角化",
               "req_type": "掌握",
               "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1769,7 +2060,7 @@
               "name": "二次型化标准型（配方法与正交变换法）",
               "req_type": "掌握",
               "full_desc": "二次型化标准型（配方法与正交变换法）、正定二次型与正定矩阵判定。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -1777,7 +2068,7 @@
               "name": "正定二次型与正定矩阵判定。",
               "req_type": "掌握",
               "full_desc": "二次型化标准型（配方法与正交变换法）、正定二次型与正定矩阵判定。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -1787,19 +2078,72 @@
       "eng": {
         "subject": "eng",
         "subject_name": "英语二 (204)",
-        "total_points": 0,
-        "total_topics": 0,
+        "total_points": 6,
+        "total_topics": 6,
         "grade_counts": {
           "A": 0,
           "B": 0,
           "C": 0,
-          "D": 0
+          "D": 0,
+          "U": 6
         },
-        "mastery_rate": 100.0,
+        "mastery_rate": 0.0,
+        "assessed_count": 0,
+        "unassessed_count": 6,
+        "assessed_rate": 0.0,
         "chapters": [
           {
             "title": "一、试卷题型与分值结构",
-            "points": []
+            "points": [
+              {
+                "name": "第一部分：英语知识运用",
+                "req_type": "掌握",
+                "full_desc": "完形填空 (Cloze) / 20 题，每题 0.5 分，共 **10 分** / 词汇辨析、上下文指代关系、逻辑衔接词",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "第二部分：阅读理解 Part A",
+                "req_type": "掌握",
+                "full_desc": "传统阅读 (4 篇题材涉及经济/社会/生活文章) / 20 题，每题 2 分，共 **40 分** / 细节定位、因果对应、作者态度判定",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "第二部分：阅读理解 Part B",
+                "req_type": "掌握",
+                "full_desc": "新题型 (2 选 1) / 5 题，每题 2 分，共 **10 分** / **多项对应 (Matching)、小标题对应 (Heading)**，侧重信息快速检索",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "第三部分：英译汉 (Translation)",
+                "req_type": "掌握",
+                "full_desc": "短文段落翻译 / 1 篇，约 150 词，共 **15 分** / **整段连续英译汉**，要求表达通顺、符合现代汉语习惯",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "第四部分：写作 Part A",
+                "req_type": "掌握",
+                "full_desc": "应用文短文写作 (小作文) / 1 篇，约 100 词，共 **10 分** / 各类书信（求职/感谢/邀请/道歉/建议）、告示、备忘录",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "第四部分：写作 Part B",
+                "req_type": "掌握",
+                "full_desc": "议论文图表写作 (大作文) / 1 篇，约 150 词，共 **15 分** / **图表/柱状图/饼图/折线图作文**（描述数据趋势 -> 分析成因 -> 总结预测）",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
           },
           {
             "title": "二、大纲核心语言技能要求",
@@ -1807,7 +2151,56 @@
           }
         ],
         "modules": {
-          "一、试卷题型与分值结构": [],
+          "一、试卷题型与分值结构": [
+            {
+              "name": "第一部分：英语知识运用",
+              "req_type": "掌握",
+              "full_desc": "完形填空 (Cloze) / 20 题，每题 0.5 分，共 **10 分** / 词汇辨析、上下文指代关系、逻辑衔接词",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "第二部分：阅读理解 Part A",
+              "req_type": "掌握",
+              "full_desc": "传统阅读 (4 篇题材涉及经济/社会/生活文章) / 20 题，每题 2 分，共 **40 分** / 细节定位、因果对应、作者态度判定",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "第二部分：阅读理解 Part B",
+              "req_type": "掌握",
+              "full_desc": "新题型 (2 选 1) / 5 题，每题 2 分，共 **10 分** / **多项对应 (Matching)、小标题对应 (Heading)**，侧重信息快速检索",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "第三部分：英译汉 (Translation)",
+              "req_type": "掌握",
+              "full_desc": "短文段落翻译 / 1 篇，约 150 词，共 **15 分** / **整段连续英译汉**，要求表达通顺、符合现代汉语习惯",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "第四部分：写作 Part A",
+              "req_type": "掌握",
+              "full_desc": "应用文短文写作 (小作文) / 1 篇，约 100 词，共 **10 分** / 各类书信（求职/感谢/邀请/道歉/建议）、告示、备忘录",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "第四部分：写作 Part B",
+              "req_type": "掌握",
+              "full_desc": "议论文图表写作 (大作文) / 1 篇，约 150 词，共 **15 分** / **图表/柱状图/饼图/折线图作文**（描述数据趋势 -> 分析成因 -> 总结预测）",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
           "二、大纲核心语言技能要求": []
         }
       },
@@ -1817,12 +2210,16 @@
         "total_points": 36,
         "total_topics": 36,
         "grade_counts": {
-          "A": 36,
+          "A": 0,
           "B": 0,
           "C": 0,
-          "D": 0
+          "D": 0,
+          "U": 36
         },
-        "mastery_rate": 100.0,
+        "mastery_rate": 0.0,
+        "assessed_count": 0,
+        "unassessed_count": 36,
+        "assessed_rate": 0.0,
         "chapters": [
           {
             "title": "一、试卷题型与分值分布 (满分 100 分)",
@@ -1831,7 +2228,7 @@
                 "name": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)",
                 "req_type": "单项选择题",
                 "full_desc": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1839,7 +2236,7 @@
                 "name": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)",
                 "req_type": "多项选择题",
                 "full_desc": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1847,7 +2244,7 @@
                 "name": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)",
                 "req_type": "分析题 (大题)",
                 "full_desc": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -1864,7 +2261,7 @@
                 "name": "物质与意识的辩证关系",
                 "req_type": "唯物论",
                 "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1872,7 +2269,7 @@
                 "name": "世界的物质统一性",
                 "req_type": "唯物论",
                 "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1880,7 +2277,7 @@
                 "name": "主观能动性与客观规律性的统一",
                 "req_type": "唯物论",
                 "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1888,7 +2285,7 @@
                 "name": "两大总特征（联系与发展）",
                 "req_type": "辩证法 (重中之重)",
                 "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1896,7 +2293,7 @@
                 "name": "三大基本规律（对立统一规律",
                 "req_type": "辩证法 (重中之重)",
                 "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1904,7 +2301,7 @@
                 "name": "量变质变规律",
                 "req_type": "辩证法 (重中之重)",
                 "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1912,7 +2309,7 @@
                 "name": "否定之否定规律）",
                 "req_type": "辩证法 (重中之重)",
                 "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1920,7 +2317,7 @@
                 "name": "五对基本范畴（原因与结果",
                 "req_type": "辩证法 (重中之重)",
                 "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1928,7 +2325,7 @@
                 "name": "必然与偶然",
                 "req_type": "辩证法 (重中之重)",
                 "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1936,7 +2333,7 @@
                 "name": "可能与现实",
                 "req_type": "辩证法 (重中之重)",
                 "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1944,7 +2341,7 @@
                 "name": "现象与本质",
                 "req_type": "辩证法 (重中之重)",
                 "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1952,7 +2349,7 @@
                 "name": "内容与形式）",
                 "req_type": "辩证法 (重中之重)",
                 "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1960,7 +2357,7 @@
                 "name": "实践与认识的辩证关系",
                 "req_type": "认识论",
                 "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1968,7 +2365,7 @@
                 "name": "认识的两次飞跃",
                 "req_type": "认识论",
                 "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1976,7 +2373,7 @@
                 "name": "真理的绝对性与相对性",
                 "req_type": "认识论",
                 "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1984,7 +2381,7 @@
                 "name": "真理与价值",
                 "req_type": "认识论",
                 "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -1992,7 +2389,7 @@
                 "name": "社会存在与社会意识",
                 "req_type": "唯物史观",
                 "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2000,7 +2397,7 @@
                 "name": "生产力与生产关系",
                 "req_type": "唯物史观",
                 "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2008,7 +2405,7 @@
                 "name": "经济基础与上层建筑",
                 "req_type": "唯物史观",
                 "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2016,7 +2413,7 @@
                 "name": "人民群众是历史的创造者",
                 "req_type": "唯物史观",
                 "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2024,7 +2421,7 @@
                 "name": "劳动二重性",
                 "req_type": "资本主义与科学社会主义",
                 "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2032,7 +2429,7 @@
                 "name": "商品二因素",
                 "req_type": "资本主义与科学社会主义",
                 "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2040,7 +2437,7 @@
                 "name": "价值规律",
                 "req_type": "资本主义与科学社会主义",
                 "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2048,7 +2445,7 @@
                 "name": "剩余价值理论",
                 "req_type": "资本主义与科学社会主义",
                 "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2056,7 +2453,7 @@
                 "name": "资本主义基本矛盾与经济危机。",
                 "req_type": "资本主义与科学社会主义",
                 "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -2069,7 +2466,7 @@
                 "name": "习近平新时代中国特色社会主义思想的核心要义",
                 "req_type": "核心重点",
                 "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2077,7 +2474,7 @@
                 "name": "“十四个坚持”",
                 "req_type": "核心重点",
                 "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2085,7 +2482,7 @@
                 "name": "“十个明确”",
                 "req_type": "核心重点",
                 "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2093,7 +2490,7 @@
                 "name": "“十三个方面成就”",
                 "req_type": "核心重点",
                 "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2101,7 +2498,7 @@
                 "name": "新发展理念",
                 "req_type": "核心重点",
                 "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2109,7 +2506,7 @@
                 "name": "高质量发展",
                 "req_type": "核心重点",
                 "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2117,7 +2514,7 @@
                 "name": "中国式现代化",
                 "req_type": "核心重点",
                 "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2125,7 +2522,7 @@
                 "name": "全过程人民民主。",
                 "req_type": "核心重点",
                 "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -2150,7 +2547,7 @@
               "name": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)",
               "req_type": "单项选择题",
               "full_desc": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2158,7 +2555,7 @@
               "name": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)",
               "req_type": "多项选择题",
               "full_desc": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2166,7 +2563,7 @@
               "name": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)",
               "req_type": "分析题 (大题)",
               "full_desc": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -2177,7 +2574,7 @@
               "name": "物质与意识的辩证关系",
               "req_type": "唯物论",
               "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2185,7 +2582,7 @@
               "name": "世界的物质统一性",
               "req_type": "唯物论",
               "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2193,7 +2590,7 @@
               "name": "主观能动性与客观规律性的统一",
               "req_type": "唯物论",
               "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2201,7 +2598,7 @@
               "name": "两大总特征（联系与发展）",
               "req_type": "辩证法 (重中之重)",
               "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2209,7 +2606,7 @@
               "name": "三大基本规律（对立统一规律",
               "req_type": "辩证法 (重中之重)",
               "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2217,7 +2614,7 @@
               "name": "量变质变规律",
               "req_type": "辩证法 (重中之重)",
               "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2225,7 +2622,7 @@
               "name": "否定之否定规律）",
               "req_type": "辩证法 (重中之重)",
               "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2233,7 +2630,7 @@
               "name": "五对基本范畴（原因与结果",
               "req_type": "辩证法 (重中之重)",
               "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2241,7 +2638,7 @@
               "name": "必然与偶然",
               "req_type": "辩证法 (重中之重)",
               "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2249,7 +2646,7 @@
               "name": "可能与现实",
               "req_type": "辩证法 (重中之重)",
               "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2257,7 +2654,7 @@
               "name": "现象与本质",
               "req_type": "辩证法 (重中之重)",
               "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2265,7 +2662,7 @@
               "name": "内容与形式）",
               "req_type": "辩证法 (重中之重)",
               "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2273,7 +2670,7 @@
               "name": "实践与认识的辩证关系",
               "req_type": "认识论",
               "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2281,7 +2678,7 @@
               "name": "认识的两次飞跃",
               "req_type": "认识论",
               "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2289,7 +2686,7 @@
               "name": "真理的绝对性与相对性",
               "req_type": "认识论",
               "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2297,7 +2694,7 @@
               "name": "真理与价值",
               "req_type": "认识论",
               "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2305,7 +2702,7 @@
               "name": "社会存在与社会意识",
               "req_type": "唯物史观",
               "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2313,7 +2710,7 @@
               "name": "生产力与生产关系",
               "req_type": "唯物史观",
               "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2321,7 +2718,7 @@
               "name": "经济基础与上层建筑",
               "req_type": "唯物史观",
               "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2329,7 +2726,7 @@
               "name": "人民群众是历史的创造者",
               "req_type": "唯物史观",
               "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2337,7 +2734,7 @@
               "name": "劳动二重性",
               "req_type": "资本主义与科学社会主义",
               "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2345,7 +2742,7 @@
               "name": "商品二因素",
               "req_type": "资本主义与科学社会主义",
               "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2353,7 +2750,7 @@
               "name": "价值规律",
               "req_type": "资本主义与科学社会主义",
               "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2361,7 +2758,7 @@
               "name": "剩余价值理论",
               "req_type": "资本主义与科学社会主义",
               "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2369,7 +2766,7 @@
               "name": "资本主义基本矛盾与经济危机。",
               "req_type": "资本主义与科学社会主义",
               "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -2379,7 +2776,7 @@
               "name": "习近平新时代中国特色社会主义思想的核心要义",
               "req_type": "核心重点",
               "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2387,7 +2784,7 @@
               "name": "“十四个坚持”",
               "req_type": "核心重点",
               "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2395,7 +2792,7 @@
               "name": "“十个明确”",
               "req_type": "核心重点",
               "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2403,7 +2800,7 @@
               "name": "“十三个方面成就”",
               "req_type": "核心重点",
               "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2411,7 +2808,7 @@
               "name": "新发展理念",
               "req_type": "核心重点",
               "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2419,7 +2816,7 @@
               "name": "高质量发展",
               "req_type": "核心重点",
               "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2427,7 +2824,7 @@
               "name": "中国式现代化",
               "req_type": "核心重点",
               "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -2435,7 +2832,7 @@
               "name": "全过程人民民主。",
               "req_type": "核心重点",
               "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -2451,12 +2848,16 @@
         "total_points": 129,
         "total_topics": 129,
         "grade_counts": {
-          "A": 129,
+          "A": 0,
           "B": 0,
           "C": 0,
-          "D": 0
+          "D": 0,
+          "U": 129
         },
-        "mastery_rate": 100.0,
+        "mastery_rate": 0.0,
+        "assessed_count": 0,
+        "unassessed_count": 129,
+        "assessed_rate": 0.0,
         "chapters": [
           {
             "title": "一、试卷结构与分值",
@@ -2465,7 +2866,7 @@
                 "name": "40 题，每题 2 分，共 **80 分**",
                 "req_type": "单项选择题",
                 "full_desc": "40 题，每题 2 分，共 **80 分**",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2473,7 +2874,7 @@
                 "name": "7 题，共 **70 分** (数据结构 2 题",
                 "req_type": "综合应用题 (大题)",
                 "full_desc": "7 题，共 **70 分** (数据结构 2 题、计组 2 题、操作系统 2 题、计网 1 题)",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2481,7 +2882,7 @@
                 "name": "计组 2 题",
                 "req_type": "综合应用题 (大题)",
                 "full_desc": "7 题，共 **70 分** (数据结构 2 题、计组 2 题、操作系统 2 题、计网 1 题)",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2489,7 +2890,7 @@
                 "name": "操作系统 2 题",
                 "req_type": "综合应用题 (大题)",
                 "full_desc": "7 题，共 **70 分** (数据结构 2 题、计组 2 题、操作系统 2 题、计网 1 题)",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2497,7 +2898,7 @@
                 "name": "计网 1 题)",
                 "req_type": "综合应用题 (大题)",
                 "full_desc": "7 题，共 **70 分** (数据结构 2 题、计组 2 题、操作系统 2 题、计网 1 题)",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -2514,7 +2915,7 @@
                 "name": "顺序表与链表（单链表",
                 "req_type": "线性表",
                 "full_desc": "顺序表与链表（单链表、循环链表、双链表）的插入/删除操作与算法实现；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2522,7 +2923,7 @@
                 "name": "循环链表",
                 "req_type": "线性表",
                 "full_desc": "顺序表与链表（单链表、循环链表、双链表）的插入/删除操作与算法实现；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2530,7 +2931,7 @@
                 "name": "双链表）的插入/删除操作与算法实现",
                 "req_type": "线性表",
                 "full_desc": "顺序表与链表（单链表、循环链表、双链表）的插入/删除操作与算法实现；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2538,7 +2939,7 @@
                 "name": "栈的入栈出栈顺序推导",
                 "req_type": "栈、队列与数组",
                 "full_desc": "栈的入栈出栈顺序推导、循环队列队空队满条件、特殊矩阵压缩存储；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2546,7 +2947,7 @@
                 "name": "循环队列队空队满条件",
                 "req_type": "栈、队列与数组",
                 "full_desc": "栈的入栈出栈顺序推导、循环队列队空队满条件、特殊矩阵压缩存储；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2554,7 +2955,7 @@
                 "name": "特殊矩阵压缩存储",
                 "req_type": "栈、队列与数组",
                 "full_desc": "栈的入栈出栈顺序推导、循环队列队空队满条件、特殊矩阵压缩存储；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2562,7 +2963,7 @@
                 "name": "二叉树性质与遍历（前中后序递归与非递归",
                 "req_type": "树与二叉树",
                 "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2570,7 +2971,7 @@
                 "name": "层序遍历）",
                 "req_type": "树与二叉树",
                 "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2578,7 +2979,7 @@
                 "name": "线索二叉树",
                 "req_type": "树与二叉树",
                 "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2586,7 +2987,7 @@
                 "name": "哈夫曼树与哈夫曼编码",
                 "req_type": "树与二叉树",
                 "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2594,7 +2995,7 @@
                 "name": "二叉排序树",
                 "req_type": "树与二叉树",
                 "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2602,7 +3003,7 @@
                 "name": "平衡二叉树(AVL)",
                 "req_type": "树与二叉树",
                 "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2610,7 +3011,7 @@
                 "name": "红黑树基础",
                 "req_type": "树与二叉树",
                 "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2618,7 +3019,7 @@
                 "name": "图的存储（邻接矩阵",
                 "req_type": "图",
                 "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2626,7 +3027,7 @@
                 "name": "邻接表）",
                 "req_type": "图",
                 "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2634,7 +3035,7 @@
                 "name": "图的遍历（DFS",
                 "req_type": "图",
                 "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2642,7 +3043,7 @@
                 "name": "BFS）",
                 "req_type": "图",
                 "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2650,7 +3051,7 @@
                 "name": "最小生成树（Prim与Kruskal）",
                 "req_type": "图",
                 "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2658,7 +3059,7 @@
                 "name": "最短路径（Dijkstra与Floyd）",
                 "req_type": "图",
                 "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2666,7 +3067,7 @@
                 "name": "拓扑排序与关键路径(AOV/AOE)",
                 "req_type": "图",
                 "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2674,7 +3075,7 @@
                 "name": "顺序查找",
                 "req_type": "查找",
                 "full_desc": "顺序查找、折半查找、B/B+树基础、散列表(Hash)及其冲突处理；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2682,7 +3083,7 @@
                 "name": "折半查找",
                 "req_type": "查找",
                 "full_desc": "顺序查找、折半查找、B/B+树基础、散列表(Hash)及其冲突处理；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2690,7 +3091,7 @@
                 "name": "B/B+树基础",
                 "req_type": "查找",
                 "full_desc": "顺序查找、折半查找、B/B+树基础、散列表(Hash)及其冲突处理；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2698,7 +3099,7 @@
                 "name": "散列表(Hash)及其冲突处理",
                 "req_type": "查找",
                 "full_desc": "顺序查找、折半查找、B/B+树基础、散列表(Hash)及其冲突处理；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2706,7 +3107,7 @@
                 "name": "插入排序",
                 "req_type": "内部排序",
                 "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2714,7 +3115,7 @@
                 "name": "希尔排序",
                 "req_type": "内部排序",
                 "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2722,7 +3123,7 @@
                 "name": "冒泡排序",
                 "req_type": "内部排序",
                 "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2730,7 +3131,7 @@
                 "name": "快速排序(重点划分算法)",
                 "req_type": "内部排序",
                 "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2738,7 +3139,7 @@
                 "name": "简单选择排序",
                 "req_type": "内部排序",
                 "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2746,7 +3147,7 @@
                 "name": "堆排序(大根堆/小根堆构建与调整)",
                 "req_type": "内部排序",
                 "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2754,7 +3155,7 @@
                 "name": "二路归并排序",
                 "req_type": "内部排序",
                 "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2762,7 +3163,7 @@
                 "name": "基数排序及其时空复杂度综合对比。",
                 "req_type": "内部排序",
                 "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -2775,7 +3176,7 @@
                 "name": "性能指标（CPI",
                 "req_type": "计算机系统概述",
                 "full_desc": "性能指标（CPI、MIPS、时钟周期、吞吐量）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2783,7 +3184,7 @@
                 "name": "MIPS",
                 "req_type": "计算机系统概述",
                 "full_desc": "性能指标（CPI、MIPS、时钟周期、吞吐量）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2791,7 +3192,7 @@
                 "name": "时钟周期",
                 "req_type": "计算机系统概述",
                 "full_desc": "性能指标（CPI、MIPS、时钟周期、吞吐量）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2799,7 +3200,7 @@
                 "name": "吞吐量）",
                 "req_type": "计算机系统概述",
                 "full_desc": "性能指标（CPI、MIPS、时钟周期、吞吐量）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2807,7 +3208,7 @@
                 "name": "原码",
                 "req_type": "数据的表示与运算",
                 "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2815,7 +3216,7 @@
                 "name": "反码",
                 "req_type": "数据的表示与运算",
                 "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2823,7 +3224,7 @@
                 "name": "补码",
                 "req_type": "数据的表示与运算",
                 "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2831,7 +3232,7 @@
                 "name": "移码转换",
                 "req_type": "数据的表示与运算",
                 "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2839,7 +3240,7 @@
                 "name": "定点数与浮点数表示（IEEE 754 标准）",
                 "req_type": "数据的表示与运算",
                 "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2847,7 +3248,7 @@
                 "name": "加减乘除运算与溢出判断",
                 "req_type": "数据的表示与运算",
                 "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2855,7 +3256,7 @@
                 "name": "SRAM/DRAM 原理",
                 "req_type": "存储系统",
                 "full_desc": "SRAM/DRAM 原理、主存与 CPU 连线（位扩展/字扩展）、Cache 映射与替换策略（直接/全相联/组相联）、Cache-主存命中率与平均访问时间、虚拟存储器(页式/段式/段页式与TLB)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2863,7 +3264,7 @@
                 "name": "主存与 CPU 连线（位扩展/字扩展）",
                 "req_type": "存储系统",
                 "full_desc": "SRAM/DRAM 原理、主存与 CPU 连线（位扩展/字扩展）、Cache 映射与替换策略（直接/全相联/组相联）、Cache-主存命中率与平均访问时间、虚拟存储器(页式/段式/段页式与TLB)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2871,7 +3272,7 @@
                 "name": "Cache 映射与替换策略（直接/全相联/组相联）",
                 "req_type": "存储系统",
                 "full_desc": "SRAM/DRAM 原理、主存与 CPU 连线（位扩展/字扩展）、Cache 映射与替换策略（直接/全相联/组相联）、Cache-主存命中率与平均访问时间、虚拟存储器(页式/段式/段页式与TLB)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2879,7 +3280,7 @@
                 "name": "Cache-主存命中率与平均访问时间",
                 "req_type": "存储系统",
                 "full_desc": "SRAM/DRAM 原理、主存与 CPU 连线（位扩展/字扩展）、Cache 映射与替换策略（直接/全相联/组相联）、Cache-主存命中率与平均访问时间、虚拟存储器(页式/段式/段页式与TLB)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2887,7 +3288,7 @@
                 "name": "虚拟存储器(页式/段式/段页式与TLB)",
                 "req_type": "存储系统",
                 "full_desc": "SRAM/DRAM 原理、主存与 CPU 连线（位扩展/字扩展）、Cache 映射与替换策略（直接/全相联/组相联）、Cache-主存命中率与平均访问时间、虚拟存储器(页式/段式/段页式与TLB)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2895,7 +3296,7 @@
                 "name": "寻址方式（立即/直接/间接/寄存器/基址/变址寻址）",
                 "req_type": "指令系统",
                 "full_desc": "寻址方式（立即/直接/间接/寄存器/基址/变址寻址）、CISC 与 RISC 概念；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2903,7 +3304,7 @@
                 "name": "CISC 与 RISC 概念",
                 "req_type": "指令系统",
                 "full_desc": "寻址方式（立即/直接/间接/寄存器/基址/变址寻址）、CISC 与 RISC 概念；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2911,7 +3312,7 @@
                 "name": "CPU 内部结构",
                 "req_type": "中央处理器 (CPU)",
                 "full_desc": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2919,7 +3320,7 @@
                 "name": "指令周期",
                 "req_type": "中央处理器 (CPU)",
                 "full_desc": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2927,7 +3328,7 @@
                 "name": "硬布线与微程序控制器",
                 "req_type": "中央处理器 (CPU)",
                 "full_desc": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2935,7 +3336,7 @@
                 "name": "流水线技术（吞吐率",
                 "req_type": "中央处理器 (CPU)",
                 "full_desc": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2943,7 +3344,7 @@
                 "name": "加速比",
                 "req_type": "中央处理器 (CPU)",
                 "full_desc": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2951,7 +3352,7 @@
                 "name": "流水线冲突及解决）",
                 "req_type": "中央处理器 (CPU)",
                 "full_desc": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2959,7 +3360,7 @@
                 "name": "总线仲裁",
                 "req_type": "总线与 I/O 系统",
                 "full_desc": "总线仲裁、I/O 控制方式（程序查询、中断、DMA 方式）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2967,7 +3368,7 @@
                 "name": "I/O 控制方式（程序查询",
                 "req_type": "总线与 I/O 系统",
                 "full_desc": "总线仲裁、I/O 控制方式（程序查询、中断、DMA 方式）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2975,7 +3376,7 @@
                 "name": "中断",
                 "req_type": "总线与 I/O 系统",
                 "full_desc": "总线仲裁、I/O 控制方式（程序查询、中断、DMA 方式）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -2983,7 +3384,7 @@
                 "name": "DMA 方式）。",
                 "req_type": "总线与 I/O 系统",
                 "full_desc": "总线仲裁、I/O 控制方式（程序查询、中断、DMA 方式）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -2996,7 +3397,7 @@
                 "name": "进程状态转换",
                 "req_type": "进程与线程",
                 "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3004,7 +3405,7 @@
                 "name": "PCB",
                 "req_type": "进程与线程",
                 "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3012,7 +3413,7 @@
                 "name": "进程通信",
                 "req_type": "进程与线程",
                 "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3020,7 +3421,7 @@
                 "name": "线程实现方式",
                 "req_type": "进程与线程",
                 "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3028,7 +3429,7 @@
                 "name": "调度算法（FCFS",
                 "req_type": "CPU 调度与死锁",
                 "full_desc": "调度算法（FCFS、SJF、RR、优先级）、死锁预防/避免（银行家算法）/检测与解除；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3036,7 +3437,7 @@
                 "name": "SJF",
                 "req_type": "CPU 调度与死锁",
                 "full_desc": "调度算法（FCFS、SJF、RR、优先级）、死锁预防/避免（银行家算法）/检测与解除；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3044,7 +3445,7 @@
                 "name": "RR",
                 "req_type": "CPU 调度与死锁",
                 "full_desc": "调度算法（FCFS、SJF、RR、优先级）、死锁预防/避免（银行家算法）/检测与解除；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3052,7 +3453,7 @@
                 "name": "优先级）",
                 "req_type": "CPU 调度与死锁",
                 "full_desc": "调度算法（FCFS、SJF、RR、优先级）、死锁预防/避免（银行家算法）/检测与解除；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3060,7 +3461,7 @@
                 "name": "死锁预防/避免（银行家算法）/检测与解除",
                 "req_type": "CPU 调度与死锁",
                 "full_desc": "调度算法（FCFS、SJF、RR、优先级）、死锁预防/避免（银行家算法）/检测与解除；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3068,7 +3469,7 @@
                 "name": "临界区概念",
                 "req_type": "进程同步与互斥",
                 "full_desc": "临界区概念、信号量机制(P/V 操作经典模型：生产者消费者、哲学家进餐、读写者问题)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3076,7 +3477,7 @@
                 "name": "信号量机制(P/V 操作经典模型：生产者消费者",
                 "req_type": "进程同步与互斥",
                 "full_desc": "临界区概念、信号量机制(P/V 操作经典模型：生产者消费者、哲学家进餐、读写者问题)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3084,7 +3485,7 @@
                 "name": "哲学家进餐",
                 "req_type": "进程同步与互斥",
                 "full_desc": "临界区概念、信号量机制(P/V 操作经典模型：生产者消费者、哲学家进餐、读写者问题)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3092,7 +3493,7 @@
                 "name": "读写者问题)",
                 "req_type": "进程同步与互斥",
                 "full_desc": "临界区概念、信号量机制(P/V 操作经典模型：生产者消费者、哲学家进餐、读写者问题)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3100,7 +3501,7 @@
                 "name": "连续分配",
                 "req_type": "内存管理",
                 "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3108,7 +3509,7 @@
                 "name": "基本分页与分段管理",
                 "req_type": "内存管理",
                 "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3116,7 +3517,7 @@
                 "name": "虚拟内存技术",
                 "req_type": "内存管理",
                 "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3124,7 +3525,7 @@
                 "name": "请求分页页面置换算法（FIFO",
                 "req_type": "内存管理",
                 "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3132,7 +3533,7 @@
                 "name": "LRU",
                 "req_type": "内存管理",
                 "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3140,7 +3541,7 @@
                 "name": "OPT",
                 "req_type": "内存管理",
                 "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3148,7 +3549,7 @@
                 "name": "CLOCK）",
                 "req_type": "内存管理",
                 "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3156,7 +3557,7 @@
                 "name": "抖动与工作集",
                 "req_type": "内存管理",
                 "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3164,7 +3565,7 @@
                 "name": "文件逻辑结构与物理结构（连续/链接/索引分配）",
                 "req_type": "文件系统",
                 "full_desc": "文件逻辑结构与物理结构（连续/链接/索引分配）、目录结构与 FAT/索引节点、文件共享与保护；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3172,7 +3573,7 @@
                 "name": "目录结构与 FAT/索引节点",
                 "req_type": "文件系统",
                 "full_desc": "文件逻辑结构与物理结构（连续/链接/索引分配）、目录结构与 FAT/索引节点、文件共享与保护；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3180,7 +3581,7 @@
                 "name": "文件共享与保护",
                 "req_type": "文件系统",
                 "full_desc": "文件逻辑结构与物理结构（连续/链接/索引分配）、目录结构与 FAT/索引节点、文件共享与保护；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3188,7 +3589,7 @@
                 "name": "I/O 软件层次",
                 "req_type": "I/O 设备管理",
                 "full_desc": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3196,7 +3597,7 @@
                 "name": "SPOOLing 技术",
                 "req_type": "I/O 设备管理",
                 "full_desc": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3204,7 +3605,7 @@
                 "name": "磁盘调度算法（FCFS",
                 "req_type": "I/O 设备管理",
                 "full_desc": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3212,7 +3613,7 @@
                 "name": "SSTF",
                 "req_type": "I/O 设备管理",
                 "full_desc": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3220,7 +3621,7 @@
                 "name": "SCAN",
                 "req_type": "I/O 设备管理",
                 "full_desc": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3228,7 +3629,7 @@
                 "name": "CSCAN）。",
                 "req_type": "I/O 设备管理",
                 "full_desc": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -3241,7 +3642,7 @@
                 "name": "奈氏准则与香农定理",
                 "req_type": "物理层",
                 "full_desc": "奈氏准则与香农定理、信道复用技术（FDM、TDM、WDM、CDMA）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3249,7 +3650,7 @@
                 "name": "信道复用技术（FDM",
                 "req_type": "物理层",
                 "full_desc": "奈氏准则与香农定理、信道复用技术（FDM、TDM、WDM、CDMA）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3257,7 +3658,7 @@
                 "name": "TDM",
                 "req_type": "物理层",
                 "full_desc": "奈氏准则与香农定理、信道复用技术（FDM、TDM、WDM、CDMA）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3265,7 +3666,7 @@
                 "name": "WDM",
                 "req_type": "物理层",
                 "full_desc": "奈氏准则与香农定理、信道复用技术（FDM、TDM、WDM、CDMA）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3273,7 +3674,7 @@
                 "name": "CDMA）",
                 "req_type": "物理层",
                 "full_desc": "奈氏准则与香农定理、信道复用技术（FDM、TDM、WDM、CDMA）；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3281,7 +3682,7 @@
                 "name": "差错控制（CRC）",
                 "req_type": "数据链路层",
                 "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3289,7 +3690,7 @@
                 "name": "流量控制与可靠传输（滑动窗口",
                 "req_type": "数据链路层",
                 "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3297,7 +3698,7 @@
                 "name": "停止等待",
                 "req_type": "数据链路层",
                 "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3305,7 +3706,7 @@
                 "name": "GBN",
                 "req_type": "数据链路层",
                 "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3313,7 +3714,7 @@
                 "name": "SR）",
                 "req_type": "数据链路层",
                 "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3321,7 +3722,7 @@
                 "name": "介质访问控制（CSMA/CD",
                 "req_type": "数据链路层",
                 "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3329,7 +3730,7 @@
                 "name": "CSMA/CA）",
                 "req_type": "数据链路层",
                 "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3337,7 +3738,7 @@
                 "name": "以太网与交换机自学习",
                 "req_type": "数据链路层",
                 "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3345,7 +3746,7 @@
                 "name": "IPv4 地址分类与 CIDR",
                 "req_type": "网络层",
                 "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3353,7 +3754,7 @@
                 "name": "子网划分",
                 "req_type": "网络层",
                 "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3361,7 +3762,7 @@
                 "name": "NAT",
                 "req_type": "网络层",
                 "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3369,7 +3770,7 @@
                 "name": "路由选择协议（RIP",
                 "req_type": "网络层",
                 "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3377,7 +3778,7 @@
                 "name": "OSPF",
                 "req_type": "网络层",
                 "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3385,7 +3786,7 @@
                 "name": "BGP）",
                 "req_type": "网络层",
                 "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3393,7 +3794,7 @@
                 "name": "IP 数据报分片",
                 "req_type": "网络层",
                 "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3401,7 +3802,7 @@
                 "name": "ARP 与 ICMP",
                 "req_type": "网络层",
                 "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3409,7 +3810,7 @@
                 "name": "IPv6",
                 "req_type": "网络层",
                 "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3417,7 +3818,7 @@
                 "name": "路由器转发流程",
                 "req_type": "网络层",
                 "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3425,7 +3826,7 @@
                 "name": "UDP 数据报",
                 "req_type": "传输层",
                 "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3433,7 +3834,7 @@
                 "name": "TCP 报文段",
                 "req_type": "传输层",
                 "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3441,7 +3842,7 @@
                 "name": "TCP 三次握手与四次挥手",
                 "req_type": "传输层",
                 "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3449,7 +3850,7 @@
                 "name": "TCP 可靠传输",
                 "req_type": "传输层",
                 "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3457,7 +3858,7 @@
                 "name": "流量控制(滑动窗口)与拥塞控制(慢开始",
                 "req_type": "传输层",
                 "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3465,7 +3866,7 @@
                 "name": "拥塞避免",
                 "req_type": "传输层",
                 "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3473,7 +3874,7 @@
                 "name": "快重传",
                 "req_type": "传输层",
                 "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3481,7 +3882,7 @@
                 "name": "快恢复)",
                 "req_type": "传输层",
                 "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3489,7 +3890,7 @@
                 "name": "DNS 域名解析过程",
                 "req_type": "应用层",
                 "full_desc": "DNS 域名解析过程、FTP、电子邮件(SMTP/POP3/IMAP)、万维网(HTTP 协议与状态码)。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3497,7 +3898,7 @@
                 "name": "FTP",
                 "req_type": "应用层",
                 "full_desc": "DNS 域名解析过程、FTP、电子邮件(SMTP/POP3/IMAP)、万维网(HTTP 协议与状态码)。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3505,7 +3906,7 @@
                 "name": "电子邮件(SMTP/POP3/IMAP)",
                 "req_type": "应用层",
                 "full_desc": "DNS 域名解析过程、FTP、电子邮件(SMTP/POP3/IMAP)、万维网(HTTP 协议与状态码)。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
@@ -3513,7 +3914,7 @@
                 "name": "万维网(HTTP 协议与状态码)。",
                 "req_type": "应用层",
                 "full_desc": "DNS 域名解析过程、FTP、电子邮件(SMTP/POP3/IMAP)、万维网(HTTP 协议与状态码)。",
-                "grade": "A",
+                "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
@@ -3526,7 +3927,7 @@
               "name": "40 题，每题 2 分，共 **80 分**",
               "req_type": "单项选择题",
               "full_desc": "40 题，每题 2 分，共 **80 分**",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3534,7 +3935,7 @@
               "name": "7 题，共 **70 分** (数据结构 2 题",
               "req_type": "综合应用题 (大题)",
               "full_desc": "7 题，共 **70 分** (数据结构 2 题、计组 2 题、操作系统 2 题、计网 1 题)",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3542,7 +3943,7 @@
               "name": "计组 2 题",
               "req_type": "综合应用题 (大题)",
               "full_desc": "7 题，共 **70 分** (数据结构 2 题、计组 2 题、操作系统 2 题、计网 1 题)",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3550,7 +3951,7 @@
               "name": "操作系统 2 题",
               "req_type": "综合应用题 (大题)",
               "full_desc": "7 题，共 **70 分** (数据结构 2 题、计组 2 题、操作系统 2 题、计网 1 题)",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3558,7 +3959,7 @@
               "name": "计网 1 题)",
               "req_type": "综合应用题 (大题)",
               "full_desc": "7 题，共 **70 分** (数据结构 2 题、计组 2 题、操作系统 2 题、计网 1 题)",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -3569,7 +3970,7 @@
               "name": "顺序表与链表（单链表",
               "req_type": "线性表",
               "full_desc": "顺序表与链表（单链表、循环链表、双链表）的插入/删除操作与算法实现；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3577,7 +3978,7 @@
               "name": "循环链表",
               "req_type": "线性表",
               "full_desc": "顺序表与链表（单链表、循环链表、双链表）的插入/删除操作与算法实现；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3585,7 +3986,7 @@
               "name": "双链表）的插入/删除操作与算法实现",
               "req_type": "线性表",
               "full_desc": "顺序表与链表（单链表、循环链表、双链表）的插入/删除操作与算法实现；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3593,7 +3994,7 @@
               "name": "栈的入栈出栈顺序推导",
               "req_type": "栈、队列与数组",
               "full_desc": "栈的入栈出栈顺序推导、循环队列队空队满条件、特殊矩阵压缩存储；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3601,7 +4002,7 @@
               "name": "循环队列队空队满条件",
               "req_type": "栈、队列与数组",
               "full_desc": "栈的入栈出栈顺序推导、循环队列队空队满条件、特殊矩阵压缩存储；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3609,7 +4010,7 @@
               "name": "特殊矩阵压缩存储",
               "req_type": "栈、队列与数组",
               "full_desc": "栈的入栈出栈顺序推导、循环队列队空队满条件、特殊矩阵压缩存储；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3617,7 +4018,7 @@
               "name": "二叉树性质与遍历（前中后序递归与非递归",
               "req_type": "树与二叉树",
               "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3625,7 +4026,7 @@
               "name": "层序遍历）",
               "req_type": "树与二叉树",
               "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3633,7 +4034,7 @@
               "name": "线索二叉树",
               "req_type": "树与二叉树",
               "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3641,7 +4042,7 @@
               "name": "哈夫曼树与哈夫曼编码",
               "req_type": "树与二叉树",
               "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3649,7 +4050,7 @@
               "name": "二叉排序树",
               "req_type": "树与二叉树",
               "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3657,7 +4058,7 @@
               "name": "平衡二叉树(AVL)",
               "req_type": "树与二叉树",
               "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3665,7 +4066,7 @@
               "name": "红黑树基础",
               "req_type": "树与二叉树",
               "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3673,7 +4074,7 @@
               "name": "图的存储（邻接矩阵",
               "req_type": "图",
               "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3681,7 +4082,7 @@
               "name": "邻接表）",
               "req_type": "图",
               "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3689,7 +4090,7 @@
               "name": "图的遍历（DFS",
               "req_type": "图",
               "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3697,7 +4098,7 @@
               "name": "BFS）",
               "req_type": "图",
               "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3705,7 +4106,7 @@
               "name": "最小生成树（Prim与Kruskal）",
               "req_type": "图",
               "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3713,7 +4114,7 @@
               "name": "最短路径（Dijkstra与Floyd）",
               "req_type": "图",
               "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3721,7 +4122,7 @@
               "name": "拓扑排序与关键路径(AOV/AOE)",
               "req_type": "图",
               "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3729,7 +4130,7 @@
               "name": "顺序查找",
               "req_type": "查找",
               "full_desc": "顺序查找、折半查找、B/B+树基础、散列表(Hash)及其冲突处理；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3737,7 +4138,7 @@
               "name": "折半查找",
               "req_type": "查找",
               "full_desc": "顺序查找、折半查找、B/B+树基础、散列表(Hash)及其冲突处理；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3745,7 +4146,7 @@
               "name": "B/B+树基础",
               "req_type": "查找",
               "full_desc": "顺序查找、折半查找、B/B+树基础、散列表(Hash)及其冲突处理；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3753,7 +4154,7 @@
               "name": "散列表(Hash)及其冲突处理",
               "req_type": "查找",
               "full_desc": "顺序查找、折半查找、B/B+树基础、散列表(Hash)及其冲突处理；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3761,7 +4162,7 @@
               "name": "插入排序",
               "req_type": "内部排序",
               "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3769,7 +4170,7 @@
               "name": "希尔排序",
               "req_type": "内部排序",
               "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3777,7 +4178,7 @@
               "name": "冒泡排序",
               "req_type": "内部排序",
               "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3785,7 +4186,7 @@
               "name": "快速排序(重点划分算法)",
               "req_type": "内部排序",
               "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3793,7 +4194,7 @@
               "name": "简单选择排序",
               "req_type": "内部排序",
               "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3801,7 +4202,7 @@
               "name": "堆排序(大根堆/小根堆构建与调整)",
               "req_type": "内部排序",
               "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3809,7 +4210,7 @@
               "name": "二路归并排序",
               "req_type": "内部排序",
               "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3817,7 +4218,7 @@
               "name": "基数排序及其时空复杂度综合对比。",
               "req_type": "内部排序",
               "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -3827,7 +4228,7 @@
               "name": "性能指标（CPI",
               "req_type": "计算机系统概述",
               "full_desc": "性能指标（CPI、MIPS、时钟周期、吞吐量）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3835,7 +4236,7 @@
               "name": "MIPS",
               "req_type": "计算机系统概述",
               "full_desc": "性能指标（CPI、MIPS、时钟周期、吞吐量）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3843,7 +4244,7 @@
               "name": "时钟周期",
               "req_type": "计算机系统概述",
               "full_desc": "性能指标（CPI、MIPS、时钟周期、吞吐量）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3851,7 +4252,7 @@
               "name": "吞吐量）",
               "req_type": "计算机系统概述",
               "full_desc": "性能指标（CPI、MIPS、时钟周期、吞吐量）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3859,7 +4260,7 @@
               "name": "原码",
               "req_type": "数据的表示与运算",
               "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3867,7 +4268,7 @@
               "name": "反码",
               "req_type": "数据的表示与运算",
               "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3875,7 +4276,7 @@
               "name": "补码",
               "req_type": "数据的表示与运算",
               "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3883,7 +4284,7 @@
               "name": "移码转换",
               "req_type": "数据的表示与运算",
               "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3891,7 +4292,7 @@
               "name": "定点数与浮点数表示（IEEE 754 标准）",
               "req_type": "数据的表示与运算",
               "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3899,7 +4300,7 @@
               "name": "加减乘除运算与溢出判断",
               "req_type": "数据的表示与运算",
               "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3907,7 +4308,7 @@
               "name": "SRAM/DRAM 原理",
               "req_type": "存储系统",
               "full_desc": "SRAM/DRAM 原理、主存与 CPU 连线（位扩展/字扩展）、Cache 映射与替换策略（直接/全相联/组相联）、Cache-主存命中率与平均访问时间、虚拟存储器(页式/段式/段页式与TLB)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3915,7 +4316,7 @@
               "name": "主存与 CPU 连线（位扩展/字扩展）",
               "req_type": "存储系统",
               "full_desc": "SRAM/DRAM 原理、主存与 CPU 连线（位扩展/字扩展）、Cache 映射与替换策略（直接/全相联/组相联）、Cache-主存命中率与平均访问时间、虚拟存储器(页式/段式/段页式与TLB)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3923,7 +4324,7 @@
               "name": "Cache 映射与替换策略（直接/全相联/组相联）",
               "req_type": "存储系统",
               "full_desc": "SRAM/DRAM 原理、主存与 CPU 连线（位扩展/字扩展）、Cache 映射与替换策略（直接/全相联/组相联）、Cache-主存命中率与平均访问时间、虚拟存储器(页式/段式/段页式与TLB)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3931,7 +4332,7 @@
               "name": "Cache-主存命中率与平均访问时间",
               "req_type": "存储系统",
               "full_desc": "SRAM/DRAM 原理、主存与 CPU 连线（位扩展/字扩展）、Cache 映射与替换策略（直接/全相联/组相联）、Cache-主存命中率与平均访问时间、虚拟存储器(页式/段式/段页式与TLB)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3939,7 +4340,7 @@
               "name": "虚拟存储器(页式/段式/段页式与TLB)",
               "req_type": "存储系统",
               "full_desc": "SRAM/DRAM 原理、主存与 CPU 连线（位扩展/字扩展）、Cache 映射与替换策略（直接/全相联/组相联）、Cache-主存命中率与平均访问时间、虚拟存储器(页式/段式/段页式与TLB)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3947,7 +4348,7 @@
               "name": "寻址方式（立即/直接/间接/寄存器/基址/变址寻址）",
               "req_type": "指令系统",
               "full_desc": "寻址方式（立即/直接/间接/寄存器/基址/变址寻址）、CISC 与 RISC 概念；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3955,7 +4356,7 @@
               "name": "CISC 与 RISC 概念",
               "req_type": "指令系统",
               "full_desc": "寻址方式（立即/直接/间接/寄存器/基址/变址寻址）、CISC 与 RISC 概念；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3963,7 +4364,7 @@
               "name": "CPU 内部结构",
               "req_type": "中央处理器 (CPU)",
               "full_desc": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3971,7 +4372,7 @@
               "name": "指令周期",
               "req_type": "中央处理器 (CPU)",
               "full_desc": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3979,7 +4380,7 @@
               "name": "硬布线与微程序控制器",
               "req_type": "中央处理器 (CPU)",
               "full_desc": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3987,7 +4388,7 @@
               "name": "流水线技术（吞吐率",
               "req_type": "中央处理器 (CPU)",
               "full_desc": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -3995,7 +4396,7 @@
               "name": "加速比",
               "req_type": "中央处理器 (CPU)",
               "full_desc": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4003,7 +4404,7 @@
               "name": "流水线冲突及解决）",
               "req_type": "中央处理器 (CPU)",
               "full_desc": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4011,7 +4412,7 @@
               "name": "总线仲裁",
               "req_type": "总线与 I/O 系统",
               "full_desc": "总线仲裁、I/O 控制方式（程序查询、中断、DMA 方式）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4019,7 +4420,7 @@
               "name": "I/O 控制方式（程序查询",
               "req_type": "总线与 I/O 系统",
               "full_desc": "总线仲裁、I/O 控制方式（程序查询、中断、DMA 方式）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4027,7 +4428,7 @@
               "name": "中断",
               "req_type": "总线与 I/O 系统",
               "full_desc": "总线仲裁、I/O 控制方式（程序查询、中断、DMA 方式）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4035,7 +4436,7 @@
               "name": "DMA 方式）。",
               "req_type": "总线与 I/O 系统",
               "full_desc": "总线仲裁、I/O 控制方式（程序查询、中断、DMA 方式）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -4045,7 +4446,7 @@
               "name": "进程状态转换",
               "req_type": "进程与线程",
               "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4053,7 +4454,7 @@
               "name": "PCB",
               "req_type": "进程与线程",
               "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4061,7 +4462,7 @@
               "name": "进程通信",
               "req_type": "进程与线程",
               "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4069,7 +4470,7 @@
               "name": "线程实现方式",
               "req_type": "进程与线程",
               "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4077,7 +4478,7 @@
               "name": "调度算法（FCFS",
               "req_type": "CPU 调度与死锁",
               "full_desc": "调度算法（FCFS、SJF、RR、优先级）、死锁预防/避免（银行家算法）/检测与解除；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4085,7 +4486,7 @@
               "name": "SJF",
               "req_type": "CPU 调度与死锁",
               "full_desc": "调度算法（FCFS、SJF、RR、优先级）、死锁预防/避免（银行家算法）/检测与解除；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4093,7 +4494,7 @@
               "name": "RR",
               "req_type": "CPU 调度与死锁",
               "full_desc": "调度算法（FCFS、SJF、RR、优先级）、死锁预防/避免（银行家算法）/检测与解除；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4101,7 +4502,7 @@
               "name": "优先级）",
               "req_type": "CPU 调度与死锁",
               "full_desc": "调度算法（FCFS、SJF、RR、优先级）、死锁预防/避免（银行家算法）/检测与解除；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4109,7 +4510,7 @@
               "name": "死锁预防/避免（银行家算法）/检测与解除",
               "req_type": "CPU 调度与死锁",
               "full_desc": "调度算法（FCFS、SJF、RR、优先级）、死锁预防/避免（银行家算法）/检测与解除；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4117,7 +4518,7 @@
               "name": "临界区概念",
               "req_type": "进程同步与互斥",
               "full_desc": "临界区概念、信号量机制(P/V 操作经典模型：生产者消费者、哲学家进餐、读写者问题)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4125,7 +4526,7 @@
               "name": "信号量机制(P/V 操作经典模型：生产者消费者",
               "req_type": "进程同步与互斥",
               "full_desc": "临界区概念、信号量机制(P/V 操作经典模型：生产者消费者、哲学家进餐、读写者问题)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4133,7 +4534,7 @@
               "name": "哲学家进餐",
               "req_type": "进程同步与互斥",
               "full_desc": "临界区概念、信号量机制(P/V 操作经典模型：生产者消费者、哲学家进餐、读写者问题)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4141,7 +4542,7 @@
               "name": "读写者问题)",
               "req_type": "进程同步与互斥",
               "full_desc": "临界区概念、信号量机制(P/V 操作经典模型：生产者消费者、哲学家进餐、读写者问题)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4149,7 +4550,7 @@
               "name": "连续分配",
               "req_type": "内存管理",
               "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4157,7 +4558,7 @@
               "name": "基本分页与分段管理",
               "req_type": "内存管理",
               "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4165,7 +4566,7 @@
               "name": "虚拟内存技术",
               "req_type": "内存管理",
               "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4173,7 +4574,7 @@
               "name": "请求分页页面置换算法（FIFO",
               "req_type": "内存管理",
               "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4181,7 +4582,7 @@
               "name": "LRU",
               "req_type": "内存管理",
               "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4189,7 +4590,7 @@
               "name": "OPT",
               "req_type": "内存管理",
               "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4197,7 +4598,7 @@
               "name": "CLOCK）",
               "req_type": "内存管理",
               "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4205,7 +4606,7 @@
               "name": "抖动与工作集",
               "req_type": "内存管理",
               "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4213,7 +4614,7 @@
               "name": "文件逻辑结构与物理结构（连续/链接/索引分配）",
               "req_type": "文件系统",
               "full_desc": "文件逻辑结构与物理结构（连续/链接/索引分配）、目录结构与 FAT/索引节点、文件共享与保护；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4221,7 +4622,7 @@
               "name": "目录结构与 FAT/索引节点",
               "req_type": "文件系统",
               "full_desc": "文件逻辑结构与物理结构（连续/链接/索引分配）、目录结构与 FAT/索引节点、文件共享与保护；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4229,7 +4630,7 @@
               "name": "文件共享与保护",
               "req_type": "文件系统",
               "full_desc": "文件逻辑结构与物理结构（连续/链接/索引分配）、目录结构与 FAT/索引节点、文件共享与保护；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4237,7 +4638,7 @@
               "name": "I/O 软件层次",
               "req_type": "I/O 设备管理",
               "full_desc": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4245,7 +4646,7 @@
               "name": "SPOOLing 技术",
               "req_type": "I/O 设备管理",
               "full_desc": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4253,7 +4654,7 @@
               "name": "磁盘调度算法（FCFS",
               "req_type": "I/O 设备管理",
               "full_desc": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4261,7 +4662,7 @@
               "name": "SSTF",
               "req_type": "I/O 设备管理",
               "full_desc": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4269,7 +4670,7 @@
               "name": "SCAN",
               "req_type": "I/O 设备管理",
               "full_desc": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4277,7 +4678,7 @@
               "name": "CSCAN）。",
               "req_type": "I/O 设备管理",
               "full_desc": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
@@ -4287,7 +4688,7 @@
               "name": "奈氏准则与香农定理",
               "req_type": "物理层",
               "full_desc": "奈氏准则与香农定理、信道复用技术（FDM、TDM、WDM、CDMA）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4295,7 +4696,7 @@
               "name": "信道复用技术（FDM",
               "req_type": "物理层",
               "full_desc": "奈氏准则与香农定理、信道复用技术（FDM、TDM、WDM、CDMA）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4303,7 +4704,7 @@
               "name": "TDM",
               "req_type": "物理层",
               "full_desc": "奈氏准则与香农定理、信道复用技术（FDM、TDM、WDM、CDMA）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4311,7 +4712,7 @@
               "name": "WDM",
               "req_type": "物理层",
               "full_desc": "奈氏准则与香农定理、信道复用技术（FDM、TDM、WDM、CDMA）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4319,7 +4720,7 @@
               "name": "CDMA）",
               "req_type": "物理层",
               "full_desc": "奈氏准则与香农定理、信道复用技术（FDM、TDM、WDM、CDMA）；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4327,7 +4728,7 @@
               "name": "差错控制（CRC）",
               "req_type": "数据链路层",
               "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4335,7 +4736,7 @@
               "name": "流量控制与可靠传输（滑动窗口",
               "req_type": "数据链路层",
               "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4343,7 +4744,7 @@
               "name": "停止等待",
               "req_type": "数据链路层",
               "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4351,7 +4752,7 @@
               "name": "GBN",
               "req_type": "数据链路层",
               "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4359,7 +4760,7 @@
               "name": "SR）",
               "req_type": "数据链路层",
               "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4367,7 +4768,7 @@
               "name": "介质访问控制（CSMA/CD",
               "req_type": "数据链路层",
               "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4375,7 +4776,7 @@
               "name": "CSMA/CA）",
               "req_type": "数据链路层",
               "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4383,7 +4784,7 @@
               "name": "以太网与交换机自学习",
               "req_type": "数据链路层",
               "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4391,7 +4792,7 @@
               "name": "IPv4 地址分类与 CIDR",
               "req_type": "网络层",
               "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4399,7 +4800,7 @@
               "name": "子网划分",
               "req_type": "网络层",
               "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4407,7 +4808,7 @@
               "name": "NAT",
               "req_type": "网络层",
               "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4415,7 +4816,7 @@
               "name": "路由选择协议（RIP",
               "req_type": "网络层",
               "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4423,7 +4824,7 @@
               "name": "OSPF",
               "req_type": "网络层",
               "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4431,7 +4832,7 @@
               "name": "BGP）",
               "req_type": "网络层",
               "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4439,7 +4840,7 @@
               "name": "IP 数据报分片",
               "req_type": "网络层",
               "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4447,7 +4848,7 @@
               "name": "ARP 与 ICMP",
               "req_type": "网络层",
               "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4455,7 +4856,7 @@
               "name": "IPv6",
               "req_type": "网络层",
               "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4463,7 +4864,7 @@
               "name": "路由器转发流程",
               "req_type": "网络层",
               "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4471,7 +4872,7 @@
               "name": "UDP 数据报",
               "req_type": "传输层",
               "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4479,7 +4880,7 @@
               "name": "TCP 报文段",
               "req_type": "传输层",
               "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4487,7 +4888,7 @@
               "name": "TCP 三次握手与四次挥手",
               "req_type": "传输层",
               "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4495,7 +4896,7 @@
               "name": "TCP 可靠传输",
               "req_type": "传输层",
               "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4503,7 +4904,7 @@
               "name": "流量控制(滑动窗口)与拥塞控制(慢开始",
               "req_type": "传输层",
               "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4511,7 +4912,7 @@
               "name": "拥塞避免",
               "req_type": "传输层",
               "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4519,7 +4920,7 @@
               "name": "快重传",
               "req_type": "传输层",
               "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4527,7 +4928,7 @@
               "name": "快恢复)",
               "req_type": "传输层",
               "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4535,7 +4936,7 @@
               "name": "DNS 域名解析过程",
               "req_type": "应用层",
               "full_desc": "DNS 域名解析过程、FTP、电子邮件(SMTP/POP3/IMAP)、万维网(HTTP 协议与状态码)。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4543,7 +4944,7 @@
               "name": "FTP",
               "req_type": "应用层",
               "full_desc": "DNS 域名解析过程、FTP、电子邮件(SMTP/POP3/IMAP)、万维网(HTTP 协议与状态码)。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4551,7 +4952,7 @@
               "name": "电子邮件(SMTP/POP3/IMAP)",
               "req_type": "应用层",
               "full_desc": "DNS 域名解析过程、FTP、电子邮件(SMTP/POP3/IMAP)、万维网(HTTP 协议与状态码)。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
@@ -4559,7 +4960,7 @@
               "name": "万维网(HTTP 协议与状态码)。",
               "req_type": "应用层",
               "full_desc": "DNS 域名解析过程、FTP、电子邮件(SMTP/POP3/IMAP)、万维网(HTTP 协议与状态码)。",
-              "grade": "A",
+              "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
