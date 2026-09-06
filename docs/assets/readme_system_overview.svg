@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">考研学习链系统总览</title>
+  <desc id="desc">从真实资料和考纲输入，经过约束、训练、反馈和状态记忆，输出终端私教与移动看板。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/><stop offset="1" stop-color="#101827"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" x2="1"><stop stop-color="#38bdf8"/><stop offset="1" stop-color="#6366f1"/></linearGradient>
+    <linearGradient id="green" x1="0" x2="1"><stop stop-color="#34d399"/><stop offset="1" stop-color="#14b8a6"/></linearGradient>
+    <linearGradient id="amber" x1="0" x2="1"><stop stop-color="#fbbf24"/><stop offset="1" stop-color="#f97316"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000" flood-opacity=".32"/></filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#64748b"/></marker>
+  </defs>
+  <style>
+    .font{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif}
+    .h{font-weight:800;fill:#f8fafc}.s{fill:#94a3b8}.card{fill:#111c2f;stroke:#26364f;stroke-width:1.5}.label{font-size:16px;font-weight:750;fill:#f8fafc}.body{font-size:13px;fill:#cbd5e1}.small{font-size:11px;fill:#94a3b8}.pill{font-size:11px;font-weight:700;fill:#dbeafe}
+  </style>
+  <rect width="1280" height="720" rx="28" fill="url(#bg)"/>
+  <path d="M72 130H1208M72 600H1208" stroke="#1e293b"/>
+  <text x="72" y="64" class="font h" font-size="30">考研学习链 · 从对话工具到备考工作流</text>
+  <text x="72" y="94" class="font s" font-size="14">把考纲、真实资料、错题状态和每日训练接成一条可复盘的学习链</text>
+
+  <g filter="url(#shadow)">
+    <rect x="72" y="166" width="250" height="174" rx="18" class="card"/>
+    <rect x="72" y="166" width="250" height="7" rx="4" fill="url(#blue)"/>
+    <text x="96" y="210" class="font label">1 · 输入</text>
+    <text x="96" y="240" class="font body">考纲与学科协议</text>
+    <text x="96" y="266" class="font body">真实教材、真题、草稿</text>
+    <text x="96" y="292" class="font body">目标、时间与薄弱点</text>
+    <text x="96" y="320" class="font small">白名单资料留在本地</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="366" y="166" width="250" height="174" rx="18" class="card"/>
+    <rect x="366" y="166" width="250" height="7" rx="4" fill="url(#green)"/>
+    <text x="390" y="210" class="font label">2 · 约束</text>
+    <text x="390" y="240" class="font body">AGENTS.md 路由</text>
+    <text x="390" y="266" class="font body">考纲红线与题源门禁</text>
+    <text x="390" y="292" class="font body">权限、沙箱与记忆层</text>
+    <text x="390" y="320" class="font small">先判断能不能做，再决定怎么做</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="660" y="166" width="250" height="174" rx="18" class="card"/>
+    <rect x="660" y="166" width="250" height="7" rx="4" fill="url(#amber)"/>
+    <text x="684" y="210" class="font label">3 · 训练</text>
+    <text x="684" y="240" class="font body">ky-cli / TUI / Web</text>
+    <text x="684" y="266" class="font body">组卷、变式、批改、诊断</text>
+    <text x="684" y="292" class="font body">数学验算与资料切片</text>
+    <text x="684" y="320" class="font small">可从命令行或本地网关进入</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="954" y="166" width="254" height="174" rx="18" class="card"/>
+    <rect x="954" y="166" width="254" height="7" rx="4" fill="#a78bfa"/>
+    <text x="978" y="210" class="font label">4 · 反馈</text>
+    <text x="978" y="240" class="font body">错因与采分点</text>
+    <text x="978" y="266" class="font body">FSRS 复测队列</text>
+    <text x="978" y="292" class="font body">掌握度、趋势与情报</text>
+    <text x="978" y="320" class="font small">下一次训练读取上一次结果</text>
+  </g>
+  <path d="M322 253H354M616 253H648M910 253H942" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="72" y="408" width="1136" height="140" rx="20" fill="#0f172a" stroke="#26364f"/>
+  <text x="98" y="448" class="font label">输出层：一个终端，两个发布面</text>
+  <g>
+    <rect x="98" y="472" width="500" height="48" rx="12" fill="#172554" stroke="#3b82f6"/>
+    <text x="122" y="502" class="font body">本地私教：ky-cli · TUI · Webhook · 交互式批改</text>
+    <rect x="624" y="472" width="558" height="48" rx="12" fill="#052e2b" stroke="#14b8a6"/>
+    <text x="648" y="502" class="font body">公开看板：docs/index.html · 默认脱敏 · GitHub Pages</text>
+  </g>
+  <text x="72" y="640" class="font s" font-size="12">基础 CLI 使用 Python 标准库；数学、PDF、图像、OCR 等增强技能按需安装 requirements.txt。</text>
+  <text x="1208" y="640" text-anchor="end" class="font pill">Local-first · 可验证 · 可回滚</text>
+</svg>

@@ -1,3 +1,4 @@
+
 # 考研学习链 (Kaoyan AI Study Chain) · 数字化备考工程
 
 <p align="center">
@@ -12,8 +13,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Status-Sprint%207%20Delivered%20%C2%B7%20%E5%85%A8%E6%99%AF%E4%B8%AD%E6%9E%A2%E4%B8%8E%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE-success.svg?style=flat-square" alt="Status" />
   <img src="https://img.shields.io/badge/Agent%20Core-Claude%20Code%20Level-blueviolet?style=flat-square&logo=openai&logoColor=white" alt="Agent Core" />
-  <img src="https://img.shields.io/badge/KaoYan%20Intelligence-55%2B%E6%89%80%E9%AB%98%E6%A0%A1%E5%AE%98%E6%96%B9%E6%B3%A8%E5%86%8C%E8%A1%A8-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white" alt="KaoYan Intelligence" />
-  <img src="https://img.shields.io/badge/Tests-CLI%20smoke%20%2B%20regression-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
+  <img src="https://img.shields.io/badge/KaoYan%20Intelligence-55%2B%E7%9C%81%E7%BA%A7%E9%AB%98%E6%A0%A1%E6%A1%A3%E6%A1%88%20(%E5%85%A8%E5%9B%8D800%2B%E6%A3%80%E7%B4%A2)-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white" alt="KaoYan Intelligence" />
+  <img src="https://img.shields.io/badge/Tests-251%2F251%20Passed%20(100%25%20%C2%B7%20CLI%20Smoke)-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
   <img src="https://img.shields.io/badge/Dashboard-6%20Tabs%20(%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE%2B%E5%9B%BE%E8%B0%B1%2B%E8%B6%8B%E5%8A%BF%E7%BA%BF%2B%E7%AE%80%E7%AB%A0%E9%80%9F%E9%80%92)-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
   <img src="https://img.shields.io/badge/Terminal%20TUI-v2.5%20%E6%9E%81%E5%AE%A2%E6%8E%A7%E5%88%B6%E5%8F%B0-3b82f6?style=flat-square&logo=gnometerminal&logoColor=white" alt="Terminal TUI" />
   <img src="https://img.shields.io/badge/Memory-3--Tier%20Pruning-f59e0b?style=flat-square&logo=speedtest&logoColor=white" alt="Memory" />
@@ -45,7 +46,11 @@
 ## 📖 这是什么？
 
 <p align="center">
-  <img src="docs/assets/feature_comparison.svg" alt="传统 AI 对话与考研学习链对比" style="max-width:100%;" />
+  <img src="docs/assets/readme_system_overview.svg" alt="考研学习链系统架构与工作流全景" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
+</p>
+
+<p align="center">
+  <img src="docs/assets/feature_comparison.svg" alt="传统 AI 对话与考研学习链对比" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
 </p>
 
 **考研学习链 (Kaoyan AI Study Chain)** 是一套面向考研学子的**数字化、工程化 AI 私人教师备考系统**。
@@ -770,9 +775,10 @@ python tools/test_ky_suite.py
  [测试组 21] Material Ingestion 试题智能切片入库管道与 ky ingest (9项) [PASS]
  [测试组 22] 社媒经验降噪过滤与分省高校注册表 (Sprint 6 - 8项验证) .. [PASS]
  [测试组 23] TUI 交互中枢与考情看板雷达 (Sprint 7 - 8项验证) .......... [PASS]
+ [测试组 24] CLI 真实进程级 smoke tests 与发布安全校验 (19项验证) .... [PASS]
 ============================================================
- 测试结果统计: 以实际运行输出为准
- 🎉 全部测试项通过（含 CLI 真实进程级 smoke test）
+ 测试结果统计: 通过 251 项, 失败 0 项 (100% 通过)
+ 🎉 全部测试项 100% 通过！系统各模块运转稳健（含 CLI 真实进程级 smoke test 与发布安全保障）
 ============================================================
 ```
 
