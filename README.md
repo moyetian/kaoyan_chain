@@ -390,8 +390,8 @@ flowchart TD
 ### 3. 🛡️ 隐私脱敏与快照模式 (`KY_SNAPSHOT_OPT_IN`)
 
 看板支持双重数据安全模式：
-- **默认本地完整模式**：编译生成的 `docs/index.html` 与 `docs/state_snapshot.json` 保留您的完整真实学情；
-- **公开托管脱敏模式**：若需推送到公开的 GitHub Pages，只需在环境变量中设置 `KY_SNAPSHOT_OPT_IN=1`，编译引擎将自动对敏感的错题原文与个人日记进行脱敏，仅保留结构化统计指标，确保开源安全！
+- **默认安全模式**：编译生成的 `docs/state_snapshot.json` 默认自动脱敏，仅保留公开看板所需的结构化指标；
+- **本地完整模式**：仅在明确设置 `KY_SNAPSHOT_OPT_IN=0` 时保留完整学情，禁止将该产物提交到公开仓库；公开 GitHub Pages 无需额外开关即可使用默认脱敏快照。
 
 ---
 

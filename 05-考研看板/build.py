@@ -1587,7 +1587,9 @@ def _write_state_snapshot(data: dict, snapshot_path: "Path", parse_warnings=None
     parse_warnings / sections_status 由 build() 提供，会一并写入 meta 便于诊断。
     """
     import os
-    opt_in = os.environ.get("KY_SNAPSHOT_OPT_IN", "").lower() in ("1", "true", "yes", "on")
+    # Default to the publish-safe snapshot. Full personal data requires an explicit opt-out.
+    snapshot_mode = os.environ.get("KY_SNAPSHOT_OPT_IN", "1").lower()
+    opt_in = snapshot_mode in ("1", "true", "yes", "on")
 
     snapshot_data = dict(data)  # 浅拷贝
 
@@ -1605,9 +1607,7 @@ def _write_state_snapshot(data: dict, snapshot_path: "Path", parse_warnings=None
 
     if not opt_in:
         # 公开版会泄露个人学情；打印强提示并把 full 字段置空作为警示
-        print("[WARNING] KY_SNAPSHOT_OPT_IN 未开启。")
-        print("          docs/state_snapshot.json 当前包含完整学情数据。")
-        print("          若要推送到 GitHub Pages 等公开环境，请设置 KY_SNAPSHOT_OPT_IN=1 重新生成。")
+        print("[WARNING] KY_SNAPSHOT_OPT_IN=0：当前生成完整本地学情快照，请勿提交到公开仓库。")
         print("          例如: set KY_SNAPSHOT_OPT_IN=1 && python build.py   (Windows)")
         print("                 export KY_SNAPSHOT_OPT_IN=1 && python build.py   (macOS/Linux)")
         snapshot_payload = {"meta": meta, "data": snapshot_data}
@@ -1656,7 +1656,7 @@ def _write_state_snapshot(data: dict, snapshot_path: "Path", parse_warnings=None
                 "trend": data.get("trend", []),
             }
         }
-        print("[OK] 已生成 KY_SNAPSHOT_OPT_IN=1 脱敏快照。可安全提交至公开仓库。")
+        print("[OK] 已生成脱敏快照（默认安全模式），可安全提交至公开仓库。")
 
     snapshot_path.parent.mkdir(parents=True, exist_ok=True)
     snapshot_path.write_text(

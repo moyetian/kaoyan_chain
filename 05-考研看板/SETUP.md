@@ -71,8 +71,8 @@ SECTION_MAP = {
 1. **绝对不会被上传的资产**：
    - 四科原始草稿、每日作业全文、教材与真题大体积 PDF 等（全部被根目录 `.gitignore` 阻断在本地）；
 2. **编译产物的公开脱敏 (`KY_SNAPSHOT_OPT_IN`)**：
-   - 默认模式下，生成的 `state_snapshot.json` 包含详细学情；
-   - 若需将仓库推送到公开 GitHub Pages，建议开启脱敏开关：
+   - 默认模式下，生成的 `state_snapshot.json` 自动脱敏，可直接用于公开 GitHub Pages；
+   - 仅需在本地调试且明确接受隐私风险时，设置 `KY_SNAPSHOT_OPT_IN=0` 生成完整快照：
      ```bash
      # Windows PowerShell
      $env:KY_SNAPSHOT_OPT_IN="1"; python tools/update_dashboard.py --local
