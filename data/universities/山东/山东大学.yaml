@@ -1,0 +1,24 @@
+chsi_code: '10422'
+name: 山东大学
+aliases:
+- 山大
+- SDU
+- Shandong University
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 山东济南
+province: 山东
+official_domain: https://www.sdu.edu.cn
+graduate_domain: https://www.yz.sdu.edu.cn
+admission_domain: https://www.yz.sdu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学与技术学院 / 软件学院
+    college_domain: https://www.cs.sdu.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

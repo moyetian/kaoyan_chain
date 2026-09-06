@@ -1,0 +1,24 @@
+chsi_code: '10611'
+name: 重庆大学
+aliases:
+- 重大
+- CQU
+- Chongqing University
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 重庆
+province: 重庆
+official_domain: https://www.cqu.edu.cn
+graduate_domain: http://yz.cqu.edu.cn
+admission_domain: http://yz.cqu.edu.cn
+departments:
+  计算机:
+    college_name: 大数据与软件学院 / 计算机学院
+    college_domain: http://www.cs.cqu.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

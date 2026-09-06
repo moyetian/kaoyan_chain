@@ -1,0 +1,24 @@
+chsi_code: '10141'
+name: 大连理工大学
+aliases:
+- 大工
+- DUT
+- Dalian University of Technology
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 辽宁大连
+province: 辽宁
+official_domain: https://www.dlut.edu.cn
+graduate_domain: http://gs.dlut.edu.cn
+admission_domain: http://gs.dlut.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学与技术学院 / 软件学院
+    college_domain: http://cs.dlut.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

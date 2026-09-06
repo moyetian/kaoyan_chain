@@ -11,7 +11,7 @@ KaoYan Intelligence · 证据链与多源冲突仲裁引擎 (Evidence Engine)
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from .models import EvidenceSource, EvidenceObject
+from .models import EvidenceSource, EvidenceObject, current_exam_year
 
 # 信源基础可信度打分表 (0~100)
 SOURCE_SCORES = {
@@ -22,6 +22,9 @@ SOURCE_SCORES = {
     "education_platform": 60,  # C 级：中国教育在线、研招网合作平台
     "social_media": 30,        # C 级：知乎 / B 站 / 小红书实名经验与就读体验
     "forum": 10,               # D 级：考研论坛、非实名贴吧、个人博客
+    # 联网失败时的离线兜底：全国统考科目标准模板。
+    # 它不是任何一所院校的官方核实数据（院校可能改自命题），故绝不可标为 S 级。
+    "offline_baseline": 40,
 }
 
 SOURCE_LEVELS = {
@@ -31,7 +34,8 @@ SOURCE_LEVELS = {
     "official_wechat": "B",
     "education_platform": "C",
     "social_media": "C",
-    "forum": "D"
+    "forum": "D",
+    "offline_baseline": "C",
 }
 
 
@@ -54,7 +58,7 @@ def build_evidence(
     source_name: str,
     source_url: str,
     published_at: Optional[str] = None,
-    target_year: int = 2027,
+    target_year: int = current_exam_year(),
     extra_confidence_decay: float = 0.0
 ) -> EvidenceObject:
     """
@@ -89,6 +93,14 @@ def build_evidence(
     elif exam_year > target_year + 1:
         status = "UNVERIFIED"
         conflict_detail = f"⚠️ 异常数据：年份 {exam_year} 超前异常，建议核验。"
+
+    # 离线兜底数据：未经联网核验，既不能冒充权威信源，也不能标为已验证
+    if str(source_type).lower() == "offline_baseline":
+        status = "UNVERIFIED"
+        conflict_detail = (
+            "⚠️ 离线基准：研招网/官网当期页面未能成功抓取，本条为「全国统考科目标准模板」兜底推定值，"
+            "并非该校官方核实数据（院校可能改为自命题），务必以官方简章为准。"
+        )
         
     retrieved_at = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
     

@@ -1,0 +1,37 @@
+chsi_code: '10003'
+name: 清华大学
+aliases:
+- 清华
+- THU
+- Tsinghua University
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+- C9联盟
+region: 北京
+province: 北京
+official_domain: https://www.tsinghua.edu.cn
+graduate_domain: https://yz.tsinghua.edu.cn
+admission_domain: https://yz.tsinghua.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学与技术系
+    college_domain: https://www.cs.tsinghua.edu.cn
+    default_majors:
+    - 081200
+    - 085400
+  电子:
+    college_name: 电子工程系
+    college_domain: https://www.ee.tsinghua.edu.cn
+    default_majors:
+    - 080900
+    - 081000
+  经管:
+    college_name: 经济管理学院
+    college_domain: https://www.sem.tsinghua.edu.cn
+    default_majors:
+    - '120100'
+    - '120200'
+    - '025100'

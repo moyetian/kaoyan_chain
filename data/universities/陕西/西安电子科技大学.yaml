@@ -1,0 +1,29 @@
+chsi_code: '10701'
+name: 西安电子科技大学
+aliases:
+- 西电
+- XIDIAN
+- XDU
+- 两电一邮
+level:
+- '211'
+- 双一流
+region: 陕西西安
+province: 陕西
+official_domain: https://www.xidian.edu.cn
+graduate_domain: https://yz.xidian.edu.cn
+admission_domain: https://yz.xidian.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学与技术学院 / 网络与信息安全学院
+    college_domain: https://cs.xidian.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085412
+  通信:
+    college_name: 通信工程学院
+    college_domain: https://ste.xidian.edu.cn
+    default_majors:
+    - 081000
+    - 085401

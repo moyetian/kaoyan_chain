@@ -12,10 +12,123 @@ import os
 import json
 import urllib.parse
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
+import yaml
 from .models import UniversityEntity
 
 REGISTRY_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "universities" / "registry.json"
+
+PROVINCES_LIST = [
+    "北京", "天津", "上海", "重庆",
+    "河北", "山西", "辽宁", "吉林", "黑龙江",
+    "江苏", "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北", "湖南", "广东", "海南",
+    "四川", "贵州", "云南", "陕西", "甘肃", "青海", "台湾",
+    "内蒙古", "广西", "西藏", "宁夏", "新疆",
+    "香港", "澳门"
+]
+
+
+def extract_province(region_str: str, school_name: str = "") -> str:
+    """从地域文本或学校名称中提取标准省份/直辖市/自治区"""
+    if region_str:
+        for p in PROVINCES_LIST:
+            if region_str.startswith(p) or p in region_str:
+                return p
+    if school_name:
+        for p in PROVINCES_LIST:
+            if school_name.startswith(p) or p in school_name:
+                return p
+    return "其他"
+
+
+def validate_university_yaml(data_or_path: Any) -> Tuple[bool, List[str]]:
+    """
+    校验高校 YAML 档案是否满足 Schema 标准：
+    必填项：name, chsi_code / code, region / province, level, official_domain / official_site
+    """
+    data = data_or_path
+    if isinstance(data_or_path, (str, Path)):
+        p = Path(data_or_path)
+        if not p.exists():
+            return False, [f"文件不存在: {p}"]
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+        except Exception as e:
+            return False, [f"YAML 解析失败: {e}"]
+
+    if not isinstance(data, dict):
+        return False, ["高校数据必须为 YAML 映射字典"]
+
+    errors = []
+    if not data.get("name") or not str(data.get("name")).strip():
+        errors.append("缺少必填字段: name (高校全称)")
+
+    code = data.get("chsi_code") or data.get("code")
+    if not code or not str(code).strip():
+        errors.append("缺少必填字段: chsi_code / code (院校代码)")
+
+    reg = data.get("region") or data.get("province")
+    if not reg or not str(reg).strip():
+        errors.append("缺少必填字段: region / province (省份/区域)")
+
+    lvl = data.get("level")
+    if not lvl:
+        errors.append("缺少必填字段: level (办学层次)")
+
+    dom = data.get("official_domain") or data.get("official_site") or data.get("domains")
+    if not dom:
+        errors.append("缺少必填字段: official_domain / official_site (官网通道)")
+
+    return len(errors) == 0, errors
+
+
+def export_to_provincial_yamls(target_dir: Optional[Path] = None, source_registry: Optional[Path] = None) -> List[Path]:
+    """
+    将集中式 registry.json 中的高校实体按省份分流导出为 YAML 文件：
+    data/universities/<省份>/<高校名称>.yaml
+    """
+    source_path = source_registry or REGISTRY_PATH
+    out_dir = target_dir or REGISTRY_PATH.parent
+
+    if not source_path.exists():
+        return []
+
+    try:
+        with open(source_path, "r", encoding="utf-8") as f:
+            raw_data = json.load(f)
+    except Exception:
+        return []
+
+    exported_paths = []
+    for code, item in raw_data.items():
+        name = item.get("name", "").strip()
+        if not name:
+            continue
+        region = item.get("region", "")
+        prov = extract_province(region, name)
+        prov_dir = out_dir / prov
+        prov_dir.mkdir(parents=True, exist_ok=True)
+
+        yaml_obj = {
+            "chsi_code": str(item.get("chsi_code", code)),
+            "name": name,
+            "aliases": item.get("aliases", []),
+            "level": item.get("level", []),
+            "region": region,
+            "province": prov,
+            "official_domain": item.get("official_domain", ""),
+            "graduate_domain": item.get("graduate_domain", ""),
+            "admission_domain": item.get("admission_domain", ""),
+            "departments": item.get("departments", {})
+        }
+
+        yaml_file = prov_dir / f"{name}.yaml"
+        with open(yaml_file, "w", encoding="utf-8") as yf:
+            yaml.dump(yaml_obj, yf, allow_unicode=True, sort_keys=False, default_flow_style=False)
+        exported_paths.append(yaml_file)
+
+    return exported_paths
 
 
 class UniversityRegistry:
@@ -28,39 +141,80 @@ class UniversityRegistry:
         self._name_map: Dict[str, str] = {}  # name_lower -> chsi_code
         self.load()
 
-    def load(self) -> None:
-        """加载高校注册表"""
-        if not self.file_path.exists():
+    def _register_item(self, item: Dict[str, Any], default_code: str = "") -> None:
+        """内部注册单个高校字典至实体池与索引"""
+        chsi_code = str(item.get("chsi_code") or item.get("code") or default_code or "").strip()
+        name = str(item.get("name", "")).strip()
+        if not name:
             return
-        
-        try:
-            with open(self.file_path, "r", encoding="utf-8") as f:
-                raw_data = json.load(f)
-        except Exception as e:
-            raw_data = {}
+        aliases = item.get("aliases", [])
+        if not isinstance(aliases, list):
+            aliases = [str(aliases)] if aliases else []
 
+        level = item.get("level", [])
+        if isinstance(level, str):
+            level = [level]
+        elif not isinstance(level, list):
+            level = []
+
+        region = str(item.get("region") or item.get("province") or "").strip()
+        official_domain = str(item.get("official_domain") or item.get("official_site") or "").strip()
+        graduate_domain = str(item.get("graduate_domain") or "").strip()
+        admission_domain = str(item.get("admission_domain") or "").strip()
+        departments = item.get("departments") or item.get("pro_majors") or {}
+        if not isinstance(departments, dict):
+            departments = {}
+
+        entity = UniversityEntity(
+            chsi_code=chsi_code or "待查",
+            name=name,
+            aliases=[str(a) for a in aliases],
+            level=[str(l) for l in level],
+            region=region,
+            official_domain=official_domain,
+            graduate_domain=graduate_domain,
+            admission_domain=admission_domain,
+            departments=departments
+        )
+        self._entities[entity.chsi_code] = entity
+        self._name_map[entity.name.lower()] = entity.chsi_code
+
+        for alias in entity.aliases:
+            if alias:
+                self._alias_map[alias.lower().strip()] = entity.chsi_code
+
+    def load(self) -> None:
+        """加载高校注册表 (优先从 JSON 底座加载，并递归加载各省份 YAML 档案增强覆盖)"""
         self._entities.clear()
         self._alias_map.clear()
         self._name_map.clear()
 
-        for code, item in raw_data.items():
-            entity = UniversityEntity(
-                chsi_code=str(item.get("chsi_code", code)),
-                name=item.get("name", ""),
-                aliases=item.get("aliases", []),
-                level=item.get("level", []),
-                region=item.get("region", ""),
-                official_domain=item.get("official_domain", ""),
-                graduate_domain=item.get("graduate_domain", ""),
-                admission_domain=item.get("admission_domain", ""),
-                departments=item.get("departments", {})
-            )
-            self._entities[entity.chsi_code] = entity
-            self._name_map[entity.name.lower()] = entity.chsi_code
+        # 1. 尝试从 registry.json 加载
+        if self.file_path.exists():
+            try:
+                with open(self.file_path, "r", encoding="utf-8") as f:
+                    raw_data = json.load(f)
+                for code, item in raw_data.items():
+                    self._register_item(item, default_code=str(code))
+            except Exception:
+                pass
 
-            # 注册别名
-            for alias in entity.aliases:
-                self._alias_map[alias.lower().strip()] = entity.chsi_code
+        # 2. 递归扫描分省 YAML 目录 (data/universities/<省份>/*.yaml)
+        base_dir = self.file_path.parent
+        if base_dir.exists() and base_dir.is_dir():
+            for y_file in base_dir.glob("*/*.y*ml"):
+                try:
+                    with open(y_file, "r", encoding="utf-8") as yf:
+                        y_data = yaml.safe_load(yf)
+                    if isinstance(y_data, dict):
+                        ok, _ = validate_university_yaml(y_data)
+                        if ok:
+                            self._register_item(y_data)
+                except Exception:
+                    pass
+
+    def export_to_provincial_yamls(self, target_dir: Optional[Path] = None) -> List[Path]:
+        return export_to_provincial_yamls(target_dir=target_dir, source_registry=self.file_path)
 
     def count(self) -> int:
         """高校总数"""

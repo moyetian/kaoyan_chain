@@ -11,7 +11,7 @@ KaoYan Intelligence · 文档与页面结构化抽取器 (Document & Page Extrac
 import re
 import html
 from typing import Dict, Any, List, Optional
-from .models import EvidenceObject, EvidenceSource
+from .models import EvidenceObject, EvidenceSource, current_exam_year
 from .evidence_engine import build_evidence
 
 
@@ -23,7 +23,7 @@ class DocumentExtractor:
         html_text: str,
         page_url: str,
         school_name: str,
-        target_year: int = 2027,
+        target_year: int = current_exam_year(),
         source_type: str = "graduate_school"
     ) -> List[EvidenceObject]:
         """从官方通知 HTML 提取关键事实并转化为证据对象"""
@@ -167,7 +167,7 @@ class DocumentExtractor:
         pdf_path_or_bytes: Any,
         school_name: str,
         source_url: str = "",
-        target_year: int = 2027,
+        target_year: int = current_exam_year(),
         major_keyword: Optional[str] = None
     ) -> List[EvidenceObject]:
         """

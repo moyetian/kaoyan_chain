@@ -1,0 +1,31 @@
+chsi_code: '10384'
+name: 厦门大学
+aliases:
+- 厦大
+- XMU
+- Xiamen University
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 福建厦门
+province: 福建
+official_domain: https://www.xmu.edu.cn
+graduate_domain: https://zs.xmu.edu.cn
+admission_domain: https://zs.xmu.edu.cn
+departments:
+  计算机:
+    college_name: 信息学院
+    college_domain: https://informatics.xmu.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405
+  经济:
+    college_name: 经济学院 / 王亚南经济研究院
+    college_domain: https://econ.xmu.edu.cn
+    default_majors:
+    - '020100'
+    - '020200'
+    - '025100'

@@ -1030,7 +1030,16 @@ def run_tests():
             chsi_url = connector.build_catalog_url("华中科技大学", "085404", "湖北武汉")
             runner.assert_true("dwmc=%E5%8D%8E%E4%B8%AD%E7%A7%91%E6%8A%80%E5%A4%A7%E5%AD%A6" in chsi_url and "ssdm=42" in chsi_url, "Intelligence 19-14：研招网专业目录精确参数化构造成功")
             chsi_evs = connector.query_catalog("华中科技大学", "085404", target_year=2027)
-            runner.assert_true(len(chsi_evs) > 0 and chsi_evs[0].source.level == "S", "Intelligence 19-15：研招网目录抽取返回 S 级权威科目与招生指标")
+            # 行为正确性断言（不强依赖外网）：
+            #   联网抓取成功 → S 级 VERIFIED 权威证据；
+            #   联网失败兜底 → 必须诚实标注 offline_baseline / C 级 / UNVERIFIED，严禁伪装 S 级官方数据
+            _ok_chsi = len(chsi_evs) > 0 and (
+                (chsi_evs[0].source.level == "S" and chsi_evs[0].status == "VERIFIED")
+                or (chsi_evs[0].source.type == "offline_baseline"
+                    and chsi_evs[0].status == "UNVERIFIED"
+                    and "离线基准" in chsi_evs[0].source.name)
+            )
+            runner.assert_true(_ok_chsi, "Intelligence 19-15：研招网抓取成功返回S级核验证据，联网失败时兜底诚实标注离线基准(C级/未核验)")
 
             # 19-16: 文档抽取器 (Document Extractor)
             mock_html = "<html><head><title>2027年硕士研究生招生简章 - 华中科技大学研究生院</title></head><body><p>拟招收硕士研究生 150 人，初试科目包含(101)思想政治理论、(204)英语(二)、(302)数学(二)、(408)计算机学科专业基础。</p><a href='/doc/2027_zsml.pdf'>2027招生专业目录.pdf</a></body></html>"
@@ -1077,8 +1086,213 @@ def run_tests():
             runner.assert_true("个人学情量化报考风险与提分门槛诊断" in intel_res["markdown_report"], "Intelligence 19-27：研报成功包含 User State Gap Analysis 学情量化诊断")
             runner.assert_true("370+" in intel_res["markdown_report"] or "目标分" in intel_res["markdown_report"], "Intelligence 19-28：学情诊断成功联动学员目标成绩与名校自划线门槛")
 
+            # =========================================================================
+            # 20. Syllabus Diff 考研大纲考点版本比对引擎与 ky fetch 统一调度
+            # =========================================================================
+            print("\n[测试组 20: Syllabus Diff 考研大纲考点版本比对引擎与 ky fetch 调度 (9 项验证)]")
+            diff_gen = ki.get_syllabus_diff_generator()
+            runner.assert_true(diff_gen is not None, "Syllabus Diff 20-1：成功载入 SyllabusDiffGenerator 引擎单例")
+
+            sample_s1 = """## 一、高等数学
+### 1. 函数、极限、连续
+- **掌握**：极限四则运算法则、等价无穷小代换
+- **理解**：闭区间连续函数零点定理
+- **了解**：函数奇偶性与周期性
+### 2. 一元函数微分学
+- **掌握**：洛必达法则求极限、导数物理意义
+- **理解**：拉格朗日中值定理
+"""
+            sample_s2 = """## 一、高等数学
+### 1. 函数、极限、连续
+- **掌握**：极限四则运算法则、等价无穷小代换
+- **掌握**：闭区间连续函数零点定理
+### 2. 一元函数微分学
+- **掌握**：洛必达法则求极限
+- **掌握**：泰勒公式与麦克劳林展开
+- **理解**：拉格朗日中值定理
+"""
+            diff_res = diff_gen.compare_texts(
+                old_text=sample_s1,
+                new_text=sample_s2,
+                school="测试大学",
+                major="高等数学",
+                year_old=2026,
+                year_new=2027
+            )
+            m_diff = diff_res["metrics"]
+            runner.assert_true(m_diff["total_old"] == 7, "Syllabus Diff 20-2：准确统计基准原子考点总数 (7 项)")
+            runner.assert_true(m_diff["total_new"] == 6, "Syllabus Diff 20-3：准确统计新版原子考点总数 (6 项)")
+            runner.assert_true(m_diff["added_count"] >= 1, "Syllabus Diff 20-4：成功识别新增考点 (泰勒公式与麦克劳林展开)")
+            runner.assert_true(m_diff["removed_count"] >= 1, "Syllabus Diff 20-5：成功识别被剔除考点 (了解级别的奇偶性与周期性)")
+            runner.assert_true(m_diff["modified_count"] >= 1, "Syllabus Diff 20-6：成功识别考查要求提升 (零点定理 理解➔掌握)")
+            runner.assert_true(m_diff["volatility_percentage"] > 0, "Syllabus Diff 20-7：量化计算大纲波动率与稳定性等级")
+
+            md_diff_rep = diff_gen.format_diff_markdown(diff_res)
+            runner.assert_true("新增考点清单" in md_diff_rep and "高危必看" in md_diff_rep, "Syllabus Diff 20-8：成功生成高可读性大纲异动 Markdown 深度研报")
+
+            # 验证 Agent 工具箱中集成 diff_syllabus
+            from agent.tools_impl import ToolRegistry, PermissionManager, Sandbox
+            sb_diff = Sandbox(workspace_root=test_sandbox_dir)
+            pm_diff = PermissionManager(workspace_root=test_sandbox_dir, mode="auto")
+            pm_diff.force_allow_all = True
+            tr_diff = ToolRegistry(sandbox=sb_diff, permissions=pm_diff)
+            runner.assert_true("diff_syllabus" in tr_diff.tools, "Syllabus Diff 20-9：ToolRegistry 成功注册 diff_syllabus 专属 Agent 工具")
+
+            # =========================================================================
+            # 21. Material Ingestion 试题智能切片入库管道与 ky ingest (9 项验证)
+            # =========================================================================
+            print("\n[测试组 21: Material Ingestion 试题智能切片入库管道与 ky ingest (9 项验证)]")
+            try:
+                from skills import material_ingestion as mi
+            except ImportError:
+                from tools.skills import material_ingestion as mi
+
+            runner.assert_true(mi is not None, "Material Ingest 21-1：成功载入 material_ingestion 技能模块")
+            skills_reg = ky_cli.list_skills()
+            runner.assert_true("material_ingestion" in skills_reg, "Material Ingest 21-2：SKILLS_REGISTRY 正确注册 material_ingestion")
+
+            sample_exam_text = """一、单项选择题
+1. 某二叉树的先序与后序遍历相同，则其形态为 ( )
+A. 只有根结点
+B. 只有左子树
+C. 只有右子树
+D. 无度为2的结点
+【答案】A
+【解析】先序后序相同必定仅有一个根结点。
+
+二、综合应用题
+41. (15分) 某系统采用分页存储管理，逻辑地址空间为 32 位：
+(1) 计算页表项大小；
+(2) 说明 TLB 快表命中时的地址转换流程。
+【参考答案】
+解：
+(1) 页表项计算：
+步骤1：根据页面大小划分页号与页内偏移量。[+6分]
+(2) TLB 地址转换：
+步骤2：并行比对 TLB 标签并计算物理地址。[+9分]
+【解析】考察虚拟内存分页机制与 TLB 命中。
+"""
+            pipe = mi.get_material_ingestion_pipeline()
+            chunks = pipe.chunk_text(sample_exam_text, default_source="2025统考模拟")
+            runner.assert_true(len(chunks) == 2, f"Material Ingest 21-3：成功分块切片 2 道独立大题 (当前切出 {len(chunks)} 题)")
+
+            c_choice = chunks[0]
+            runner.assert_true(c_choice.q_type == "choice" and len(c_choice.options) == 4, "Material Ingest 21-4：单选题识别准确，完整提取 A/B/C/D 四个选项")
+            runner.assert_true("二叉树" in c_choice.stem or "只有根结点" in str(c_choice.options), "Material Ingest 21-5：准确提取选择题原题干与核心选项")
+
+            c_essay = chunks[1]
+            runner.assert_true(c_essay.q_type == "essay" and c_essay.score == 15, "Material Ingest 21-6：综合大题识别准确并捕获 15 分满分")
+            runner.assert_true(len(c_essay.rubric) >= 2, "Material Ingest 21-7：成功解析并提取步骤级采分点 [+6分] 与 [+9分]")
+
+            card_sample = pipe.format_question_card(c_essay, subject="pro")
+            runner.assert_true("采分步骤" in card_sample and "[+6分]" in card_sample, "Material Ingest 21-8：成功排版为标准白名单真题卡片格式")
+
+            runner.assert_true("ingest_exam_material" in tr_diff.tools, "Material Ingest 21-9：ToolRegistry 成功注册 ingest_exam_material 专属工具")
+
+            # =========================================================================
+            # 22. 社媒经验降噪过滤与分省高校注册表 (Sprint 6 - 8 项验证)
+            # =========================================================================
+            print("\n[测试组 22: 社媒经验降噪过滤与分省高校注册表 (Sprint 6 - 8 项验证)]")
+            try:
+                from skills import school_scout
+            except ImportError:
+                from tools.skills import school_scout
+
+            mock_social_posts = {
+                "zhihu": [
+                    {
+                        "title": "2025华科计算机85404考研一战410分经验贴：初试各科复盘与复试不歧视双非全记录",
+                        "url": "https://zhuanlan.zhihu.com/p/mock123",
+                        "snippet": "总分410，政治78英语84数学122专业课126，专业排名前五。华科一志愿保护非常好，复试公开透明不压分。"
+                    },
+                    {
+                        "title": "华科计算机专业课资料出售！学姐独家笔记加微信咨询",
+                        "url": "https://zhuanlan.zhihu.com/p/mock_spam",
+                        "snippet": "需要真题笔记加微信：kaoyan6688，淘宝搜学姐考研，包过密卷，名额有限私聊。"
+                    }
+                ],
+                "bilibili": [
+                    {
+                        "title": "【24考研复盘】华中科技大学408复试机试避坑指南",
+                        "url": "https://www.bilibili.com/video/BVmock",
+                        "snippet": "华科复试机试难度适中，老师面试非常和蔼，差额复试比严格执行1:1.2，绝不压分！"
+                    }
+                ]
+            }
+
+            filtered_posts = school_scout.filter_community_experiences(mock_social_posts, school="华中科技大学", major="计算机")
+            runner.assert_true(len(filtered_posts) == 3, "Sprint 6 22-1：成功清洗并输出全部 3 篇社媒经验")
+
+            # 验证高分且近期的经验置信度处于高分段
+            high_post = next((p for p in filtered_posts if "410分" in p["title"]), None)
+            runner.assert_true(high_post and high_post["confidence"] >= 75 and high_post["quality"] == "HIGH", "Sprint 6 22-2：包含分数明细与近期高分经验贴赋予高置信度 (>=75)")
+
+            # 验证营销商业垃圾贴被降权并打上垃圾标签
+            spam_post = next((p for p in filtered_posts if "加微信" in p["title"]), None)
+            runner.assert_true(spam_post and spam_post["is_spam"] and spam_post["confidence"] < 50, "Sprint 6 22-3：商业卖课与引流垃圾贴成功识别并降权惩处")
+
+            # 验证经验档案落盘
+            test_exp_file = school_scout.save_experience_dossier("华中科技大学", "计算机", filtered_posts, metrics={"level": "985", "positive_signals": ["保护一志愿"]})
+            runner.assert_true(test_exp_file.exists() and "华中科技大学" in test_exp_file.read_text(encoding="utf-8"), "Sprint 6 22-4：成功归档并落盘经验档案至 docs/experiences/")
+
+            # 验证分省 YAML 导出与 Schema 校验
+            from intelligence.registry import export_to_provincial_yamls, validate_university_yaml, get_registry
+            exported_yamls = export_to_provincial_yamls()
+            runner.assert_true(len(exported_yamls) >= 50, f"Sprint 6 22-5：高校注册表成功按省份分流导出为 YAML 档案 (生成 {len(exported_yamls)} 个)")
+
+            sample_hust_yaml = ROOT / "data" / "universities" / "湖北" / "华中科技大学.yaml"
+            ok_val, err_val = validate_university_yaml(sample_hust_yaml)
+            runner.assert_true(ok_val and len(err_val) == 0, "Sprint 6 22-6：validate_university_yaml 校验符合严格 Schema 标准")
+
+            # 验证非法 YAML 被拦截
+            invalid_ok, invalid_errs = validate_university_yaml({"name": ""})
+            runner.assert_true(not invalid_ok and len(invalid_errs) >= 3, "Sprint 6 22-7：validate_university_yaml 准确拦截缺失必填字段的数据")
+
+            # 验证 ContextEngine 动态挂载
+            from agent.context_engine import ContextEngine
+            ce_test = ContextEngine(workspace_root=ROOT, active_subject="pro")
+            test_prompt = ce_test.build_system_prompt()
+            runner.assert_true("目标院校" in test_prompt or "考情与社媒" in test_prompt, "Sprint 6 22-8：ContextEngine 成功将考情与考纲情报动态注入系统提示词")
+
+            # =========================================================================
+            # 23. TUI 交互中枢与考情看板雷达 (Sprint 7 - 8 项验证)
+            # =========================================================================
+            print("\n[测试组 23: TUI 交互中枢与考情看板雷达 (Sprint 7 - 8 项验证)]")
+            try:
+                import tui_navigator
+            except ImportError:
+                from tools import tui_navigator
+
+            runner.assert_true(tui_navigator is not None, "Sprint 7 23-1：成功载入 tui_navigator 模块")
+            menu_hdr = tui_navigator.render_header()
+            runner.assert_true("考研学习链" in menu_hdr and "倒计时" in menu_hdr, "Sprint 7 23-2：TUI 导航器正确渲染终端看板 Banner 与倒计时")
+
+            menu_txt = tui_navigator.render_menu()
+            runner.assert_true("[1] 今日任务" in menu_txt and "[4] 考纲Diff" in menu_txt and "[8] 简章监控" in menu_txt, "Sprint 7 23-3：TUI 菜单完整囊括全功能 9 大动作入口")
+
+            # 测试退出信号
+            exit_flag = tui_navigator.execute_action("0", interactive=False)
+            runner.assert_true(exit_flag is False, "Sprint 7 23-4：执行 '0' 指令正确产生系统安全退出信号")
+
+            # 验证 AdmissionWatcher 状态可被正常检索
+            from intelligence.watcher import AdmissionWatcher
+            watcher = AdmissionWatcher()
+            watched_list = watcher.list_watched()
+            runner.assert_true(isinstance(watched_list, list), "Sprint 7 23-5：AdmissionWatcher 正常输出已监控高校清单")
+
+            # 验证 05-考研看板 build_radar_html
+            sys.path.insert(0, str(ROOT / "05-考研看板"))
+            import build as board_build
+            radar_html = board_build.build_radar_html(ROOT)
+            runner.assert_true("目标院校简章监控雷达" in radar_html, "Sprint 7 23-6：build_radar_html 成功构建简章监控雷达卡片")
+            runner.assert_true("考纲版本异动与动荡率分析" in radar_html, "Sprint 7 23-7：build_radar_html 成功构建考纲 AST 异动雷达卡片")
+
+            # 验证 docs/index.html 包含考情雷达与导航切换
+            docs_html = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+            runner.assert_true("id=\"p-radar\"" in docs_html and "data-p=\"radar\"" in docs_html, "Sprint 7 23-8：docs/index.html 成功挂载考情雷达页签并与底部导航栏实现双向响应联动")
+
         except Exception as e:
-            runner.assert_true(False, f"Intelligence 引擎测试异常: {e}")
+            runner.assert_true(False, f"Sprint 6/7 模块测试异常: {e}")
 
     finally:
         # 还原现场配置与大盘

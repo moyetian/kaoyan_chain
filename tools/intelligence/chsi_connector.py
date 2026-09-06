@@ -17,7 +17,7 @@ import html
 import urllib.request
 import urllib.parse
 from typing import Dict, Any, List, Optional
-from .models import EvidenceObject, UniversityEntity
+from .models import EvidenceObject, UniversityEntity, current_exam_year
 from .evidence_engine import build_evidence
 
 CHSI_ZSML_URL = "https://yz.chsi.com.cn/zsml/queryAction.do"
@@ -128,7 +128,7 @@ class CHSIConnector:
         self,
         school_name: str,
         major_keyword: Optional[str] = None,
-        target_year: int = 2027
+        target_year: int = current_exam_year()
     ) -> List[EvidenceObject]:
         """
         查询研招网专业目录，并返回标准 EvidenceObject 列表
@@ -235,15 +235,18 @@ class CHSIConnector:
 
         for code, info in matched_codes:
             # 1. 专业基本信息
+            # 注意：此处是「联网失败时的离线兜底」，严禁伪造成 S 级研招网权威证据。
+            # 来源名不拼接校名、级别降为 C、状态标为未核验，避免学员误当作官方核实数据。
             ev_sub = build_evidence(
                 field_name=f"初试科目组合 ({code} {info['name']})",
                 value=info["common_subjects"],
                 unit="门",
                 exam_year=target_year,
-                source_type="chsi",
-                source_name=f"教育部全国硕士研究生招生目录标准规范 ({school_name})",
+                source_type="offline_baseline",
+                source_name="【离线基准·未联网核验】全国硕士研究生统考科目标准模板",
                 source_url=source_url,
-                target_year=target_year
+                target_year=target_year,
+                extra_confidence_decay=0.1
             )
             evidences.append(ev_sub)
 

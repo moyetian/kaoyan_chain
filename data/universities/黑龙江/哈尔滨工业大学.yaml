@@ -1,0 +1,25 @@
+chsi_code: '10213'
+name: 哈尔滨工业大学
+aliases:
+- 哈工大
+- HIT
+- C9联盟
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+- C9联盟
+region: 黑龙江哈尔滨
+province: 黑龙江
+official_domain: https://www.hit.edu.cn
+graduate_domain: http://yzb.hit.edu.cn
+admission_domain: http://yzb.hit.edu.cn
+departments:
+  计算机:
+    college_name: 计算学部
+    college_domain: http://foc.hit.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

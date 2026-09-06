@@ -92,6 +92,49 @@ class ContextEngine:
                 f"当前「参考资料/」暂无本地文件。若学员指定真题题目或从外部输入，严格针对学员输入解答，绝不虚构题目来自未核验的书籍！"
             )
 
+        # 4.5 目标院校招考情报、考纲变动与社媒真实经验档案动态挂载
+        intel_snippets = []
+        target_school = ""
+        target_major = ""
+        cfg_file = self.workspace_root / "ky_config.json"
+        if cfg_file.exists():
+            try:
+                import json
+                cfg_obj = json.loads(self._read_safe(cfg_file))
+                sp = cfg_obj.get("study_plan", {})
+                target_school = sp.get("school", "").strip()
+                target_major = sp.get("major", "").strip()
+            except Exception:
+                pass
+
+        if target_school and target_school != "未指定":
+            # 检索 docs/experiences/<学校>_*.md 或 <学校>.md
+            exp_dir = self.workspace_root / "docs" / "experiences"
+            if exp_dir.exists():
+                for exp_file in exp_dir.glob("*.md"):
+                    if target_school in exp_file.stem:
+                        txt = self._read_safe(exp_file)
+                        if txt.strip():
+                            intel_snippets.append(f"--- [目标院校社媒就读与避坑经验 ({exp_file.name})] ---\n{txt[:1800]}")
+                            break
+
+            # 检索 04-专业课/考纲变动分析_*.md
+            pro_dir = self.workspace_root / "04-专业课"
+            if pro_dir.exists():
+                diff_files = sorted(list(pro_dir.glob("考纲变动分析_*.md")), key=lambda p: p.stat().st_mtime, reverse=True)
+                if diff_files:
+                    latest_diff = diff_files[0]
+                    diff_txt = self._read_safe(latest_diff)
+                    if diff_txt.strip():
+                        intel_snippets.append(f"--- [最新专业课考纲动荡与变动分析 ({latest_diff.name})] ---\n{diff_txt[:1500]}")
+
+        if intel_snippets:
+            sys_parts.append(
+                f"\n=== 🎯【目标院校考情与社媒口碑实证档案 ({target_school})】===\n"
+                "以下为系统通过研招情报与社媒降噪过滤算法沉淀的真实考情与考纲变动分析，请在向学员做院校分析、答疑和制定复习策略时充分应用：\n"
+                + "\n\n".join(intel_snippets)
+            )
+
         # 5. Agent Loop 工具调用行为规范
         sys_parts.append(
             "\n=== 🤖【Agent 智能体工具调用行为规范 (Claude Code / Codex 标准)】 ===\n"

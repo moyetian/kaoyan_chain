@@ -1,0 +1,22 @@
+chsi_code: '10285'
+name: 苏州大学
+aliases:
+- 苏大
+- Soochow
+- SZU-JS
+level:
+- '211'
+- 双一流
+region: 江苏苏州
+province: 江苏
+official_domain: https://www.suda.edu.cn
+graduate_domain: http://yjs.suda.edu.cn
+admission_domain: http://yjs.suda.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学与技术学院
+    college_domain: http://scst.suda.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

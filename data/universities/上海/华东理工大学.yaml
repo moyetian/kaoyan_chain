@@ -1,0 +1,20 @@
+chsi_code: '10251'
+name: 华东理工大学
+aliases:
+- 华理
+- ECUST
+level:
+- '211'
+- 双一流
+region: 上海
+province: 上海
+official_domain: https://www.ecust.edu.cn
+graduate_domain: https://gschool.ecust.edu.cn
+admission_domain: https://gschool.ecust.edu.cn
+departments:
+  计算机:
+    college_name: 信息科学与工程学院
+    college_domain: https://info.ecust.edu.cn
+    default_majors:
+    - 081200
+    - 085404

@@ -15,7 +15,8 @@ from .models import (
     EvidenceSource,
     EvidenceObject,
     UniversityEntity,
-    QueryIntent
+    QueryIntent,
+    current_exam_year
 )
 
 from .registry import (
@@ -38,6 +39,7 @@ from .extractor import DocumentExtractor
 from .scout_engine import KaoYanIntelligenceEngine, get_intelligence_engine
 from .watcher import AdmissionWatcher
 from .comparator import SchoolComparator, get_school_comparator
+from .syllabus_diff import SyllabusDiffGenerator, SyllabusPoint, DiffItem, get_syllabus_diff_generator
 
 __all__ = [
     "EvidenceSource",
@@ -61,5 +63,9 @@ __all__ = [
     "get_intelligence_engine",
     "AdmissionWatcher",
     "SchoolComparator",
-    "get_school_comparator"
+    "get_school_comparator",
+    "SyllabusDiffGenerator",
+    "SyllabusPoint",
+    "DiffItem",
+    "get_syllabus_diff_generator"
 ]

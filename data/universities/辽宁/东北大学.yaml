@@ -1,0 +1,24 @@
+chsi_code: '10145'
+name: 东北大学
+aliases:
+- 东大
+- NEU
+- Northeastern University
+level:
+- '985'
+- '211'
+- 双一流B类
+- 自划线
+region: 辽宁沈阳
+province: 辽宁
+official_domain: https://www.neu.edu.cn
+graduate_domain: http://graduate.neu.edu.cn
+admission_domain: http://graduate.neu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学与工程学院 / 软件学院
+    college_domain: http://cse.neu.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

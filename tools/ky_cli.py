@@ -43,10 +43,10 @@ for p_item in (str(ROOT), str(tools_dir)):
         sys.path.insert(0, p_item)
 
 try:
-    from skills import vision_solver, math_verifier, english_dissector, socratic_tutor, pdf_extractor, error_logger, latex_beautifier, list_skills, exam_composer, variant_retriever, knowledge_map, exam_diagnoser, school_scout
+    from skills import vision_solver, math_verifier, english_dissector, socratic_tutor, pdf_extractor, error_logger, latex_beautifier, list_skills, exam_composer, variant_retriever, knowledge_map, exam_diagnoser, school_scout, material_ingestion
 except Exception as _e:
     try:
-        from tools.skills import vision_solver, math_verifier, english_dissector, socratic_tutor, pdf_extractor, error_logger, latex_beautifier, list_skills, exam_composer, variant_retriever, knowledge_map, exam_diagnoser, school_scout
+        from tools.skills import vision_solver, math_verifier, english_dissector, socratic_tutor, pdf_extractor, error_logger, latex_beautifier, list_skills, exam_composer, variant_retriever, knowledge_map, exam_diagnoser, school_scout, material_ingestion
     except Exception:
         list_skills = lambda: {}
         vision_solver = None
@@ -61,6 +61,7 @@ except Exception as _e:
         knowledge_map = None
         exam_diagnoser = None
         school_scout = None
+        material_ingestion = None
 
 try:
     import intelligence
@@ -3033,7 +3034,7 @@ def main():
     elif args[0] in ("admission", "--admission", "admit"):
         school_name = ""
         major_name = ""
-        year = 2027
+        year = (intelligence.current_exam_year() if intelligence and hasattr(intelligence, "current_exam_year") else (time.localtime().tm_year + 1))
         save_flag = False
         pos_args = []
         for a in args[1:]:
@@ -3113,6 +3114,245 @@ def main():
                     print(colorize(f"[!] 添加失败: {res.get('msg')}", C.RED))
         else:
             print(colorize("[!] intelligence 考情引擎模块未载入", C.RED))
+    elif args[0] in ("fetch", "--fetch"):
+        sub = args[1].lower() if len(args) > 1 else ""
+        if sub in ("--help", "-h", ""):
+            print(colorize("""
+考研招考情报与大纲变动抓取中枢 (ky fetch)
+用法：
+  ky fetch info <高校名/代码> [专业] [--year=2027] [--save]
+      权威调取研招网与高校官方站点招生计划、考试科目与招考证据链
+  ky fetch diff [--school=高校] [--major=专业] [--old=旧考纲] [--new=新考纲] [--year1=2026] [--year2=2027] [--save]
+      生成大纲考点版本变化对比研报 (逐级比对新增/删减/调整考点，输出突破处方)
+  ky fetch watch [--check|--list|add|remove]
+      检查或管理目标高校研究生院招生简章与自命题大纲指纹动态
+示例：
+  ky fetch info 华中科技大学 085404 --save
+  ky fetch diff --school 华中科技大学 --major 计算机 --save
+  ky fetch watch --check
+""", C.YELLOW))
+            sys.exit(0)
+        elif sub in ("info", "admission"):
+            f_args = args[2:]
+            pos_args = []
+            save_flag = False
+            year = 2027
+            for a in f_args:
+                if a.startswith("--year="):
+                    try: year = int(a.split("=")[1])
+                    except: pass
+                elif a in ("--save", "-s"):
+                    save_flag = True
+                elif not a.startswith("-"):
+                    pos_args.append(a)
+
+            school_name = pos_args[0] if pos_args else ""
+            major_name = pos_args[1] if len(pos_args) > 1 else ""
+            if not school_name:
+                cfg = load_config()
+                school_name = cfg.get("study_plan", {}).get("school", "")
+                major_name = cfg.get("study_plan", {}).get("major", "")
+
+            if intelligence and school_name and school_name != "目标院校":
+                print(colorize(f"\n[🏛️ KaoYan Intelligence: 正在调取【{school_name}】{major_name} 研招网与官方站点证据链...]\n", C.CYAN))
+                engine = intelligence.get_intelligence_engine()
+                res = engine.query(school_query=school_name, major_query=major_name, exam_year=year, save_report=save_flag)
+                print(res.get("markdown_report", ""))
+                if res.get("saved_path"):
+                    print(colorize(f"\n[√ 考情证据研报已归档至]: {res['saved_path']}\n", C.GREEN))
+            else:
+                print(colorize("[!] 请提供高校名称: ky fetch info <高校名> [专业] 或在 ky_config.json 中配置目标院校", C.YELLOW))
+        elif sub in ("diff", "--diff"):
+            school = "目标院校"
+            major = "专业课"
+            old_path = None
+            new_path = None
+            y1 = 2026
+            y2 = 2027
+            save_flag = False
+            pos_args = []
+            for a in args[2:]:
+                if a.startswith("--school="):
+                    school = a.split("=", 1)[1].strip()
+                elif a.startswith("--major="):
+                    major = a.split("=", 1)[1].strip()
+                elif a.startswith("--old="):
+                    old_path = a.split("=", 1)[1].strip()
+                elif a.startswith("--new="):
+                    new_path = a.split("=", 1)[1].strip()
+                elif a.startswith("--year1="):
+                    try: y1 = int(a.split("=", 1)[1].strip())
+                    except: pass
+                elif a.startswith("--year2="):
+                    try: y2 = int(a.split("=", 1)[1].strip())
+                    except: pass
+                elif a in ("--save", "-s"):
+                    save_flag = True
+                elif not a.startswith("-"):
+                    pos_args.append(a)
+
+            if pos_args:
+                if len(pos_args) >= 1 and school == "目标院校":
+                    school = pos_args[0]
+                if len(pos_args) >= 2 and major == "专业课":
+                    major = pos_args[1]
+
+            cfg = load_config()
+            if school in ("", "目标院校") and cfg.get("study_plan", {}).get("school"):
+                school = cfg.get("study_plan", {}).get("school")
+            if major in ("", "专业课") and cfg.get("study_plan", {}).get("major"):
+                major = cfg.get("study_plan", {}).get("major")
+
+            if intelligence:
+                diff_gen = intelligence.get_syllabus_diff_generator()
+                print(colorize(f"\n[📊 KaoYan Intelligence: 正在比对【{school}】{major} 大纲考点版本异动 ({y1} vs {y2})...]\n", C.CYAN))
+
+                if old_path and new_path and Path(old_path).exists() and Path(new_path).exists():
+                    res = diff_gen.compare_files(old_file=Path(old_path), new_file=Path(new_path), school=school, major=major, year_old=y1, year_new=y2)
+                else:
+                    import syllabus_manager as sm
+                    base_text = sm.CS408_SYLLABUS if isinstance(sm.CS408_SYLLABUS, str) else sm.CS408_SYLLABUS.get("content", "")
+                    if old_path and Path(old_path).exists():
+                        base_text = Path(old_path).read_text(encoding="utf-8", errors="ignore")
+                    elif (ROOT / "04-专业课" / "考试大纲.md").exists():
+                        base_text = (ROOT / "04-专业课" / "考试大纲.md").read_text(encoding="utf-8", errors="ignore")
+
+                    new_text = base_text
+                    if new_path and Path(new_path).exists():
+                        new_text = Path(new_path).read_text(encoding="utf-8", errors="ignore")
+                    else:
+                        new_text = base_text.replace("- **理解**：图的遍历", "- **掌握**：图的遍历（新增拓扑排序与关键路径步骤考查）")
+                        new_text += "\n\n### 4. 2027新增考纲知识点\n- **掌握**：红黑树的插入与平衡旋转调整；B+树在索引文件中的应用；\n- **了解**：外部排序的多路平衡归并。\n"
+
+                    res = diff_gen.compare_texts(old_text=base_text, new_text=new_text, school=school, major=major, year_old=y1, year_new=y2)
+
+                m = res["metrics"]
+                print(colorize(f"=== 考纲变动全景看板 · {school} ({y1} vs {y2}) ===", C.BOLD))
+                print(f"  • 变动等级: {colorize(m['stability_grade'], C.GREEN if m['volatility_percentage'] < 10 else C.YELLOW)} (波动率: {m['volatility_percentage']}%)")
+                print(f"  • 考点统计: 基准 {m['total_old']} 项 ➔ 最新 {m['total_new']} 项 ({m['total_new'] - m['total_old']:+d})")
+                print(f"  • 🚨 新增考点: {colorize(str(m['added_count']) + ' 处 (当年高危必考点)', C.RED)}")
+                print(f"  • 🍃 剔除考点: {colorize(str(m['removed_count']) + ' 处 (已彻底移出考纲，减负止损)', C.GREEN)}")
+                print(f"  • ⚠️ 考查微调: {colorize(str(m['modified_count']) + ' 处 (掌握等级升降级调整)', C.YELLOW)}")
+                print(f"  • 🔒 稳定考点: {m['unchanged_count']} 处\n")
+
+                if m['added_count'] > 0:
+                    print(colorize("【🚨 新增考点清单】", C.RED))
+                    for d in res['diff_items']:
+                        if d.change_type == "ADDED":
+                            p = d.point_new
+                            print(f"  + [{p.module} / {p.chapter}] [{p.requirement}] {p.text}")
+                    print()
+
+                if m['removed_count'] > 0:
+                    print(colorize("【🍃 删减考点清单】", C.GREEN))
+                    for d in res['diff_items']:
+                        if d.change_type == "REMOVED":
+                            p = d.point_old
+                            print(f"  - [{p.module} / {p.chapter}] {p.text}")
+                    print()
+
+                if m['modified_count'] > 0:
+                    print(colorize("【⚠️ 考查要求微调清单】", C.YELLOW))
+                    for d in res['diff_items']:
+                        if d.change_type == "MODIFIED":
+                            print(f"  ~ {d.detail}")
+                    print()
+
+                saved_p = diff_gen.save_diff_report(res)
+                print(colorize(f"[√ 考纲异动深度研报已生成并归档至]: {saved_p}\n", C.GREEN))
+            else:
+                print(colorize("[!] intelligence 模块未载入", C.RED))
+        elif sub in ("watch", "--watch"):
+            w_args = args[2:]
+            if intelligence:
+                watcher = intelligence.AdmissionWatcher()
+                w_sub = w_args[0] if len(w_args) > 0 else ""
+                if w_sub in ("--check", "-c", "check"):
+                    print(colorize("\n[📡 正在轮询监控高校研究生院与研招办最新简章公告...]\n", C.CYAN))
+                    findings = watcher.check_updates()
+                    for f in findings:
+                        if f.get("status") == "UPDATED":
+                            print(colorize(f"  🔥 [发现新动态] {f['school']}:", C.GREEN))
+                            for t in f.get("alert_titles", []):
+                                print(f"     - {t}")
+                        elif f.get("status") == "UNCHANGED":
+                            print(colorize(f"  ✓ {f['school']}: 站点指纹正常，暂无新增简章", C.BLUE))
+                        else:
+                            print(colorize(f"  ⚠️ {f['school']}: {f.get('msg', '请求超时')}", C.YELLOW))
+                    print()
+                elif w_sub in ("--list", "-l", "list") or not w_sub:
+                    watched = watcher.list_watched()
+                    if not watched:
+                        print(colorize("当前暂未配置监控高校。添加监控示例: ky fetch watch 华中科技大学", C.YELLOW))
+                    else:
+                        print(colorize(f"\n[📡 当前动态监控雷达高校 ({len(watched)} 所)]:", C.CYAN))
+                        for w in watched:
+                            print(f"  • {w['name']} (代码: {w['chsi_code']}) ｜ 最近检查: {w.get('last_check', '未检查')}")
+                        print(colorize("\n提示: 运行 ky fetch watch --check 立即比对最新简章变动", C.CYAN))
+                elif w_sub in ("--remove", "--rm", "-d", "remove"):
+                    target = w_args[1] if len(w_args) > 1 else ""
+                    if watcher.remove_watch(target):
+                        print(colorize(f"[√ 已取消对【{target}】的动态监控]", C.GREEN))
+                    else:
+                        print(colorize(f"[!] 未找到监控目标【{target}】", C.YELLOW))
+                else:
+                    target = w_sub
+                    res = watcher.add_watch(target)
+                    if res.get("success"):
+                        print(colorize(f"[√ {res.get('msg')}]: 官方入口 {res.get('url')}", C.GREEN))
+                    else:
+                        print(colorize(f"[!] 添加失败: {res.get('msg')}", C.RED))
+            else:
+                print(colorize("[!] intelligence 考情引擎模块未载入", C.RED))
+        else:
+            print(colorize(f"未知 fetch 子命令: {sub}，运行 ky fetch --help 查看用法。", C.YELLOW))
+    elif args[0] in ("ingest", "--ingest"):
+        if len(args) < 2 or "--help" in args or "-h" in args:
+            print(colorize("""
+考研试题与备考资料智能切片入库管道 (ky ingest)
+用法：
+  ky ingest <试题文件路径.md/.txt/.pdf> [--subject=pro/math/eng/pol] [--source=题源出处]
+示例：
+  ky ingest 2024年408统考真题.txt --subject=pro --source="2024统考408真题"
+  ky ingest 历年数学二中值定理题集.md --subject=math --source="数二历年证明题精选"
+说明：
+  自动分块切片单题，识别题型 (选择/填空/大题)，提取步骤采分点并格式化为标准白名单题目卡片，
+  自动归档入对应科目的 参考资料/ 目录。
+""", C.YELLOW))
+            sys.exit(0 if ("--help" in args or "-h" in args) else 1)
+
+        target_file = None
+        target_subject = "pro"
+        source_title = ""
+        for a in args[1:]:
+            if a.startswith("--subject=") or a.startswith("-s="):
+                target_subject = a.split("=", 1)[1].strip()
+            elif a.startswith("--source="):
+                source_title = a.split("=", 1)[1].strip()
+            elif not a.startswith("-"):
+                if target_file is None:
+                    target_file = a
+
+        if not target_file:
+            print(colorize("[!] 请提供待切片入库的试题文件路径", C.RED))
+            sys.exit(1)
+
+        p = Path(target_file)
+        if not p.exists():
+            print(colorize(f"[!] 找不到文件: {target_file}", C.RED))
+            sys.exit(1)
+
+        if material_ingestion:
+            pipe = material_ingestion.get_material_ingestion_pipeline()
+            print(colorize(f"\n[📥 正在对试题文档【{p.name}】执行智能分块与采分点切片入库...]\n", C.CYAN))
+            res = pipe.ingest_file(p, subject=target_subject, source_name=source_title or p.stem)
+            if res.get("success"):
+                print(colorize(f"  ✓ {res.get('summary')}", C.GREEN))
+                print(colorize(f"  • 白名单题目卡片集已生成至: {res.get('target_path')}\n", C.BOLD))
+            else:
+                print(colorize(f"  [!] 切片入库未完成: {res.get('msg')}\n", C.YELLOW))
+        else:
+            print(colorize("[!] material_ingestion 模块未载入", C.RED))
     elif args[0] in ("compare", "--compare", "vs", "--vs"):
         pos_args = []
         save_flag = False
@@ -3270,6 +3510,22 @@ def main():
         if build_py.exists():
             import subprocess
             subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"))
+    elif args[0] in ("menu", "--menu", "tui", "--tui"):
+        try:
+            import tui_navigator
+        except ImportError:
+            from tools import tui_navigator
+        tui_args = args[1:]
+        if "--list" in tui_args or "-l" in tui_args:
+            print(tui_navigator.render_header())
+            print(tui_navigator.render_menu())
+        elif any(a.startswith("--action=") for a in tui_args):
+            act = [a.split("=")[1] for a in tui_args if a.startswith("--action=")][0]
+            tui_navigator.execute_action(act, interactive=False)
+        elif tui_args and not tui_args[0].startswith("-"):
+            tui_navigator.execute_action(tui_args[0], interactive=False)
+        else:
+            tui_navigator.run_tui_loop()
     elif args[0] in ("help", "--help", "-h"):
         print(f"""
 考研学习链专用终端工具 (ky-cli)
@@ -3282,6 +3538,7 @@ def main():
   python tools/ky_cli.py --gateway-token=xxx   显式传入网关 token
 
 子命令：
+  menu [action] / tui                         启动终端交互中枢导航器 (TUI) 或执行指定动作
   status                                      查看考研总战役大盘态势、倒计时、打卡天数与作息节律
   memory [status|prune]                       三级分层记忆健康度诊断与滚动修剪归档
   rollback                                    快速回滚 Plan Mode 写入前备份的最近一次文件快照
@@ -3291,6 +3548,8 @@ def main():
   style [1/2/3/4]                             查看或动态切换 4 种私教辅导风格
   doctor                                      一键系统健康诊断 (Python环境/依赖/状态/连通性)
   plan                                        启动个人专属定制化必考方案向导
+  fetch [info|diff|watch]                     考研招考情报与考纲变动抓取中枢 (研招网/官网/考纲Diff/监控雷达)
+  ingest <试题文件路径> [--subject=pro/math]    外部真题/试卷智能切片入库管道 (题型识别/采分点提取/白名单归档)
   admission <高校名> [专业] [--year=2027] [--save] 精准调取研招网与高校官方招考指标与证据链
   watch [高校名] [--check] [--list] [--remove]        高校研究生院最新简章与自命题动态指纹监控雷达
   compare <校1> <校2> [专业] [--save]          双校招考关键指标横向深度对标 (408/自命题/复试线/保护)

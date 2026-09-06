@@ -1,0 +1,29 @@
+chsi_code: '10533'
+name: 中南大学
+aliases:
+- 中南
+- CSU
+- Central South University
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 湖南长沙
+province: 湖南
+official_domain: https://www.csu.edu.cn
+graduate_domain: https://gra.csu.edu.cn
+admission_domain: https://gra.csu.edu.cn/yjsy/yzb
+departments:
+  计算机:
+    college_name: 计算机学院
+    college_domain: https://cse.csu.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+  医学:
+    college_name: 湘雅医学院
+    college_domain: https://xysm.csu.edu.cn
+    default_majors:
+    - '100200'
+    - '105100'

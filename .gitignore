@@ -81,6 +81,9 @@ scratch_*.jpg
 temp_*.png
 temp_*.jpg
 *.tmp
+.tmp.driveupload/
+*.docx
+考研学习链_功能规划与竞品分析报告*.txt
 
 # Operating System Files
 .DS_Store

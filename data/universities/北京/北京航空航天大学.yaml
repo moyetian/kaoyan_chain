@@ -1,0 +1,29 @@
+chsi_code: '10006'
+name: 北京航空航天大学
+aliases:
+- 北航
+- BUAA
+- Beihang University
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 北京
+province: 北京
+official_domain: https://www.buaa.edu.cn
+graduate_domain: https://yzb.buaa.edu.cn
+admission_domain: https://yzb.buaa.edu.cn
+departments:
+  计算机:
+    college_name: 计算机学院 / 软件学院
+    college_domain: http://scse.buaa.edu.cn
+    default_majors:
+    - 081200
+    - 085400
+    - 085404
+  自动化:
+    college_name: 自动化科学与电气工程学院
+    college_domain: http://ase.buaa.edu.cn
+    default_majors:
+    - 081100

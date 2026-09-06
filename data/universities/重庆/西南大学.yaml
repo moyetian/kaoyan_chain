@@ -1,0 +1,20 @@
+chsi_code: '10635'
+name: 西南大学
+aliases:
+- 西大
+- SWU
+level:
+- '211'
+- 双一流
+region: 重庆
+province: 重庆
+official_domain: https://www.swu.edu.cn
+graduate_domain: http://yanzhao.swu.edu.cn
+admission_domain: http://yanzhao.swu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机与信息科学学院
+    college_domain: http://cis.swu.edu.cn
+    default_majors:
+    - 081200
+    - 085404

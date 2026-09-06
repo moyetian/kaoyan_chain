@@ -1,0 +1,25 @@
+chsi_code: '10358'
+name: 中国科学技术大学
+aliases:
+- 中科大
+- USTC
+- C9联盟
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+- C9联盟
+region: 安徽合肥
+province: 安徽
+official_domain: https://www.ustc.edu.cn
+graduate_domain: https://yz.ustc.edu.cn
+admission_domain: https://yz.ustc.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学与技术学院 / 先进技术研究院 / 软件学院 (苏州)
+    college_domain: http://cs.ustc.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

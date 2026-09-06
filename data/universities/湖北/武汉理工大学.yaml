@@ -1,0 +1,20 @@
+chsi_code: '10497'
+name: 武汉理工大学
+aliases:
+- 武汉理工
+- WUT
+level:
+- '211'
+- 双一流
+region: 湖北武汉
+province: 湖北
+official_domain: http://www.whut.edu.cn
+graduate_domain: http://gd.whut.edu.cn
+admission_domain: http://gd.whut.edu.cn
+departments:
+  计算机:
+    college_name: 计算机与人工智能学院
+    college_domain: http://cst.whut.edu.cn
+    default_majors:
+    - 081200
+    - 085404

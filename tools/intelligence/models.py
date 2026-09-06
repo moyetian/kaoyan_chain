@@ -10,6 +10,17 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 
+def current_exam_year(today: Optional[datetime] = None) -> int:
+    """推算「当前备考所指向的考研年度」（以入学年份计）。
+
+    考研惯例：头年 12 月初试 → 次年 9 月入学，招生年度按「入学年份」标记。
+    因此无论当前处于 1~7 月（备考当年 12 月场次）还是 8~12 月（简章发布季），
+    目标年度恒为「当前年份 + 1」，避免把 2027 之类的年份写死后逐年失效。
+    """
+    ref = today or datetime.now()
+    return ref.year + 1
+
+
 @dataclass
 class EvidenceSource:
     """证据来源元数据"""
@@ -70,7 +81,7 @@ class QueryIntent:
     school: str                       # 识别出的院校名或别名
     major_code: Optional[str] = None  # 专业代码，如 "085404"
     major_name: Optional[str] = None  # 专业方向，如 "计算机技术"
-    exam_year: int = 2027             # 目标考研年份，默认当下筹备年份
+    exam_year: int = field(default_factory=current_exam_year)  # 目标考研年份，默认当下筹备年份
     fields: List[str] = field(default_factory=lambda: ["招生人数", "初试科目", "复试线", "简章"])
 
     def to_dict(self) -> Dict[str, Any]:

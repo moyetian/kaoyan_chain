@@ -1,0 +1,22 @@
+chsi_code: '10027'
+name: 北京师范大学
+aliases:
+- 北师大
+- BNU
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 北京
+province: 北京
+official_domain: https://www.bnu.edu.cn
+graduate_domain: https://yz.bnu.edu.cn
+admission_domain: https://yz.bnu.edu.cn
+departments:
+  计算机:
+    college_name: 人工智能学院
+    college_domain: http://ai.bnu.edu.cn
+    default_majors:
+    - 081200
+    - 085404

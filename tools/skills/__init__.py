@@ -23,6 +23,7 @@ from . import variant_retriever
 from . import knowledge_map
 from . import exam_diagnoser
 from . import school_scout
+from . import material_ingestion
 
 SKILLS_REGISTRY = {
     "vision_solver": {
@@ -95,6 +96,12 @@ SKILLS_REGISTRY = {
         "name": "🎯 目标高校与社媒考研情报侦察引擎 (School Scout)",
         "desc": "定向检索官方招生简章、自命题大纲、拟招人数与报录比，聚合知乎/B站/小红书就读体验与避坑指南",
         "command": "ky scout <高校> [专业] 或 /scout",
+        "status": "已就绪"
+    },
+    "material_ingestion": {
+        "name": "📥 试题与备考资料智能切片入库管道 (Material Ingestion Pipeline)",
+        "desc": "将外部 PDF/Markdown/TXT 试题智能分块切片，自动识别题型并构造步骤级采分点入库归档",
+        "command": "ky ingest <试题文件路径> [--subject=科目] [--save] 或 /ingest",
         "status": "已就绪"
     }
 }

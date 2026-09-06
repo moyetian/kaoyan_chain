@@ -1,0 +1,24 @@
+chsi_code: '10246'
+name: 复旦大学
+aliases:
+- 复旦
+- FDU
+- C9联盟
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+- C9联盟
+region: 上海
+province: 上海
+official_domain: https://www.fudan.edu.cn
+graduate_domain: http://www.gsao.fudan.edu.cn
+admission_domain: http://www.gsao.fudan.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学技术学院
+    college_domain: http://www.cs.fudan.edu.cn
+    default_majors:
+    - 081200
+    - 085404

@@ -500,6 +500,108 @@ def md2html(md):
     return "\n".join(out)
 
 
+def build_radar_html(root_path: pathlib.Path) -> str:
+    """构建【📡 招考与考纲变动雷达】全景 HTML 模块 (Sprint 7)"""
+    sections = []
+
+    # 1. 目标高校简章监控雷达 (Admission Watcher)
+    watch_file = root_path / ".memory" / "admission_watch.json"
+    watch_items = []
+    if watch_file.exists():
+        try:
+            w_data = json.loads(watch_file.read_text(encoding="utf-8"))
+            for code, winfo in w_data.items():
+                watch_items.append(winfo)
+        except Exception:
+            pass
+
+    w_html = []
+    w_html.append("<section class='radar-sec'><h3><span>🏛️</span>目标院校简章监控雷达 (Admission Watcher)</h3>")
+    if watch_items:
+        w_html.append("<div style='font-size:12px;color:var(--mut);margin-bottom:8px'>系统自动每隔周期轮询目标高校研究生院公告，比对哈希指纹变动：</div>")
+        for it in watch_items:
+            st = it.get("status", "UNCHANGED")
+            is_new = st == "UPDATED"
+            badge_cls = "radar-badge add" if is_new else "radar-badge del"
+            st_text = "发现新简章/变动" if is_new else "指纹正常·未见变动"
+            w_html.append("<div class='radar-card'>")
+            w_html.append(f"<div class='radar-card-h'><span>{html.escape(it.get('school', '高校'))}</span><span class='{badge_cls}'>{st_text}</span></div>")
+            w_html.append(f"<div style='font-size:12px;color:var(--mut);margin-bottom:4px'>最近检测: {it.get('last_check', '未巡检')} ｜ 官方通道: <a href='{it.get('url', '#')}' target='_blank' style='color:var(--acc);text-decoration:none;'>研究生院/招办官网 ↗</a></div>")
+            if it.get("alert_titles"):
+                w_html.append("<div style='font-size:12px;margin-top:6px;background:var(--surf);padding:6px 10px;border-radius:6px;'>")
+                w_html.append("<b>📢 最新简章线索:</b><ul style='margin:4px 0 0 16px;padding:0;'>")
+                for at in it.get("alert_titles", [])[:3]:
+                    w_html.append(f"<li>{html.escape(at)}</li>")
+                w_html.append("</ul></div>")
+            w_html.append("</div>")
+    else:
+        w_html.append("<div class='empty' style='padding:16px;'><div class='ei'>📡</div>暂未配置实时监控高校<br><small>在终端输入 <code>ky fetch watch 目标高校</code> 即可开启招生简章动态指纹轮询</small></div>")
+    w_html.append("</section>")
+    sections.append("".join(w_html))
+
+    # 2. 考纲版本异动与掌握度分析 (Syllabus Diff Radar)
+    diff_html = []
+    diff_html.append("<section class='radar-sec'><h3><span>📈</span>考纲版本异动与动荡率分析 (Syllabus Diff)</h3>")
+    pro_dir = root_path / "04-专业课"
+    diff_files = sorted(list(pro_dir.glob("考纲变动分析_*.md")), key=lambda p: p.stat().st_mtime, reverse=True) if pro_dir.exists() else []
+    if diff_files:
+        diff_html.append("<div style='font-size:12px;color:var(--mut);margin-bottom:8px'>基于大纲知识点多层 AST 结构化逐级对比（掌握/理解/了解）：</div>")
+        for df in diff_files[:3]:
+            txt = df.read_text(encoding="utf-8", errors="ignore")
+            vol_match = re.search(r"考点动荡率[^\d]*(\d+\.?\d*)%", txt)
+            vol = vol_match.group(1) if vol_match else "0.0"
+            add_match = re.search(r"新增考点[^\d]*(\d+)", txt)
+            del_match = re.search(r"删减考点[^\d]*(\d+)", txt)
+            mod_match = re.search(r"考查微调[^\d]*(\d+)", txt)
+            c_add = add_match.group(1) if add_match else "0"
+            c_del = del_match.group(1) if del_match else "0"
+            c_mod = mod_match.group(1) if mod_match else "0"
+
+            diff_html.append("<div class='radar-card'>")
+            diff_html.append(f"<div class='radar-card-h'><span>📄 {html.escape(df.stem)}</span><span class='radar-badge mod'>动荡率 {vol}%</span></div>")
+            diff_html.append("<div class='radar-stat'>")
+            diff_html.append(f"<span class='radar-badge add'>+ 新增必考 {c_add} 处</span>")
+            diff_html.append(f"<span class='radar-badge del'>- 彻底剔除 {c_del} 处</span>")
+            diff_html.append(f"<span class='radar-badge mod'>~ 考查微调 {c_mod} 处</span>")
+            diff_html.append("</div>")
+            diff_html.append("<div style='font-size:11.5px;color:var(--mut);'>详见本地报告: <code>04-专业课/" + html.escape(df.name) + "</code></div>")
+            diff_html.append("</div>")
+    else:
+        diff_html.append("<div class='empty' style='padding:16px;'><div class='ei'>📑</div>暂无大纲对比研报<br><small>在终端输入 <code>ky fetch diff --school 目标院校</code> 即可生成逐级 AST 差异透视与突破处方</small></div>")
+    diff_html.append("</section>")
+    sections.append("".join(diff_html))
+
+    # 3. 社媒真实经验与就读体验精选 (Community Experiences)
+    exp_html = []
+    exp_html.append("<section class='radar-sec'><h3><span>💬</span>社媒真实经验与避坑口碑档案 (Community Experiences)</h3>")
+    exp_dir = root_path / "docs" / "experiences"
+    exp_files = sorted(list(exp_dir.glob("*.md")), key=lambda p: p.stat().st_mtime, reverse=True) if exp_dir.exists() else []
+    if exp_files:
+        exp_html.append("<div style='font-size:12px;color:var(--mut);margin-bottom:8px'>聚合知乎、B站、小红书实名学长学姐真实就读体验与避坑指南 (AI 置信度降噪清洗)：</div>")
+        for ef in exp_files[:4]:
+            txt = ef.read_text(encoding="utf-8", errors="ignore")
+            first_line = txt.splitlines()[0] if txt.splitlines() else ef.stem
+            clean_title = re.sub(r"^#+\s*", "", first_line).replace("🎓", "").strip()
+
+            pos_matches = re.findall(r"-\s*✅\s*\*\*([^\*]+)\*\*", txt)
+            risk_matches = re.findall(r"-\s*⚠️\s*\*\*([^\*]+)\*\*", txt)
+
+            exp_html.append("<div class='radar-card'>")
+            exp_html.append(f"<div class='radar-card-h'><span>🎓 {html.escape(clean_title)}</span><span class='radar-badge tag'>AI置信清洗</span></div>")
+            if pos_matches:
+                exp_html.append("<div style='font-size:12px;margin:4px 0;color:var(--ok);'><b>🟢 优势亮点:</b> " + html.escape(" · ".join(pos_matches[:3])) + "</div>")
+            if risk_matches:
+                exp_html.append("<div style='font-size:12px;margin:4px 0;color:var(--bad);'><b>🔴 避坑防线:</b> " + html.escape(" · ".join(risk_matches[:3])) + "</div>")
+            exp_html.append(f"<div style='font-size:11.5px;color:var(--mut);margin-top:6px;'>详细经验条目与社媒直通车已归档至 <code>docs/experiences/{html.escape(ef.name)}</code></div>")
+            exp_html.append("</div>")
+    else:
+        exp_html.append("<div class='empty' style='padding:16px;'><div class='ei'>💡</div>暂无沉淀的社媒经验贴<br><small>在终端输入 <code>ky fetch info 目标院校 目标专业 --save</code> 即可自动清洗并归档学长学姐实名经验</small></div>")
+    exp_html.append("</section>")
+    sections.append("".join(exp_html))
+
+    return "\n".join(sections)
+
+
 # ════════════════════════════════════════════════════════════
 # 主流程
 # ════════════════════════════════════════════════════════════
@@ -662,6 +764,9 @@ def build():
         except Exception:
             trend_history = []
 
+    # 考情与考纲变动雷达 (S7)
+    radar_out = build_radar_html(ROOT.parent)
+
     data = {
         "memo": decks["memo"],
         "weak": decks["weak"],
@@ -682,6 +787,7 @@ def build():
             .replace("{{TODAY}}", today_out)
             .replace("{{MEMONOTES}}", notes_out("memo"))
             .replace("{{WEAKNOTES}}", notes_out("weak"))
+            .replace("{{RADAR}}", radar_out)
             .replace("{{DATA}}", payload)
             .replace("{{STAMP}}", datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))), data, parse_warnings, sections_status
 
@@ -918,6 +1024,18 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .trend-card{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;margin-bottom:16px;box-shadow:var(--sh)}
 .trend-card h3{margin:0 0 10px;font-size:13px;color:var(--mut);font-weight:700;display:flex;align-items:center;gap:6px}
 
+/* ── 招考与考纲变动雷达 (S7) ── */
+.radar-sec{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px;box-shadow:var(--sh)}
+.radar-sec h3{margin:0 0 10px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;color:var(--fg)}
+.radar-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600}
+.radar-badge.add{background:rgba(239,68,68,.12);color:var(--bad);border:1px solid rgba(239,68,68,.25)}
+.radar-badge.del{background:rgba(16,185,129,.12);color:var(--ok);border:1px solid rgba(16,185,129,.25)}
+.radar-badge.mod{background:rgba(245,158,11,.12);color:var(--warn);border:1px solid rgba(245,158,11,.25)}
+.radar-badge.tag{background:var(--surf2);color:var(--mut);border:1px solid var(--line)}
+.radar-card{background:var(--surf2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:10px}
+.radar-card-h{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:13px;margin-bottom:6px}
+.radar-stat{display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px;margin:8px 0}
+
 footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opacity:.7}
 </style>
 </head>
@@ -987,6 +1105,10 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
   <div id="map-tree"></div>
 </div>
 
+<div id="p-radar" class="pane">
+  {{RADAR}}
+</div>
+
 <footer>考研学习看板 · 数据驱动 · 稳扎稳打 · 更新于 {{STAMP}}</footer>
 </div>
 
@@ -996,6 +1118,7 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
   <button data-p="weak"><i>🎯</i>薄弱</button>
   <button data-p="stat"><i>📊</i>数据</button>
   <button data-p="map"><i>🗺️</i>图谱</button>
+  <button data-p="radar"><i>📡</i>考情</button>
 </nav>
 
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>

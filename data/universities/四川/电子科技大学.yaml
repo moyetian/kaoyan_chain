@@ -1,0 +1,32 @@
+chsi_code: '10614'
+name: 电子科技大学
+aliases:
+- 成电
+- 电子科大
+- UESTC
+- 两电一邮
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 四川成都
+province: 四川
+official_domain: https://www.uestc.edu.cn
+graduate_domain: https://yz.uestc.edu.cn
+admission_domain: https://yz.uestc.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学与工程学院 (网络空间安全学院) / 信息与软件工程学院
+    college_domain: http://www.scse.uestc.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405
+    - 085412
+  信通:
+    college_name: 信息与通信工程学院
+    college_domain: http://www.sice.uestc.edu.cn
+    default_majors:
+    - 081000
+    - 085401

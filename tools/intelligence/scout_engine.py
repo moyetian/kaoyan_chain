@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from .models import UniversityEntity, EvidenceObject
+from .models import UniversityEntity, EvidenceObject, current_exam_year
 from .registry import get_registry, resolve_university
 from .chsi_connector import CHSIConnector
 from .fetcher import HTTPFetcher, BrowserPluginManager
@@ -43,7 +43,7 @@ class KaoYanIntelligenceEngine:
         self,
         school_query: str,
         major_query: Optional[str] = None,
-        exam_year: int = 2027,
+        exam_year: int = current_exam_year(),
         save_report: bool = False
     ) -> Dict[str, Any]:
         """

@@ -1,0 +1,26 @@
+chsi_code: '10335'
+name: 浙江大学
+aliases:
+- 浙大
+- ZJU
+- C9联盟
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+- C9联盟
+region: 浙江杭州
+province: 浙江
+official_domain: https://www.zju.edu.cn
+graduate_domain: http://grs.zju.edu.cn
+admission_domain: http://grs.zju.edu.cn/yjszs
+departments:
+  计算机:
+    college_name: 计算机科学与技术学院 / 软件学院 (宁波)
+    college_domain: http://www.cs.zju.edu.cn
+    default_majors:
+    - 081200
+    - 085400
+    - 085404
+    - 085405

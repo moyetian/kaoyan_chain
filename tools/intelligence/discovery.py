@@ -13,6 +13,7 @@ import base64
 import urllib.parse
 from typing import List, Dict, Any, Optional
 from .fetcher import HTTPFetcher, FetchResult
+from .models import current_exam_year
 
 ADMISSION_KEYWORDS = [
     "招生简章", "硕士研究生招生", "招生专业目录", "自命题考试大纲",
@@ -62,7 +63,7 @@ class OfficialDiscovery:
         school_name: str,
         domain: str,
         major_keyword: Optional[str] = None,
-        year: int = 2027
+        year: int = current_exam_year()
     ) -> List[str]:
         """
         构建针对特定高校官方站点的精准检索词 (site: 语法)

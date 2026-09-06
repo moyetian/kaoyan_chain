@@ -10,11 +10,12 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Status-Sprint%203%20%2B%20Intelligence%20Delivered-success.svg?style=flat-square" alt="Status" />
+  <img src="https://img.shields.io/badge/Status-Sprint%207%20Delivered%20%C2%B7%20%E5%85%A8%E6%99%AF%E4%B8%AD%E6%9E%A2%E4%B8%8E%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE-success.svg?style=flat-square" alt="Status" />
   <img src="https://img.shields.io/badge/Agent%20Core-Claude%20Code%20Level-blueviolet?style=flat-square&logo=openai&logoColor=white" alt="Agent Core" />
-  <img src="https://img.shields.io/badge/KaoYan%20Intelligence-全国800%2B高校覆盖%20(985%2F211%2F双非)-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white" alt="KaoYan Intelligence" />
-  <img src="https://img.shields.io/badge/Tests-198%2F198%20Passed%20(100%25)-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
-  <img src="https://img.shields.io/badge/Dashboard-5%20Tabs%20(%E5%9B%BE%E8%B0%B1%2B%E8%B6%8B%E5%8A%BF%E7%BA%BF%2B%E7%AE%80%E7%AB%A0%E9%80%9F%E9%80%92)-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
+  <img src="https://img.shields.io/badge/KaoYan%20Intelligence-%E5%85%A8%E5%9B%BD800%2B%E9%AB%98%E6%A0%A1%E8%A6%86%E7%9B%96%20(55%2B%E7%9C%81%E7%BA%A7%E6%A1%A3%E6%A1%88)-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white" alt="KaoYan Intelligence" />
+  <img src="https://img.shields.io/badge/Tests-232%2F232%20Passed%20(100%25)-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
+  <img src="https://img.shields.io/badge/Dashboard-6%20Tabs%20(%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE%2B%E5%9B%BE%E8%B0%B1%2B%E8%B6%8B%E5%8A%BF%E7%BA%BF%2B%E7%AE%80%E7%AB%A0%E9%80%9F%E9%80%92)-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
+  <img src="https://img.shields.io/badge/Terminal%20TUI-v2.5%20%E6%9E%81%E5%AE%A2%E6%8E%A7%E5%88%B6%E5%8F%B0-3b82f6?style=flat-square&logo=gnometerminal&logoColor=white" alt="Terminal TUI" />
   <img src="https://img.shields.io/badge/Memory-3--Tier%20Pruning-f59e0b?style=flat-square&logo=speedtest&logoColor=white" alt="Memory" />
   <img src="https://img.shields.io/badge/FSRS-Spaced%20Repetition-10b981?style=flat-square&logo=anki&logoColor=white" alt="FSRS" />
   <img src="https://img.shields.io/badge/Python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
@@ -25,14 +26,13 @@
 
 <p align="center">
   <a href="#-这是什么">📖 这是什么</a> •
-  <a href="#-三类考研学生画像与差异化提分闭环">🎓 学情矩阵</a> •
+  <a href="操作手册.md">📘 学员实操手册</a> •
   <a href="#-专有考研智能终端-ky-cli-全功能自主私教">💻 私教终端 ky-cli</a> •
   <a href="#-全套-cli-子命令矩阵全景说明">⌨️ 子命令矩阵</a> •
-  <a href="#-考研全科自测看板-dashboard-核心全景">📊 移动看板</a> •
+  <a href="#-终端全景智能中枢-tui-v25-控制台">🖥️ TUI 中枢</a> •
+  <a href="#-考研全科自测看板-dashboard-核心全景">📊 6Tab 看板</a> •
   <a href="#-靶向组卷同类变式与整卷多题诊断闭环">⚔️ 教学闭环</a> •
   <a href="#-kaoyan-intelligence--高校招考全景情报与权威证据链中枢">🏛️ 招考情报</a> •
-  <a href="#-plan-模式原子快照与三级分层记忆体系">🧠 记忆与回滚</a> •
-  <a href="#-数字化错题生命周期与艾宾浩斯盲盒复测">🔄 错题闭环</a> •
   <a href="#-用户本地化部署与快速上手流程-3-分钟开箱">🚀 快速开始</a>
 </p>
 
@@ -235,16 +235,19 @@ flowchart TD
 
 | 子命令 | 完整命令语法 | 核心功能与参数说明 | 典型使用场景 |
 |---|---|---|---|
-| **战役态势** | `ky status` | 打印初试倒计时、今日打卡天数、作息节律（距周日休整窗口天数）与四科提分矩阵 | 晨起第一眼掌握全局战役态势 |
+| **终端中枢** | `ky menu` | 启动 **TUI 终端全景智能中枢 v2.5**，集成等宽排版、初试倒计时进度条、打卡统计与三阶卡片导航 | 晨起第一眼看态势、免记命令行参数全局调度 |
+| **战役态势** | `ky status` | 打印初试倒计时、今日打卡天数、作息节律（距周日休整窗口天数）与四科提分矩阵 | 晨起掌握全局战役态势与精力预算 |
 | **今日任务** | `ky today [--json]` | 列出今日四科时间预算与针对薄弱项的精准清单；加 `--json` 导出机读数据 | 确认当日复习清单、或供自动化脚本读取 |
 | **快速打卡** | `ky done <任务关键词>` | 快速将包含关键词的任务标记为完成并同步回写至各科 `今日任务.md` | 学完某一模块后单行命令秒打卡 |
+| **考纲Diff** | `ky fetch <基准大纲> <新大纲> [--save]` | **对比新旧考纲 AST 知识点树**，量化考纲动荡率 (0%~100%) 并出具逐级应对处方 | 8~9 月新大纲出炉时第一时间锁定增删考点 |
+| **切片入库** | `ky ingest <试卷Markdown> [--subject=科目] [--save]` | **试题智能切片管道**，将 Markdown 试卷自动识别为选择/解答题并规范化采分点入库 | 导入真题与模拟题、扩充白名单题源 |
+| **靶向组卷** | `ky compose [科目] [--count=N] [--type=TYPE] [--save]` | 从错题本与薄弱考点自动拼装**全真盲盒试卷**，题型配比均衡，附带末尾加密采分点 | 阶段性限时自测、周末模拟考 |
+| **真题变式** | `ky variant <考点关键词>` | 检索白名单同考点真题；本地未放置实体书时**强制烙印【私教自拟变式】水印**防幻觉 | 攻坚某一卡壳知识点的同类变式强化 |
 | **招考证据** | `ky admission <高校名> [专业] [--year=2027] [--save]` | 基于**研招网 (S级) 与高校官网 (A级)** 调取初试科目、院系所、招生人数与完整证据链 | 官方招考事实核验、防虚假宣传与年份锁定 |
 | **简章监控** | `ky watch [高校名] [--check] [--list] [--remove]` | 目标高校研究生院官网招生动态指纹监控雷达，第一时间捕获新简章与大纲变动 | 8~10 月第一时间追踪简章出炉与初试科目调整 |
 | **双校对标** | `ky compare <高校1> <高校2> [专业] [--save]` | 深度横向对标两校办学层次、自划线、初试差异 (408/自命题)、复试线与一志愿保护机制 | 择校决赛圈两校横向 PK、权衡自命题与统考风险 |
 | **院校全景** | `ky scout <高校名> [专业名] [--save] [--apply]` | 定向侦察目标高校研招简章、专业目录、自命题大纲、拟招人数、报录比，聚合知乎/B站/小红书就读体验与避坑指南 | 择校择专业调研、探查压分与复试公平度 |
-| **靶向组卷** | `ky exam [科目] [--count=N] [--save]` | 从错题库与薄弱考点自动反向抽取拼装**全真盲盒试卷**，隐去原答案，文末附带加密采分点 | 阶段性闭卷自测、周末模拟考 |
 | **自动判卷** | `ky exam-submit <试卷路径> <作答文本>` | 自动批改自测卷作答，输出采分点分值、正答率与错因五分类归因 | 独立做完自测试卷后一键打分入库 |
-| **真题变式** | `ky variant <考点关键词>` | 检索白名单同考点真题；本地未放置实体书时**强制烙印【私教自拟变式】水印**防幻觉 | 攻坚某一卡壳知识点的同类变式强化 |
 | **考纲图谱** | `ky map [科目] [--json]` | 全量解析官方考纲知识点树，按 A(熟练)/B(巩固)/C(生疏)/D(盲区) 输出大盘 | 阶段性排查知识盲区与考点掌握率 |
 | **整卷诊断** | `ky diagnose <答题卡文本或文件>` | 整卷级多题诊断引擎，聚类失分模块，输出**章节失分排行榜与下周复习处方** | 模考或成套真题做完后综合复盘 |
 | **疲劳监控** | `ky fatigue` | 检查近两日任务完成率，连续 2 天低于 60% 自动触发防疲劳警报与心理疏导 | 预防考研中后期内耗与严重崩盘 |
@@ -260,6 +263,53 @@ flowchart TD
 | **网关服务** | `ky serve [port]` | 启动双向对话 Webhook 网关与实时 Web 伴侣（默认端口 `8088`） | 连接微信/QQ/钉钉/飞书实现群内讲题 |
 | **微信连接** | `ky clawbot` | 启动微信个人号 WeChat ClawBot 扫码连接器，手机微信扫码直连私教 | 免公网穿透，手机微信 1对1 讲题 |
 | **双向网关** | `ky bridge` | 查看各大平台（微信/QQ/钉钉/飞书）双向讲题网关详细配置指南 | 初次配置群聊双向讲题时查阅 |
+
+---
+
+## 🖥️ 终端全景智能中枢：TUI v2.5 极客控制台
+
+针对不习惯死记命令行参数的考生，系统内置了专有的 **TUI 交互智能中枢**（运行 `ky menu` 或 `python tools/tui_navigator.py` 启动）。
+
+它彻底攻克了传统命令行中文字符与 Emoji 错位问题，采用精准的双字节自适应等宽引擎，锁定 **84 列高精度终端排版**：
+
+```text
+╭──────────────────────────────────────────────────────────────────────────────────╮
+│            🎯 考研学习链 (Kaoyan Study Chain) · 终端全景智能中枢 v2.5            │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│ ⏳ 2026 初试倒计时: 104 天  │  备考进度: [███░░░░░░░░░] 22.4% (第30/134天)       │
+│ 🏛️  目标院校: 华中科技大学 │  📚 专业方向: 085404 计算机技术                     │
+│ 🛡️  辅导风格: 严格把关    │  📋 今日打卡: 0/12 完成 (今日任务进行中)            │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│   • 📡 简章监控: 已纳入 1 所高校动态监控 (华中科技大学)                          │
+│   • 📑 考纲变动: 波动率 10.7% (已生成考纲异动逐级处方)                           │
+│   • 💬 社媒口碑: 已沉淀 3 篇院校实名经验档案                                     │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+
+╭── ⚡ 核心备考与实战攻坚 (Core Preparation) ───────────────────────────────────────╮
+│ [1] 今日任务 (Daily Tasks)           📋 查看四科任务量、打卡推进与行动指引       │
+│ [2] 靶向组卷 (Exam Composer)         🎯 按考点与难度梯度智能拼卷演练             │
+│ [3] 同源变式 (Variant Retrieval)     🔄 针对薄弱考点或错题智能检索同源题         │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+
+╭── 🏛️ 研招情报与考纲透视 (Admissions & Syllabus) ──────────────────────────────────╮
+│ [4] 考纲Diff (Syllabus Diff)         📈 对比新旧考纲 AST 掌握度变迁与动荡率      │
+│ [5] 切片入库 (Material Ingestion)    📥 真题/模拟卷 Markdown 结构化入库          │
+│ [6] 院校侦察 (School Scout)          🔍 聚合研招网指标与三大社媒实名口碑研报     │
+│ [7] 双校对标 (School Comparator)     ⚖️ 横向深度对标双校招生指标与保护机制       │
+│ [8] 简章监控 (Admission Watcher)     📡 目标高校研究生院简章动态指纹预警         │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+
+╭── 📊 全景态势与系统大盘 (Dashboard & System) ─────────────────────────────────────╮
+│ [9] 看板更新 (Dashboard Build)       📊 重编译掌握度雷达并刷新本地 Web 看板      │
+│ [0] 安全退出 (Exit System)           🚪 保存状态并平稳退出终端导航器             │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+
+💡 提示：输入操作序号 [0-9] 或指令别名 (如 1 / today / compose) 即可启动模块
+```
+
+- **三大模块分区**：核心备考（刷题组卷）、研招情报（考纲Diff/切片入库/双校对标/简章监控）、全景大盘（看板构建与退出）；
+- **动态状态徽标**：倒计时高对比进度条、院校专业联动、简章变动与考纲波动率动态感知；
+- **全键盘直达**：输入 `0`~`9` 单键回车直接执行，无需记忆任何参数。
 
 ---
 
@@ -308,11 +358,12 @@ flowchart TD
   <img src="docs/assets/dashboard_5tabs_architecture.svg" alt="考研全科自测看板五大核心交互页签与考纲图谱架构" style="max-width:100%;" />
 </p>
 
-### 1. 五大核心交互页签图解
+### 1. 六大核心交互页签图解
 
 | 页签 | 功能定位 | 核心特性与交互设计 | 核心使用场景 |
 |---|---|---|---|
 | 📋 **今日**<br>*(Today)* | 每日攻坚任务卡 | • 四科当日复习分钟预算进度条<br>• 针对学员个性化薄弱项的精准攻坚清单<br>• 🔥 **招生简章与自命题突发速递卡片**（第一时间预警目标高校大纲变动）<br>• 点击即时打勾打卡，初试倒计时毫秒感知 | 晨起确认当日任务，晚间核对执行闭环 |
+| 📡 **考情**<br>*(Radar)* | 研招与考纲动态雷达 | • **目标高校简章监控雷达卡片**（实时展示所监控高校的官网指纹与最新标题）<br>• **考纲 AST 异动雷达卡片**（量化波动率预警、新增/删除考点与逐级应对处方）<br>• **社媒实名去噪经验档案**（知乎/B站/小红书高分上岸学长经验卡与避坑提示） | 8~10 月密切追踪大纲变动、评估报考风险 |
 | 🧠 **必背**<br>*(Flashcards)* | 核心速记与 3D 翻转卡 | • 数学高频定理推导、积分表、泰勒展开公式卡<br>• 英语高频词汇与作文功能句型速查<br>• 政治核心帽子词与历史时间线<br>• 专业课高频大题答题模板与算法三段式规范 | ★ **碎片时间主力**：排队、通勤、自习室休息、睡前默写 |
 | 🎯 **薄弱**<br>*(Radar & Queue)* | 掌握度雷达与错题队列 | • 章节掌握度阶梯雷达图，直观暴露丢分洼地<br>• **艾宾浩斯与 FSRS 记忆周期循环复习**，未掌握错题强制置顶<br>• 标星攻坚难点定向突破 | 每周/每月全科复盘时定向爆破 |
 | 📊 **数据**<br>*(Analytics)* | 全科学情诊断与态势 | • **错因五分类分布占比**（概念漏洞/审题偏差/公式记错/计算失误/书写丢分）<br>• **7 日任务完成率趋势 SVG 曲线**，直观反映近期学习平稳度与自律节律<br>• 计算失误量化指标与步骤丢分追踪，深浅色护眼主题一键无缝切换 | 阶段性评估各科复习重心，动态调整时间预算 |
@@ -683,9 +734,9 @@ python -m http.server 8080 --directory docs
 
 ---
 
-## 🧪 198 项全自动化质量工程测试 (19 大测试组)
+## 🧪 232 项全自动化质量工程测试 (23 大测试组)
 
-本项目包含工业级的自动化回归测试套件，全面覆盖从底层配置、网关通讯、学科防伪水印、Agent 工业级内核、Sprint 2 / Sprint 3 教学闭环到 KaoYan Intelligence 高校研考情报中枢的 **19 个大型测试组、198 项严苛用例 (100% 通过)**：
+本项目包含工业级的自动化回归测试套件，全面覆盖从底层配置、网关通讯、学科防伪水印、Agent 工业级内核、Sprint 2 / 3 教学闭环、KaoYan Intelligence 高校研考情报中枢到 Sprint 6 / 7 考纲Diff、切片入库、社媒去噪与终端 TUI 智能中枢的 **23 个大型测试组、232 项严苛用例 (100% 通过)**：
 
 ```bash
 # 运行全套自动化测试
@@ -715,8 +766,12 @@ python tools/test_ky_suite.py
  [测试组 17] Sprint 3 体验与生态增强全量回归 (复盘/记忆/Plan/看板/FSRS) [PASS]
  [测试组 18] 目标高校研招与社媒考研情报侦察引擎 (School Scout) ....... [PASS]
  [测试组 19] KaoYan Intelligence 考研招考情报与证据链引擎 (28 项验证)  [PASS]
+ [测试组 20] Syllabus Diff 考研大纲考点版本比对引擎与 ky fetch (9项)  [PASS]
+ [测试组 21] Material Ingestion 试题智能切片入库管道与 ky ingest (9项) [PASS]
+ [测试组 22] 社媒经验降噪过滤与分省高校注册表 (Sprint 6 - 8项验证) .. [PASS]
+ [测试组 23] TUI 交互中枢与考情看板雷达 (Sprint 7 - 8项验证) .......... [PASS]
 ============================================================
- 测试结果统计: 通过 198 项, 失败 0 项
+ 测试结果统计: 通过 232 项, 失败 0 项
  🎉 全部测试项 100% 通过！系统各模块运转稳健！
 ============================================================
 ```
@@ -732,8 +787,9 @@ kaoyan_chain/
 ├── .cursorrules                         # Cursor 编辑器智能加载协议
 ├── .clinerules                          # Roo Code / Cline 编辑器加载协议
 ├── LICENSE                              # MIT 开源许可证
-├── README.md                            # 项目总说明与详细部署指南（本文档）
-├── SETUP.md                             # 进阶配置与看板自定义手册
+├── README.md                            # 项目总说明与详细架构说明（本文档）
+├── 操作手册.md                          # 📘 学员专用实操全流程指南（零门槛通关手册）
+├── SETUP.md                             # 进阶部署配置与看板开发手册
 ├── AGENTS.md                            # 全科总教练 Agent 路由中枢与风格设定
 ├── GEMINI.md                            # Gemini / Antigravity 入口配置
 ├── 更新看板.bat                         # Windows 一键编译看板并提交推送脚本
@@ -741,6 +797,7 @@ kaoyan_chain/
 ├── data/                                # 高校研招权威数据库
 │   └── universities/                    # 全国高校研招名录与站点拓扑
 │       ├── registry.json                # 全国55+研招高校代码、别名与官网二级域名库
+│       ├── <省份>/<高校>.yaml           # 55+ 所重点院校分省结构化配置档案
 │       └── school_data/                 # 各高校结构化招生简章与专业目录缓存
 │
 ├── 01-数学/                             # 数学专属私教体系（数一/二/三/396通用）
@@ -796,9 +853,11 @@ kaoyan_chain/
 │   ├── assets/                          # 印刷级 SVG 架构图与演示素材
 │   │   ├── intelligence_architecture.svg# 研招情报与证据链架构图
 │   │   ├── school_comparator_matrix.svg # 双校横向对标决策矩阵
-│   │   ├── dashboard_5tabs_architecture.svg # 看板 5Tab 全景架构图
+│   │   ├── dashboard_5tabs_architecture.svg # 看板全景架构图
 │   │   └── ...                          # 技能、记忆、生命周期架构矢量图
-│   ├── index.html                       # 移动端自测看板发布源
+│   ├── experiences/                     # 社媒实名去噪高分经验与避坑档案库
+│   │   └── <高校>_<专业>.md             # 清洗后的真实就读与考研经验卡
+│   ├── index.html                       # 移动端 6-Tab 自测看板发布源
 │   ├── live.html                        # 印刷级 KaTeX 实时可视化网页伴侣
 │   └── state_snapshot.json              # 学情脱敏快照数据集
 │
@@ -814,16 +873,22 @@ kaoyan_chain/
     │   ├── models.py                    # 证据对象、高校实体与冲突判定数据模型
     │   ├── registry.py                  # 高校代码解析与通用自适应实体合成器
     │   ├── scout_engine.py              # 社媒(知乎/B站/小红书)就读体验口碑引擎
+    │   ├── syllabus_diff.py             # 考纲 AST 变迁对比与动荡率分析引擎 (ky fetch)
     │   └── watcher.py                   # 招生简章动态指纹监控与变动雷达
-    ├── skills/                          # 考研专有能力技能中枢 (SymPy验算, PDF抽题, 盲盒组卷, 变式检索, 考纲图谱, 院校侦察)
+    ├── skills/                          # 考研专有能力技能中枢
     │   ├── school_scout.py              # 目标高校研招与社媒口碑侦察专属技能
-    │   └── ...                          # 验算/抽题/组卷/变式/图谱/诊断各技能实现
+    │   ├── syllabus_diff.py             # 考纲版本对比技能
+    │   ├── material_ingestion.py        # 试题智能分块切片入库管道 (ky ingest)
+    │   ├── exam_composer.py             # 靶向自测组卷与盲盒排版引擎 (ky compose)
+    │   ├── variant_retrieval.py         # 同源变式检索与防伪水印引擎 (ky variant)
+    │   └── ...                          # 验算/抽题/图谱/诊断各技能实现
+    ├── tui_navigator.py                 # 终端全景智能中枢 TUI v2.5 极客控制台 (ky menu)
     ├── doctor.py                        # 6 维度全链路系统体检工具 (Python/依赖/状态/API/端口/Git隐私)
     ├── init_workspace.py                # 跨平台工作区全能初始化向导
     ├── ky_cli.py                        # 专有终端私教 (REPL) 与多端 IM 网关 (WeChat/QQ/DingTalk/Feishu)
     ├── study_planner.py                 # 7维度个人定制化方案设计引擎与防疲劳预警
     ├── syllabus_manager.py              # 官方考纲智能匹配与切换管理器
-    ├── test_ky_suite.py                 # 198项全自动化工程回归测试套件 (19大测试组)
+    ├── test_ky_suite.py                 # 232项全自动化工程回归测试套件 (23大测试组)
     ├── update_dashboard.py              # 跨平台一键编译更新与推送脚本
     └── verify_health.py                 # 全科规范与关键文件健康度巡检脚本
 ```

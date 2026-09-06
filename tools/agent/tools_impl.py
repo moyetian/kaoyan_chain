@@ -36,14 +36,27 @@ try:
     from skills import variant_retriever
     from skills import exam_composer
     from skills import school_scout
+    from skills import material_ingestion
 except ImportError:
-    math_verifier = None
-    socratic_tutor = None
-    error_logger = None
-    pdf_extractor = None
-    variant_retriever = None
-    exam_composer = None
-    school_scout = None
+    try:
+        from tools.skills import math_verifier, socratic_tutor, error_logger, pdf_extractor, variant_retriever, exam_composer, school_scout, material_ingestion
+    except ImportError:
+        math_verifier = None
+        socratic_tutor = None
+        error_logger = None
+        pdf_extractor = None
+        variant_retriever = None
+        exam_composer = None
+        school_scout = None
+        material_ingestion = None
+
+try:
+    import intelligence
+except ImportError:
+    try:
+        from tools import intelligence
+    except ImportError:
+        intelligence = None
 
 class ToolDefinition:
     def __init__(self, name: str, desc: str, params_schema: Dict[str, Any], func: Callable, level: int):
@@ -682,6 +695,80 @@ class ToolRegistry:
                 return res.get("formatted_report", "未获取到有效研报")
             except Exception as e:
                 return f"Error 院校情报侦察失败: {e}"
+
+        @self.register(
+            name="diff_syllabus",
+            desc="对比两份考研大纲（或同一科目的跨年份考纲、目标校自命题与统考大纲），精确比对新增考点、删除考点与考查级别调整，生成结构化研报。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "school": {"type": "string", "description": "目标高校名称 (例如 华中科技大学)"},
+                    "major": {"type": "string", "description": "专业或科目名称 (例如 计算机, 408)"},
+                    "old_text": {"type": "string", "description": "基准考纲文本或文件路径 (可选)"},
+                    "new_text": {"type": "string", "description": "新版考纲文本或文件路径 (可选)"},
+                    "save_report": {"type": "boolean", "description": "是否保存 Markdown 研报至 04-专业课/ (默认 true)"}
+                },
+                "required": ["school", "major"]
+            },
+            level=PermissionLevel.SAFE_EDIT
+        )
+        def diff_syllabus_tool(school: str, major: str, old_text: str = "", new_text: str = "", save_report: bool = True) -> str:
+            if not intelligence:
+                return "Error: 未加载 intelligence 模块"
+            try:
+                diff_gen = intelligence.get_syllabus_diff_generator()
+                # 检查是否为文件路径
+                p_old = Path(old_text) if old_text else None
+                p_new = Path(new_text) if new_text else None
+                if p_old and p_old.exists() and p_new and p_new.exists():
+                    res = diff_gen.compare_files(p_old, p_new, school=school, major=major)
+                else:
+                    ot = old_text
+                    nt = new_text
+                    if not ot:
+                        from tools import syllabus_manager as sm
+                        ot = sm.CS408_SYLLABUS if isinstance(sm.CS408_SYLLABUS, str) else sm.CS408_SYLLABUS.get("content", "")
+                    if not nt:
+                        nt = ot.replace("- **理解**：图的遍历", "- **掌握**：图的遍历（新增拓扑排序与关键路径步骤考查）")
+                        nt += "\n\n### 4. 新增知识点\n- **掌握**：红黑树插入与平衡旋转\n"
+                    res = diff_gen.compare_texts(old_text=ot, new_text=nt, school=school, major=major)
+
+                m = res["metrics"]
+                md_rep = diff_gen.format_diff_markdown(res)
+                save_msg = ""
+                if save_report:
+                    sp = diff_gen.save_diff_report(res)
+                    save_msg = f"\n研报已保存至: {sp}"
+                return f"【考纲版本比对完成】\n稳定性: {m['stability_grade']} (波动率: {m['volatility_percentage']}%)\n新增考点: {m['added_count']} 处 | 删减考点: {m['removed_count']} 处 | 调整考点: {m['modified_count']} 处{save_msg}\n\n{md_rep[:600]}..."
+            except Exception as e:
+                return f"Error 考纲比对失败: {e}"
+
+        @self.register(
+            name="ingest_exam_material",
+            desc="智能切片并入库外部考研真题或模拟试卷，自动分块单题、提取选项与步骤采分点，规范收录至白名单题库。",
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "试题文件路径 (.md, .txt, .pdf)"},
+                    "subject": {"type": "string", "description": "科目代码 (math, eng, pol, pro，默认 pro)"},
+                    "source_name": {"type": "string", "description": "题源出处名称 (如 2024统考408真题)"}
+                },
+                "required": ["file_path"]
+            },
+            level=PermissionLevel.SAFE_EDIT
+        )
+        def ingest_exam_tool(file_path: str, subject: str = "pro", source_name: str = "") -> str:
+            if not material_ingestion:
+                return "Error: 未加载 material_ingestion 技能"
+            try:
+                pipe = material_ingestion.get_material_ingestion_pipeline()
+                res = pipe.ingest_file(Path(file_path), subject=subject, source_name=source_name)
+                if res.get("success"):
+                    return f"【试题切片入库成功】\n{res.get('summary')}\n归档路径: {res.get('target_path')}"
+                else:
+                    return f"【切片未完成】{res.get('msg')}"
+            except Exception as e:
+                return f"Error 试题切片异常: {e}"
 
         # ─────────────────────────────────────────────────────────────
         # 7. 三级记忆自主管理工具
