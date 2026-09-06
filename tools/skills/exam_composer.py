@@ -48,11 +48,33 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
     subj_name = SUBJECT_NAMES.get(subject, subject)
     subj_folder = SUBJECT_DIRS.get(subject, "01-数学")
 
+    if not isinstance(count, int) or count < 1:
+        raise ValueError("count 必须是大于 0 的整数")
+
     selected_items = []
+    selected_keys = set()
+
+    def add_unique(item):
+        """按题源、标题和题干去重，避免同一错题重复占位。"""
+        if not isinstance(item, dict):
+            return False
+        identity = (
+            str(item.get("file_name", "")).strip(),
+            str(item.get("title", "")).strip(),
+            str(item.get("question", item.get("detail", ""))).strip(),
+        )
+        if identity in selected_keys:
+            return False
+        selected_keys.add(identity)
+        selected_items.append(item)
+        return True
     # 1. 优先拉取到期错题
     if error_logger:
         due_items = error_logger.get_due_reviews(subject, max_count=count)
-        selected_items.extend(due_items)
+        for item in due_items:
+            if len(selected_items) >= count:
+                break
+            add_unique(item)
 
     # 2. 到期题不足时，拉取其他尚未掌握的错题
     if len(selected_items) < count and error_logger:
@@ -61,7 +83,7 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
             if len(selected_items) >= count:
                 break
             if "已掌握" not in err.get("status", "") and err not in selected_items:
-                selected_items.append(err)
+                add_unique(err)
 
     # 3. 错题仍不足且允许引入雷达薄弱项时，从薄弱点雷达生成针对性测试题
     if len(selected_items) < count and include_weak:
@@ -75,7 +97,7 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
                     break
                 module_name = m[0].strip()
                 pain_point = m[2].strip()
-                selected_items.append({
+                add_unique({
                     "subject": subject,
                     "subject_name": subj_name,
                     "title": f"{module_name}专题攻坚自测",
@@ -89,7 +111,7 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
 
     # 若没有任何题目，构造基础考纲基准题
     if not selected_items:
-        selected_items.append({
+        add_unique({
             "subject": subject,
             "subject_name": subj_name,
             "title": f"{subj_name}核心必考大纲自测题",
@@ -100,6 +122,22 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
             "stage": 0,
             "is_synthetic": True
         })
+
+    # 题源不足时补齐不同的考纲自拟题，保持请求题量且绝不复制同一题干。
+    fallback_index = 1
+    while len(selected_items) < count:
+        add_unique({
+            "subject": subject,
+            "subject_name": subj_name,
+            "title": f"{subj_name}考纲综合自测题 {fallback_index}",
+            "error_type": "综合考点",
+            "date": date.today().strftime("%Y-%m-%d"),
+            "question": f"请围绕【{subj_name}】考纲核心模块完成第 {fallback_index} 组定义、定理条件与典型应用推导，并写出至少一个易错点。",
+            "detail": f"考纲综合自测题 {fallback_index}",
+            "stage": 0,
+            "is_synthetic": True
+        })
+        fallback_index += 1
 
     today_str = datetime.now().strftime("%Y-%m-%d")
     paper_id = f"EXAM-{subject.upper()}-{datetime.now().strftime('%Y%m%d-%H%M')}"

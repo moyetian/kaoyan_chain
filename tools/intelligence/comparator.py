@@ -115,11 +115,11 @@ class SchoolComparator:
             pitfalls = "；".join(dept_info.get("pitfalls", []))
         else:
             majors = [f"以教育部 {major_keyword} 统考目录及自命题大纲为准"]
-            score_trend = "执行国家一区线或学校自划线"
-            ratio = "统考与推免按 1:1.2 差额复试"
-            protect = "严格保护一志愿考生正当录取权益"
-            reputation = f"{school_name} 重点学科，师资力量雄厚。"
-            pitfalls = "注意关注官方 9 月最新大纲与初试科目调整。"
+            score_trend = "未核验：请以该校当年研究生院复试线公示为准"
+            ratio = "未核验：请以该校当年招生简章与录取公示为准"
+            protect = "未核验：请以该校当年复试与录取细则为准"
+            reputation = "未核验：当前仅生成院校查询入口，不代表学校或专业评价。"
+            pitfalls = "请先核验官方招生简章、专业目录、复试细则与录取名单。"
 
         return {
             "name": school_name,

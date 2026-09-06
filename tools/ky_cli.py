@@ -3413,8 +3413,20 @@ def main():
             sys.exit(1)
         raw_target = " ".join(args[1:])
         content = raw_target
-        if Path(raw_target).exists():
-            content = Path(raw_target).read_text(encoding="utf-8", errors="ignore")
+        target_path = Path(raw_target)
+        # A path-like argument must resolve to a real file; silently diagnosing
+        # the current state for a typo makes the CLI appear successful.
+        if target_path.exists():
+            if not target_path.is_file():
+                print(colorize(f"[!] 诊断目标不是文件: {raw_target}", C.RED))
+                sys.exit(1)
+            content = target_path.read_text(encoding="utf-8", errors="ignore")
+        elif (target_path.suffix or any(ch in raw_target for ch in ("/", "\\"))):
+            print(colorize(f"[!] 找不到答题卡文件: {raw_target}", C.RED))
+            sys.exit(1)
+        if not str(content).strip():
+            print(colorize("[!] 答题卡内容不能为空", C.RED))
+            sys.exit(1)
         if exam_diagnoser:
             cfg = load_config()
             res = exam_diagnoser.diagnose_mock_exam(subject=cfg.get("active_subject", "math"), exam_input=content)
@@ -3509,7 +3521,13 @@ def main():
         build_py = ROOT / "05-考研看板" / "build.py"
         if build_py.exists():
             import subprocess
-            subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"))
+            result = subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"))
+            if result.returncode != 0:
+                print(colorize("[!] 看板构建失败", C.RED))
+                sys.exit(result.returncode or 1)
+        else:
+            print(colorize("[!] 未找到看板构建脚本", C.RED))
+            sys.exit(1)
     elif args[0] in ("menu", "--menu", "tui", "--tui"):
         try:
             import tui_navigator

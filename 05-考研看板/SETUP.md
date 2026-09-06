@@ -12,7 +12,7 @@
 
 本模块是考研学习链的**静态网站生成器 (Static Site Generator)**：
 - **数据源输入**：扫描 `01-数学/`、`02-英语/`、`03-思想政治理论/`、`04-专业课/` 中的最新学情 Markdown 状态文件；
-- **核心构建引擎**：`build.py`（纯 Python 3.8+ 原生标准库编写，零 pip 依赖）；
+- **核心构建引擎**：`build.py`（Python 3.8+ 标准库）；数学、PDF、图像和 OCR 增强技能按需安装根目录 `requirements.txt` 中的依赖；
 - **产物输出**：
   - `docs/index.html`（单文件自包含 HTML5 页面，原生内嵌 5 大 Tab、3D 翻转卡与毛玻璃遮罩）；
   - `docs/state_snapshot.json`（学情脱敏状态快照，供公开环境或第三方工具消费）。
@@ -75,12 +75,12 @@ SECTION_MAP = {
    - 仅需在本地调试且明确接受隐私风险时，设置 `KY_SNAPSHOT_OPT_IN=0` 生成完整快照：
      ```bash
      # Windows PowerShell
-     $env:KY_SNAPSHOT_OPT_IN="1"; python tools/update_dashboard.py --local
+     $env:KY_SNAPSHOT_OPT_IN="0"; python tools/update_dashboard.py --local
 
      # macOS / Linux
-     KY_SNAPSHOT_OPT_IN=1 python tools/update_dashboard.py --local
+     KY_SNAPSHOT_OPT_IN=0 python tools/update_dashboard.py --local
      ```
-     开启后，引擎会自动模糊处理学员真实错题描述与笔记，仅输出结构化百分比指标。
+     默认构建即为脱敏模式；只有明确设置 `KY_SNAPSHOT_OPT_IN=0` 才会保留完整学情。
 
 ---
 

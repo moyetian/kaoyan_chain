@@ -615,6 +615,32 @@ def count_notes(s):
     return sum(1 for f in d.iterdir() if f.is_file() and f.suffix == ".md" and not f.name.startswith("_"))
 
 
+def _snapshot_opt_in():
+    """Return True only for the publish-safe/sanitized mode."""
+    import os
+    return os.environ.get("KY_SNAPSHOT_OPT_IN", "1").lower() in ("1", "true", "yes", "on")
+
+
+def _sanitize_public_data(data: dict) -> dict:
+    """Remove answer/detail text before embedding data in HTML or JSON."""
+    safe_memo, safe_weak = [], []
+    for key in ("memo", "weak"):
+        target = safe_memo if key == "memo" else safe_weak
+        for d in data.get(key, []):
+            d2 = dict(d)
+            d2["cards"] = [{"f": c.get("f", ""), "b": []} for c in d.get("cards", [])]
+            target.append(d2)
+    safe_metrics = []
+    for g in data.get("metrics", []):
+        g2 = {k: v for k, v in g.items() if k != "title"}
+        g2["items"] = [{k: v for k, v in it.items() if k in ("label", "text", "pct", "count", "target", "dir")} for it in g.get("items", [])]
+        safe_metrics.append(g2)
+    safe_subjects = [{k: s.get(k) for k in ("key", "name", "icon", "color", "dark", "notes", "ok")} for s in data.get("subjects", [])]
+    return {"memo": safe_memo, "weak": safe_weak, "metrics": safe_metrics,
+            "subjects": safe_subjects, "plan": data.get("plan", {}),
+            "maps": data.get("maps", {}), "trend": data.get("trend", [])}
+
+
 def build():
     today = datetime.date.today()
     d_math = (EXAM_DATE - today).days
@@ -720,7 +746,14 @@ def build():
     else:
         today_out = "<div class='empty'><div class='ei'>📋</div>今日任务尚未生成<br><small>去 Antigravity 发「报道」</small></div>"
 
+    # Public builds must not embed the private daily task prose. The structured
+    # cards/metrics remain available in the sanitized payload above.
+    if _snapshot_opt_in():
+        today_out = "<div class='empty'><div class='ei'>📋</div>今日任务已生成（内容保留在本地完整模式）</div>"
+
     def notes_out(tab):
+        if _snapshot_opt_in():
+            return ""
         if not notes_html[tab]:
             return ""
         h = ["<details class='extra'><summary>📄 补充说明（非卡片内容）</summary>"]
@@ -776,7 +809,8 @@ def build():
         "maps": k_maps,
         "trend": trend_history,
     }
-    payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    html_data = _sanitize_public_data(data) if _snapshot_opt_in() else data
+    payload = json.dumps(html_data, ensure_ascii=False).replace("</", "<\\/")
 
     return (HTML
             .replace("{{DMATH}}", str(d_math))
@@ -1612,50 +1646,9 @@ def _write_state_snapshot(data: dict, snapshot_path: "Path", parse_warnings=None
         print("                 export KY_SNAPSHOT_OPT_IN=1 && python build.py   (macOS/Linux)")
         snapshot_payload = {"meta": meta, "data": snapshot_data}
     else:
-        # 脱敏：去除卡片的"back"详情（可能含个人化 weakness 文本），保留 front 与指标
-        safe_memo, safe_weak = [], []
-        for d in data.get("memo", []):
-            d2 = dict(d)
-            d2["cards"] = [{"f": c.get("f", ""), "b": []} for c in d.get("cards", [])]
-            safe_memo.append(d2)
-        for d in data.get("weak", []):
-            d2 = dict(d)
-            d2["cards"] = [{"f": c.get("f", ""), "b": []} for c in d.get("cards", [])]
-            safe_weak.append(d2)
-        # 指标只保留 label/text/pct/count/target/dir（去掉可能含个人化描述的字段）
-        safe_metrics = []
-        for g in data.get("metrics", []):
-            g2 = {k: v for k, v in g.items() if k != "title"}
-            safe_items = []
-            for it in g.get("items", []):
-                safe_items.append({k: v for k, v in it.items() if k in ("label", "text", "pct", "count", "target", "dir")})
-            g2["items"] = safe_items
-            safe_metrics.append(g2)
-        # subject 列表只保留聚合信息（去掉具体目标分数/满分）
-        safe_subjects = []
-        for s in data.get("subjects", []):
-            safe_subjects.append({
-                "key": s.get("key"),
-                "name": s.get("name"),
-                "icon": s.get("icon"),
-                "color": s.get("color"),
-                "dark": s.get("dark"),
-                "notes": s.get("notes"),
-                "ok": s.get("ok"),
-            })
+        safe_data = _sanitize_public_data(data)
         meta["sanitized"] = True
-        snapshot_payload = {
-            "meta": meta,
-            "data": {
-                "memo": safe_memo,
-                "weak": safe_weak,
-                "metrics": safe_metrics,
-                "subjects": safe_subjects,
-                "plan": data.get("plan", {}),
-                "maps": data.get("maps", {}),
-                "trend": data.get("trend", []),
-            }
-        }
+        snapshot_payload = {"meta": meta, "data": safe_data}
         print("[OK] 已生成脱敏快照（默认安全模式），可安全提交至公开仓库。")
 
     snapshot_path.parent.mkdir(parents=True, exist_ok=True)

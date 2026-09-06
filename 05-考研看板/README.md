@@ -11,7 +11,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Status-Sprint%207%20Delivered%20%C2%B7%20%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE%E5%B0%B1%E7%BB%AA-success.svg?style=flat-square" alt="Status" />
-  <img src="https://img.shields.io/badge/Tests-232%2F232%20Passed%20(100%25)-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-CLI%20smoke%20%2B%20regression-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
   <img src="https://img.shields.io/badge/Dashboard-6%20Tabs%20(%E6%96%B0%E5%A2%9E%20%F0%9F%93%A1%20%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE)-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
   <img src="https://img.shields.io/badge/Python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/Math-KaTeX%20LaTeX-00d084?style=flat-square&logo=latex&logoColor=white" alt="KaTeX" />
@@ -197,7 +197,7 @@
 
 如果您不想打开笨重的大型 IDE，本项目自带了一个专为考研学子研发的**轻量级专用终端私教工具（`ky-cli`）**：
 
-- **纯 Python 标准库编写**：零 `pip install` 依赖，只要有 Python 即可秒开；
+- **核心 Python 标准库实现**：基础看板与 CLI 可直接启动；数学、PDF、图像和 OCR 技能按需安装根目录 `requirements.txt` 中的依赖；
 - **全模型 API 原生接入**：直接配置 DeepSeek、智谱 GLM、通义千问、月之暗面 Kimi、OpenAI 或本地 Ollama；
 - **多端聊天机器人桥接 (IM Bridge)**：支持连接**微信 (ClawBot/企微)**、**QQ (NapCat/OneBot)**、**钉钉**、**飞书**。
 
@@ -353,7 +353,7 @@ python -m http.server 8080 --directory docs
 | `专业课报到` / `学专业课` | 启动专业课模块，按指定白名单资料抽取大题训练 | `04-专业课/AGENTS.md`、`学情档案.md` |
 | `交作业` | 提交解答草稿，AI 进行采分点批改并归纳错因入库 | 各科 `错题本/` 与 `当前进度.md` |
 | `查漏` | 调取四科薄弱点雷达与待重做错题队列 | 各科 `薄弱点雷达.md` |
-| `更新看板` | 重新生成最新移动端看板并推送云端 | `python tools/update_dashboard.py` |
+| `更新看板` | 重新生成最新移动端看板（默认仅本地构建） | `python tools/update_dashboard.py --local`；确认无误后加 `--push` |
 
 ---
 
@@ -363,7 +363,7 @@ python -m http.server 8080 --directory docs
 
 | 平台 | 连接方式 | 核心优势 | 快速命令 |
 |---|---|---|---|
-| 📱 **微信个人号** | **WeChat ClawBot 扫码直连** | **无需公网 IP**，手机微信扫码授权即可将个人号变身 24h 私教 | `ky clawbot` 或 `ky wechat` |
+| 📱 **微信个人号** | **WeChat ClawBot 适配入口** | 需要单独安装、授权第三方连接器；本项目提供本地网关入口 | `ky clawbot` 或 `ky wechat` |
 | 📌 **钉钉群** | **Outgoing 机器人回调** + 异步回传 | 内置 `sessionWebhook` 异步通道，群内 @ 机器人即刻讲题 | `ky bridge` |
 | 🐦 **飞书群** | **企业自建应用** + 事件订阅 | 内置握手校验，群内艾特自动分步赋分 | `ky bridge` |
 | 🐧 **QQ 群** | **NapCat / OneBot 11** 本地模式 | **无需任何公网穿透**，本地局域网秒级双向收发与题解推送 | `ky bridge` |
@@ -385,7 +385,7 @@ kaoyan_chain/
 ├── SETUP.md                             # 进阶配置与看板自定义手册
 ├── AGENTS.md                            # 全科总教练 Agent 路由中枢与风格设定
 ├── GEMINI.md                            # Gemini / Antigravity 入口配置
-├── 更新看板.bat                         # Windows 一键编译看板并提交推送脚本
+├── 更新看板.bat                         # Windows 本地编译看板脚本（推送需显式 --push）
 │
 ├── data/                                # 高校研招权威数据库
 │   └── universities/                    # 全国高校研招名录与站点拓扑
@@ -473,7 +473,7 @@ kaoyan_chain/
     ├── study_planner.py                 # 7维度个人定制化方案设计引擎与防疲劳预警
     ├── syllabus_manager.py              # 官方考纲智能匹配与切换管理器
     ├── test_ky_suite.py                 # 198项全自动化工程回归测试套件 (19大测试组)
-    ├── update_dashboard.py              # 跨平台一键编译更新与推送脚本
+    ├── update_dashboard.py              # 本地编译；--push 时才提交并推送
     └── verify_health.py                 # 全科规范与关键文件健康度巡检脚本
 ```
 

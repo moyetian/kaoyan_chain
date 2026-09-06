@@ -8,7 +8,7 @@ where python >nul 2>nul || set PY=py
 if exist "D:\Python\Python312\python.exe" set PY=D:\Python\Python312\python.exe
 
 echo ========================================================
-echo   考研学习链 (Kaoyan Study Chain) - 一键构建与推送到 GitHub
+echo   考研学习链 (Kaoyan Study Chain) - 本地构建看板
 echo ========================================================
 echo.
 
@@ -21,23 +21,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/3] 正在提交本地更新...
-for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HHmm"') do set TS=%%i
-git add -A
-git commit -m "study-chain update %TS%"
-
-echo.
-echo [3/3] 正在推送到 GitHub 远程仓库...
-git push
-if errorlevel 1 (
-  echo.
-  echo [!] 推送未成功。若首次使用，请先完成远程仓库绑定：
-  echo     git remote add origin <你的GitHub仓库地址>
-  echo     git branch -M main
-  echo     git push -u origin main
-) else (
-  echo.
-  echo [OK] 学习项目已成功同步至 GitHub！
-)
+echo [2/2] 本地构建完成，未执行 Git 提交或推送。
+echo 如需同步，请在终端运行：python tools/update_dashboard.py --push
 
 timeout /t 5

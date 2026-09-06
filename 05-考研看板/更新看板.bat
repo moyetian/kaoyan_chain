@@ -7,7 +7,7 @@ set PY=D:\Python\Python312\python.exe
 if not exist "%PY%" set PY=py
 
 echo ============================================
-echo   Kaoyan Dashboard - Build ^& Push
+echo   Kaoyan Dashboard - Local Build
 echo ============================================
 echo.
 
@@ -15,23 +15,11 @@ echo [1/3] Building...
 "%PY%" build.py
 if errorlevel 1 goto :err
 
-echo.
-echo [2/3] Committing...
-for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HHmm"') do set TS=%%i
-git add -A
-git commit -m "update %TS%"
+echo [2/2] Local build complete. No Git commit or push was performed.
+echo To sync explicitly, run: python tools/update_dashboard.py --push
 
 echo.
-echo [3/3] Pushing...
-git push
-if errorlevel 1 (
-  echo.
-  echo [!] Push failed. Remote may not be configured yet.
-  echo     Run: git remote add origin ^<your-repo-url^>
-)
-
-echo.
-echo Done. Dashboard will be live in ~1 min.
+echo Done. The local dashboard is ready.
 echo Press any key to close.
 pause >nul
 exit /b 0

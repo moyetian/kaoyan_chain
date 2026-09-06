@@ -2,8 +2,9 @@
 """
 考研学习链 (Kaoyan AI Study Chain) · 一键构建并同步脚本 (跨平台)
 用法：
-  python tools/update_dashboard.py          # 编译看板并尝试 git push
-  python tools/update_dashboard.py --local  # 仅本地编译看板，不提交 git
+  python tools/update_dashboard.py                 # 仅本地编译看板
+  python tools/update_dashboard.py --local         # 显式指定仅本地编译
+  python tools/update_dashboard.py --push          # 编译后提交并推送到远程仓库
 """
 
 import sys
@@ -38,7 +39,7 @@ def main():
         print("[!] 构建失败，请检查 Python 环境或语法。")
         sys.exit(1)
 
-    if "--local" in sys.argv or "-l" in sys.argv:
+    if "--local" in sys.argv or "-l" in sys.argv or "--push" not in sys.argv:
         print("\n[OK] 本地构建完成（已跳过 Git 提交与推送）。")
         return
 

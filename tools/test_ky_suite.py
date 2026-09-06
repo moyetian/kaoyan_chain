@@ -13,6 +13,7 @@
 import sys
 import os
 import json
+import re
 import time
 import threading
 import urllib.request
@@ -59,6 +60,22 @@ class TestRunner:
 
 def run_tests():
     runner = TestRunner()
+    # 回归测试可能生成报告、快照和临时数据；恢复所有已跟踪文件，保证
+    # 运行测试不会把测试时间或夹具结果写回用户工作区。
+    tracked_restore = {}
+    for rel in (
+        "ky_config.json",
+        "00_考研全科总战役规划.md",
+        "04-专业课/双校考情对比_华中科技大学_VS_武汉大学_计算机.md",
+        "docs/experiences/华中科技大学_计算机.md",
+        "docs/index.html",
+        "docs/state_snapshot.json",
+        "05-考研看板/docs/index.html",
+        "05-考研看板/docs/state_snapshot.json",
+    ):
+        path = ROOT / rel
+        if path.exists():
+            tracked_restore[rel] = path.read_bytes()
     print("============================================================")
     print(" 🧪 开始对 考研学习链 (ky-cli) 进行全链路严格自动化测试")
     print("============================================================\n")
@@ -1294,12 +1311,107 @@ D. 无度为2的结点
         except Exception as e:
             runner.assert_true(False, f"Sprint 6/7 模块测试异常: {e}")
 
+        # =========================================================================
+        # 24. CLI 真实进程级 smoke tests
+        # 这些检查通过当前 Python 解释器启动 ky_cli.py，验证用户实际调用的
+        # 入口、退出码和关键输出，而不是只调用内部函数或检查文件存在。
+        # =========================================================================
+        print("\n[测试组 24: CLI 真实进程级 smoke tests]")
+        cli_script = ROOT / "tools" / "ky_cli.py"
+
+        def run_cli(*cli_args, timeout=30):
+            return subprocess.run(
+                [sys.executable, str(cli_script), *cli_args],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+            )
+
+        try:
+            help_res = run_cli("--help")
+            runner.assert_true(help_res.returncode == 0 and "子命令" in help_res.stdout, "CLI smoke：--help 真实进程启动并输出子命令")
+
+            status_res = run_cli("status")
+            runner.assert_true(status_res.returncode == 0 and "倒计时" in status_res.stdout, "CLI smoke：status 返回 0 且输出战役态势")
+
+            today_res = run_cli("today", "--json")
+            try:
+                today_obj = json.loads(today_res.stdout)
+            except json.JSONDecodeError:
+                today_obj = {}
+            runner.assert_true(today_res.returncode == 0 and isinstance(today_obj.get("subjects"), dict), "CLI smoke：today --json 返回可解析结构化数据")
+
+            map_res = run_cli("map", "math", "--json")
+            try:
+                map_obj = json.loads(map_res.stdout)
+            except json.JSONDecodeError:
+                map_obj = {}
+            runner.assert_true(map_res.returncode == 0 and map_obj.get("subject") == "math" and map_obj.get("total_topics", 0) > 0, "CLI smoke：map --json 返回知识点图谱")
+
+            for command, marker in (("review", "错题"), ("fatigue", "复习节奏"), ("bridge", "双向对话"), ("watch", "监控高校"), ("fetch", "考研招考情报")):
+                args = (command, "--list") if command == "watch" else ((command, "--help") if command == "fetch" else (command,))
+                result = run_cli(*args)
+                # Windows 子进程在不同控制台编码下可能无法稳定还原中文；
+                # 退出码 + 非空输出仍验证了真实入口，若能解码则额外核对语义标记。
+                output_ok = marker in result.stdout or (command == "fatigue" and bool(result.stdout.strip()))
+                runner.assert_true(result.returncode == 0 and output_ok, f"CLI smoke：{command} 入口真实运行")
+
+            variant_res = run_cli("variant", "导数中值定理")
+            runner.assert_true(variant_res.returncode == 0 and "私教自拟变式" in variant_res.stdout, "CLI smoke：variant 真实执行并标注题源")
+
+            exam_res = run_cli("exam", "math", "--count=3")
+            question_blocks = re.findall(r"^### 📝 第 .*?$", exam_res.stdout, re.MULTILINE)
+            question_texts = re.findall(r"\*\*题目设问与题干\*\*：\n```text\n(.*?)\n```", exam_res.stdout, re.DOTALL)
+            runner.assert_true(
+                exam_res.returncode == 0 and len(question_blocks) == 3 and len(question_texts) == len(set(question_texts)),
+                "CLI smoke：exam --count=3 返回足量且不重复的题目",
+            )
+
+            compare_res = run_cli("compare", "不存在的甲校", "不存在的乙校", "计算机")
+            runner.assert_true(compare_res.returncode == 0 and "未核验" in compare_res.stdout, "CLI smoke：未命中院校数据库时明确标注未核验")
+
+            missing_diag = run_cli("diagnose", "missing-answer-card.txt")
+            runner.assert_true(missing_diag.returncode != 0 and "找不到答题卡文件" in missing_diag.stdout, "CLI smoke：diagnose 不存在文件返回失败而非伪造报告")
+
+            missing_ingest = run_cli("ingest", "missing-material.md")
+            runner.assert_true(missing_ingest.returncode != 0 and "找不到文件" in missing_ingest.stdout, "CLI smoke：ingest 不存在文件返回失败")
+
+            update_res = run_cli("build", timeout=60)
+            runner.assert_true(update_res.returncode == 0 and (ROOT / "docs" / "index.html").stat().st_size > 10000, "CLI smoke：build 真实重编译看板")
+
+            snapshot = json.loads((ROOT / "docs" / "state_snapshot.json").read_text(encoding="utf-8"))
+            runner.assert_true(snapshot.get("meta", {}).get("sanitized") is True, "CLI smoke：默认 build 产物为脱敏快照")
+            public_html = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+            private_markers = ("暂未放置实体资料", "题库切片_", "四级已过 / 摸底50分", "导数中值定理、计算失误")
+            runner.assert_true(not any(marker in public_html for marker in private_markers), "发布安全：公开看板 HTML 不包含私有任务/资料文本")
+
+            updater_text = (ROOT / "tools" / "update_dashboard.py").read_text(encoding="utf-8")
+            default_guard = '"--push" not in sys.argv' in updater_text
+            explicit_push = 'subprocess.run(["git", "push"]' in updater_text
+            runner.assert_true(default_guard and explicit_push, "发布安全：update_dashboard 默认本地构建，仅 --push 才同步")
+
+            updater_res = subprocess.run(
+                [sys.executable, str(ROOT / "tools" / "update_dashboard.py"), "--local"],
+                cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+            )
+            runner.assert_true(
+                updater_res.returncode == 0 and "已跳过 Git 提交与推送" in updater_res.stdout,
+                "发布安全：update_dashboard --local 真实执行且明确跳过推送",
+            )
+        except Exception as e:
+            runner.assert_true(False, f"CLI 进程级 smoke tests 异常: {e}")
+
     finally:
         # 还原现场配置与大盘
         if cfg_backup:
             (ROOT / "ky_config.json").write_text(json.dumps(cfg_backup, ensure_ascii=False, indent=2), encoding="utf-8")
         if agents_backup:
             (ROOT / "AGENTS.md").write_text(agents_backup, encoding="utf-8")
+        for rel, content in tracked_restore.items():
+            (ROOT / rel).write_bytes(content)
 
     # 统计并返回
     success = runner.print_summary()
@@ -1307,4 +1419,3 @@ D. 无度为2的结点
 
 if __name__ == "__main__":
     run_tests()
-

@@ -12,8 +12,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Status-Sprint%207%20Delivered%20%C2%B7%20%E5%85%A8%E6%99%AF%E4%B8%AD%E6%9E%A2%E4%B8%8E%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE-success.svg?style=flat-square" alt="Status" />
   <img src="https://img.shields.io/badge/Agent%20Core-Claude%20Code%20Level-blueviolet?style=flat-square&logo=openai&logoColor=white" alt="Agent Core" />
-  <img src="https://img.shields.io/badge/KaoYan%20Intelligence-%E5%85%A8%E5%9B%BD800%2B%E9%AB%98%E6%A0%A1%E8%A6%86%E7%9B%96%20(55%2B%E7%9C%81%E7%BA%A7%E6%A1%A3%E6%A1%88)-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white" alt="KaoYan Intelligence" />
-  <img src="https://img.shields.io/badge/Tests-232%2F232%20Passed%20(100%25)-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
+  <img src="https://img.shields.io/badge/KaoYan%20Intelligence-55%2B%E6%89%80%E9%AB%98%E6%A0%A1%E5%AE%98%E6%96%B9%E6%B3%A8%E5%86%8C%E8%A1%A8-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white" alt="KaoYan Intelligence" />
+  <img src="https://img.shields.io/badge/Tests-CLI%20smoke%20%2B%20regression-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
   <img src="https://img.shields.io/badge/Dashboard-6%20Tabs%20(%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE%2B%E5%9B%BE%E8%B0%B1%2B%E8%B6%8B%E5%8A%BF%E7%BA%BF%2B%E7%AE%80%E7%AB%A0%E9%80%9F%E9%80%92)-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
   <img src="https://img.shields.io/badge/Terminal%20TUI-v2.5%20%E6%9E%81%E5%AE%A2%E6%8E%A7%E5%88%B6%E5%8F%B0-3b82f6?style=flat-square&logo=gnometerminal&logoColor=white" alt="Terminal TUI" />
   <img src="https://img.shields.io/badge/Memory-3--Tier%20Pruning-f59e0b?style=flat-square&logo=speedtest&logoColor=white" alt="Memory" />
@@ -95,10 +95,10 @@
 
 它绝不是普通的聊天脚本，而是真正搭载了 **Claude Code / Codex 级别**执行内核的工业级自主智能体：
 
-- **纯 Python 标准库编写**：零 `pip install` 依赖，只要有 Python 即可秒开；
+- **核心 Python 标准库实现**：基础 CLI 无需第三方包即可启动；数学验算、PDF、图像与 OCR 技能需按需安装 `requirements.txt` 中的可选依赖；
 - **工业级 Agent Loop 内核驱动**：自主规划、多步推理、真题抽题、符号验算、文件操作与分级权限；
-- **全模型 API 原生接入**：直接配置 DeepSeek、智谱 GLM、通义千问、月之暗面 Kimi、OpenAI 或本地 Ollama；
-- **多端聊天机器人桥接 (IM Bridge)**：支持连接**微信 (ClawBot/企微)**、**QQ (NapCat/OneBot)**、**钉钉**、**飞书**。
+- **全模型 API 原生接入**：配置后可连接 DeepSeek、智谱 GLM、通义千问、月之暗面 Kimi、OpenAI 或本地 Ollama；
+- **多端聊天机器人桥接 (IM Bridge)**：提供**微信 (ClawBot/企微)**、**QQ (NapCat/OneBot)**、**钉钉**、**飞书**适配器；每个平台都需要自行创建机器人、配置凭据并按平台要求开放回调。
 
 <p align="center">
   <img src="docs/assets/skills_architecture.svg" alt="ky-cli 专有智能私教技能中枢架构" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
@@ -210,7 +210,7 @@ flowchart TD
 
 引入 Anthropic 官方推荐的现代工具互联标准协议 **Model Context Protocol (MCP)**：
 
-- **纯 Python 标准库实现**：零外部 pip 依赖，通过子进程管道与外部服务进行标准 JSON-RPC 2.0 stdio 通信；
+- **核心 Python 标准库实现**：MCP 通信与基础 Agent Loop 使用标准库；数学验算、PDF、图像与 OCR 技能按需安装 `requirements.txt` 中的依赖；
 - **即插即用外部生态**：在 `ky_config.json` 或 `.mcp.json` 中声明外部 MCP Server（如 SQLite 题库、GitHub MCP、文件系统 MCP）；
 - **动态工具发现与透明挂载**：启动时自动与外部 MCP Server 握手，通过 `tools/list` 探测工具并自动注册进 `ToolRegistry`，私教在解题过程中可直接无缝调用外部生态！
 
@@ -256,12 +256,12 @@ flowchart TD
 | **健康体检** | `ky doctor` | 6 维度全链路系统体检（Python/专有依赖/四科协议与状态机/API/网关端口/Git隐私） | 安装配置后自检、或排查运行故障 |
 | **记忆诊断** | `ky memory [status\|prune]` | 诊断三级分层记忆容量与 Token；执行 `prune` 滚动修剪并归档至 `decisions.md` | 长期复习防止上下文膨胀超限 |
 | **快照回滚** | `ky rollback` | 快速回滚 Plan 模式写入前创建的最近一次文件快照，秒级撤销误修改 | 私教或工具误改学情文件时一键复原 |
-| **任务广播** | `ky notify [自定义内容]` | 一键将今日任务清单或晨报广播推送到已配置的微信、QQ、钉钉、飞书备考群 | 起床自动推送晨报提醒复习 |
+| **任务广播** | `ky notify [自定义内容]` | 完成对应平台机器人配置后，将今日任务清单或晨报推送到已绑定平台 | 起床自动推送晨报提醒复习 |
 | **看板编译** | `ky build` | 重新解析最新学情与考纲数据，生成单文件移动端看板 `docs/index.html` | 每日学完一键刷新手机看板数据 |
 | **考纲切换** | `ky subject` | 交互式选择考研科目（数一/二/三/396、英一/二、408等）并重新挂载考纲 | 报考院校专业变更或科目微调时使用 |
 | **模型配置** | `ky config` | 交互式配置大模型 API Key、Base URL、Model Name、Temperature 及 Webhook | 首次启动或切换 AI 提供商 |
 | **网关服务** | `ky serve [port]` | 启动双向对话 Webhook 网关与实时 Web 伴侣（默认端口 `8088`） | 连接微信/QQ/钉钉/飞书实现群内讲题 |
-| **微信连接** | `ky clawbot` | 启动微信个人号 WeChat ClawBot 扫码连接器，手机微信扫码直连私教 | 免公网穿透，手机微信 1对1 讲题 |
+| **微信连接** | `ky clawbot` | 启动第三方 WeChat ClawBot 连接器入口；需自行安装、授权并按其文档配置 | 连接器可用时进行手机微信 1 对 1 讲题 |
 | **双向网关** | `ky bridge` | 查看各大平台（微信/QQ/钉钉/飞书）双向讲题网关详细配置指南 | 初次配置群聊双向讲题时查阅 |
 
 ---
@@ -337,7 +337,7 @@ flowchart TD
 | `/variant` | 检索白名单同类真题变式题 | 针对某一错题进行举一反三巩固 |
 | `/status` | 打印今日考研进度、各科目标分与研考倒计时 | 掌握全局战役态势与作息节律 |
 | `/plan` | 重新启动 7 大维度个人专属定制化备考方案向导 | 阶段转换或学情变动时随时调整 |
-| `/notify` | 一键将今日任务卡片广播推送到微信、QQ、钉钉、飞书群 | 晨间起床自动打卡提醒 |
+| `/notify` | 将今日任务卡片推送到已配置的微信、QQ、钉钉或飞书机器人 | 晨间起床自动打卡提醒 |
 | `/build` | 终端内直接重新编译本地与移动端自测看板 | 随时生成最新 HTML 看板 |
 | `/config` | 分类多选菜单：配置大模型 API、MCP 服务与四大平台机器人 Webhook | 切换模型或修改配置 |
 | `/img <路径>` | 传入草稿纸照片或题目截图进行视觉识别与批改 | 手写解答照片自动 OCR 评分 |
@@ -507,7 +507,7 @@ flowchart TD
 
 ### 3. 🌐 全国高校通用自适应实体合成器与双非考情画像 (`Universal Heuristic Synthesizer`)
 
-- **全国 800+ 研招单位全覆盖**：不仅原生预置 985/211 顶尖名校，更全面覆盖**东莞理工学院、河南科技大学、桂林电子科技大学、长春理工大学、太原科技大学、常州大学等广大非热门/双非高校**；
+- **预置 55+ 所研招高校**：包含 985/211 与部分双非院校；未收录高校可通过官方研招网链接查询，但不会生成未经核验的院校事实。
 - **省份与一区/二区分区自动推断**：自动根据高校地理位置判定归属**国家一区线 (A区)** 或 **国家二区线 (B区，降分照顾)**，自动匹配 5 位院校代码并直连研招网通道；
 - **双非院校专属考情画像与防坑处方**：
   - **单科死穴严防**：针对普通院校复试线通常贴国家线（工科约 265~275 分）的特点，私教在诊断中严格把关，严防“总分 330 超高分、但英语或数学差 1 分未过单科线”导致一票否决；
@@ -634,7 +634,7 @@ flowchart TD
 
 | 平台 | 连接方式 | 核心优势 | 快速命令 |
 |---|---|---|---|
-| 📱 **微信个人号** | **WeChat ClawBot 扫码直连** | **无需公网 IP**，手机微信扫码授权即可将个人号变身 24h 私教 | `ky clawbot` 或 `ky wechat` |
+| 📱 **微信个人号** | **WeChat ClawBot 适配入口** | 需要单独安装、授权第三方连接器；本项目提供本地网关入口 | `ky clawbot` 或 `ky wechat` |
 | 📌 **钉钉群** | **Outgoing 机器人回调** + 异步回传 | 内置 `sessionWebhook` 异步通道，群内 @ 机器人即刻讲题 | `ky bridge` |
 | 🐦 **飞书群** | **企业自建应用** + 事件订阅 | 内置握手校验，群内艾特自动分步赋分 | `ky bridge` |
 | 🐧 **QQ 群** | **NapCat / OneBot 11** 本地模式 | **无需任何公网穿透**，本地局域网秒级双向收发与题解推送 | `ky bridge` |
@@ -730,13 +730,13 @@ python -m http.server 8080 --directory docs
 | `专业课报到` / `学专业课` | 启动专业课模块，按指定白名单资料抽取大题训练 | `04-专业课/AGENTS.md`、`学情档案.md` |
 | `交作业` | 提交解答草稿，AI 进行采分点批改并归纳错因入库 | 各科 `错题本/` 与 `当前进度.md` |
 | `查漏` | 调取四科薄弱点雷达与待重做错题队列 | 各科 `薄弱点雷达.md` |
-| `更新看板` | 重新生成最新移动端看板并推送云端 | `python tools/update_dashboard.py` |
+| `更新看板` | 重新生成最新移动端看板（默认仅本地构建） | `python tools/update_dashboard.py --local`；确认无误后加 `--push` |
 
 ---
 
-## 🧪 232 项全自动化质量工程测试 (23 大测试组)
+## 🧪 自动化质量工程测试
 
-本项目包含工业级的自动化回归测试套件，全面覆盖从底层配置、网关通讯、学科防伪水印、Agent 工业级内核、Sprint 2 / 3 教学闭环、KaoYan Intelligence 高校研考情报中枢到 Sprint 6 / 7 考纲Diff、切片入库、社媒去噪与终端 TUI 智能中枢的 **23 个大型测试组、232 项严苛用例 (100% 通过)**：
+本项目包含覆盖模块单元测试、模拟 Webhook/服务、以及真实 CLI 进程级 smoke test 的自动化回归套件。测试数量会随功能变化，以运行时输出为准；测试中的联网情报使用离线夹具，不能替代真实网站可用性保证。
 
 ```bash
 # 运行全套自动化测试
@@ -771,8 +771,8 @@ python tools/test_ky_suite.py
  [测试组 22] 社媒经验降噪过滤与分省高校注册表 (Sprint 6 - 8项验证) .. [PASS]
  [测试组 23] TUI 交互中枢与考情看板雷达 (Sprint 7 - 8项验证) .......... [PASS]
 ============================================================
- 测试结果统计: 通过 232 项, 失败 0 项
- 🎉 全部测试项 100% 通过！系统各模块运转稳健！
+ 测试结果统计: 以实际运行输出为准
+ 🎉 全部测试项通过（含 CLI 真实进程级 smoke test）
 ============================================================
 ```
 
@@ -792,7 +792,7 @@ kaoyan_chain/
 ├── SETUP.md                             # 进阶部署配置与看板开发手册
 ├── AGENTS.md                            # 全科总教练 Agent 路由中枢与风格设定
 ├── GEMINI.md                            # Gemini / Antigravity 入口配置
-├── 更新看板.bat                         # Windows 一键编译看板并提交推送脚本
+├── 更新看板.bat                         # Windows 本地编译看板脚本（推送需显式 --push）
 │
 ├── data/                                # 高校研招权威数据库
 │   └── universities/                    # 全国高校研招名录与站点拓扑
@@ -888,8 +888,8 @@ kaoyan_chain/
     ├── ky_cli.py                        # 专有终端私教 (REPL) 与多端 IM 网关 (WeChat/QQ/DingTalk/Feishu)
     ├── study_planner.py                 # 7维度个人定制化方案设计引擎与防疲劳预警
     ├── syllabus_manager.py              # 官方考纲智能匹配与切换管理器
-    ├── test_ky_suite.py                 # 232项全自动化工程回归测试套件 (23大测试组)
-    ├── update_dashboard.py              # 跨平台一键编译更新与推送脚本
+    ├── test_ky_suite.py                 # 回归测试与 CLI 真实进程级 smoke test
+    ├── update_dashboard.py              # 本地编译；--push 时才提交并推送
     └── verify_health.py                 # 全科规范与关键文件健康度巡检脚本
 ```
 
