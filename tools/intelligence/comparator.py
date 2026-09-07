@@ -108,13 +108,15 @@ class SchoolComparator:
 
         if dept_info:
             majors = dept_info.get("majors", [])
+            catalog_source = "[OFFICIAL_VERIFIED 院校专栏实录]"
             score_trend = dept_info.get("score_trend", "参照国家线与校自划线")
             ratio = dept_info.get("ratio_quota", "以官方最终报录公示为准")
             protect = dept_info.get("protect_first", "遵循教育部统一录取规范")
             reputation = "；".join(dept_info.get("reputation", []))
             pitfalls = "；".join(dept_info.get("pitfalls", []))
         else:
-            majors = [f"以教育部 {major_keyword} 统考目录及自命题大纲为准"]
+            catalog_source = "[OFFLINE_BASELINE 离线通用基准]"
+            majors = [f"[OFFLINE_BASELINE 离线通用基准] 以教育部 {major_keyword} 统考目录及自命题大纲为准"]
             score_trend = "未核验：请以该校当年研究生院复试线公示为准"
             ratio = "未核验：请以该校当年招生简章与录取公示为准"
             protect = "未核验：请以该校当年复试与录取细则为准"
@@ -129,6 +131,7 @@ class SchoolComparator:
             "official": official,
             "graduate": graduate,
             "majors": majors,
+            "catalog_source": catalog_source,
             "score_trend": score_trend,
             "ratio": ratio,
             "protect": protect,
@@ -193,6 +196,7 @@ class SchoolComparator:
             f"{'教育部代码':<12} | {info1['code']:<34} | {info2['code']:<34}",
             f"{'所在城市':<12} | {info1['region']:<34} | {info2['region']:<34}",
             f"{'办学层次':<12} | {info1['level'][:30]:<34} | {info2['level'][:30]:<34}",
+            f"{'数据源属性':<12} | {info1.get('catalog_source', '')[:30]:<34} | {info2.get('catalog_source', '')[:30]:<34}",
             f"{'初试科目特征':<12} | {info1['majors'][0][:30]:<34} | {info2['majors'][0][:30]:<34}",
             f"{'复试线走向':<12} | {info1['score_trend'][:30]:<34} | {info2['score_trend'][:30]:<34}",
             f"{'一志愿保护':<12} | {info1['protect'][:30]:<34} | {info2['protect'][:30]:<34}",
@@ -225,6 +229,7 @@ class SchoolComparator:
             f"| **教育部代码** | `{info1['code']}` | `{info2['code']}` |",
             f"| **所在地区** | {info1['region']} | {info2['region']} |",
             f"| **办学层次** | {info1['level']} | {info2['level']} |",
+            f"| **专业库来源** | `{info1.get('catalog_source', '')}` | `{info2.get('catalog_source', '')}` |",
             f"| **复试分数线走势** | {info1['score_trend']} | {info2['score_trend']} |",
             f"| **招生规模与报录** | {info1['ratio']} | {info2['ratio']} |",
             f"| **一志愿保护机制** | {info1['protect']} | {info2['protect']} |",

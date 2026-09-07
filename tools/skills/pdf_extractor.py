@@ -110,3 +110,39 @@ def extract_pdf_pages(pdf_path, max_pages=8):
     except Exception as e:
         out["error"] = f"读取 PDF 异常: {e}"
         return out
+
+
+def find_questions_by_keyword(pdf_path, keyword, max_results=3):
+    """
+    在指定 PDF 中按关键词检索相关考点与试题片段，返回匹配的文本摘要列表
+    """
+    p = Path(pdf_path)
+    if not p.exists() or not HAS_PYPDF:
+        return []
+
+    results = []
+    kw_lower = str(keyword).lower()
+    try:
+        reader = pypdf.PdfReader(str(p))
+        for page_idx, page in enumerate(reader.pages, 1):
+            try:
+                page_text = page.extract_text() or ""
+            except Exception:
+                continue
+
+            if kw_lower in page_text.lower():
+                # 寻找匹配位置并截取题干上下文
+                lines = page_text.splitlines()
+                for line_idx, line in enumerate(lines):
+                    if kw_lower in line.lower():
+                        start = max(0, line_idx - 2)
+                        end = min(len(lines), line_idx + 6)
+                        snippet = "\n".join(lines[start:end]).strip()
+                        results.append(f"[第 {page_idx} 页 / 考点相关片段]:\n{snippet}")
+                        if len(results) >= max_results:
+                            return results
+    except Exception:
+        pass
+
+    return results
+

@@ -199,11 +199,13 @@ def build_knowledge_map(subject="math"):
 
             # 综合评级算法
             if len(unmastered_errs) >= 2 or (in_radar and len(unmastered_errs) >= 1):
-                grade = "D"  # 高危盲区
+                grade = "D"  # 高危盲区 (多次做错或雷达标红)
             elif len(unmastered_errs) == 1:
-                grade = "C"  # 易错生疏
-            elif len(matched_errs) > 0 and len(unmastered_errs) == 0:
-                grade = "B"  # 基本巩固 (曾错但已通过复测)
+                grade = "C"  # 易错生疏 (有活跃未消灭错题)
+            elif len(matched_errs) >= 2 and len(unmastered_errs) == 0:
+                grade = "A"  # 熟练掌握 (经多次复测且全部掌握闭环)
+            elif len(matched_errs) == 1 and len(unmastered_errs) == 0:
+                grade = "B"  # 基本巩固 (曾错1题，目前已消灭)
             else:
                 grade = "U"  # 未评估 (尚未练习，无任何错题或雷达记录佐证)
 

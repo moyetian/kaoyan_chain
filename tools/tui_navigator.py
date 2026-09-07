@@ -22,7 +22,7 @@ import json
 import argparse
 import unicodedata
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -265,15 +265,53 @@ TOTAL_PANEL_WIDTH = 84
 # 渲染器实现 (Renderers)
 # ════════════════════════════════════════════════════════════════
 
+def get_study_journey_stats(days_left: int) -> tuple[int, int, float]:
+    """动态计算备战总天数、已学习天数与备考历程百分比"""
+    cfg = {}
+    if CONFIG_FILE.exists():
+        try:
+            cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            cfg = {}
+
+    exam_date_str = cfg.get("study_plan", {}).get("exam_date") or cfg.get("exam_date", "2026-12-19")
+    try:
+        exam_d = datetime.strptime(exam_date_str, "%Y-%m-%d").date()
+    except Exception:
+        exam_d = date(2026, 12, 19)
+
+    start_date_str = cfg.get("study_plan", {}).get("start_date") or cfg.get("start_date")
+    if not start_date_str:
+        hist = cfg.get("completion_history", {})
+        if hist:
+            start_date_str = min(hist.keys())
+
+    if start_date_str:
+        try:
+            start_d = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+        except Exception:
+            start_d = None
+    else:
+        start_d = None
+
+    today = date.today()
+    if not start_d:
+        # 若未指定起跑日，默认以距离考研 180 天作为备考攻坚周期基数
+        start_d = exam_d - timedelta(days=180)
+
+    total_days = max(1, (exam_d - start_d).days)
+    passed_days = max(1, min(total_days, (today - start_d).days))
+    pct = round(passed_days / total_days * 100, 1)
+    return total_days, passed_days, pct
+
+
 def render_header() -> str:
     days = get_countdown_days()
     info = get_config_summary()
     done_tasks, total_tasks = get_today_progress()
     today_pct = (done_tasks / total_tasks * 100) if total_tasks > 0 else 0.0
 
-    total_study_days = 134
-    passed_days = max(1, total_study_days - days)
-    calendar_pct = (passed_days / total_study_days * 100)
+    total_study_days, passed_days, calendar_pct = get_study_journey_stats(days)
 
     W = TOTAL_PANEL_WIDTH
     lines = []

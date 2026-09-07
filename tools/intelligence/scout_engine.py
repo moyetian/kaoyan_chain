@@ -193,7 +193,8 @@ class KaoYanIntelligenceEngine:
 
                 status_icon = "✅" if ev.status == "VERIFIED" else ("⚠️" if ev.status == "CONFLICT" else "⏳")
                 lines.append(f"### {status_icon} 证据项 #{i} · {ev.field}")
-                lines.append(f"- **指标数值**：`{val_repr} {ev.unit}`".strip())
+                unit_str = f" {ev.unit}" if getattr(ev, "unit", None) else ""
+                lines.append(f"- **指标数值**：`{val_repr}{unit_str}`")
                 lines.append(f"- **证据来源**：`[{ev.source.level}级权威] {ev.source.name}` ([官方直达]({ev.source.url}))")
                 lines.append(f"- **考研年份**：`{ev.exam_year}年` ｜ **置信度**：`{int(ev.confidence * 100)}%` ｜ **核验状态**：`{ev.status}`")
                 

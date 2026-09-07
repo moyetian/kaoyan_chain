@@ -247,13 +247,20 @@ class MaterialIngestionPipeline:
         """
         type_names = {"choice": "单项选择题", "blank": "填空题", "essay": "综合应用与解答题"}
         t_name = type_names.get(chunk.q_type, "综合题")
-        points_str = "、".join(chunk.points) if chunk.points else "核心考点综合考查"
+        # 根据题源特征诚实标记认证状态，杜绝非官方试卷伪造 VERIFIED
+        src_lower = (chunk.source or "").lower()
+        if any(kw in src_lower for kw in ("统考", "真题", "大纲", "官方", "教育部")):
+            auth_status = "✅ `[VERIFIED 官方考纲真题/统考原题]`"
+        else:
+            auth_status = "📥 `[USER_IMPORTED 外部自导入试题 · 待核验]`"
+
+        points_str = "、".join(chunk.points) if chunk.points else "核心综合考点"
 
         lines = [
             f"### 【题号 {chunk.number}】{t_name}（满分: {chunk.score} 分）",
-            f"- **【题源出处】**：`{chunk.source or '历年真题/权威题库'}`",
+            f"- **【题源出处】**：`{chunk.source or '外部导入题库'}`",
             f"- **【考查考点】**：`{points_str}`",
-            f"- **【白名单认证】**：✅ `[VERIFIED 官方考纲白名单原题]`",
+            f"- **【白名单认证】**：{auth_status}",
             "",
             "#### 1. 试题原题",
             chunk.stem,

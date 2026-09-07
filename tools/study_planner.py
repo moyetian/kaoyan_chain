@@ -1063,8 +1063,16 @@ def check_fatigue_alert(cfg: dict = None) -> dict:
         }
 
     last_two_dates = sorted_dates[-2:]
+    # 校验日期连续性：两日期间隔必须严格为 1 天，跨周或非连续日期不应判定为连续疲劳
+    try:
+        d1 = datetime.strptime(last_two_dates[0], "%Y-%m-%d").date()
+        d2 = datetime.strptime(last_two_dates[1], "%Y-%m-%d").date()
+        is_consecutive = ((d2 - d1).days == 1)
+    except Exception:
+        is_consecutive = True
+
     rates = [hist[d].get("rate", 0.0) for d in last_two_dates]
-    all_below_60 = all(r < 60.0 for r in rates)
+    all_below_60 = all(r < 60.0 for r in rates) and is_consecutive
 
     if all_below_60:
         avg_r = round(sum(rates) / len(rates), 1)
@@ -1093,6 +1101,7 @@ def check_fatigue_alert(cfg: dict = None) -> dict:
 def apply_relief_mode(scale: float = 0.75) -> dict:
     """
     一键启动减负模式：下调每日各科复习投入时间，并将辅导风格切换为「温和启发·减负鼓励型」
+    具有幂等保护，防止多次调用累积下调时间。
     """
     cfg_path = ROOT / "ky_config.json"
     if not cfg_path.exists():
@@ -1103,16 +1112,34 @@ def apply_relief_mode(scale: float = 0.75) -> dict:
         return {"success": False, "message": str(e)}
 
     plan = cfg.get("study_plan", {})
+    relief_style = "温和启发·减负鼓励型 (Encouraging Mentor)"
+
+    # 幂等检查：若减负模式已处于激活状态，避免重复按 scale 比例递归缩小时间
+    if cfg.get("relief_mode_active"):
+        curr_hours = plan.get("total_hours", 8.5)
+        return {
+            "success": True,
+            "old_hours": plan.get("baseline_total_hours", curr_hours),
+            "new_hours": curr_hours,
+            "style": plan.get("style_name", relief_style),
+            "message": f"减负模式已处于激活状态（每日投入 {curr_hours}h），无需重复启动。"
+        }
+
     old_hours = plan.get("total_hours", 8.5)
+    plan["baseline_total_hours"] = old_hours
+    plan["baseline_math_hours"] = plan.get("math_hours", 3.0)
+    plan["baseline_eng_hours"] = plan.get("eng_hours", 2.0)
+    plan["baseline_pol_hours"] = plan.get("pol_hours", 1.0)
+    plan["baseline_pro_hours"] = plan.get("pro_hours", 2.5)
+
     new_hours = round(old_hours * scale, 1)
 
     plan["total_hours"] = new_hours
-    plan["math_hours"] = round(plan.get("math_hours", 3.0) * scale, 1)
-    plan["eng_hours"] = round(plan.get("eng_hours", 2.0) * scale, 1)
-    plan["pol_hours"] = round(plan.get("pol_hours", 1.0) * scale, 1)
-    plan["pro_hours"] = round(plan.get("pro_hours", 2.5) * scale, 1)
+    plan["math_hours"] = round(plan.get("baseline_math_hours", 3.0) * scale, 1)
+    plan["eng_hours"] = round(plan.get("baseline_eng_hours", 2.0) * scale, 1)
+    plan["pol_hours"] = round(plan.get("baseline_pol_hours", 1.0) * scale, 1)
+    plan["pro_hours"] = round(plan.get("baseline_pro_hours", 2.5) * scale, 1)
 
-    relief_style = "温和启发·减负鼓励型 (Encouraging Mentor)"
     plan["style_name"] = relief_style
     cfg["coaching_style"] = relief_style
     cfg["study_plan"] = plan

@@ -106,6 +106,18 @@ class HookManager:
         """注册考研学习链内置强制级钩子"""
 
         # ── 1. 考纲超纲红线强制拦截 Hook (PreToolUse) ──
+        def _is_negation_or_note_context(text: str, forb: str) -> bool:
+            """判断考点词是否属于笔记归纳、复盘总结、考纲禁区陈述或否定语境（如'数二不考三重积分'）"""
+            patterns = [
+                r"(?:不考|绝不考|严禁|严防|无需|除外|排除|非考点|不涉及|不包含|不要求)\s{0,4}" + re.escape(forb),
+                re.escape(forb) + r"\s{0,4}(?:不考|绝不考|已移出|已剔除|不作要求|超纲|禁区)",
+                r"(?:决策|红线|禁区|对比|考纲说明|备考建议)\s*[:：].*?" + re.escape(forb),
+            ]
+            for pat in patterns:
+                if re.search(pat, text, re.IGNORECASE):
+                    return True
+            return False
+
         def syllabus_guard_hook(tool_name: str, tool_args: Dict[str, Any], context: Dict[str, Any]):
             """
             根据当前数学科目类型（math1/2/3/396）判断红线：
@@ -135,7 +147,7 @@ class HookManager:
 
                 banned = forbidden_core + (forbidden_math2_only if math_key == "math2" else [])
                 for forb in banned:
-                    if forb in arg_text:
+                    if forb in arg_text and not _is_negation_or_note_context(arg_text, forb):
                         base_reason = (
                             f"【🚨 考纲红线强制拦截 (Hook 触发)】：当前数学科目为 {math_key.upper()}，"
                             f"官方大纲明确规定【绝不考{forb}】！"
@@ -148,7 +160,7 @@ class HookManager:
             else:
                 # 未知科目编码：保守按 math2 红线处理
                 for forb in ["三重积分", "曲线积分", "曲面积分", "格林公式", "高斯公式", "无穷级数", "傅里叶级数"]:
-                    if forb in arg_text:
+                    if forb in arg_text and not _is_negation_or_note_context(arg_text, forb):
                         base_reason = (
                             f"【🚨 考纲红线保守拦截 (未识别科目 {math_key})】：疑似超纲【{forb}】，请确认。\n"
                         )

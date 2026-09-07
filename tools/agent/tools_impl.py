@@ -279,7 +279,11 @@ class ToolRegistry:
                 for f in files:
                     if fnmatch.fnmatch(f.lower(), pattern.lower()):
                         full_p = Path(root) / f
-                        matched.append(str(full_p.relative_to(self.sandbox.workspace_root) if full_p.is_relative_to(self.sandbox.workspace_root) else full_p))
+                        try:
+                            rel_str = str(full_p.relative_to(self.sandbox.workspace_root))
+                        except ValueError:
+                            rel_str = str(full_p)
+                        matched.append(rel_str)
                         if len(matched) >= 30:
                             break
             if not matched:
@@ -317,7 +321,10 @@ class ToolRegistry:
                     for idx, line in enumerate(lines, 1):
                         target_line = line if case_sensitive else line.lower()
                         if q_comp in target_line:
-                            rel_p = str(fp.relative_to(self.sandbox.workspace_root) if fp.is_relative_to(self.sandbox.workspace_root) else fp)
+                            try:
+                                rel_p = str(fp.relative_to(self.sandbox.workspace_root))
+                            except ValueError:
+                                rel_p = str(fp)
                             results.append(f"{rel_p}:{idx}: {line.strip()[:100]}")
                             if len(results) >= 25:
                                 return
@@ -403,8 +410,18 @@ class ToolRegistry:
             level=PermissionLevel.READ_ONLY
         )
         def git_diff(path: str = "") -> str:
-            cmd = f"git diff {path}".strip()
-            res = subprocess.run(cmd, shell=True, cwd=str(self.sandbox.workspace_root), capture_output=True, text=True, errors="replace")
+            cmd = ["git", "diff"]
+            if path and path.strip():
+                clean_path = path.strip()
+                # 严防命令注入与非法选项穿越
+                if clean_path.startswith("-") or any(ch in clean_path for ch in (";", "&", "|", "`", "$", "\n")):
+                    return "Error: 非法的 git diff 路径参数"
+                try:
+                    safe_p = self.sandbox.resolve_safe_path(clean_path)
+                    cmd.extend(["--", str(safe_p)])
+                except Exception as e:
+                    return f"Error 路径校验失败: {e}"
+            res = subprocess.run(cmd, shell=False, cwd=str(self.sandbox.workspace_root), capture_output=True, text=True, errors="replace")
             return res.stdout[:2000].strip() or "无 Diff 差异"
 
         # ─────────────────────────────────────────────────────────────
@@ -718,9 +735,23 @@ class ToolRegistry:
             try:
                 diff_gen = intelligence.get_syllabus_diff_generator()
                 # 检查是否为文件路径
-                p_old = Path(old_text) if old_text else None
-                p_new = Path(new_text) if new_text else None
-                if p_old and p_old.exists() and p_new and p_new.exists():
+                p_old = None
+                p_new = None
+                if old_text and "\n" not in old_text and len(old_text) < 260:
+                    try:
+                        p_candidate = self.sandbox.resolve_safe_path(old_text)
+                        if p_candidate.is_file():
+                            p_old = p_candidate
+                    except Exception:
+                        pass
+                if new_text and "\n" not in new_text and len(new_text) < 260:
+                    try:
+                        p_candidate = self.sandbox.resolve_safe_path(new_text)
+                        if p_candidate.is_file():
+                            p_new = p_candidate
+                    except Exception:
+                        pass
+                if p_old and p_new:
                     res = diff_gen.compare_files(p_old, p_new, school=school, major=major)
                 else:
                     ot = old_text
@@ -762,7 +793,8 @@ class ToolRegistry:
                 return "Error: 未加载 material_ingestion 技能"
             try:
                 pipe = material_ingestion.get_material_ingestion_pipeline()
-                res = pipe.ingest_file(Path(file_path), subject=subject, source_name=source_name)
+                safe_file_p = self.sandbox.resolve_safe_path(file_path)
+                res = pipe.ingest_file(safe_file_p, subject=subject, source_name=source_name)
                 if res.get("success"):
                     return f"【试题切片入库成功】\n{res.get('summary')}\n归档路径: {res.get('target_path')}"
                 else:

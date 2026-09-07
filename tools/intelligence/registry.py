@@ -176,12 +176,13 @@ class UniversityRegistry:
             admission_domain=admission_domain,
             departments=departments
         )
-        self._entities[entity.chsi_code] = entity
-        self._name_map[entity.name.lower()] = entity.chsi_code
+        entity_key = chsi_code if (chsi_code and chsi_code != "待查") else f"UNLISTED_{name}"
+        self._entities[entity_key] = entity
+        self._name_map[entity.name.lower()] = entity_key
 
         for alias in entity.aliases:
             if alias:
-                self._alias_map[alias.lower().strip()] = entity.chsi_code
+                self._alias_map[alias.lower().strip()] = entity_key
 
     def load(self) -> None:
         """加载高校注册表 (优先从 JSON 底座加载，并递归加载各省份 YAML 档案增强覆盖)"""
@@ -258,8 +259,9 @@ class UniversityRegistry:
             synthetic_entity = self._synthesize_unlisted_school(q)
             if synthetic_entity:
                 # 动态回填映射，加速后续查询
-                self._entities[synthetic_entity.chsi_code] = synthetic_entity
-                self._name_map[q_lower] = synthetic_entity.chsi_code
+                entity_key = synthetic_entity.chsi_code if (synthetic_entity.chsi_code and synthetic_entity.chsi_code != "待查") else f"UNLISTED_{synthetic_entity.name}"
+                self._entities[entity_key] = synthetic_entity
+                self._name_map[q_lower] = entity_key
                 return synthetic_entity
 
         return None

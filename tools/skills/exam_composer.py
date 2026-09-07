@@ -140,7 +140,7 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
         fallback_index += 1
 
     today_str = datetime.now().strftime("%Y-%m-%d")
-    paper_id = f"EXAM-{subject.upper()}-{datetime.now().strftime('%Y%m%d-%H%M')}"
+    paper_id = f"EXAM-{subject.upper()}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
     # 构建自测试卷 Markdown 内容
     lines = [
@@ -218,11 +218,21 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
     """
     content = ""
     file_path = None
-    if isinstance(paper_path_or_content, (str, Path)) and Path(str(paper_path_or_content)).exists():
-        file_path = Path(str(paper_path_or_content))
+    is_path = False
+    s_raw = str(paper_path_or_content)
+    if "\n" not in s_raw and len(s_raw) < 260:
+        try:
+            p = Path(paper_path_or_content)
+            if p.is_file():
+                is_path = True
+                file_path = p
+        except (OSError, ValueError):
+            is_path = False
+
+    if is_path and file_path:
         content = file_path.read_text(encoding="utf-8", errors="ignore")
     else:
-        content = str(paper_path_or_content)
+        content = s_raw
 
     # 提取隐藏的采分 Key
     keys_m = re.search(r"<!--\s*EXAM_ANSWER_KEYS:\s*(.*?)\s*-->", content, re.DOTALL)
@@ -245,6 +255,16 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
     total_score = 0
     max_score = len(keys) * 10 if keys else 100
 
+    # 尝试按题号分块提取学员作答
+    ans_clean = user_answers_text.strip()
+    per_question_answers = {}
+    chunks = re.findall(r"(?:(?:第\s*(\d+)\s*题|(\d+)[、.．])\s*([\s\S]*?)(?=(?:第\s*\d+\s*题|\d+[、.．])|\Z))", ans_clean)
+    for c in chunks:
+        q_idx = int(c[0] or c[1])
+        per_question_answers[q_idx] = c[2].strip()
+
+    giveup_patterns = ("不会", "跳过", "没做", "不会做", "完全不会", "忘了", "做不出")
+
     # 逐题比对
     for k in keys:
         q_id = k.get("id")
@@ -253,9 +273,16 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
         curr_stage = k.get("stage", 0)
 
         # 检查学员答案是否覆盖了本题
-        # 启发式：若包含题号或关键词且回答长度充足则判定得分
-        has_content = len(user_answers_text.strip()) > 15
-        is_passed = has_content and not any(kw in user_answers_text for kw in ("不会", "跳过", "蒙", "忘了"))
+        q_ans = per_question_answers.get(q_id, "")
+        if not q_ans:
+            if len(keys) == 1:
+                q_ans = ans_clean
+            elif title and title in ans_clean:
+                q_ans = ans_clean
+
+        has_content = len(q_ans) > 5 or (len(ans_clean) > 10 and len(keys) == 1)
+        is_giveup = any(kw in q_ans for kw in giveup_patterns)
+        is_passed = has_content and not is_giveup
 
         item_score = 10 if is_passed else (4 if has_content else 0)
         total_score += item_score
@@ -268,15 +295,18 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
         if auto_advance and error_logger and file_name:
             try:
                 new_status = "已掌握" if (is_passed and curr_stage >= 2) else "待复测"
-                error_logger.mark_error_status(
+                ok, ret_msg = error_logger.mark_error_status(
                     subject=k.get("subject", subject),
                     file_name=file_name,
                     title=title,
                     new_status=new_status,
                     passed=is_passed
                 )
-                updated_records.append(title)
-                report_lines.append(f"  - 状态回写: 错题记录已自动流转至 stage={curr_stage + 1 if is_passed else 0} ({new_status})")
+                if ok:
+                    updated_records.append(title)
+                    report_lines.append(f"  - 状态回写: 错题记录已自动流转至 stage={curr_stage + 1 if is_passed else 0} ({new_status})")
+                else:
+                    report_lines.append(f"  - 状态回写跳过: {ret_msg}")
             except Exception as e:
                 report_lines.append(f"  - 状态回写提示: {e}")
 

@@ -12,8 +12,6 @@
   8. 杜绝大模型计算幻觉，提供 100% 绝对精确的步骤核对！
 """
 
-import sys
-import math
 import re
 import ast
 
@@ -226,11 +224,15 @@ def run_math_query(query_str):
                     eq = Eq(sp.sympify(l_s), sp.sympify(r_s))
                 else:
                     eq = sp.sympify(eq_str)
-                res = solve(eq, x)
+                # 从方程中自动推断未知量，支持 y, t, θ 等任意未知变量
+                free_syms = sorted(list(eq.free_symbols), key=lambda s: s.name)
+                target_var = free_syms[0] if len(free_syms) == 1 else x
+                res = solve(eq, target_var)
+                var_name = latex(target_var)
                 return (
                     f"🎯 【代数方程精确解】\n"
                     f"待解方程: ${latex(eq)}$\n"
-                    f"解集 $x$: $${latex(res)}$$"
+                    f"解集 ${var_name}$: $${latex(res)}$$"
                 )
 
         # 5. 求导 (diff / 导数)
@@ -238,11 +240,15 @@ def run_math_query(query_str):
             expr_str = re.sub(r"^(diff|d/dx|求导)\s*", "", query_str, flags=re.IGNORECASE).strip()
             expr_str = expr_str.replace("^", "**")
             expr = sp.sympify(expr_str)
-            res = diff(expr, x)
+            # 从表达式中自动推断自变量，支持 y, t, θ 等任意自变量
+            free_syms = sorted(list(expr.free_symbols), key=lambda s: s.name)
+            target_var = free_syms[0] if len(free_syms) == 1 else x
+            res = diff(expr, target_var)
+            var_name = latex(target_var)
             return (
                 f"📐 【导数精确计算结果】\n"
-                f"原函数: $f(x) = {latex(expr)}$\n"
-                f"一阶导: $f'(x) = {latex(res)}$\n"
+                f"原函数: $f({var_name}) = {latex(expr)}$\n"
+                f"一阶导: $f'({var_name}) = {latex(res)}$\n"
                 f"化简式: ${latex(simplify(res))}$"
             )
 

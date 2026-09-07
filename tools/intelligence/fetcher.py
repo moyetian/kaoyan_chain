@@ -23,10 +23,13 @@ USER_AGENT = (
     "Chrome/125.0.0.0 Safari/537.36"
 )
 
-# 允许忽略非严格自签名或过期高校 SSL 证书（很多高校证书配置不全）
-_SSL_CONTEXT = ssl.create_default_context()
-_SSL_CONTEXT.check_hostname = False
-_SSL_CONTEXT.verify_mode = ssl.CERT_NONE
+# 默认启用标准受信任 SSL 证书验证，确保研招网与高校官方页面证据真实可信
+_DEFAULT_SSL_CONTEXT = ssl.create_default_context()
+
+# 仅对个别证书过期或自签名的非关键高校二级页面提供备用降级上下文
+_FALLBACK_UNVERIFIED_SSL_CONTEXT = ssl.create_default_context()
+_FALLBACK_UNVERIFIED_SSL_CONTEXT.check_hostname = False
+_FALLBACK_UNVERIFIED_SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 
 
 @dataclass
@@ -35,10 +38,11 @@ class FetchResult:
     status_code: int                  # 200, 403, 404, 500 等
     content: str                      # 解码后的正文文本
     is_valid: bool                    # 是否成功获取有效 HTML/JSON
-    access_status: str                # "OK", "HTTP_403", "BLOCKED", "TIMEOUT", "BROWSER_REQUIRED", "ERROR"
+    access_status: str                # "OK", "HTTP_403", "BLOCKED", "TIMEOUT", "BROWSER_REQUIRED", "ERROR", "UNVERIFIED_SSL"
     headers: Dict[str, str]           # 响应头
     raw_bytes_len: int = 0
     api_captured: Optional[List[str]] = None # Playwright 嗅探到的 API 列表
+    ssl_verified: bool = True         # 是否通过完整 SSL 证书链核验
 
 
 class HTTPFetcher:
@@ -60,67 +64,90 @@ class HTTPFetcher:
             headers["Referer"] = referer
 
         req = urllib.request.Request(url, headers=headers)
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout, context=_SSL_CONTEXT) as resp:
-                status_code = resp.status
-                resp_headers = dict(resp.headers)
-                raw_data = resp.read()
+        ssl_ctx = _DEFAULT_SSL_CONTEXT
+        is_fallback_ssl = False
 
-                # 处理 gzip 解压
-                if resp_headers.get("Content-Encoding") == "gzip":
-                    try:
-                        raw_data = gzip.decompress(raw_data)
-                    except Exception:
-                        pass
+        for attempt in range(2):
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout, context=ssl_ctx) as resp:
+                    status_code = resp.status
+                    resp_headers = dict(resp.headers)
+                    raw_data = resp.read()
 
-                # 智能编码解析
-                content = self._decode_content(raw_data, resp_headers)
-                
-                # 判断是否需要无头浏览器渲染 (例如空 div、单页应用 SPA)
-                access_status = "OK"
-                if len(content.strip()) < 300 and ("<div id=\"app\">" in content or "<div id=\"root\">" in content):
-                    access_status = "BROWSER_REQUIRED"
+                    # 处理 gzip 解压
+                    if resp_headers.get("Content-Encoding") == "gzip":
+                        try:
+                            raw_data = gzip.decompress(raw_data)
+                        except Exception:
+                            pass
 
+                    # 智能编码解析
+                    content = self._decode_content(raw_data, resp_headers)
+                    
+                    # 判断是否需要无头浏览器渲染 (例如空 div、单页应用 SPA)
+                    access_status = "UNVERIFIED_SSL" if is_fallback_ssl else "OK"
+                    if len(content.strip()) < 300 and ("<div id=\"app\">" in content or "<div id=\"root\">" in content):
+                        access_status = "BROWSER_REQUIRED"
+
+                    return FetchResult(
+                        url=url,
+                        status_code=status_code,
+                        content=content,
+                        is_valid=True,
+                        access_status=access_status,
+                        headers=resp_headers,
+                        raw_bytes_len=len(raw_data),
+                        ssl_verified=not is_fallback_ssl
+                    )
+
+            except urllib.error.HTTPError as e:
+                status = "HTTP_403" if e.code == 403 else f"HTTP_{e.code}"
                 return FetchResult(
                     url=url,
-                    status_code=status_code,
-                    content=content,
-                    is_valid=True,
-                    access_status=access_status,
-                    headers=resp_headers,
-                    raw_bytes_len=len(raw_data)
+                    status_code=e.code,
+                    content="",
+                    is_valid=False,
+                    access_status=status,
+                    headers={},
+                    ssl_verified=not is_fallback_ssl
+                )
+            except urllib.error.URLError as e:
+                # 若因 SSL 证书校验失败且尚未尝试降级，则尝试单次降级备用抓取
+                reason_str = str(e.reason).lower()
+                is_ssl_err = isinstance(e.reason, ssl.SSLError) or "certificate" in reason_str or "ssl" in reason_str
+                if attempt == 0 and is_ssl_err:
+                    ssl_ctx = _FALLBACK_UNVERIFIED_SSL_CONTEXT
+                    is_fallback_ssl = True
+                    continue
+
+                status = "TIMEOUT" if "timed out" in reason_str else "BLOCKED"
+                return FetchResult(
+                    url=url,
+                    status_code=0,
+                    content="",
+                    is_valid=False,
+                    access_status=status,
+                    headers={},
+                    ssl_verified=not is_fallback_ssl
+                )
+            except Exception as e:
+                return FetchResult(
+                    url=url,
+                    status_code=0,
+                    content="",
+                    is_valid=False,
+                    access_status="ERROR",
+                    headers={}
                 )
 
-        except urllib.error.HTTPError as e:
-            status = "HTTP_403" if e.code == 403 else f"HTTP_{e.code}"
-            return FetchResult(
-                url=url,
-                status_code=e.code,
-                content="",
-                is_valid=False,
-                access_status=status,
-                headers={}
-            )
-        except urllib.error.URLError as e:
-            reason_str = str(e.reason).lower()
-            status = "TIMEOUT" if "timed out" in reason_str else "BLOCKED"
-            return FetchResult(
-                url=url,
-                status_code=0,
-                content="",
-                is_valid=False,
-                access_status=status,
-                headers={}
-            )
-        except Exception as e:
-            return FetchResult(
-                url=url,
-                status_code=0,
-                content="",
-                is_valid=False,
-                access_status="ERROR",
-                headers={}
-            )
+        return FetchResult(
+            url=url,
+            status_code=0,
+            content="",
+            is_valid=False,
+            access_status="ERROR",
+            headers={}
+        )
 
     def _decode_content(self, data: bytes, headers: Dict[str, str]) -> str:
         """从响应头或正文中检测并解码字符集"""

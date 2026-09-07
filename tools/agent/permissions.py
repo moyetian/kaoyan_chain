@@ -146,11 +146,11 @@ class PermissionManager:
                 return False, f"Plan 模式 (--permission=plan) 下非交互环境禁止自动执行写操作 [{tool_name}]，需出具并确认行动计划"
             return self._prompt_plan_approval(tool_name, level, tool_args)
 
-        # 6. 非交互模式 (如单测或后端调用)
+        # 6. 非交互模式 (如脚本、管道调用或无 TTY 环境)
         if not interactive or not sys.stdin.isatty():
-            if self.mode in ("auto", "ask") and level <= PermissionLevel.SAFE_EDIT:
-                return True, "非交互环境安全放行"
-            return False, f"非交互环境下无法请求用户批准 Level {level} 操作"
+            if self.mode == "auto" and level <= PermissionLevel.SAFE_EDIT:
+                return True, "全自动模式非交互环境安全放行"
+            return False, f"当前模式 ({self.mode}) 下非交互环境无法请求用户审批写操作 [{tool_name}]，请在交互终端运行或指定 --permission=auto"
 
         # 7. 交互式提示用户审批
         return self._prompt_user_approval(tool_name, level, tool_args)

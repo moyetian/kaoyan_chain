@@ -72,14 +72,31 @@ def diagnose_mock_exam(subject="math", exam_input="", **kwargs):
             if chap in line:
                 chapter_loss[chap] += 1
 
-    # 若输入为简短文本未检测到关键词，自动注入默认基准诊断
+    # 若输入文本未检测到有效错因与失分关键词，诚实返回样本不足提示，绝不伪造虚假数据
     if total_detected_errors == 0:
-        categories["概念漏洞"] = 2
-        categories["计算失误"] = 2
-        categories["审题偏差"] = 1
-        total_detected_errors = 5
-        chapter_loss[sub_keywords[0]] = 2
-        chapter_loss[sub_keywords[1] if len(sub_keywords) > 1 else sub_keywords[0]] = 2
+        empty_report = f"""============================================================
+  🩺 考研全科 AI 私人教师 · 整卷级模考诊断报告 ({subj_name})
+============================================================
+评估时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+诊断样本: 聚合 0 处核心丢分点与步骤失分
+
+【提示】当前输入的答题卡文本未匹配到明确的失分与错因记录样本。
+建议：
+  1. 请提供包含错因标注的答题卡记录（如“第3题 概念漏洞”、“第5题 计算失误”）；
+  2. 或指明章节失分点（如“泰勒展开未写全”、“二重积分计算失误”）；
+  3. 系统将基于真实丢分情况为您生成章节失分排行与针对性复习建议。
+============================================================
+"""
+        return {
+            "subject": subject,
+            "subject_name": subj_name,
+            "total_errors": 0,
+            "top_chapter": "无明显失分",
+            "top_cause": "无明显错因",
+            "chapter_loss": chapter_loss,
+            "cause_distribution": categories,
+            "report": empty_report
+        }
 
     # 2. 排序失分最高的章节与错因
     sorted_chapters = sorted(chapter_loss.items(), key=lambda x: x[1], reverse=True)

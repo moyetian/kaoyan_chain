@@ -1,7 +1,7 @@
 {
   "meta": {
     "snapshot_version": "ky-snapshot/1.0",
-    "generated_at": "2026-09-06 18:53:30",
+    "generated_at": "2026-09-07 12:20:40",
     "opt_in": true,
     "subjects_count": 4,
     "memo_cards": 8,
@@ -636,7 +636,7 @@
       }
     ],
     "plan": {
-      "day": 29,
+      "day": 30,
       "total": 133
     },
     "maps": {

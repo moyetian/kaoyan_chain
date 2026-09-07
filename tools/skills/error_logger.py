@@ -195,6 +195,7 @@ def scan_error_records(subject=None):
                     "stage": stage,
                     "next_due": next_due,
                     "question": q_text or detail_text[:200],
+                    "detail": detail_text or q_text or "",
                     "raw_section": sec
                 })
 
@@ -245,6 +246,7 @@ def get_due_reviews(subject=None, max_count=5):
 
         item["days_until_due"] = days_until  # 0 或负数
         item["days_overdue"] = -days_until
+        item["days_ago"] = max(0, (today - rec_d).days) if rec_d else 0
         due_items.append(item)
 
     # 逾期最久的优先（days_overdue 越大越优先）
@@ -260,6 +262,15 @@ def generate_blind_quiz(error_item):
     title = error_item.get("title", "核心错题复测")
     q_content = error_item.get("question", "").strip()
 
+    days_ago = error_item.get('days_ago')
+    if days_ago is None and error_item.get('date'):
+        try:
+            d_obj = datetime.strptime(error_item['date'], "%Y-%m-%d").date()
+            days_ago = max(0, (date.today() - d_obj).days)
+        except Exception:
+            days_ago = 0
+    days_ago = days_ago or 0
+
     quiz_text = f"""
 ╭────────────────────────────────────────────────────────────────────────╮
 │  🎯 【艾宾浩斯错题盲盒重测 · 闭环考核】                                │
@@ -267,7 +278,7 @@ def generate_blind_quiz(error_item):
 ╰────────────────────────────────────────────────────────────────────────╯
 
 📌 【考核题目】: {title}
-⏱️ 【历史记录时间】: {error_item.get('date')} ({error_item.get('days_ago', 0)} 天前)
+⏱️ 【历史记录时间】: {error_item.get('date')} ({days_ago} 天前)
 
 📝 【题面核心内容与设问】：
 {q_content}

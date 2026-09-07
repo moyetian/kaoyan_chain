@@ -7,9 +7,12 @@ r"""
 3. prompts/list & prompts/get: 加载外部专用 Prompt 模板
 """
 
+import os
 import sys
 import json
 import time
+import queue
+import threading
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -30,11 +33,16 @@ class MCPProcessClient:
         """启动 MCP Server 子进程并执行 initialize 握手"""
         cmd_list = [self.command] + self.args
         try:
+            merged_env = os.environ.copy()
+            if self.env and isinstance(self.env, dict):
+                merged_env.update({str(k): str(v) for k, v in self.env.items()})
+
             self.process = subprocess.Popen(
                 cmd_list,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,  # 避免 Windows 管道填满导致子进程阻塞死锁
+                env=merged_env,
                 cwd=str(self.cwd) if self.cwd else None,
                 text=True,
                 encoding="utf-8",
@@ -97,7 +105,7 @@ class MCPProcessClient:
             self.is_initialized = False
 
     def _send_request(self, method: str, params: Dict[str, Any], timeout: int = 15) -> Optional[Dict[str, Any]]:
-        if not self.process or not self.process.stdin:
+        if not self.process or not self.process.stdin or not self.process.stdout:
             return None
         self.msg_id += 1
         payload = {
@@ -111,9 +119,24 @@ class MCPProcessClient:
             self.process.stdin.write(msg_str)
             self.process.stdin.flush()
             
-            # 读取一行 JSON-RPC 响应
-            resp_line = self.process.stdout.readline()
-            if not resp_line:
+            # 超时保护读取一行 JSON-RPC 响应
+            resp_q: queue.Queue = queue.Queue()
+
+            def _reader():
+                try:
+                    line = self.process.stdout.readline()
+                    resp_q.put(line)
+                except Exception as err:
+                    resp_q.put(err)
+
+            t = threading.Thread(target=_reader, daemon=True)
+            t.start()
+            try:
+                resp_line = resp_q.get(timeout=timeout)
+            except queue.Empty:
+                return None
+
+            if isinstance(resp_line, Exception) or not resp_line:
                 return None
             return json.loads(resp_line.strip())
         except Exception:
@@ -146,7 +169,13 @@ class MCPClientManager:
             args = s_conf.get("args", [])
             if not cmd:
                 continue
-            client = MCPProcessClient(name=s_name, command=cmd, args=args, cwd=self.workspace_root)
+            client = MCPProcessClient(
+                name=s_name,
+                command=cmd,
+                args=args,
+                env=s_conf.get("env"),
+                cwd=self.workspace_root
+            )
             if client.start():
                 self.clients[s_name] = client
 

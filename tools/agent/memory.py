@@ -167,12 +167,16 @@ class MemoryManager:
             total_chars += c_len
             total_tokens += est_tokens
 
+            scope_warning = False
             status = "良好"
             if sc == MemoryScope.SESSION and line_count > 50:
                 status = "需修剪 (条目超过50条)"
-                has_warning = True
+                scope_warning = True
             elif est_tokens > 2000:
                 status = "偏大 (占用上下文较多)"
+                scope_warning = True
+
+            if scope_warning:
                 has_warning = True
 
             details[sc] = {
@@ -185,7 +189,7 @@ class MemoryManager:
                 "estimated_tokens": est_tokens,
                 "tokens": est_tokens,
                 "status": status,
-                "status_code": "warning" if has_warning else "ok"
+                "status_code": "warning" if scope_warning else "ok"
             }
 
         return {

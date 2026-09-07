@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from .models import UniversityEntity
+from .models import UniversityEntity, current_exam_year
 from .registry import get_registry, resolve_university
 from .fetcher import HTTPFetcher
 
@@ -40,16 +40,25 @@ class AdmissionWatcher:
             try:
                 with open(WATCH_FILE, "r", encoding="utf-8") as f:
                     self.watch_data = json.load(f)
-            except Exception:
+            except Exception as e:
+                import shutil
+                bak_path = WATCH_FILE.with_suffix(".json.bak")
+                try:
+                    shutil.copy2(WATCH_FILE, bak_path)
+                except Exception:
+                    pass
+                print(f"[!] 读取监控配置文件失败 ({e})，已备份原文件至 {bak_path}")
                 self.watch_data = {}
         else:
             self.watch_data = {}
 
     def _save(self) -> None:
-        """保存监控配置"""
+        """保存监控配置（原子写入，防止进程意外退出导致文件截断损坏）"""
         WATCH_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(WATCH_FILE, "w", encoding="utf-8") as f:
+        tmp_file = WATCH_FILE.with_suffix(".json.tmp")
+        with open(tmp_file, "w", encoding="utf-8") as f:
             json.dump(self.watch_data, f, ensure_ascii=False, indent=2)
+        tmp_file.replace(WATCH_FILE)
 
     def add_watch(self, school_query: str) -> Dict[str, Any]:
         """添加或更新监控目标"""
@@ -137,10 +146,13 @@ class AdmissionWatcher:
             # 检测新出现的标题
             newly_added_titles = [t for t in new_titles if t not in old_titles]
 
-            # 过滤高关注度招考关键词
+            # 过滤高关注度招考关键词 (动态计算考研年份窗口)
+            target_yr = current_exam_year()
+            year_kws = [str(target_yr), str(target_yr - 1), str(target_yr + 1)]
+            alert_kws = year_kws + ["招生简章", "专业目录", "大纲", "自命题", "复试", "调整"]
             alert_titles = []
             for t in newly_added_titles:
-                if any(kw in t for kw in ["2027", "2026", "招生简章", "专业目录", "大纲", "自命题", "复试", "调整"]):
+                if any(kw in t for kw in alert_kws):
                     alert_titles.append(t)
 
             has_change = (new_hash != old_hash) or bool(alert_titles)

@@ -203,18 +203,43 @@ def run_doctor(return_summary=False):
         check_item(".gitignore 存在性", False, "", "未找到 .gitignore", warn=True)
         warnings += 1
 
+    # ── 7. 技能降级与离线能力评估 ──
+    print(color("\n【7. 系统功能可用性与降级评估】", C.BOLD))
+    print(f"  • Agent 核心闭环与多轮交互: {color('全功能就绪', C.GREEN)}")
+    print(f"  • 纯离线做题、考纲Diff、双校对标与状态机: {color('全功能就绪 (无需外网)', C.GREEN)}")
+    if has_sympy:
+        print(f"  • 高精数学符号验算 (SymPy): {color('完全就绪', C.GREEN)}")
+    else:
+        print(f"  • 高精数学符号验算 (SymPy): {color('降级运行 (使用纯 Python 基础求导与代数运算)', C.YELLOW)}")
+
+    if has_pypdf:
+        print(f"  • PDF 真题抽取入库 (pypdf): {color('完全就绪', C.GREEN)}")
+    else:
+        print(f"  • PDF 真题抽取入库 (pypdf): {color('降级运行 (支持 Markdown / TXT 文本切片入库)', C.YELLOW)}")
+
+    if has_pillow:
+        print(f"  • 多模态作业拍照批改 (Pillow): {color('完全就绪', C.GREEN)}")
+    else:
+        print(f"  • 多模态作业拍照批改 (Pillow): {color('降级运行 (支持文本敲字输入作答)', C.YELLOW)}")
+
     # ── 总结与处方 ──
     print(color("\n" + "=" * 60, C.CYAN))
     if issues == 0 and warnings == 0:
         print(color(" 🎉 体检全绿！考研全科 AI 私人教师系统处于绝佳就绪状态！", C.GREEN + C.BOLD))
     elif issues == 0:
-        print(color(f" ✅ 核心系统运转正常！发现 {warnings} 处可选优化项（不影响基础使用）。", C.YELLOW + C.BOLD))
+        print(color(f" ✅ 核心系统运转正常！发现 {warnings} 处可选优化项（降级可用，不影响主链路）。", C.YELLOW + C.BOLD))
     else:
         print(color(f" ⚠️ 发现 {issues} 处阻断性问题与 {warnings} 处警告，请根据上述提示处理。", C.RED + C.BOLD))
     print(color("=" * 60 + "\n", C.CYAN))
 
     if return_summary:
-        return {"issues": issues, "warnings": warnings}
+        return {
+            "issues": issues,
+            "warnings": warnings,
+            "has_sympy": has_sympy,
+            "has_pypdf": has_pypdf,
+            "has_pillow": has_pillow
+        }
     return issues == 0
 
 if __name__ == "__main__":

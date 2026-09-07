@@ -108,11 +108,12 @@ def grab_clipboard_image():
     if sys.platform == "win32":
         try:
             import subprocess
+            safe_target_str = str(target_path).replace("\\", "/")
             ps_cmd = f"""
             Add-Type -AssemblyName System.Windows.Forms;
             $img = [System.Windows.Forms.Clipboard]::GetImage();
             if ($img -ne $null) {{
-                $img.Save('{str(target_path).replace("\\", "/")}', [System.Drawing.Imaging.ImageFormat]::Png);
+                $img.Save('{safe_target_str}', [System.Drawing.Imaging.ImageFormat]::Png);
                 Write-Output 'OK';
             }}
             """
@@ -535,6 +536,11 @@ def broadcast_briefing(config, custom_msg=None):
 
     print(colorize("\n[正在向配置的 IM 机器人推送简报...]", C.CYAN))
     hooks = config.get("webhooks", {})
+    has_hook = any(hooks.get(k) for k in ("dingtalk", "feishu", "wechat", "qq_onebot"))
+    if not has_hook:
+        print(colorize("  [!] 暂未检测到已配置的 IM 机器人 Webhook。", C.YELLOW))
+        print(colorize("  💡 提示：运行 ky config 或在 ky_config.json 的 webhooks 中配置机器人地址后即可一键广播推送。\n", C.CYAN))
+        return
     
     # 钉钉
     if hooks.get("dingtalk"):
@@ -2403,27 +2409,28 @@ def query_llm_reply(user_msg, cfg=None):
 def create_gateway_handler(token: str = ""):
     """
     构造网关 HTTP handler。
-    - token 非空：对所有非静态端点（live.html 本身、/api/live 等伴随资源外）强制要求
+    - token 非空：对所有敏感端点（包括 /api/live 会话内容、/v1/chat/completions 等）强制要求
       Authorization: Bearer <token> 或 X-KY-Token 头；token 不匹配返回 401。
     - token 为空：仅放行来自 127.0.0.1 / ::1 的请求，外部 IP 一律 401。
-    - 静态端点（live 页面、/api/live、/api/clear、/v1/models）始终允许，方便网页伴侣与本地预览。
+    - 静态前端展示页面（/、/live、/index.html）放行，供网页伴侣加载 UI 骨架。
     """
     from http.server import BaseHTTPRequestHandler
+    effective_token = (token or os.environ.get("KY_GATEWAY_TOKEN", "")).strip()
     cfg = load_config()
 
     class GatewayHandler(BaseHTTPRequestHandler):
         def _is_authorized(self):
             parsed = urllib.parse.urlparse(self.path)
-            # 静态/前端资源始终放行
-            if parsed.path in ("/live", "/", "/index.html", "/api/live", "/api/clear", "/v1/models"):
+            # 仅静态前端 UI 页面免认证
+            if parsed.path in ("/live", "/", "/index.html"):
                 return True
-            if not token:
+            if not effective_token:
                 return self.client_address[0] in ("127.0.0.1", "::1", "localhost")
             auth_h = self.headers.get("Authorization", "")
             x_tok = self.headers.get("X-KY-Token", "")
-            if x_tok and x_tok == token:
+            if x_tok and x_tok == effective_token:
                 return True
-            if auth_h.startswith("Bearer ") and auth_h[7:].strip() == token:
+            if auth_h.startswith("Bearer ") and auth_h[7:].strip() == effective_token:
                 return True
             return False
 
@@ -2730,7 +2737,8 @@ def start_background_live_server(start_port=8088, host="127.0.0.1"):
     """
     from http.server import ThreadingHTTPServer
     import threading
-    handler_class = create_gateway_handler()
+    effective_token = os.environ.get("KY_GATEWAY_TOKEN", "").strip()
+    handler_class = create_gateway_handler(token=effective_token)
     bind_host = host
     for p in range(start_port, start_port + 20):
         try:
@@ -2738,11 +2746,14 @@ def start_background_live_server(start_port=8088, host="127.0.0.1"):
             t = threading.Thread(target=httpd.serve_forever, daemon=True)
             t.start()
             if bind_host not in ("127.0.0.1", "localhost", "::1"):
-                print(colorize(
-                    f"\n[!] 网关监听于 {bind_host}:{p}（非本机回环）。"
-                    f"建议设置环境变量 KY_GATEWAY_TOKEN 启用鉴权，"
-                    f"否则 LAN 内任何人都可调用 /v1/chat/completions！\n",
-                    C.RED))
+                if effective_token:
+                    print(colorize(f"\n[√] 网关监听于 {bind_host}:{p}，已成功启用 Token 鉴权保护。\n", C.GREEN))
+                else:
+                    print(colorize(
+                        f"\n[!] 网关监听于 {bind_host}:{p}（非本机回环）。"
+                        f"强烈建议设置环境变量 KY_GATEWAY_TOKEN 启用鉴权，"
+                        f"否则 LAN 内任何人都可调用 /v1/chat/completions 或读取会话！\n",
+                        C.RED))
             return p
         except OSError:
             continue
@@ -2862,6 +2873,9 @@ def main():
     args = filtered_args
     if not args:
         run_repl(permission_mode=permission_mode, gateway_host=gateway_host, gateway_token=gateway_token)
+    elif args[0] in ("--version", "-v", "version"):
+        print(f"考研学习链专用终端工具 (ky-cli) v2.5.0 · Python {sys.version.split()[0]}")
+        sys.exit(0)
     elif args[0] in ("view", "--view", "--web", "live"):
         port = start_background_live_server(8088, host=gateway_host) or 8088
         import webbrowser
@@ -3413,15 +3427,20 @@ def main():
             sys.exit(1)
         raw_target = " ".join(args[1:])
         content = raw_target
-        target_path = Path(raw_target)
-        # A path-like argument must resolve to a real file; silently diagnosing
-        # the current state for a typo makes the CLI appear successful.
-        if target_path.exists():
-            if not target_path.is_file():
-                print(colorize(f"[!] 诊断目标不是文件: {raw_target}", C.RED))
-                sys.exit(1)
-            content = target_path.read_text(encoding="utf-8", errors="ignore")
-        elif (target_path.suffix or any(ch in raw_target for ch in ("/", "\\"))):
+        is_file = False
+        target_file = None
+        if "\n" not in raw_target and len(raw_target) < 260:
+            try:
+                p = Path(raw_target)
+                if p.is_file():
+                    is_file = True
+                    target_file = p
+            except (OSError, ValueError):
+                pass
+
+        if is_file and target_file:
+            content = target_file.read_text(encoding="utf-8", errors="ignore")
+        elif "\n" not in raw_target and len(raw_target) < 260 and (Path(raw_target).suffix or any(ch in raw_target for ch in ("/", "\\"))):
             print(colorize(f"[!] 找不到答题卡文件: {raw_target}", C.RED))
             sys.exit(1)
         if not str(content).strip():
@@ -3486,10 +3505,21 @@ def main():
                 print(f"{'记忆层级':<12} {'文件路径':<20} {'字符数':<8} {'Tokens':<8} {'健康状态'}")
                 print("-" * 55)
                 for scope, info in health.get("details", {}).items():
-                    st = info.get("status", "ok")
-                    st_color = C.GREEN if st == "ok" else (C.YELLOW if st == "warning" else C.RED)
-                    p_rel = Path(info.get("path", "")).relative_to(ROOT) if info.get("path") else "-"
-                    print(f"{scope:<12} {str(p_rel):<20} {info.get('chars', 0):<8} {info.get('tokens', 0):<8} {colorize(st, st_color)}")
+                    st = info.get("status", "良好")
+                    st_code = info.get("status_code", "ok")
+                    st_color = C.GREEN if (st_code == "ok" or st in ("ok", "良好")) else (C.YELLOW if ("偏大" in st or "需修剪" in st or st_code == "warning") else C.RED)
+                    raw_p = info.get("path", "")
+                    if raw_p:
+                        try:
+                            p_rel = str(Path(raw_p).relative_to(ROOT))
+                        except ValueError:
+                            try:
+                                p_rel = "~/" + str(Path(raw_p).relative_to(Path.home())).replace("\\", "/")
+                            except Exception:
+                                p_rel = str(raw_p)
+                    else:
+                        p_rel = "-"
+                    print(f"{scope:<12} {p_rel:<20} {info.get('chars', 0):<8} {info.get('tokens', 0):<8} {colorize(st, st_color)}")
                 print("-" * 55)
                 print("💡 提示：若某一记忆层膨胀过大，可运行 ky memory prune 进行滚动修剪与决策归档。\n")
             elif sub in ("prune", "trim", "clean"):

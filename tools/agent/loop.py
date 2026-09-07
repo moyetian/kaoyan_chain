@@ -50,7 +50,7 @@ class AgentRunner:
 
         # 4. 初始化沙箱、权限与工具库
         self.sandbox = Sandbox(workspace_root=self.workspace_root)
-        self.permissions = PermissionManager(mode=permission_mode)
+        self.permissions = PermissionManager(mode=permission_mode, workspace_root=self.workspace_root)
         self.tool_registry = ToolRegistry(
             sandbox=self.sandbox,
             permissions=self.permissions,
@@ -178,6 +178,9 @@ class AgentRunner:
                         "content": exec_result
                     }
                     active_messages.append(tool_msg)
+
+                # 工具回包可能包含大文件或多轮结果，在循环内动态防爆压缩
+                active_messages = self.context_engine.compact_context(active_messages, hook_manager=self.hooks)
 
                 # 继续下一轮循环，让 LLM 拿到工具结果进行最终综合分析
                 continue

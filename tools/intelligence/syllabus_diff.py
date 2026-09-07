@@ -264,9 +264,13 @@ class SyllabusDiffGenerator:
         total_old = len(old_points)
         total_new = len(new_points)
 
-        volatility = 0.0
-        if total_new > 0:
-            volatility = round((added_count + removed_count + modified_count) / total_new * 100, 1)
+        if total_new == 0 and total_old == 0:
+            volatility = 0.0
+        elif total_new == 0 and total_old > 0:
+            volatility = 100.0
+        else:
+            denominator = max(total_old, total_new, 1)
+            volatility = min(100.0, round((added_count + removed_count + modified_count) / denominator * 100, 1))
 
         metrics = {
             "total_old": total_old,

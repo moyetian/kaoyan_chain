@@ -161,7 +161,8 @@ def resolve_conflicts(evidences: List[EvidenceObject]) -> List[EvidenceObject]:
             # 存在数据冲突！
             detail_lines = [f"⚠️ 字段【{field_name}】({year}年) 存在多源官方冲突："]
             for ev in ev_list:
-                val_str = f"{ev.value} {ev.unit}".strip()
+                unit_str = f" {ev.unit}" if getattr(ev, "unit", "") else ""
+                val_str = f"{ev.value}{unit_str}"
                 pub = f" (发布于 {ev.source.published_at})" if ev.source.published_at else ""
                 detail_lines.append(
                     f"  • [{ev.source.level}级] {ev.source.name}: {val_str}{pub} (置信度 {int(ev.confidence*100)}%)"

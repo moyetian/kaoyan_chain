@@ -21,3 +21,8 @@ Pillow>=10.0.0
 # ── 4. 本地离线 OCR 文本识别技能 (可选) ──
 # 支持在无视觉大模型时通过本地 ONNX 引擎离线抽取图片中的中英文手写与公式
 rapidocr-onnxruntime>=1.3.0
+
+# ── 5. 招考情报与高校注册表解析技能 (intelligence/registry) ──
+# 支持高校考研专业目录 YAML 解析与多源证据比对
+PyYAML>=6.0
+
