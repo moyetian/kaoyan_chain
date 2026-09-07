@@ -308,9 +308,11 @@ D. 2
     print("\n[测试组 C: PySide6 GUI 组件与离屏测试]")
     _HAS_PYSIDE6 = False
     try:
-        import PySide6
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication  # noqa: F811
         _HAS_PYSIDE6 = True
-    except ImportError:
+    except Exception:
+        # ImportError (包未安装) 或 OSError (libEGL.so.1 等系统库缺失) 均视为不可用
         pass
 
     if not _HAS_PYSIDE6:
