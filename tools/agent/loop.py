@@ -20,6 +20,18 @@ from .memory import MemoryManager
 from .hooks import HookManager, HookEvent
 from .mcp_client import MCPClientManager
 
+
+def normalize_openai_url(base_url: str, endpoint: str = "chat/completions") -> str:
+    """智能规范化 OpenAI 兼容接口地址 (自动补齐 /v1 容错)"""
+    b = (base_url or "https://api.deepseek.com/v1").strip().rstrip("/")
+    if b.endswith("/chat/completions"):
+        return b
+    if b.endswith("/v1") or "/v1/" in b:
+        return f"{b}/{endpoint.lstrip('/')}"
+    # 针对未带 /v1 的中转站或自建代理，智能补齐 /v1
+    return f"{b}/v1/{endpoint.lstrip('/')}"
+
+
 class AgentRunner:
     def __init__(
         self,
@@ -191,7 +203,7 @@ class AgentRunner:
             self._display_final_answer(final_answer)
             break
 
-        # 4. 更新持久化对话历史 (保留最近 12 条记录)
+        # 更新历史
         self.history.append({"role": "user", "content": user_input})
         self.history.append({"role": "assistant", "content": final_answer})
         if len(self.history) > 12:
@@ -206,8 +218,8 @@ class AgentRunner:
 
     def _call_llm(self, messages: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """调用兼容 OpenAI tools 规范的模型 API"""
-        base_url = self.config.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
-        url = f"{base_url}/chat/completions"
+        raw_base_url = self.config.get("base_url", "https://api.deepseek.com/v1")
+        url = normalize_openai_url(raw_base_url, "chat/completions")
         api_key = self.config.get("api_key", "").strip()
         model = self.config.get("model", "deepseek-chat")
 
@@ -217,20 +229,17 @@ class AgentRunner:
             "User-Agent": "Mozilla/5.0 Kaoyan-Study-Chain-Agent/1.0"
         }
 
-        openai_tools = self.tool_registry.get_openai_tools()
-
         payload = {
             "model": model,
             "messages": messages,
             "temperature": self.config.get("temperature", 0.3),
-            "tools": openai_tools,
+            "tools": self.tool_registry.get_openai_tools(),
             "tool_choice": "auto"
         }
 
         data_bytes = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
 
-        # Spinner 动态等待指示器
         import threading
         stop_spinner = threading.Event()
 
@@ -253,12 +262,15 @@ class AgentRunner:
             with urllib.request.urlopen(req, timeout=120) as resp:
                 stop_spinner.set()
                 spinner_thread.join(timeout=0.2)
-                resp_data = json.loads(resp.read().decode("utf-8"))
+                raw_bytes = resp.read()
+                raw_text = raw_bytes.decode("utf-8", errors="ignore").strip()
+                if raw_text.startswith("<!doctype html") or raw_text.startswith("<html"):
+                    raise ValueError(f"服务端返回了网页 HTML 而非 API JSON 数据 (请求地址: {url})，请检查 base_url 配置")
+                resp_data = json.loads(raw_text)
                 return resp_data
         except urllib.error.HTTPError as e:
             stop_spinner.set()
             err_msg = e.read().decode("utf-8", errors="ignore")
-            # 若模型明确不支持 tools 参数，尝试剔除 tools 降级请求
             if "tools" in err_msg.lower() or "not support" in err_msg.lower():
                 return self._call_llm_without_tools(messages)
             print(f"\n\033[91m[API 错误 {e.code}]: {err_msg}\033[0m\n")
@@ -270,8 +282,8 @@ class AgentRunner:
 
     def _call_llm_without_tools(self, messages: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """降级纯文本请求 (针对不支持 tools 字段的轻量模型)"""
-        base_url = self.config.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
-        url = f"{base_url}/chat/completions"
+        raw_base_url = self.config.get("base_url", "https://api.deepseek.com/v1")
+        url = normalize_openai_url(raw_base_url, "chat/completions")
         api_key = self.config.get("api_key", "").strip()
         model = self.config.get("model", "deepseek-chat")
 

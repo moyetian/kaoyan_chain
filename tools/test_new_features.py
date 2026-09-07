@@ -412,6 +412,77 @@ D. 2
     except Exception as e:
         runner.assert_true(False, f"测试组 D 异常: {e}")
 
+    # ============================================================
+    # 测试组 E: TUI / GUI 与后端技能模块契约守卫 (Contract Guard)
+    # 防止菜单/按钮调用到后端不存在的函数 (历史缺陷: compose_exam / retrieve_variants /
+    # run_syllabus_diff_flow / ingest_material_file / compare_two_schools)
+    # ============================================================
+    print("\n[测试组 E: TUI / GUI 后端契约守卫]")
+    try:
+        from tools.skills import exam_composer, variant_retriever, material_ingestion
+        from tools.intelligence import (
+            syllabus_diff, comparator, watcher as intel_watcher, current_exam_year,
+        )
+
+        # E.1 后端真实 API 存在性
+        runner.assert_true(hasattr(exam_composer, "compose_exam_paper"),
+                           "契约: exam_composer.compose_exam_paper 存在")
+        runner.assert_true(not hasattr(exam_composer, "compose_exam") or hasattr(exam_composer, "compose_exam_paper"),
+                           "契约: 组卷入口以 compose_exam_paper 为准")
+        runner.assert_true(hasattr(variant_retriever, "search_real_variant"),
+                           "契约: variant_retriever.search_real_variant 存在")
+        runner.assert_true(hasattr(material_ingestion, "get_material_ingestion_pipeline"),
+                           "契约: material_ingestion.get_material_ingestion_pipeline 存在")
+        pipe = material_ingestion.get_material_ingestion_pipeline()
+        runner.assert_true(hasattr(pipe, "ingest_file") and hasattr(pipe, "ingest_text"),
+                           "契约: 切片管道具备 ingest_file / ingest_text 方法")
+        runner.assert_true(hasattr(syllabus_diff, "get_syllabus_diff_generator"),
+                           "契约: syllabus_diff.get_syllabus_diff_generator 存在")
+        runner.assert_true(hasattr(comparator, "get_school_comparator") and hasattr(comparator.SchoolComparator, "compare"),
+                           "契约: comparator 以 SchoolComparator.compare 对标双校")
+        runner.assert_true(hasattr(intel_watcher.AdmissionWatcher, "check_updates"),
+                           "契约: AdmissionWatcher.check_updates 存在")
+
+        # E.2 TUI 源码不得再引用不存在的旧 API
+        tui_src = (ROOT / "tools" / "tui_navigator.py").read_text(encoding="utf-8")
+        ghost_apis = ["compose_exam(", "format_exam_paper", "retrieve_variants",
+                      "run_syllabus_diff_flow", "ingest_material_file",
+                      "compare_two_schools", "format_comparison_report",
+                      "volatility_rate"]
+        ghost_hits = [g for g in ghost_apis if g in tui_src]
+        runner.assert_true(not ghost_hits, f"TUI: 已无幽灵 API 引用 (命中: {ghost_hits or '无'})")
+
+        # E.3 TUI 调用的后端返回字段真实存在 (dict key 校验)
+        runner.assert_true("volatility_percentage" in tui_src, "TUI: 考纲Diff 读取 metrics.volatility_percentage")
+        runner.assert_true("ingest_file" in tui_src and "ingest_material_file" not in tui_src,
+                           "TUI: 切片入库走 pipe.ingest_file 正确入口")
+
+        # E.4 GUI 源码不得再引用不存在的旧 API
+        gui_src = (ROOT / "tools" / "gui" / "main_window.py").read_text(encoding="utf-8")
+        gui_ghost = [g for g in ghost_apis if g in gui_src]
+        runner.assert_true(not gui_ghost, f"GUI: 已无幽灵 API 引用 (命中: {gui_ghost or '无'})")
+        runner.assert_true("compose_exam_paper" in gui_src, "GUI: 错题盲盒走 compose_exam_paper 正确入口")
+
+        # E.5 syllabus_diff metrics 键名一致性
+        gen = syllabus_diff.get_syllabus_diff_generator()
+        rep = gen.compare_texts(
+            "- **掌握**：函数极限；\n- **理解**：定积分定义；\n",
+            "- **掌握**：函数极限；\n- **掌握**：不定积分计算；\n",
+            school="契约测试", major="contract", year_old=2026, year_new=current_exam_year()
+        )
+        need_keys = {"total_old", "total_new", "added_count", "removed_count",
+                     "modified_count", "unchanged_count", "volatility_percentage", "stability_grade"}
+        runner.assert_true(need_keys.issubset(rep["metrics"].keys()),
+                           "契约: compare_texts metrics 字段完整")
+        runner.assert_true(rep["metrics"]["added_count"] >= 1 and rep["metrics"]["removed_count"] >= 1,
+                           "契约: 增删考点识别在最小样例上正确")
+        saved = gen.save_diff_report(rep, output_path=ROOT / "tools" / "scratch" / "_contract_diff_report.md")
+        runner.assert_true(saved.exists() and saved.stat().st_size > 200,
+                           "契约: save_diff_report 落盘成功 (返回 Path)")
+
+    except Exception as e:
+        runner.assert_true(False, f"测试组 E 异常: {e}")
+
     return runner.print_summary()
 
 

@@ -344,10 +344,21 @@ def build_system_prompt(active_subj="math"):
 # 2. LLM 多模型 API 交互引擎 (零依赖流式输出)
 # ════════════════════════════════════════════════════════════════
 
+def normalize_openai_url(base_url: str, endpoint: str = "chat/completions") -> str:
+    """智能规范化 OpenAI 兼容接口地址 (自动补齐 /v1 容错)"""
+    b = (base_url or "https://api.deepseek.com/v1").strip().rstrip("/")
+    if b.endswith("/chat/completions"):
+        return b
+    if b.endswith("/v1") or "/v1/" in b:
+        return f"{b}/{endpoint.lstrip('/')}"
+    # 针对未带 /v1 的中转站或自建代理，智能补齐 /v1
+    return f"{b}/v1/{endpoint.lstrip('/')}"
+
+
 def stream_chat(messages, config):
     """向 OpenAI 兼容 API 发起流式请求并打字机式打印"""
-    base_url = config.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
-    url = f"{base_url}/chat/completions"
+    raw_base_url = config.get("base_url", "https://api.deepseek.com/v1")
+    url = normalize_openai_url(raw_base_url, "chat/completions")
     api_key = config.get("api_key", "").strip()
     model = config.get("model", "deepseek-chat")
 
@@ -2383,8 +2394,8 @@ def query_llm_reply(user_msg, cfg=None):
     if not api_key:
         return f"🎓【考研私教】收到提问: \"{user_msg}\"\n⚠️ 尚未配置大模型 API Key，请在电脑端终端运行 `ky config` 设置密钥后即可畅享网页端与群聊对话讲题！"
 
-    base_url = cfg.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
-    url = f"{base_url}/chat/completions"
+    raw_base_url = cfg.get("base_url", "https://api.deepseek.com/v1")
+    url = normalize_openai_url(raw_base_url, "chat/completions")
     model = cfg.get("model", "deepseek-chat")
 
     # 标配浏览器真实 User-Agent 与 Accept 标头，严防云厂商 WAF 将 Python-urllib 拦截为 403 Forbidden
@@ -3285,8 +3296,12 @@ def main():
             major = "专业课"
             old_path = None
             new_path = None
-            y1 = 2026
-            y2 = 2027
+            try:
+                from intelligence.models import current_exam_year as _cey
+                y2 = _cey()
+            except Exception:
+                y2 = 2027
+            y1 = y2 - 1
             save_flag = False
             pos_args = []
             for a in args[2:]:
@@ -3339,8 +3354,18 @@ def main():
                     if new_path and Path(new_path).exists():
                         new_text = Path(new_path).read_text(encoding="utf-8", errors="ignore")
                     else:
+                        # 未提供真实新考纲时仅运行内置演示样例：必须醒目标注，严禁作为备考依据
+                        try:
+                            from intelligence.models import current_exam_year as _cey
+                            demo_year = _cey()
+                        except Exception:
+                            demo_year = y2
+                        print(colorize(
+                            "\n[⚠️ 演示模式] 未提供真实新考纲文件 (可用 --new=<路径> 指定)。"
+                            f"以下对比使用内置演示样例变动，并非官方大纲，结果仅用于了解 Diff 功能，"
+                            f"严禁作为备考依据！", C.RED))
                         new_text = base_text.replace("- **理解**：图的遍历", "- **掌握**：图的遍历（新增拓扑排序与关键路径步骤考查）")
-                        new_text += "\n\n### 4. 2027新增考纲知识点\n- **掌握**：红黑树的插入与平衡旋转调整；B+树在索引文件中的应用；\n- **了解**：外部排序的多路平衡归并。\n"
+                        new_text += f"\n\n### 4. {demo_year}新增考纲知识点（演示样例·非官方）\n- **掌握**：红黑树的插入与平衡旋转调整；B+树在索引文件中的应用；\n- **了解**：外部排序的多路平衡归并。\n"
 
                     res = diff_gen.compare_texts(old_text=base_text, new_text=new_text, school=school, major=major, year_old=y1, year_new=y2)
 
@@ -3496,6 +3521,26 @@ def main():
                 print(colorize(f"\n[√ 双校横向对比研报已归档至]: {res['saved_path']}\n", C.GREEN))
         else:
             print(colorize("[!] intelligence 考情引擎模块未载入", C.RED))
+    elif args[0] in ("mount", "scan", "--mount", "--scan"):
+        try:
+            from skills import material_scanner
+        except Exception:
+            from tools.skills import material_scanner
+        print(colorize("\n[🔍 正在智能扫描本地四科 参考资料/ 目录与考研资料库...]\n", C.CYAN))
+        mount_res = material_scanner.scan_and_mount_materials()
+        if mount_res.get("success"):
+            print(colorize(f"✔ 资料挂载完成！共扫描到 {mount_res['total_files']} 份本地参考资料与历年真题：", C.GREEN))
+            for k, flist in mount_res["details"].items():
+                label = {"math": "数学", "eng": "英语", "pol": "政治", "pro": "专业课"}.get(k, k)
+                if flist:
+                    print(f"  • 【{label}】: {len(flist)} 份实体资料 -> {', '.join(flist)}")
+                else:
+                    print(f"  • 【{label}】: 暂无本地资料 (私教遵循官方考纲出题)")
+            if mount_res.get("school_watch"):
+                print(colorize(f"\n[📡 研招联动]: {mount_res['school_watch']}", C.CYAN))
+            print(colorize("\n🎉 参考资料白名单与目标院校雷达已同步写回 ky_config.json 与 AGENTS.md！\n", C.GREEN))
+        else:
+            print(colorize(f"[!] 资料挂载失败: {mount_res.get('msg')}", C.RED))
     elif args[0] in ("variant", "--variant"):
         if len(args) < 2:
             print(colorize("用法: ky variant <考点关键词或原题干>\n示例: ky variant 导数中值定理", C.YELLOW))

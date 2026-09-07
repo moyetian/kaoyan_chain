@@ -25,6 +25,7 @@ from . import exam_diagnoser
 from . import school_scout
 from . import material_ingestion
 from . import wechat_searcher
+from . import material_scanner
 
 SKILLS_REGISTRY = {
     "vision_solver": {

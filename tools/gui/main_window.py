@@ -12,7 +12,7 @@ from datetime import date, datetime
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QTabWidget, QProgressBar, QFrame, QScrollArea,
-    QLineEdit, QTextEdit, QMessageBox
+    QLineEdit, QTextEdit, QMessageBox, QFileDialog
 )
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont
@@ -57,8 +57,9 @@ class FunctionCard(QFrame):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None, workspace_root=None):
+        super().__init__(parent)
+        self.workspace_root = Path(workspace_root) if workspace_root else ROOT
         self.setWindowTitle("考研学习链 · 全科智能私教中枢")
         self.setMinimumSize(1180, 780)
         self._load_config()
@@ -68,9 +69,10 @@ class MainWindow(QMainWindow):
 
     def _load_config(self):
         self.config = {}
-        if CONFIG_FILE.exists():
+        cfg_p = self.workspace_root / "ky_config.json"
+        if cfg_p.exists():
             try:
-                self.config = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+                self.config = json.loads(cfg_p.read_text(encoding="utf-8"))
             except Exception:
                 self.config = {}
 
@@ -352,8 +354,11 @@ class MainWindow(QMainWindow):
         """生成自测盲盒试卷"""
         try:
             from skills import exam_composer
-            res = exam_composer.compose_exam("pro", total_questions=3)
-            paper_text = exam_composer.format_exam_paper(res)
+            # 与 CLI/TUI 保持同一后端契约: compose_exam_paper(subject, count, include_weak, save_file)
+            res = exam_composer.compose_exam_paper(subject="pro", count=3, include_weak=True, save_file=True)
+            paper_text = res.get("formatted_paper") or res.get("content") or ""
+            if res.get("saved_path"):
+                paper_text += f"\n\n> 💾 自测卷已落盘: `{res['saved_path']}`"
             self.tabs.setCurrentIndex(0)
             self.chat_display.append("\n\n" + "=" * 50 + "\n🎯 【错题盲盒自测卷】已生成：\n" + paper_text)
         except Exception as e:
@@ -385,6 +390,68 @@ class MainWindow(QMainWindow):
 
         self.intel_display.setMarkdown("\n".join(lines))
 
+    def _run_ingest_from_dialog(self):
+        """切片入库：通过文件选择框取得真题文件后执行结构化切片入库"""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择要切片的真题 / 讲义文件", str(self.workspace_root),
+            "题库文件 (*.md *.txt *.pdf);;所有文件 (*.*)"
+        )
+        if not path:
+            return
+        self.tabs.setCurrentIndex(0)
+        self.chat_display.append(f"\n▶ 正在切片入库 [{path}] ...")
+        try:
+            from skills import material_ingestion
+            pipe = material_ingestion.MaterialIngestionPipeline(workspace_root=self.workspace_root)
+            res = pipe.ingest_file(Path(path), subject="pro")
+            if res.get("success"):
+                self.chat_display.append(
+                    f"✔ 切片入库成功：识别 {res['count']} 道题目 "
+                    f"(选择 {res['choices']} / 填空 {res['blanks']} / 大题 {res['essays']})\n"
+                    f"   生成路径: {res['target_path']}"
+                )
+            else:
+                self.chat_display.append(f"❌ 切片入库失败: {res.get('msg')}")
+        except Exception as e:
+            self.chat_display.append(f"❌ 切片入库异常: {e}")
+
+    def _run_diff_from_dialog(self):
+        """考纲 Diff：依次选取基准大纲与最新大纲后执行比对（严禁在未提供新大纲时伪造变动）"""
+        old_path, _ = QFileDialog.getOpenFileName(
+            self, "选择【基准(旧)】考纲文件", str(ROOT / "04-专业课"),
+            "Markdown (*.md *.txt);;所有文件 (*.*)"
+        )
+        if not old_path:
+            return
+        new_path, _ = QFileDialog.getOpenFileName(
+            self, "选择【最新】考纲文件", str(Path(old_path).parent),
+            "Markdown (*.md *.txt);;所有文件 (*.*)"
+        )
+        if not new_path:
+            return
+        self.tabs.setCurrentIndex(0)
+        self.chat_display.append(f"\n▶ 正在比对考纲：\n   基准: {old_path}\n   最新: {new_path} ...")
+        try:
+            from intelligence.syllabus_diff import get_syllabus_diff_generator
+            from intelligence.models import current_exam_year
+            y_new = current_exam_year()
+            gen = get_syllabus_diff_generator()
+            rep = gen.compare_files(
+                old_file=Path(old_path), new_file=Path(new_path),
+                school="目标院校", major=Path(new_path).stem,
+                year_old=y_new - 1, year_new=y_new
+            )
+            saved = gen.save_diff_report(rep)
+            m = rep["metrics"]
+            self.chat_display.append(
+                f"✔ 考纲 Diff 完成 (动荡率 {m['volatility_percentage']}% / {m['stability_grade']})："
+                f"新增 {m['added_count']} | 剔除 {m['removed_count']} | "
+                f"调整 {m['modified_count']} | 不变 {m['unchanged_count']}\n"
+                f"   研报路径: {saved}"
+            )
+        except Exception as e:
+            self.chat_display.append(f"❌ 考纲比对异常: {e}")
+
     def _on_card_clicked(self, alias: str):
         """功能卡片点击处理"""
         if alias == "wechat_search":
@@ -397,6 +464,12 @@ class MainWindow(QMainWindow):
         elif alias == "watch":
             self.tabs.setCurrentIndex(3)
             self._refresh_intel_tab()
+            return
+        elif alias == "ingest":
+            self._run_ingest_from_dialog()
+            return
+        elif alias == "diff":
+            self._run_diff_from_dialog()
             return
 
         # 其他模块在私教对话窗口中以执行日志形式展现

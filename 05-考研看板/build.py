@@ -504,6 +504,16 @@ def build_radar_html(root_path: pathlib.Path) -> str:
     """构建【📡 招考与考纲变动雷达】全景 HTML 模块 (Sprint 7)"""
     sections = []
 
+    # 获取学员当前目标院校
+    target_school = ""
+    cfg_file = root_path / "ky_config.json"
+    if cfg_file.exists():
+        try:
+            cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
+            target_school = cfg.get("study_plan", {}).get("school") or cfg.get("target_school") or ""
+        except Exception:
+            pass
+
     # 1. 目标高校简章监控雷达 (Admission Watcher)
     watch_file = root_path / ".memory" / "admission_watch.json"
     watch_items = []
@@ -514,6 +524,16 @@ def build_radar_html(root_path: pathlib.Path) -> str:
                 watch_items.append(winfo)
         except Exception:
             pass
+
+    # 若未建立独立监控库但已配置目标院校，自动合成目标院校动态监控卡片
+    if not watch_items and target_school:
+        watch_items.append({
+            "school": target_school,
+            "status": "WATCHING",
+            "last_check": "系统自动纳入监控",
+            "url": "https://yz.chsi.com.cn",
+            "alert_titles": [f"已建立【{target_school}】研究生院招生简章与专业目录动态监控"]
+        })
 
     w_html = []
     w_html.append("<section class='radar-sec'><h3><span>🏛️</span>目标院校简章监控雷达 (Admission Watcher)</h3>")
@@ -543,7 +563,7 @@ def build_radar_html(root_path: pathlib.Path) -> str:
     diff_html = []
     diff_html.append("<section class='radar-sec'><h3><span>📈</span>考纲版本异动与动荡率分析 (Syllabus Diff)</h3>")
     pro_dir = root_path / "04-专业课"
-    diff_files = sorted(list(pro_dir.glob("考纲变动分析_*.md")), key=lambda p: p.stat().st_mtime, reverse=True) if pro_dir.exists() else []
+    diff_files = sorted(list(pro_dir.glob("考纲变动分析_*.md")), key=lambda p: (0 if target_school and target_school in p.name else 1, -p.stat().st_mtime)) if pro_dir.exists() else []
     if diff_files:
         diff_html.append("<div style='font-size:12px;color:var(--mut);margin-bottom:8px'>基于大纲知识点多层 AST 结构化逐级对比（掌握/理解/了解）：</div>")
         for df in diff_files[:3]:
@@ -575,7 +595,7 @@ def build_radar_html(root_path: pathlib.Path) -> str:
     exp_html = []
     exp_html.append("<section class='radar-sec'><h3><span>💬</span>社媒真实经验与避坑口碑档案 (Community Experiences)</h3>")
     exp_dir = root_path / "docs" / "experiences"
-    exp_files = sorted(list(exp_dir.glob("*.md")), key=lambda p: p.stat().st_mtime, reverse=True) if exp_dir.exists() else []
+    exp_files = sorted(list(exp_dir.glob("*.md")), key=lambda p: (0 if target_school and target_school in p.name else 1, -p.stat().st_mtime)) if exp_dir.exists() else []
     if exp_files:
         exp_html.append("<div style='font-size:12px;color:var(--mut);margin-bottom:8px'>聚合知乎、B站、小红书实名学长学姐真实就读体验与避坑指南 (AI 置信度降噪清洗)：</div>")
         for ef in exp_files[:4]:

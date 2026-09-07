@@ -95,6 +95,14 @@ def run_doctor(return_summary=False):
         check_item("真题 PDF 提取 (pypdf)", False, "", "未安装 (pip install pypdf)；PDF 真题提取暂不可用", warn=True)
         warnings += 1
 
+    # cryptography
+    try:
+        import cryptography
+        check_item("真题 PDF AES 解密权限 (cryptography)", True, f"已就绪 (v{cryptography.__version__})")
+    except ImportError:
+        check_item("真题 PDF AES 解密权限 (cryptography)", False, "", "未安装 (pip install cryptography)；加密/带权限位的试卷 PDF 提取可能受限", warn=True)
+        warnings += 1
+
     # Pillow
     has_pillow = False
     try:
@@ -137,6 +145,18 @@ def run_doctor(return_summary=False):
             warnings += 1
         else:
             check_item(f"学科规范 [{subj_dir}]", True, "核心协议与状态文件齐全")
+
+    # ── 3.5 本地真实考研资料库与白名单挂载 ──
+    print(color("\n【3.5 本地真实考研资料库与白名单挂载】", C.BOLD))
+    try:
+        from skills import material_scanner
+        m_res = material_scanner.scan_and_mount_materials()
+        if m_res.get("success"):
+            check_item("本地参考资料库扫描与挂载", True, f"已核验挂载 {m_res['total_files']} 份真实试卷/教材资料")
+        else:
+            check_item("本地参考资料库扫描与挂载", False, "", m_res.get("msg", "扫描异常"), warn=True)
+    except Exception as e:
+        check_item("本地参考资料库扫描与挂载", False, "", str(e), warn=True)
 
     # ── 4. 配置文件与模型状态 ──
     print(color("\n【4. 配置参数与大模型连通性】", C.BOLD))

@@ -63,16 +63,16 @@ class MaterialIngestionPipeline:
         "专": "04-专业课",
     }
 
-    def __init__(self):
-        pass
+    def __init__(self, workspace_root: Optional[Path] = None):
+        self.workspace_root = Path(workspace_root) if workspace_root else ROOT
 
     def _resolve_subject_dir(self, subject: str) -> Path:
         """映射科目至工作区目录"""
         sub_clean = subject.strip().lower()
         folder_name = self.SUBJECT_MAP.get(sub_clean, "04-专业课")
-        target = ROOT / folder_name
+        target = self.workspace_root / folder_name
         if not target.exists():
-            target = ROOT / "04-专业课"
+            target = self.workspace_root / "04-专业课"
         return target
 
     def chunk_text(self, raw_text: str, default_source: str = "外部真题资料") -> List[QuestionChunk]:
@@ -418,8 +418,14 @@ class MaterialIngestionPipeline:
                 reader = pypdf.PdfReader(str(p))
                 pages = [page.extract_text() or "" for page in reader.pages]
                 raw_text = "\n".join(pages)
+                if not raw_text.strip() or len(raw_text.strip()) < 15:
+                    return {
+                        "success": False,
+                        "msg": f"PDF 文件共 {len(reader.pages)} 页，但未提取出文本（该试卷可能为纯扫描图片版）。建议：使用 OCR 工具预提取文本或使用拍照批改功能。",
+                        "count": 0
+                    }
             except Exception as e:
-                return {"success": False, "msg": f"读取 PDF 异常: {e} (若未安装 pypdf 请运行 pip install pypdf)", "count": 0}
+                return {"success": False, "msg": f"读取 PDF 异常: {e} (若未安装 pypdf/cryptography 请运行 pip install pypdf cryptography)", "count": 0}
         else:
             raw_text = p.read_text(encoding="utf-8", errors="ignore")
 
