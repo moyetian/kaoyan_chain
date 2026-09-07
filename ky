@@ -1,3 +1,17 @@
 #!/usr/bin/env bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-python3 "$SCRIPT_DIR/tools/ky_cli.py" "$@"
+if command -v cygpath >/dev/null 2>&1; then
+    CLI_PATH="$(cygpath -w "$SCRIPT_DIR/tools/ky_cli.py")"
+else
+    CLI_PATH="$SCRIPT_DIR/tools/ky_cli.py"
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+else
+    PYTHON_BIN="py"
+fi
+
+"$PYTHON_BIN" "$CLI_PATH" "$@"

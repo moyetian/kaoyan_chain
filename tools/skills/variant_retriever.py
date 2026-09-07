@@ -24,6 +24,14 @@ except Exception:
         pdf_extractor = None
         error_logger = None
 
+try:
+    from skills import get_subject_name
+except Exception:
+    try:
+        from tools.skills import get_subject_name
+    except Exception:
+        get_subject_name = lambda s, d=None: SUBJECT_NAMES.get(s, s)
+
 SUBJECT_DIRS = {
     "math": "01-数学",
     "eng": "02-英语",
@@ -51,7 +59,7 @@ def search_real_variant(subject="math", keyword="", limit=2, **kwargs):
         subject = "math"
 
     subj_folder = SUBJECT_DIRS.get(subject, "01-数学")
-    subj_name = SUBJECT_NAMES.get(subject, subject)
+    subj_name = get_subject_name(subject, SUBJECT_NAMES.get(subject, subject))
     kw = keyword.strip()
 
     hits = []
@@ -70,6 +78,9 @@ def search_real_variant(subject="math", keyword="", limit=2, **kwargs):
                         start = max(0, idx - 100)
                         end = min(len(content), idx + 300)
                         snippet = content[start:end].strip()
+                        # 过滤目录页 (如包含连续点号或以目录开头)
+                        if re.search(r"(\.{4,}|…{2,}|·{4,})\s*\d+", snippet) or snippet.startswith(("目 录", "目录")):
+                            continue
                         hits.append({
                             "source_type": "real_file",
                             "source_name": txt_file.name,
@@ -85,6 +96,8 @@ def search_real_variant(subject="math", keyword="", limit=2, **kwargs):
                 try:
                     found_snippets = pdf_extractor.find_questions_by_keyword(str(pdf_file), kw, max_results=limit)
                     for s in found_snippets:
+                        if re.search(r"(\.{4,}|…{2,}|·{4,})\s*\d+", s) or s.strip().startswith(("目 录", "目录")):
+                            continue
                         hits.append({
                             "source_type": "real_pdf",
                             "source_name": pdf_file.name,
@@ -160,12 +173,38 @@ def _generate_synthetic_variant(subject, keyword):
             f"D. 具体问题具体分析是正确认识事物的基础"
         )
     else:
-        q = (
-            f"【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】\n"
-            f"408 专业课算法与设计变式题（考点：{kw}）：\n"
-            f"已知一个长度为 n 的单链表，节点元素为整型且不重复。\n"
-            f"请设计一个时间和空间复杂度最优的算法，判断链表中是否存在满足三元组两两和相等的节点组合，并给出规范步骤分证明。"
-        )
+        pro_title = get_subject_name("pro", "专业课")
+        if any(w in kw for w in ("树", "二叉树", "遍历", "AVL", "红黑树", "森林")):
+            q = (
+                f"【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】\n"
+                f"{pro_title} 数据结构算法变式题（考点：{kw}）：\n"
+                f"设一棵非空二叉树 $T$ 采用二叉链表存储，请设计一个时间和空间复杂度均最优的算法，完成关于【{kw}】的核心计算与路径判定，并按采分点标准写出三段式解答（自然语言设计思想、核心算法代码与时空复杂度分析）。"
+            )
+        elif any(w in kw for w in ("图", "最短路径", "Dijkstra", "拓扑", "关键路径", "最小生成树")):
+            q = (
+                f"【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】\n"
+                f"{pro_title} 图论算法变式题（考点：{kw}）：\n"
+                f"设有向/无向带权图 $G=(V, E)$ 采用邻接表存储。请围绕考点【{kw}】设计算法并写出规范推导与证明步骤。"
+            )
+        elif any(w in kw for w in ("信号", "系统", "卷积", "傅里叶", "拉普拉斯", "Z变换", "冲激")):
+            q = (
+                f"【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】\n"
+                f"{pro_title} 核心大题变式（考点：{kw}）：\n"
+                f"已知连续时间线性时不变系统（LTI），其激励信号为 $x(t)$，系统冲激响应为 $h(t)$。\n"
+                f"围绕考点【{kw}】，请列出系统微分方程或系统函数 $H(s)$，求解系统零状态响应，并判定系统的因果性与稳定性。"
+            )
+        elif any(w in kw for w in ("排序", "查找", "散列", "哈希")):
+            q = (
+                f"【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】\n"
+                f"{pro_title} 查找与排序算法变式题（考点：{kw}）：\n"
+                f"已知待处理数据规模为 $n$。请围绕考点【{kw}】设计最优处理方案，写出算法设计思想与最坏情况时空复杂度证明。"
+            )
+        else:
+            q = (
+                f"【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】\n"
+                f"{pro_title} 考纲核心变式题（考点：{kw}）：\n"
+                f"请结合考纲对【{kw}】的重点掌握要求，写出该考点的核心定义公式、物理/数学意义与边界条件，并完成一道典型题目的规范步骤分推导。"
+            )
 
     return [{
         "source_type": "synthetic_with_watermark",

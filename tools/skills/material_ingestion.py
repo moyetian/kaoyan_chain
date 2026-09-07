@@ -176,6 +176,16 @@ class MaterialIngestionPipeline:
         parts = split_pat.split(block, maxsplit=1)
 
         raw_stem = parts[0].strip()
+
+        # 过滤书籍/材料目录行 (TOC line: 章节名 ... 页码)
+        if re.search(r"(?:\.{4,}|…{2,}|·{4,}|—{4,})\s*\d+\s*$", raw_stem.strip()) or (
+            "目录" in raw_stem and re.search(r"\d+\s*$", raw_stem.strip())
+        ):
+            return QuestionChunk(
+                num=num, q_type="essay", stem="", options=[], answer="",
+                analysis="", rubric=[], points=[], score=0, source=source
+            )
+
         ans_and_ana = ""
         if len(parts) >= 3:
             ans_and_ana = parts[1] + parts[2]
@@ -204,6 +214,8 @@ class MaterialIngestionPipeline:
         # 识别选项 (A. ... B. ... C. ... D. ...)
         options: List[str] = []
         opt_matches = list(re.finditer(r"(?:\n|^|\s+)([A-D])[\.、\s]+([^\n\rA-D]+)", stem_clean))
+        is_essay_sec = any(k in sec_hint for k in ["综合", "解答", "计算", "应用", "简答", "证明", "设计", "算法"])
+
         if len(opt_matches) >= 2 or ("选择" in sec_hint and len(opt_matches) >= 1):
             q_type = "choice"
             if not score:
@@ -216,6 +228,10 @@ class MaterialIngestionPipeline:
             if opt_matches:
                 first_opt_idx = opt_matches[0].start()
                 stem_clean = stem_clean[:first_opt_idx].strip()
+        elif is_essay_sec:
+            q_type = "essay"
+            if not score:
+                score = 10 if "408" in source or "专业" in source else 10
         elif "____" in stem_clean or "填空" in block or "填空" in sec_hint or re.search(r"（\s*）|\(\s*\)", stem_clean):
             q_type = "blank"
             if not score:

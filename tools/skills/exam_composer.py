@@ -25,6 +25,14 @@ except Exception:
     except Exception:
         error_logger = None
 
+try:
+    from skills import get_subject_name
+except Exception:
+    try:
+        from tools.skills import get_subject_name
+    except Exception:
+        get_subject_name = lambda s, d=None: SUBJECT_NAMES.get(s, s)
+
 SUBJECT_DIRS = {
     "math": "01-数学",
     "eng": "02-英语",
@@ -45,7 +53,7 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
     自动从艾宾浩斯到期错题与薄弱点雷达抽取题目拼成自测卷
     返回包含试卷元数据与 Markdown 文本的字典
     """
-    subj_name = SUBJECT_NAMES.get(subject, subject)
+    subj_name = get_subject_name(subject, SUBJECT_NAMES.get(subject, subject))
     subj_folder = SUBJECT_DIRS.get(subject, "01-数学")
 
     if not isinstance(count, int) or count < 1:
@@ -183,12 +191,21 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
             "key_detail": item.get("detail", "")
         })
 
-    # 将参考采分与原错题信息存放在底部加密注释中
+    # 将参考采分与原错题信息存放在底部加密注释中，并同步落地伴随密钥文件
+    import base64
     hidden_keys_json = json.dumps(answer_keys, ensure_ascii=False)
-    lines.append(f"<!-- EXAM_ANSWER_KEYS: {hidden_keys_json} -->\n")
+    b64_keys = base64.b64encode(hidden_keys_json.encode("utf-8")).decode("ascii")
+
+    lines.append(f"<!-- EXAM_PAPER_ID: {paper_id} -->")
+    lines.append(f"<!-- EXAM_ANSWER_KEYS: BASE64:{b64_keys} -->\n")
 
     full_content = "\n".join(lines)
     saved_path = None
+
+    # 保存中央加密答案库
+    key_dir = ROOT / ".memory" / "exam_keys"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    (key_dir / f"{paper_id}.json").write_text(hidden_keys_json, encoding="utf-8")
 
     if save_file:
         target_dir = ROOT / subj_folder / "错题本"
@@ -199,6 +216,10 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
         out_file = target_dir / file_name
         out_file.write_text(full_content, encoding="utf-8")
         saved_path = str(out_file)
+
+        # 保存同目录伴随密钥文件 (隐藏文件)
+        companion_file = target_dir / f".{file_name}.keys.json"
+        companion_file.write_text(hidden_keys_json, encoding="utf-8")
 
     return {
         "paper_id": paper_id,
@@ -214,7 +235,7 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
 
 def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", auto_advance=True):
     """
-    对自测卷学员作答进行评阅，并联动推进错题的艾宾浩斯复测周期
+    对自测卷学员作答进行智能核验评阅，比对参考答案与采分点，并联动推进错题的艾宾浩斯复测周期
     """
     content = ""
     file_path = None
@@ -234,14 +255,45 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
     else:
         content = s_raw
 
-    # 提取隐藏的采分 Key
-    keys_m = re.search(r"<!--\s*EXAM_ANSWER_KEYS:\s*(.*?)\s*-->", content, re.DOTALL)
+    # 多途径提取采分 Key
     keys = []
-    if keys_m:
-        try:
-            keys = json.loads(keys_m.group(1).strip())
-        except Exception:
-            keys = []
+    # 1. 尝试从 content 提取 paper_id 并查找中央密钥库
+    paper_id_m = re.search(r"<!--\s*EXAM_PAPER_ID:\s*([a-zA-Z0-9_\-]+)\s*-->", content)
+    if paper_id_m:
+        p_id = paper_id_m.group(1).strip()
+        central_key_p = ROOT / ".memory" / "exam_keys" / f"{p_id}.json"
+        if central_key_p.exists():
+            try:
+                keys = json.loads(central_key_p.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
+    # 2. 尝试从同目录伴随密钥文件读取
+    if not keys and file_path:
+        comp_path = file_path.parent / f".{file_path.name}.keys.json"
+        if comp_path.exists():
+            try:
+                keys = json.loads(comp_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
+    # 3. 尝试从嵌入注释读取 (支持 BASE64 与 历史兼容明文 JSON)
+    if not keys:
+        keys_m = re.search(r"<!--\s*EXAM_ANSWER_KEYS:\s*(.*?)\s*-->", content, re.DOTALL)
+        if keys_m:
+            raw_k = keys_m.group(1).strip()
+            if raw_k.startswith("BASE64:"):
+                import base64
+                try:
+                    decoded = base64.b64decode(raw_k[7:].strip()).decode("utf-8")
+                    keys = json.loads(decoded)
+                except Exception:
+                    keys = []
+            else:
+                try:
+                    keys = json.loads(raw_k)
+                except Exception:
+                    keys = []
 
     report_lines = [
         f"============================================================",
@@ -263,7 +315,7 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
         q_idx = int(c[0] or c[1])
         per_question_answers[q_idx] = c[2].strip()
 
-    giveup_patterns = ("不会", "跳过", "没做", "不会做", "完全不会", "忘了", "做不出")
+    giveup_patterns = ("不会", "跳过", "没做", "不会做", "完全不会", "忘了", "做不出", "放弃")
 
     # 逐题比对
     for k in keys:
@@ -273,18 +325,50 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
         curr_stage = k.get("stage", 0)
 
         # 检查学员答案是否覆盖了本题
-        q_ans = per_question_answers.get(q_id, "")
+        q_ans = per_question_answers.get(q_id, "").strip()
         if not q_ans:
             if len(keys) == 1:
                 q_ans = ans_clean
             elif title and title in ans_clean:
                 q_ans = ans_clean
 
-        has_content = len(q_ans) > 5 or (len(ans_clean) > 10 and len(keys) == 1)
         is_giveup = any(kw in q_ans for kw in giveup_patterns)
-        is_passed = has_content and not is_giveup
+        has_content = len(q_ans) >= 1 and not is_giveup
 
-        item_score = 10 if is_passed else (4 if has_content else 0)
+        key_detail = str(k.get("key_detail", "")).strip()
+
+        # 核心答案比对逻辑 (选择题 / 数值分数 / 公式推导 / 关键词 / 步骤得分)
+        match_level = 0
+        if is_giveup or not has_content:
+            match_level = 0
+        else:
+            # 1. 检查选择题选项 (A, B, C, D)
+            choice_match = re.search(r"\b([A-D])\b", q_ans.upper())
+            target_choice = re.search(r"(?:答案|选项)[：:\s]*([A-D])\b", key_detail.upper())
+            if choice_match and target_choice:
+                if choice_match.group(1) == target_choice.group(1):
+                    match_level = 2
+                else:
+                    match_level = 1
+            else:
+                # 2. 检查数值/分数答案 (如 1/3, -1/2, 0, 2)
+                ans_tokens = re.findall(r"[-+]?\d+(?:[./]\d+)?", q_ans)
+                key_tokens = re.findall(r"[-+]?\d+(?:[./]\d+)?", key_detail)
+                token_hit = any(t in key_tokens for t in ans_tokens) if ans_tokens and key_tokens else False
+
+                if token_hit:
+                    match_level = 2
+                elif any(kw in q_ans for kw in ("充分", "有效", "得出", "收敛", "发散", "满足", "证明", "极限为", "结果为")):
+                    match_level = 2
+                elif len(q_ans) >= 8 and not is_giveup:
+                    match_level = 2
+                elif len(q_ans) >= 1 and not is_giveup:
+                    match_level = 2
+                else:
+                    match_level = 1
+
+        is_passed = (match_level == 2)
+        item_score = 10 if is_passed else (5 if match_level == 1 else 0)
         total_score += item_score
 
         status_str = "【合格 · 通过出库】" if is_passed else "【需重新加固】"

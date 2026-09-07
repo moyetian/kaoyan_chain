@@ -408,6 +408,10 @@ def stream_chat(messages, config):
     stop_spinner = threading.Event()
 
     def spinner_task():
+        if not sys.stdout.isatty():
+            sys.stdout.write(f"  {C.CYAN}* [考研私教正在审阅题干与思考推导步骤...]{C.RESET}\n")
+            sys.stdout.flush()
+            return
         frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         idx = 0
         while not stop_spinner.is_set():
@@ -680,7 +684,11 @@ def run_wechat_clawbot_install():
 
 {C.CYAN}[执行命令]: npx -y @tencent-weixin/openclaw-weixin-cli@latest install{C.RESET}
 """)
-    act = input("是否立即启动腾讯官方扫码安装程序? (y/n) [y]: ").strip().lower()
+    try:
+        act = input("是否立即启动腾讯官方扫码安装程序? (y/n) [y]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("\n操作已取消。")
+        return
     if act != "n":
         print(colorize("\n🚀 正在拉取腾讯官方微信连接器并启动二维码，请准备好手机微信扫一扫...\n", C.CYAN))
         try:
@@ -1362,13 +1370,21 @@ def print_command_palette():
 
 def print_status_summary():
     """打印考研总战役大盘态势、打卡 Streak 与周日休整关怀提示 (S3-6)"""
-    from datetime import date, timedelta
+    from datetime import date, timedelta, datetime
     today_d = date.today()
     today_s = today_d.strftime("%Y-%m-%d")
-    exam_d = date(2026, 12, 19)
-    days_left = (exam_d - today_d).days
 
     cfg = load_config()
+    plan = cfg.get("study_plan", {})
+
+    # 动态读取初试日期
+    exam_d_str = plan.get("exam_date", "2026-12-19")
+    try:
+        exam_d = datetime.strptime(exam_d_str, "%Y-%m-%d").date()
+    except Exception:
+        exam_d = date(2026, 12, 19)
+    days_left = (exam_d - today_d).days
+
     hist = cfg.get("completion_history", {})
 
     # 计算连续打卡天数 (Streak)
@@ -1395,7 +1411,7 @@ def print_status_summary():
     print(colorize(f"\n============================================================", C.CYAN))
     print(colorize(f"  🏆 考研总战役态势大盘 · 倒计时 {days_left} 天", C.BOLD))
     print(colorize(f"============================================================", C.CYAN))
-    print(f"• 今日日期: {today_s} (初试首日: 2026-12-19)")
+    print(f"• 今日日期: {today_s} (初试首日: {exam_d.strftime('%Y-%m-%d')})")
     print(f"• 连续打卡: {C.GREEN}{streak} 天 (Streak 保持中){C.RESET}")
     print(f"• 作息节律: {rest_msg}")
     print("-" * 60)
@@ -1404,8 +1420,12 @@ def print_status_summary():
     if agents_root.exists():
         txt = read_text_safe(agents_root)
         for line in txt.split("\n"):
-            if line.startswith("- **") or line.startswith("| **科目") or line.startswith("| 合计"):
-                print("  " + line)
+            clean_l = line.strip()
+            clean_l = clean_l.replace("（示例模板）", "").replace("(示例模板)", "")
+            if clean_l.startswith(("- **", "| **科目", "| 合计", "| **", "- 数学:", "- 英语:", "- 政治:", "- 专业课:", "- 数学薄弱点:", "- 英语薄弱点:", "- 政治薄弱点:", "- 专业课薄弱点:")):
+                print("  " + clean_l)
+            elif clean_l.startswith(("### 【个性化", "### 一、各科")):
+                print("\n  " + colorize(clean_l, C.BOLD))
     print(colorize("============================================================\n", C.CYAN))
 
 def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gateway_token: str = ""):
@@ -1468,10 +1488,17 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
 
     def get_prompt_tag():
         _, s_name = SUBJECT_DIRS.get(curr_subj, ("01-数学", "数学"))
-        target = "110+冲刺"
-        if curr_subj == "eng": target = "65+突破"
-        elif curr_subj == "pol": target = "70+稳拿"
-        elif curr_subj == "pro": target = "120-130拔高"
+        plan = cfg.get("study_plan", {})
+        if curr_subj == "math":
+            target = f"{plan.get('math_target', '110+ 分')} 冲刺"
+        elif curr_subj == "eng":
+            target = f"{plan.get('eng_target', '65+ 分')} 突破"
+        elif curr_subj == "pol":
+            target = f"{plan.get('pol_target', '70+ 分')} 稳拿"
+        elif curr_subj == "pro":
+            target = f"{plan.get('pro_target', '120-130 分')} 拔高"
+        else:
+            target = "冲刺"
         return f"\n{C.CYAN}╭─{C.RESET} [ {C.BOLD}{s_name}{C.RESET} · {C.YELLOW}{target}{C.RESET} ] {C.DIM}──────────────────────────────────────────{C.RESET}\n{C.CYAN}╰─❯{C.RESET} "
 
     def print_followup_toolbar():
@@ -1547,45 +1574,54 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
 
         # ── 核心中文原生口令路由 (兑现 AGENTS.md 顶层中枢协议) ──
         raw_cmd = user_input.strip()
-        if raw_cmd in ("数学报到", "学数学", "切换数学"):
-            curr_subj = "math"
-            cfg["active_subject"] = "math"
+        if raw_cmd in ("数学报到", "学数学", "切换数学", "英语报到", "学英语", "切换英语", "政治报到", "学政治", "切换政治", "专业课报到", "学专业课", "切换专业课"):
+            s_map = {
+                "数学报到": "math", "学数学": "math", "切换数学": "math",
+                "英语报到": "eng", "学英语": "eng", "切换英语": "eng",
+                "政治报到": "pol", "学政治": "pol", "切换政治": "pol",
+                "专业课报到": "pro", "学专业课": "pro", "切换专业课": "pro"
+            }
+            curr_subj = s_map[raw_cmd]
+            cfg["active_subject"] = curr_subj
             save_config(cfg)
             history = []
             active_quiz_item = None
             if agent_runner:
-                agent_runner.set_subject("math")
-            print(colorize(f"\n[已切换至：{SUBJECT_DIRS['math'][1]}] 状态与考纲已就绪。输入题目或输入 /review 立即开练！\n", C.GREEN))
-            continue
-        elif raw_cmd in ("英语报到", "学英语", "切换英语"):
-            curr_subj = "eng"
-            cfg["active_subject"] = "eng"
-            save_config(cfg)
-            history = []
-            active_quiz_item = None
-            if agent_runner:
-                agent_runner.set_subject("eng")
-            print(colorize(f"\n[已切换至：{SUBJECT_DIRS['eng'][1]}] 状态与考纲已就绪。输入长难句或输入 /review 立即开练！\n", C.GREEN))
-            continue
-        elif raw_cmd in ("政治报到", "学政治", "切换政治"):
-            curr_subj = "pol"
-            cfg["active_subject"] = "pol"
-            save_config(cfg)
-            history = []
-            active_quiz_item = None
-            if agent_runner:
-                agent_runner.set_subject("pol")
-            print(colorize(f"\n[已切换至：{SUBJECT_DIRS['pol'][1]}] 状态与考纲已就绪。输入考点或输入 /batch 对选择题！\n", C.GREEN))
-            continue
-        elif raw_cmd in ("专业课报到", "学专业课", "切换专业课"):
-            curr_subj = "pro"
-            cfg["active_subject"] = "pro"
-            save_config(cfg)
-            history = []
-            active_quiz_item = None
-            if agent_runner:
-                agent_runner.set_subject("pro")
-            print(colorize(f"\n[已切换至：{SUBJECT_DIRS['pro'][1]}] 状态与考纲已就绪。输入题目或高频考点演练！\n", C.GREEN))
+                agent_runner.set_subject(curr_subj)
+
+            plan = cfg.get("study_plan", {})
+            subj_name = plan.get(f"{curr_subj}_name") or SUBJECT_DIRS[curr_subj][1]
+            hours = plan.get(f"{curr_subj}_hours", 2.0)
+            target = plan.get(f"{curr_subj}_target", "高分冲刺")
+            weak = plan.get(f"{curr_subj}_weakness", "核心考点攻坚")
+
+            print(colorize(f"\n🎓 【{subj_name} · 私教报到就绪】", C.BOLD + C.GREEN))
+            print(f"• 今日规划投入: {C.CYAN}{hours} 小时{C.RESET} ｜ 战役目标: {C.YELLOW}{target}{C.RESET}")
+            print(f"• 核心薄弱防线: 【{C.BOLD}{weak}{C.RESET}】")
+
+            # 优先检查艾宾浩斯到期错题并派发
+            due_items = error_logger.get_due_reviews(curr_subj, max_count=3) if error_logger else []
+            if due_items:
+                active_quiz_item = due_items[0]
+                print(colorize(f"\n🔔 检测到您有 {len(due_items)} 道艾宾浩斯到期错题！根据战役 SOP，私教已为您抽取首题启动盲盒复测：\n", C.YELLOW))
+                quiz_card = error_logger.generate_blind_quiz(active_quiz_item)
+                print(quiz_card + "\n")
+                print(colorize("👉 请在草稿纸上推演作答，输入答案即可核对 (输入 cancel 退出复测，输入 /hint 获取微步骤)：\n", C.CYAN))
+            else:
+                # 检查今日任务文件并展示今日前 2 项攻坚重点
+                t_file = ROOT / SUBJECT_DIRS[curr_subj][0] / "_状态" / "今日任务.md"
+                task_lines = []
+                if t_file.exists():
+                    txt = read_text_safe(t_file)
+                    for l in txt.splitlines():
+                        l_s = l.strip()
+                        if re.match(r"^-\s*\[ \]", l_s) or ("|" in l_s and "[ ]" in l_s):
+                            task_lines.append(l_s)
+                if task_lines:
+                    print(colorize(f"\n📋 今日攻坚任务清单（前 2 项）：", C.CYAN))
+                    for tl in task_lines[:2]:
+                        print(f"  {tl}")
+                print(colorize(f"\n💡 私教提示：可直接输入题目或题干提问，输入 /hint 启发破题，或输入 /exam 生成专项自测卷！\n", C.GREEN))
             continue
         elif raw_cmd in ("查漏", "查漏补缺"):
             print(colorize("\n=== 🔍 考研全科薄弱点雷达与到期复测清单 ===", C.BOLD))
@@ -2297,9 +2333,17 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                             print(f"  • [{colorize(info.get('status', 'ok'), st_color)}] {scope}: {info.get('tokens', 0)} tokens ({info.get('chars', 0)} chars)")
                         print()
                     elif sub in ("prune", "trim"):
-                        target_scope = parts[2] if len(parts) > 2 else "session"
-                        res = mem_mgr.prune_memory(scope=target_scope, max_items=50, archive_to_decisions=True)
-                        print(colorize(f"\n[√ 记忆修剪] 作用域: {target_scope} | 修剪: {res.get('pruned_count')} 条 | 归档: {res.get('archived_count')} 条\n", C.GREEN))
+                        target_scopes = [parts[2]] if len(parts) > 2 else ["session", "decisions"]
+                        any_pruned = False
+                        for target_scope in target_scopes:
+                            res = mem_mgr.prune_memory(scope=target_scope, max_items=50, archive_to_decisions=True)
+                            if res.get("pruned"):
+                                any_pruned = True
+                                print(colorize(f"\n[√ 记忆修剪] 作用域: {target_scope} | 修剪: {res.get('pruned_count')} 条 | 归档: {res.get('archived_count')} 条", C.GREEN))
+                        if not any_pruned:
+                            print(colorize("\n[i] 各层记忆条目未超限，无需修剪。\n", C.CYAN))
+                        else:
+                            print()
                 except Exception as e:
                     print(f"记忆管理失败: {e}")
                 continue
@@ -2833,11 +2877,22 @@ def show_bridge_guide():
     local_ip = "127.0.0.1"
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
+        s.connect(("223.5.5.5", 80))
+        cand_ip = s.getsockname()[0]
         s.close()
+        if not cand_ip.startswith(("198.18.", "198.19.", "127.")):
+            local_ip = cand_ip
     except Exception:
         pass
+    if local_ip == "127.0.0.1":
+        try:
+            _, _, ips = socket.gethostbyname_ex(socket.gethostname())
+            for ip in ips:
+                if (ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172.")) and not ip.startswith(("198.18.", "198.19.")):
+                    local_ip = ip
+                    break
+        except Exception:
+            pass
 
     cfg = load_config()
     print(f"""
@@ -3759,15 +3814,20 @@ def main():
                 print("-" * 55)
                 print("💡 提示：若某一记忆层膨胀过大，可运行 ky memory prune 进行滚动修剪与决策归档。\n")
             elif sub in ("prune", "trim", "clean"):
-                target_scope = args[2] if len(args) > 2 else "session"
-                res = mem_mgr.prune_memory(scope=target_scope, max_items=50, archive_to_decisions=True)
-                if res.get("pruned"):
-                    print(colorize(f"\n[√ 记忆修剪完成] 作用域: {target_scope}", C.GREEN))
-                    print(f"  • 修剪条目: {res.get('pruned_count')} 条")
-                    print(f"  • 归档至决策库: {res.get('archived_count')} 条")
-                    print(f"  • 剩余条目: {res.get('remaining_count')} 条\n")
+                target_scopes = [args[2]] if len(args) > 2 else ["session", "decisions"]
+                any_pruned = False
+                for target_scope in target_scopes:
+                    res = mem_mgr.prune_memory(scope=target_scope, max_items=50, archive_to_decisions=True)
+                    if res.get("pruned"):
+                        any_pruned = True
+                        print(colorize(f"\n[√ 记忆修剪完成] 作用域: {target_scope}", C.GREEN))
+                        print(f"  • 修剪条目: {res.get('pruned_count')} 条")
+                        print(f"  • 归档至决策库: {res.get('archived_count')} 条")
+                        print(f"  • 剩余条目: {res.get('remaining_count')} 条")
+                if not any_pruned:
+                    print(colorize(f"\n[i] 各层记忆条目未超限，无需修剪。\n", C.CYAN))
                 else:
-                    print(colorize(f"\n[i] 记忆条目未超限 ({res.get('total_items', 0)} 条)，无需修剪。\n", C.CYAN))
+                    print()
             else:
                 print(colorize(f"未知 memory 子命令: {sub}，支持 status / prune", C.YELLOW))
         except Exception as e:

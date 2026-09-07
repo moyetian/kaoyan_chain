@@ -244,11 +244,13 @@ class KaoYanIntelligenceEngine:
                 pass
 
         plan = cfg.get("study_plan", {})
-        math_target = plan.get("math_target", "110+")
-        eng_target = plan.get("english_target", "65+")
-        pol_target = plan.get("politics_target", "70+")
-        pro_target = plan.get("pro_target", "120-130")
-        total_target = plan.get("target_score", "370+")
+        math_target = plan.get("math_target") or cfg.get("math_target", "110+")
+        eng_target = plan.get("english_target") or plan.get("eng_target") or cfg.get("eng_target", "65+")
+        pol_target = plan.get("politics_target") or plan.get("pol_target") or cfg.get("pol_target", "70+")
+        pro_target = plan.get("pro_target") or cfg.get("pro_target", "120-130")
+        total_target = plan.get("target_score") or plan.get("total_target") or cfg.get("total_target", "370+")
+        math_name = plan.get("math_name") or cfg.get("math_name", "数学")
+        pro_name = plan.get("pro_name") or cfg.get("pro_name", "专业课")
 
         is_top_985 = entity and any(t in entity.level for t in ["985", "C9联盟", "双一流A类", "自划线"])
 
@@ -261,7 +263,7 @@ class KaoYanIntelligenceEngine:
             lines.extend([
                 f"- **院校门槛定位**：`{sch_title}` 属 34 所自主划线 / 顶尖名校，考研竞争处于白热化高压区，通常具备以下硬性门槛：",
                 f"  1. **初试底线**：近三年专硕/学硕复试线通常在 330~355 分高位，设定的 `{total_target}` 目标分处于安全上岸区（具备约 15~25 分复试差额缓冲垫）；",
-                f"  2. **数学与专业课提分死命令**：数学（二/一）必须确保达到 `{math_target}`，专业课（408）必须攻坚至 `{pro_target}`，两门单科合计需贡献 230+ 分基本盘；",
+                f"  2. **数学与专业课提分死命令**：{math_name}必须确保达到 `{math_target}`，{pro_name}必须攻坚至 `{pro_target}`，两门单科合计需贡献 230+ 分基本盘；",
                 f"  3. **复试硬实力储备**：顶尖名校极其看重编程机试与专业素养，初试后需无缝衔接算法题库训练，不可松懈。"
             ])
         else:

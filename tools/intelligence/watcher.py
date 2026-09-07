@@ -157,19 +157,20 @@ class AdmissionWatcher:
             # 过滤高关注度招考关键词 (动态计算考研年份窗口)
             target_yr = current_exam_year()
             year_kws = [str(target_yr), str(target_yr - 1), str(target_yr + 1)]
-            alert_kws = year_kws + ["招生简章", "专业目录", "大纲", "自命题", "复试", "调整"]
+            alert_kws = year_kws + ["招生简章", "专业目录", "大纲", "自命题", "复试", "调整", "硕士", "考研", "招考", "录取", "初试", "调剂"]
             alert_titles = []
             for t in newly_added_titles:
                 if any(kw in t for kw in alert_kws):
                     alert_titles.append(t)
 
-            has_change = (new_hash != old_hash) or bool(alert_titles)
+            # 仅在检测到真正的新增招考警报/简章标题时判定为 UPDATED，避免纯动态 HTML 漂移引发假阳性
+            has_change = bool(alert_titles)
 
             if has_change:
                 finding_item = {
                     "school": item.get("name"),
                     "status": "UPDATED",
-                    "alert_titles": alert_titles if alert_titles else newly_added_titles[:3],
+                    "alert_titles": alert_titles,
                     "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "url": url
                 }
@@ -207,9 +208,16 @@ class AdmissionWatcher:
 
     def _extract_recent_titles(self, html_text: str) -> List[str]:
         """从页面提取通知列表标题 (Rust 加速 + Python 降级)"""
+        noise_skips = [
+            "版权所有", "网站地图", "关于我们", "联系我们", "常用下载",
+            "旧版网站", "友情链接", "English", "办事大厅", "博士", "系统登录",
+            "管理系统", "平台入口", "登录入口"
+        ]
+
         if _HAS_RUST_EXT and not getattr(self, "_force_python", False):
             try:
-                return _rust.extract_titles(html_text)
+                titles = _rust.extract_titles(html_text)
+                return [t for t in titles if not any(skip in t for skip in noise_skips)]
             except Exception:
                 pass
 
@@ -219,7 +227,7 @@ class AdmissionWatcher:
         for l in links:
             t = re.sub(r"<[^>]+>", "", l).strip()
             t = re.sub(r"\s+", " ", t)
-            if 8 <= len(t) <= 60 and not any(skip in t for skip in ["版权所有", "网站地图", "关于我们", "联系我们"]):
+            if 8 <= len(t) <= 60 and not any(skip in t for skip in noise_skips):
                 if t not in clean_titles:
                     clean_titles.append(t)
         return clean_titles

@@ -64,6 +64,36 @@ STANDARD_SUBJECTS_CATALOG = {
         "common_subjects": ["(101)思想政治理论", "(204)英语(二)", "(302)数学(二)", "(408)计算机学科专业基础"],
         "national_standard": True
     },
+    "085400": {
+        "name": "电子信息",
+        "degree_type": "专硕",
+        "common_subjects": ["(101)思想政治理论", "(204)英语(二)", "(302)数学(二)", "专业自命题或统考"],
+        "national_standard": False
+    },
+    "085402": {
+        "name": "通信工程",
+        "degree_type": "专硕",
+        "common_subjects": ["(101)思想政治理论", "(204)英语(二)", "(302)数学(二)", "专业自命题(信号与系统/通信原理)"],
+        "national_standard": False
+    },
+    "085410": {
+        "name": "人工智能",
+        "degree_type": "专硕",
+        "common_subjects": ["(101)思想政治理论", "(204)英语(二)", "(302)数学(二)", "专业自命题或统考(408)"],
+        "national_standard": False
+    },
+    "080900": {
+        "name": "电子科学与技术",
+        "degree_type": "学硕",
+        "common_subjects": ["(101)思想政治理论", "(201)英语(一)", "(301)数学(一)", "专业自命题"],
+        "national_standard": False
+    },
+    "081000": {
+        "name": "信息与通信工程",
+        "degree_type": "学硕",
+        "common_subjects": ["(101)思想政治理论", "(201)英语(一)", "(301)数学(一)", "专业自命题(信号与系统)"],
+        "national_standard": False
+    },
     "085401": {
         "name": "新一代电子信息技术",
         "degree_type": "专硕",

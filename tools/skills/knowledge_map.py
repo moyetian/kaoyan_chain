@@ -22,7 +22,14 @@ except Exception:
     try:
         from tools.skills import error_logger
     except Exception:
-        error_logger = None
+        pass
+try:
+    from skills import get_subject_name
+except Exception:
+    try:
+        from tools.skills import get_subject_name
+    except Exception:
+        get_subject_name = lambda s, d=None: SUBJECT_NAMES.get(s, s)
 
 SUBJECT_DIRS = {
     "math": "01-数学",
@@ -84,7 +91,7 @@ def build_knowledge_map(subject="math"):
     解析指定科目的考试大纲与学情错题，构建考点-掌握度-失分风险二维图谱
     """
     subj_folder = SUBJECT_DIRS.get(subject, "01-数学")
-    subj_name = SUBJECT_NAMES.get(subject, subject)
+    subj_name = get_subject_name(subject, SUBJECT_NAMES.get(subject, subject))
     s_dir = ROOT / subj_folder
 
     # 1. 扫描大纲文件
@@ -124,19 +131,52 @@ def build_knowledge_map(subject="math"):
                         "req_type": "掌握",
                         "full_desc": desc
                     })
-            elif cur_chap is not None and (line_s.startswith("- **") or line_s.startswith("* **")):
-                # 匹配考点条目，如 - **掌握**：极限的性质...
-                m = re.search(r"[-*]\s+\*\*([^*]+)\*\*[：:]\s*(.*)", line_s)
-                if m:
-                    req_type = m.group(1).strip()
-                    desc = m.group(2).strip()
-                    # 按顿号或分号切分具体考点
-                    sub_points = [p.strip() for p in re.split(r"[；;、]", desc) if len(p.strip()) >= 2]
-                    for sp in sub_points:
+            elif cur_chap is not None and (line_s.startswith(("-", "*"))):
+                # 匹配多种考点条目风格:
+                # 风格 1: - **掌握**：极限的性质、有界性定理...
+                m1 = re.search(r"^[-*]\s+\*\*([^*]+)\*\*[：:]\s*(.*)", line_s)
+                # 风格 2: - 信号的时移与卷积 (要求：掌握) 或 (掌握)
+                m2 = re.search(r"^[-*]\s+(.*?)[（\(](?:要求[：:])?\s*(掌握|理解|了解|会用)[）\)]", line_s)
+                # 风格 3: - 第一章：数据结构基本概念 (掌握)
+                if m1:
+                    req_type = m1.group(1).strip()
+                    desc = m1.group(2).strip()
+                    # 智能切分顿号/分号，避免切断括号内的并列项
+                    # 先提取顶级考点
+                    clean_desc = desc
+                    # 将括号内的顿号临时保护
+                    def _protect_parens(match):
+                        return match.group(0).replace("、", "§").replace("；", "¤")
+                    protected = re.sub(r"[（\(][^）\)]+[）\)]", _protect_parens, clean_desc)
+                    raw_sub = [p.strip().replace("§", "、").replace("¤", "；") for p in re.split(r"[；;]", protected) if len(p.strip()) >= 2]
+                    for sp in raw_sub:
+                        # 若未带括号，按顿号切分
+                        if "（" not in sp and "(" not in sp:
+                            for sub_p in re.split(r"[、]", sp):
+                                sub_p = sub_p.strip()
+                                if len(sub_p) >= 2:
+                                    cur_chap["points"].append({
+                                        "name": sub_p,
+                                        "req_type": req_type,
+                                        "full_desc": desc
+                                    })
+                        else:
+                            # 带有括号的考点完整保留，如 "闭区间上连续函数的性质（有界性定理、最值定理、零点定理）"
+                            sp_clean = re.sub(r"^[、\s]+", "", sp).strip()
+                            if len(sp_clean) >= 2:
+                                cur_chap["points"].append({
+                                    "name": sp_clean,
+                                    "req_type": req_type,
+                                    "full_desc": desc
+                                })
+                elif m2:
+                    p_name = m2.group(1).strip().lstrip("0123456789.、- ")
+                    req_type = m2.group(2).strip()
+                    if len(p_name) >= 2 and not p_name.startswith("[请根据"):
                         cur_chap["points"].append({
-                            "name": sp,
+                            "name": p_name,
                             "req_type": req_type,
-                            "full_desc": desc
+                            "full_desc": line_s
                         })
 
     # 若大纲中未解析出考点，提供内置保底模块
@@ -248,7 +288,7 @@ def format_knowledge_map_table(subject="math"):
     lines.append(f"============================================================")
     lines.append(f"考点覆盖总量: {data['total_points']} 个 ｜ 全局大纲掌握率: {data['mastery_rate']}%")
     gc = data["grade_counts"]
-    lines.append(f"等级分布: A (熟练) {gc['A']} | B (巩固) {gc['B']} | C (生疏) {gc['C']} | D (盲区) {gc['D']}\n")
+    lines.append(f"等级分布: A (熟练) {gc['A']} | B (巩固) {gc['B']} | C (生疏) {gc['C']} | D (盲区) {gc['D']} | U (待自测) {gc['U']}\n")
 
     for chap in data["chapters"]:
         lines.append(f"【{chap['title']}】")

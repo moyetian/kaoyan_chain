@@ -6,13 +6,15 @@
 import sys
 import json
 import re
+import io
+import contextlib
 from pathlib import Path
 from datetime import date, datetime
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QTabWidget, QProgressBar, QFrame, QScrollArea,
-    QLineEdit, QTextEdit, QMessageBox, QFileDialog
+    QLineEdit, QTextEdit, QMessageBox, QFileDialog, QApplication
 )
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont
@@ -126,8 +128,36 @@ class MainWindow(QMainWindow):
         layout.addSpacing(16)
         layout.addWidget(meta_label)
         layout.addStretch()
+
+        self._current_theme = "dark"
+        self.theme_btn = QPushButton("☀️ 浅色")
+        self.theme_btn.setFixedWidth(70)
+        self.theme_btn.setStyleSheet("font-size: 11px; padding: 4px 8px; border-radius: 6px; background: #2e344e; color: #a5b4fc;")
+        self.theme_btn.clicked.connect(self._toggle_theme)
+        layout.addWidget(self.theme_btn)
+        layout.addSpacing(12)
+
         layout.addWidget(countdown)
         return header
+
+    def _toggle_theme(self):
+        """切换深色/浅色主题"""
+        app = QApplication.instance()
+        if not app:
+            return
+        theme_dir = TOOLS / "gui" / "theme"
+        if getattr(self, "_current_theme", "dark") == "dark":
+            light_qss = theme_dir / "light.qss"
+            if light_qss.exists():
+                app.setStyleSheet(light_qss.read_text(encoding="utf-8"))
+                self._current_theme = "light"
+                self.theme_btn.setText("🌙 深色")
+        else:
+            dark_qss = theme_dir / "dark.qss"
+            if dark_qss.exists():
+                app.setStyleSheet(dark_qss.read_text(encoding="utf-8"))
+                self._current_theme = "dark"
+                self.theme_btn.setText("☀️ 浅色")
 
     def _build_function_cards(self):
         scroll = QScrollArea()
@@ -175,6 +205,20 @@ class MainWindow(QMainWindow):
         self.chat_display.setReadOnly(True)
         self.chat_display.setPlaceholderText("欢迎来到考研全科专属私教中枢！输入口令 (如：数学报到 / 交作业) 或直接提问开始辅导...")
         layout.addWidget(self.chat_display, stretch=3)
+
+        # 快捷指令药丸栏 (Quick Command Pills)
+        quick_bar = QHBoxLayout()
+        quick_bar.setSpacing(6)
+        quick_cmds = ["数学报到", "英语报到", "政治报到", "专业课报到", "交作业", "查漏", "更新看板"]
+        for q_cmd in quick_cmds:
+            pill = QPushButton(q_cmd)
+            pill.setObjectName("QuickPill")
+            pill.setCursor(Qt.PointingHandCursor)
+            pill.setStyleSheet("padding: 3px 8px; font-size: 11px; border-radius: 10px; background: #2e344e; color: #a5b4fc;")
+            pill.clicked.connect(lambda checked=False, c=q_cmd: self._on_quick_command(c))
+            quick_bar.addWidget(pill)
+        quick_bar.addStretch()
+        layout.addLayout(quick_bar)
 
         input_bar = QHBoxLayout()
         self.input_box = QLineEdit()
@@ -351,7 +395,7 @@ class MainWindow(QMainWindow):
         for folder, name in subjs:
             mistake_dir = self.workspace_root / folder / "错题本"
             if mistake_dir.exists():
-                due_files = list(mistake_dir.glob("*.md"))
+                due_files = [f for f in mistake_dir.glob("*.md") if not f.stem.startswith("自测卷_") and not f.stem.startswith("_")]
                 lines.append(f"### 📚 {name}错题本: 共 {len(due_files)} 道错题档案")
                 total_due += len(due_files)
                 for f in due_files[:3]:
@@ -451,9 +495,12 @@ class MainWindow(QMainWindow):
             from intelligence.models import current_exam_year
             y_new = current_exam_year()
             gen = get_syllabus_diff_generator()
+            sp = self.config.get("study_plan", {})
+            target_school = sp.get("school") or self.config.get("target_school") or "目标院校"
+            target_major = sp.get("major") or self.config.get("target_major") or Path(new_path).stem
             rep = gen.compare_files(
                 old_file=Path(old_path), new_file=Path(new_path),
-                school="目标院校", major=Path(new_path).stem,
+                school=target_school, major=target_major,
                 year_old=y_new - 1, year_new=y_new
             )
             saved = gen.save_diff_report(rep)
@@ -466,6 +513,11 @@ class MainWindow(QMainWindow):
             )
         except Exception as e:
             self.chat_display.append(f"❌ 考纲比对异常: {e}")
+
+    def _on_quick_command(self, cmd_text: str):
+        """点击快捷指令药丸发送指令"""
+        self.input_box.setText(cmd_text)
+        self._on_send_message()
 
     def _on_card_clicked(self, alias: str):
         """功能卡片点击处理"""
@@ -493,7 +545,12 @@ class MainWindow(QMainWindow):
 
         try:
             from tui_navigator import execute_action
-            execute_action(alias, interactive=False)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                execute_action(alias, interactive=False)
+            out_str = buf.getvalue().strip()
+            if out_str:
+                self.chat_display.append(out_str)
             self.chat_display.append(f"✔ 模块 [{alias}] 执行调用完毕。")
         except Exception as e:
             self.chat_display.append(f"❌ 模块 [{alias}] 执行异常: {e}")

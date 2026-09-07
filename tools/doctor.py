@@ -121,6 +121,22 @@ def run_doctor(return_summary=False):
     except ImportError:
         check_item("本地离线 OCR (rapidocr)", False, "", "未安装 (可选，仅用于离线 OCR)", warn=True)
 
+    # PySide6
+    try:
+        import PySide6
+        check_item("GUI 客户端图形界面 (PySide6)", True, f"已就绪 (v{PySide6.__version__})")
+    except ImportError:
+        check_item("GUI 客户端图形界面 (PySide6)", False, "", "未安装 (pip install PySide6)；ky gui 可视化端暂不可用", warn=True)
+        warnings += 1
+
+    # BeautifulSoup4
+    try:
+        import bs4
+        check_item("网页情报清洗解析 (beautifulsoup4)", True, f"已就绪 (v{bs4.__version__})")
+    except ImportError:
+        check_item("网页情报清洗解析 (beautifulsoup4)", False, "", "未安装 (pip install beautifulsoup4)；将降级为纯正则清洗", warn=True)
+        warnings += 1
+
     # ── 3. 工作区架构与协议规范 ──
     print(color("\n【3. 四科目录架构与外置状态机】", C.BOLD))
     agents_root = ROOT / "AGENTS.md"

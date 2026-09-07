@@ -244,6 +244,10 @@ class AgentRunner:
         stop_spinner = threading.Event()
 
         def spinner_task():
+            if not sys.stdout.isatty():
+                sys.stdout.write("  \033[96m*\033[0m \033[2m[考研私教正在审阅题干与规划工具调用...]\033[0m\n")
+                sys.stdout.flush()
+                return
             frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
             idx = 0
             while not stop_spinner.is_set():

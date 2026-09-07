@@ -451,12 +451,33 @@ def generate_expert_diagnostic_strategy(plan):
 - **阶段攻坚处方**：
   1. 梳理唯物辩证法与认识论核心框架图，彻底吃透矛盾同一性与斗争性、真理与价值对立统一；
   2. 刷题严格执行「排谬法」（先剔除本身有知识性错误的选项）与「排异法」（剔除正确但与题干无关的选项），多选题目标稳拿 32~36 分。
+"""
+
+    # 针对不同专业课学科类型动态适配诊断与处方
+    p_lower = pro_name.lower()
+    if any(k in p_lower for k in ("408", "计算", "软件")):
+        pro_diag = "专业课核心算法与大题推导失分关键在于算法逻辑书写不规范、缺少必要注释与复杂度分析，导致采分点严重流失。"
+        pro_sol = """  1. 严格按照研究生阅卷标准训练三段式解答：① 自然语言设计思想（2~3行说明核心逻辑与数据结构）；② 规范 C/C++ 或核心代码书写（带清晰变量注释）；③ 时间复杂度与空间复杂度推导与结论；
+  2. 紧扣官方考纲要求，吃透真题核心高频考点，规范专业术语表述，拒绝口语化答题。"""
+    elif any(k in p_lower for k in ("信号", "通信", "电子", "电路", "811", "控制")):
+        pro_diag = "专业课核心系统时域/频域/复频域变换（傅里叶变换、拉普拉斯变换、Z变换）与微分/差分方程解算时，概念理解不透或代数推导跳步，导致采分点流失。"
+        pro_sol = """  1. 严格遵循自命题大纲核心推导与阅卷采分规范：① 规范写出对应变换公式或微分/差分系统方程；② 详细展开代数化简与收敛域/收敛边界条件判定；③ 最终给出清晰指标或系统响应函数并复核因果稳定性；
+  2. 紧扣高校自命题真题风格，吃透高频大题模型，规范专业术语与推导步骤，杜绝计算失误。"""
+    elif any(k in p_lower for k in ("法硕", "管理", "经济", "教育", "心理", "中文", "新闻", "历史")):
+        pro_diag = "专业课论述大题缺乏学科经典理论框架支撑，分析流于表面，缺少学术前沿观点与踩分关键词。"
+        pro_sol = """  1. 严格训练高分论述题框架三步法：① 核心概念精准界定；② 多维度理论模型与现实案例结合展开；③ 归纳总结并引申学科前沿发展；
+  2. 紧扣目标院校自命题历年真题脉络，熟记专业术语，拒绝空泛口语表达。"""
+    else:
+        pro_diag = "专业课核心原理理解不够深刻，大题推导过程缺少必要的前置定理依据与边界条件分析，步骤跳步导致扣分。"
+        pro_sol = """  1. 严格按照研究生初试阅卷标准训练规范化解答：① 明确列出核心定义公式与物理/数学模型依据；② 规范推导计算步骤并标注中间关键量；③ 给出清晰最终结论并检查单位与量纲；
+  2. 紧扣官方大纲与历年自命题真题，吃透高频核心题型，建立章节知识框架图。"""
+
+    strategy_md += f"""
 
 ### 4. 【{pro_name}】专属痛点攻坚战术（针对：{pro_w}）
-- **核心病因诊断**：专业课核心算法与大题推导失分关键在于算法逻辑书写不规范、缺少必要注释与复杂度分析，导致采分点严重流失。
+- **核心病因诊断**：{pro_diag}
 - **阶段攻坚处方**：
-  1. 严格按照研究生阅卷标准训练三段式解答：① 自然语言设计思想（2~3行说明核心逻辑与数据结构）；② 规范 C/C++ 或核心代码书写（带清晰变量注释）；③ 时间复杂度与空间复杂度推导与结论；
-  2. 紧扣官方考纲要求，吃透真题核心高频考点，规范专业术语表述，拒绝口语化答题。"""
+{pro_sol}"""
     return strategy_md.strip()
 
 def run_ai_study_plan_generation(plan, interactive=True):
@@ -517,8 +538,9 @@ def run_ai_study_plan_generation(plan, interactive=True):
 
         try:
             import urllib.request
-            base_url = cfg.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
-            url = f"{base_url}/chat/completions"
+            from ky_cli import normalize_openai_url
+            raw_base_url = cfg.get("base_url", "https://api.deepseek.com/v1")
+            url = normalize_openai_url(raw_base_url, "chat/completions")
             model = cfg.get("model", "deepseek-chat")
             headers = {
                 "Content-Type": "application/json",
@@ -661,6 +683,7 @@ def apply_study_plan(plan, interactive=True):
             cfg = {}
     cfg["onboarding_completed"] = True
     cfg["study_plan"] = plan
+    cfg["relief_mode_active"] = False
     CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # 6. 全自动生成各科定制化总规划与今日真实任务清单 (注入定制 AI 攻坚战略)

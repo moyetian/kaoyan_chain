@@ -192,11 +192,17 @@ def get_today_progress() -> tuple[int, int]:
             try:
                 txt = t_file.read_text(encoding="utf-8")
                 for line in txt.splitlines():
-                    if re.match(r"^\s*-\s*\[x\]", line, re.IGNORECASE):
+                    l_str = line.strip()
+                    if re.match(r"^-\s*\[[ xX]\]", l_str):
                         total += 1
-                        done += 1
-                    elif re.match(r"^\s*-\s*\[ \]", line):
-                        total += 1
+                        if re.match(r"^-\s*\[[xX]\]", l_str):
+                            done += 1
+                    elif "|" in l_str and not l_str.startswith("|---|") and "完成状态" not in l_str and "模块" not in l_str:
+                        parts = [p.strip() for p in l_str.split("|") if p.strip()]
+                        if len(parts) >= 3:
+                            total += 1
+                            if "[x]" in parts[-1].lower():
+                                done += 1
             except Exception:
                 pass
     return done, total
@@ -244,7 +250,7 @@ def get_intel_ribbon() -> list[str]:
         chosen_df = user_diffs[0] if user_diffs else (diff_files[0] if diff_files else None)
         if chosen_df:
             txt = chosen_df.read_text(encoding="utf-8", errors="ignore")
-            vol_m = re.search(r"考点动荡率[^\d]*(\d+\.?\d*)%", txt)
+            vol_m = re.search(r"(?:考点动荡率|波动率)[^\d]*(\d+\.?\d*)%", txt)
             vol = vol_m.group(1) if vol_m else "0.0"
             sch_tag = f"【{target_school}】" if (user_diffs and target_school) else ""
             ribbon.append(f"📑 考纲变动: {sch_tag}波动率 {vol}% (已生成逐级处方)")
@@ -606,6 +612,10 @@ def execute_action(action_key: str, interactive: bool = True) -> bool:
     except Exception as e:
         print(colorize(f"\n[!] 执行过程中发生异常: {e}", Colors.RED))
 
+    try:
+        sys.stdout.flush()
+    except Exception:
+        pass
     return True
 
 

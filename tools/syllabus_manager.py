@@ -463,15 +463,36 @@ def apply_syllabus_selection(math_key="math2", eng_key="eng2", pro_type="custom"
             pro_real_name = "408 计算机学科专业基础"
         else:
             pro_real_name = pro_name or "专业课"
-            pro_outline.write_text(
-                f"# 04-专业课 · 【{pro_real_name}】官方考试大纲与核心考点清单\n\n"
-                f"> 本大纲为【{pro_real_name}】专业课专属复习指南。AI 私教将据此划定出题边界，不超纲，抓采分点！\n\n"
-                "## 核心考查章节与重点要求：\n"
-                "- 第一章：[请根据报考院校官网大纲填入，如：数据结构基本概念与算法时空复杂度分析] (要求：掌握)\n"
-                "- 第二章：[考纲核心要点，标明：掌握 / 理解 / 了解]\n"
-                "- 第三章：[考纲核心要点，标明：掌握 / 理解 / 了解]\n",
-                encoding="utf-8"
-            )
+            has_real_content = False
+            if pro_outline.exists():
+                existing_txt = pro_outline.read_text(encoding="utf-8", errors="ignore")
+                if len(existing_txt.strip()) > 200 and "请根据报考院校官网大纲填入" not in existing_txt:
+                    has_real_content = True
+
+            if not has_real_content:
+                if any(kw in str(pro_name) for kw in ["信号", "811", "通信", "控制"]):
+                    pro_outline.write_text(
+                        f"# 04-专业课 · 【{pro_real_name}】官方考试大纲与核心考点清单\n\n"
+                        f"> 本大纲为【{pro_real_name}】专业课专属复习指南。AI 私教将据此划定出题边界，不超纲，抓采分点！\n\n"
+                        "## 核心考查章节与重点要求：\n"
+                        "- 第一章：信号与系统的基本概念（连续与离散、线性时不变系统性质） (要求：掌握)\n"
+                        "- 第二章：连续时间系统的时域分析（卷积积分、微分方程解法、零输入与零状态响应） (要求：掌握)\n"
+                        "- 第三章：傅里叶变换与频域分析（连续时间傅里叶级数与变换、频域特性、抽样定理） (要求：掌握)\n"
+                        "- 第四章：连续时间系统的复频域分析（拉普拉斯变换、系统函数、极零点与因果稳定性） (要求：掌握)\n"
+                        "- 第五章：离散时间系统的时域与频域分析（离散卷积、DTFT、Z变换与系统函数） (要求：理解)\n"
+                        "- 第六章：系统的状态变量分析（状态方程与输出方程建立、状态转移矩阵） (要求：了解)\n",
+                        encoding="utf-8"
+                    )
+                else:
+                    pro_outline.write_text(
+                        f"# 04-专业课 · 【{pro_real_name}】官方考试大纲与核心考点清单\n\n"
+                        f"> 本大纲为【{pro_real_name}】专业课专属复习指南。AI 私教将据此划定出题边界，不超纲，抓采分点！\n\n"
+                        "## 核心考查章节与重点要求：\n"
+                        "- 第一章：[请根据报考院校官网大纲填入，如：数据结构基本概念与算法时空复杂度分析] (要求：掌握)\n"
+                        "- 第二章：[考纲核心要点，标明：掌握 / 理解 / 了解]\n"
+                        "- 第三章：[考纲核心要点，标明：掌握 / 理解 / 了解]\n",
+                        encoding="utf-8"
+                    )
         updated_files.append(pro_outline)
 
         pro_agents = ROOT / "04-专业课" / "AGENTS.md"

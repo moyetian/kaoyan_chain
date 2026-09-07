@@ -117,3 +117,44 @@ SKILLS_REGISTRY = {
 def list_skills():
     """返回当前已加载的所有专有技能清单"""
     return SKILLS_REGISTRY
+
+
+def get_subject_name(subject_key: str, default: str = None) -> str:
+    """
+    根据 subject_key ('math', 'eng', 'pol', 'pro') 动态读取 ky_config.json 中配置的科目全称。
+    若未配置或读取失败，回退到默认映射。
+    """
+    import json
+    from pathlib import Path
+
+    defaults = {
+        "math": "数学二 (302)",
+        "eng": "英语二 (204)",
+        "pol": "思想政治理论",
+        "pro": "408 计算机学科专业基础",
+    }
+    alias_map = {
+        "math": "math", "maths": "math", "数学": "math", "math1": "math", "math2": "math", "math3": "math",
+        "eng": "eng", "english": "eng", "英语": "eng", "eng1": "eng", "eng2": "eng",
+        "pol": "pol", "politics": "pol", "政治": "pol",
+        "pro": "pro", "major": "pro", "专业课": "pro"
+    }
+
+    norm_key = alias_map.get(str(subject_key).strip().lower(), str(subject_key).strip().lower())
+
+    try:
+        root = Path(__file__).resolve().parent.parent.parent
+        cfg_file = root / "ky_config.json"
+        if cfg_file.exists():
+            data = json.loads(cfg_file.read_text(encoding="utf-8"))
+            plan = data.get("study_plan", {})
+            name_key = f"{norm_key}_name"
+            if name_key in plan and plan[name_key]:
+                return plan[name_key]
+    except Exception:
+        pass
+
+    if default is not None:
+        return default
+    return defaults.get(norm_key, defaults.get(subject_key, str(subject_key)))
+

@@ -277,7 +277,13 @@ class WeChatArticleFetcher:
             # 随机轻微延迟，避免高频请求触发流控
             time.sleep(random.uniform(0.3, 0.8))
 
-            req = urllib.request.Request(item.url, headers={
+            url = item.url.strip()
+            try:
+                url = urllib.parse.quote(url, safe=":/?#[]@!$&'()*+,;=-_.~%=")
+            except Exception:
+                pass
+
+            req = urllib.request.Request(url, headers={
                 "User-Agent": USER_AGENT,
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "zh-CN,zh;q=0.9",

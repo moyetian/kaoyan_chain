@@ -17,6 +17,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
+try:
+    from skills import get_subject_name
+except Exception:
+    try:
+        from tools.skills import get_subject_name
+    except Exception:
+        get_subject_name = lambda s, d=None: SUBJECT_NAMES.get(s, s)
+
 SUBJECT_NAMES = {
     "math": "数学二 (302)",
     "eng": "英语二 (204)",
@@ -37,7 +45,7 @@ def diagnose_mock_exam(subject="math", exam_input="", **kwargs):
         exam_input = subject
         subject = "math"
 
-    subj_name = SUBJECT_NAMES.get(subject, subject)
+    subj_name = get_subject_name(subject, SUBJECT_NAMES.get(subject, subject))
 
     # 1. 启发式解析错题项与错因分类
     # 统计错因五分类

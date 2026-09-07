@@ -15,6 +15,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
+try:
+    from skills import get_subject_name
+except Exception:
+    try:
+        from tools.skills import get_subject_name
+    except Exception:
+        get_subject_name = lambda s, d=None: SUBJECT_NAMES.get(s, s)
+
 SUBJECT_DIRS = {
     "math": "01-数学",
     "eng": "02-英语",
@@ -167,7 +175,7 @@ def scan_error_records(subject=None):
             continue
 
         for md_file in mistake_dir.glob("*.md"):
-            if md_file.name.startswith("_"):  # 忽略 _模板.md 和 _索引.md
+            if md_file.name.startswith(("_", ".", "自测卷_")) or "模板" in md_file.name or "索引" in md_file.name:
                 continue
             try:
                 content = md_file.read_text(encoding="utf-8", errors="ignore")
@@ -223,7 +231,7 @@ def scan_error_records(subject=None):
 
                 results.append({
                     "subject": s,
-                    "subject_name": SUBJECT_NAMES.get(s, s),
+                    "subject_name": get_subject_name(s, SUBJECT_NAMES.get(s, s)),
                     "file_path": str(md_file),
                     "file_name": md_file.name,
                     "date": rec_date,

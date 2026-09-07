@@ -28,7 +28,7 @@ kaoyan_chain/
 ├── .clinerules                          # Roo Code / Cline 编辑器加载协议
 ├── LICENSE                              # MIT 开源许可证
 ├── README.md                            # 项目门户总说明与快速开箱指引
-├── 操作手册.md                          # 📘 学员专用实操全流程指南（27子命令全景）
+├── 操作手册.md                          # 📘 学员专用实操全流程指南（34子命令全景）
 ├── CONTRIBUTING.md                      # 🛠️ 开发者与贡献指南（架构树、测试与规范）
 ├── SETUP.md                             # 进阶部署配置与看板开发手册
 ├── pyproject.toml                       # Python 打包标准与 CLI 入口声明
