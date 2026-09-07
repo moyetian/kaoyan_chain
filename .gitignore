@@ -30,6 +30,11 @@ config.json
 ky_config.json
 ky_history.json
 
+# 内部开发审查与优化方案报告 (不推送到远端)
+考研学习链_代码审查与改进报告*.md
+README优化方案*.md
+*_extracted.txt
+
 # ==========================================
 # 隐私防泄露铁律 (Privacy Guardrails)
 # 真实个人学情状态、做题记录、作业与错题保留在本地，不上传云端

@@ -70,8 +70,24 @@ class Sandbox:
         if not raw_path:
             raise SecurityException("路径不能为空")
 
+        raw_str = str(raw_path).strip()
+        raw_str_norm = raw_str.replace("\\", "/").lower()
+
+        # 0. 跨平台特征检查 (防止在 Linux/POSIX 环境下 Windows 敏感目录被当作相对路径解析)
+        for wsd in WINDOWS_SENSITIVE_DIRS:
+            wsd_norm = wsd.replace("\\", "/").lower()
+            if raw_str_norm == wsd_norm or raw_str_norm.startswith(wsd_norm + "/"):
+                raise SecurityException(f"沙箱拦截: 拒绝访问系统敏感路径 [{raw_path}] (命中敏感特征: {wsd})")
+
+        path_parts_raw = set(part.lower() for part in re.split(r"[/\\]+", raw_str))
+        if path_parts_raw & SENSITIVE_CREDENTIAL_PARTS:
+            raise SecurityException(f"沙箱拦截: 拒绝访问系统敏感凭据目录 [{raw_path}]")
+        if any(part.startswith(pfx) for part in path_parts_raw for pfx in SENSITIVE_KEY_PREFIXES):
+            raise SecurityException(f"沙箱拦截: 拒绝访问私钥凭据文件 [{raw_path}]")
+
+        is_windows_abs = bool(re.match(r"^[a-zA-Z]:[/\\]", raw_str))
         p = Path(raw_path)
-        if not p.is_absolute():
+        if not p.is_absolute() and not is_windows_abs:
             resolved = (self.workspace_root / p).resolve()
         else:
             resolved = p.resolve()
