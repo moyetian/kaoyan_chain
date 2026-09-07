@@ -3324,7 +3324,7 @@ def main():
                 if not watched:
                     print(colorize("当前暂未配置监控高校。添加监控示例: ky watch 华中科技大学", C.YELLOW))
                 else:
-                    print(colorize(f"\n[📡 当前动态监控雷达高校 ({len(watched)} 所)]:", C.CYAN))
+                    print(colorize(f"\n[📡 当前动态监控高校雷达 ({len(watched)} 所)]:", C.CYAN))
                     for w in watched:
                         print(f"  • {w['name']} (代码: {w['chsi_code']}) ｜ 最近检查: {w.get('last_check', '未检查')}")
                     print(colorize("\n提示: 运行 ky watch --check 立即比对最新简章变动", C.CYAN))
@@ -3544,7 +3544,7 @@ def main():
                     if not watched:
                         print(colorize("当前暂未配置监控高校。添加监控示例: ky fetch watch 华中科技大学", C.YELLOW))
                     else:
-                        print(colorize(f"\n[📡 当前动态监控雷达高校 ({len(watched)} 所)]:", C.CYAN))
+                        print(colorize(f"\n[📡 当前动态监控高校雷达 ({len(watched)} 所)]:", C.CYAN))
                         for w in watched:
                             print(f"  • {w['name']} (代码: {w['chsi_code']}) ｜ 最近检查: {w.get('last_check', '未检查')}")
                         print(colorize("\n提示: 运行 ky fetch watch --check 立即比对最新简章变动", C.CYAN))
