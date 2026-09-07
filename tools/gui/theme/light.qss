@@ -1,0 +1,142 @@
+/* 考研学习链 GUI · 浅色雅致主题 (Light Academic) */
+
+QMainWindow, QWidget {
+    background-color: #f8fafc;
+    color: #1e293b;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#HeaderBar {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ffffff, stop:1 #f1f5f9);
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    padding: 10px 16px;
+}
+
+#FunctionCard {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+}
+
+#FunctionCard:hover {
+    background-color: #f1f5f9;
+    border: 1px solid #6366f1;
+}
+
+#CardScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+QProgressBar {
+    background-color: #e2e8f0;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    text-align: center;
+    color: #1e293b;
+    font-weight: bold;
+}
+
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6366f1, stop:1 #818cf8);
+    border-radius: 5px;
+}
+
+QTabWidget::pane {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background-color: #ffffff;
+}
+
+QTabBar::tab {
+    background-color: #f1f5f9;
+    color: #64748b;
+    padding: 9px 22px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    margin-right: 4px;
+    font-weight: 500;
+}
+
+QTabBar::tab:selected {
+    background-color: #6366f1;
+    color: #ffffff;
+    font-weight: bold;
+}
+
+QTabBar::tab:hover:!selected {
+    background-color: #e2e8f0;
+    color: #334155;
+}
+
+QPushButton {
+    background-color: #6366f1;
+    color: #ffffff;
+    border: none;
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QPushButton:hover {
+    background-color: #4f46e5;
+}
+
+QPushButton:pressed {
+    background-color: #4338ca;
+}
+
+QLineEdit, QTextEdit, QPlainTextEdit {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: #0f172a;
+    font-size: 13px;
+    selection-background-color: #6366f1;
+}
+
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
+    border: 1px solid #6366f1;
+    background-color: #ffffff;
+}
+
+QTableWidget {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    gridline-color: #f1f5f9;
+    color: #0f172a;
+}
+
+QHeaderView::section {
+    background-color: #f1f5f9;
+    color: #475569;
+    padding: 6px;
+    border: none;
+    border-bottom: 1px solid #e2e8f0;
+    font-weight: bold;
+}
+
+QTableWidget::item:selected {
+    background-color: #e0e7ff;
+    color: #1e1b4b;
+}
+
+QScrollBar:vertical {
+    background-color: #f8fafc;
+    width: 10px;
+    margin: 0px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #cbd5e1;
+    min-height: 20px;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #94a3b8;
+}

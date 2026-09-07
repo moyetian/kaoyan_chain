@@ -25,4 +25,10 @@ rapidocr-onnxruntime>=1.3.0
 # ── 5. 招考情报与高校注册表解析技能 (intelligence/registry) ──
 # 支持高校考研专业目录 YAML 解析与多源证据比对
 PyYAML>=6.0
+# ── 6. 桌面视觉交互与管理界面 (GUI) ──
+# 基于 Qt/PySide6 构建全科备考看板、可视化做题与真题库切片检索
+PySide6>=6.6.0
 
+# ── 7. Rust 原生性能加速拓展 (可选构建依赖) ──
+# 用于从源码编译 ky_rust_ext 原生动态库
+maturin>=1.0.0

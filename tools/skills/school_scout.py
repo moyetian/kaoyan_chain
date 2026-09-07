@@ -1155,3 +1155,70 @@ def save_experience_dossier(
     target_file.write_text(content, encoding="utf-8")
     return target_file
 
+
+def append_experience_to_dossier(
+    school_name: str,
+    source_or_major: str = "微信公众号",
+    author_or_info: Any = "",
+    content: str = "",
+    url: str = "",
+    title: str = "",
+    dossier_path: Optional[Path] = None
+) -> bool:
+    """向目标高校的经验档案 (docs/experiences/<学校>.md 或指定路径) 追加一条经验"""
+    try:
+        source = "微信公众号"
+        author = ""
+        exp_content = content
+        exp_url = url
+        exp_title = title
+
+        if isinstance(author_or_info, dict):
+            # 支持传入字典结构
+            exp_title = author_or_info.get("title", "") or exp_title
+            author = author_or_info.get("source", "") or author_or_info.get("author", "")
+            exp_url = author_or_info.get("url", "") or exp_url
+            exp_content = author_or_info.get("content", "") or author_or_info.get("snippet", "") or exp_content
+        else:
+            source = source_or_major
+            author = str(author_or_info)
+
+        school = (school_name or "通用院校").strip()
+        if dossier_path:
+            target_file = Path(dossier_path)
+            target_file.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            out_dir = ROOT / "docs" / "experiences"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            target_file = out_dir / f"{school}.md"
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        block = [
+            f"\n### 📱 [{source}] {exp_title or '公众号精选备考经验'}",
+            f"> **作者/来源**: {author or '公众号学长'} | **记录时间**: {now_str}",
+            f"> **原文链接**: [{exp_url}]({exp_url})" if exp_url else "",
+            f"\n{exp_content}\n"
+        ]
+        text_to_append = "\n".join([line for line in block if line])
+
+        if target_file.exists():
+            orig = target_file.read_text(encoding="utf-8")
+            if "## 💡 2. 精选高置信度学长学姐实名经验" in orig:
+                updated = orig.replace(
+                    "## 💡 2. 精选高置信度学长学姐实名经验 (Top Experiences)",
+                    "## 💡 2. 精选高置信度学长学姐实名经验 (Top Experiences)\n" + text_to_append
+                )
+                target_file.write_text(updated, encoding="utf-8")
+                return True
+            else:
+                target_file.write_text(orig + "\n" + text_to_append, encoding="utf-8")
+                return True
+        else:
+            header = f"# 🎓 考研社媒真实经验与就读体验档案 · {school}\n\n## 💡 2. 精选高置信度学长学姐实名经验 (Top Experiences)\n"
+            target_file.write_text(header + text_to_append, encoding="utf-8")
+            return True
+    except Exception:
+        return False
+
+
+

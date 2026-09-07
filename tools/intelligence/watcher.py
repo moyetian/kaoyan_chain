@@ -24,6 +24,14 @@ from .fetcher import HTTPFetcher
 ROOT = Path(__file__).resolve().parent.parent.parent
 WATCH_FILE = ROOT / ".memory" / "admission_watch.json"
 
+try:
+    import ky_rust_ext as _rust
+    _HAS_RUST_EXT = True
+except ImportError:
+    _rust = None
+    _HAS_RUST_EXT = False
+
+
 
 class AdmissionWatcher:
     """高校招考动态监控器"""
@@ -72,7 +80,7 @@ class AdmissionWatcher:
 
         # 立即拉取一次基线指纹
         fetch_res = self.fetcher.fetch(target_url)
-        content_hash = hashlib.sha256(fetch_res.content.encode("utf-8", errors="replace")).hexdigest() if fetch_res.is_valid else ""
+        content_hash = self._compute_sha256(fetch_res.content) if fetch_res.is_valid else ""
         extracted_titles = self._extract_recent_titles(fetch_res.content) if fetch_res.is_valid else []
 
         record = {
@@ -140,7 +148,7 @@ class AdmissionWatcher:
                 })
                 continue
 
-            new_hash = hashlib.sha256(fetch_res.content.encode("utf-8", errors="replace")).hexdigest()
+            new_hash = self._compute_sha256(fetch_res.content)
             new_titles = self._extract_recent_titles(fetch_res.content)
             
             # 检测新出现的标题
@@ -188,15 +196,29 @@ class AdmissionWatcher:
         self._save()
         return findings
 
+    def _compute_sha256(self, content: str) -> str:
+        """计算 SHA256 哈希 (Rust 加速 + Python 降级)"""
+        if _HAS_RUST_EXT and not getattr(self, "_force_python", False):
+            try:
+                return _rust.sha256_hash(content)
+            except Exception:
+                pass
+        return hashlib.sha256(content.encode("utf-8", errors="replace")).hexdigest()
+
     def _extract_recent_titles(self, html_text: str) -> List[str]:
-        """从页面提取通知列表标题"""
-        # 常见列表链接匹配模式
+        """从页面提取通知列表标题 (Rust 加速 + Python 降级)"""
+        if _HAS_RUST_EXT and not getattr(self, "_force_python", False):
+            try:
+                return _rust.extract_titles(html_text)
+            except Exception:
+                pass
+
+        # 降级纯 Python 正则
         links = re.findall(r"<a[^>]+>(.*?)</a>", html_text, re.DOTALL | re.IGNORECASE)
         clean_titles = []
         for l in links:
             t = re.sub(r"<[^>]+>", "", l).strip()
             t = re.sub(r"\s+", " ", t)
-            # 过滤过短或非招考通知的导航文字
             if 8 <= len(t) <= 60 and not any(skip in t for skip in ["版权所有", "网站地图", "关于我们", "联系我们"]):
                 if t not in clean_titles:
                     clean_titles.append(t)

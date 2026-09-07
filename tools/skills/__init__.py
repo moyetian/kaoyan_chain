@@ -24,6 +24,7 @@ from . import knowledge_map
 from . import exam_diagnoser
 from . import school_scout
 from . import material_ingestion
+from . import wechat_searcher
 
 SKILLS_REGISTRY = {
     "vision_solver": {
@@ -102,6 +103,12 @@ SKILLS_REGISTRY = {
         "name": "📥 试题与备考资料智能切片入库管道 (Material Ingestion Pipeline)",
         "desc": "将外部 PDF/Markdown/TXT 试题智能分块切片，自动识别题型并构造步骤级采分点入库归档",
         "command": "ky ingest <试题文件路径> [--subject=科目] [--save] 或 /ingest",
+        "status": "已就绪"
+    },
+    "wechat_searcher": {
+        "name": "📱 微信公众号文章检索与爬虫工具 (WeChat Article Searcher)",
+        "desc": "多源检索微信考研经验、院校解读与考点精讲，清洗为 Markdown 并联动沉淀至经验档案",
+        "command": "ky wechat <关键词> [--max=N] [--save] [--school=校名] 或 /wx",
         "status": "已就绪"
     }
 }

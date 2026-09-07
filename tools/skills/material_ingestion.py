@@ -19,6 +19,14 @@ from datetime import datetime
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
+# 尝试加载 Rust 极速题目切片扩展，失败时透明降级为纯 Python
+try:
+    import ky_rust_ext as _rust
+    _HAS_RUST_EXT = True
+except ImportError:
+    _rust = None
+    _HAS_RUST_EXT = False
+
 
 @dataclass
 class QuestionChunk:
@@ -69,8 +77,36 @@ class MaterialIngestionPipeline:
 
     def chunk_text(self, raw_text: str, default_source: str = "外部真题资料") -> List[QuestionChunk]:
         """
-        从原文本中智能分块切片出题目
+        从原文本中智能分块切片出题目 (支持 Rust 加速与纯 Python 自动降级)
         """
+        if getattr(self, "_force_python", False) or not _HAS_RUST_EXT:
+            return self._chunk_text_python(raw_text, default_source)
+
+        try:
+            rust_chunks = _rust.chunk_text(raw_text, default_source)
+            if rust_chunks:
+                return [self._rust_to_chunk(rc) for rc in rust_chunks]
+            return self._chunk_text_python(raw_text, default_source)
+        except Exception:
+            return self._chunk_text_python(raw_text, default_source)
+
+    def _rust_to_chunk(self, d: dict) -> QuestionChunk:
+        """将 Rust 字典转换为 QuestionChunk 对象"""
+        return QuestionChunk(
+            number=int(d.get("number", 0)),
+            q_type=str(d.get("q_type", "essay")),
+            score=int(d.get("score", 10)),
+            stem=str(d.get("stem", "")),
+            options=list(d.get("options", [])),
+            answer=str(d.get("answer", "")),
+            analysis=str(d.get("analysis", "")),
+            rubric=list(d.get("rubric", [])),
+            points=list(d.get("points", [])),
+            source=str(d.get("source", "")),
+        )
+
+    def _chunk_text_python(self, raw_text: str, default_source: str = "外部真题资料") -> List[QuestionChunk]:
+        """纯 Python 题目切片实现 (降级兼容基准)"""
         chunks: List[QuestionChunk] = []
         if not raw_text or not raw_text.strip():
             return chunks
@@ -403,3 +439,14 @@ def get_material_ingestion_pipeline() -> MaterialIngestionPipeline:
     if _ingestion_instance is None:
         _ingestion_instance = MaterialIngestionPipeline()
     return _ingestion_instance
+
+
+def chunk_text(raw_text: str, default_source: str = "外部真题资料") -> List[QuestionChunk]:
+    """模块级便捷函数：从原文本中智能分块切片出题目 (支持 Rust 加速与纯 Python 降级)"""
+    return get_material_ingestion_pipeline().chunk_text(raw_text, default_source)
+
+
+def _chunk_text_python(raw_text: str, default_source: str = "外部真题资料") -> List[QuestionChunk]:
+    """模块级降级函数：纯 Python 题目切片实现"""
+    return get_material_ingestion_pipeline()._chunk_text_python(raw_text, default_source)
+

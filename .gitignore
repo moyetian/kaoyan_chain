@@ -111,6 +111,13 @@ desktop.ini
 # Plan Mode 快照备份沙箱 (本地独占，不上传云端)
 .checkpoint/
 
+# Rust / Cargo 构建目录与本地动态库 (源码保留在 rust_ext/src，二进制产物不入库)
+target/
+**/target/
+rust_ext/target/
+*.pyd
+*.pdb
+
 # 临时分析报告、竞品方案与搜索规划文件
 *审查报告*.md
 *路线图*.md

@@ -1404,6 +1404,27 @@ D. 无度为2的结点
         except Exception as e:
             runner.assert_true(False, f"CLI 进程级 smoke tests 异常: {e}")
 
+        # =========================================================================
+        # 25. 新增功能专项集成测试 (WeChat 公众号经验检索、Rust 扩展双模加速、PySide6 桌面 GUI)
+        # =========================================================================
+        print("\n[测试组 25: 升级新功能专项集成校验 (WeChat + Rust + GUI)]")
+        try:
+            new_features_res = subprocess.run(
+                [sys.executable, str(ROOT / "tools" / "test_new_features.py")],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=60,
+            )
+            runner.assert_true(
+                new_features_res.returncode == 0 and "全部新功能测试项 100% 通过" in new_features_res.stdout,
+                "升级新功能专项：36项微信检索、Rust双模一致性与PySide6离屏测试全部通过",
+            )
+        except Exception as e:
+            runner.assert_true(False, f"新功能集成测试异常: {e}")
+
     finally:
         # 还原现场配置与大盘
         if cfg_backup:

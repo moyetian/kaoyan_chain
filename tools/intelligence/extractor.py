@@ -14,6 +14,14 @@ from typing import Dict, Any, List, Optional
 from .models import EvidenceObject, EvidenceSource, current_exam_year
 from .evidence_engine import build_evidence
 
+try:
+    import ky_rust_ext as _rust
+    _HAS_RUST_EXT = True
+except ImportError:
+    _rust = None
+    _HAS_RUST_EXT = False
+
+
 
 class DocumentExtractor:
     """招考文档与网页内容抽取器"""
@@ -111,7 +119,12 @@ class DocumentExtractor:
         return evidences
 
     def _extract_title(self, html_text: str) -> str:
-        """提取页面标题"""
+        """提取页面标题 (Rust 加速 + Python 降级)"""
+        if _HAS_RUST_EXT and not getattr(self, "_force_python", False):
+            try:
+                return _rust.extract_title(html_text)
+            except Exception:
+                pass
         match = re.search(r"<title[^>]*>(.*?)</title>", html_text, re.IGNORECASE | re.DOTALL)
         if match:
             raw_title = match.group(1).strip()
@@ -130,7 +143,12 @@ class DocumentExtractor:
         return None
 
     def _extract_subjects(self, html_text: str) -> List[str]:
-        """提取初试统考与自命题科目"""
+        """提取初试统考与自命题科目 (Rust 加速 + Python 降级)"""
+        if _HAS_RUST_EXT and not getattr(self, "_force_python", False):
+            try:
+                return _rust.extract_subjects(html_text)
+            except Exception:
+                pass
         subjects = []
         # 匹配统考特征词
         patterns = [
@@ -150,7 +168,14 @@ class DocumentExtractor:
         return subjects
 
     def _extract_pdf_links(self, html_text: str, base_url: str) -> List[Dict[str, str]]:
-        """提取页面中的 PDF 下载链接与说明"""
+        """提取页面中的 PDF 下载链接与说明 (Rust 加速 + Python 降级)"""
+        if _HAS_RUST_EXT and not getattr(self, "_force_python", False):
+            try:
+                rust_links = _rust.extract_pdf_links(html_text, base_url)
+                if rust_links:
+                    return rust_links
+            except Exception:
+                pass
         results = []
         matches = re.findall(r"<a[^>]+href=[\"']([^\"']+\.pdf)[\"'][^>]*>(.*?)</a>", html_text, re.IGNORECASE)
         for link, text in matches[:5]:
@@ -268,3 +293,13 @@ class DocumentExtractor:
             evidences.append(ev_quota)
 
         return evidences
+
+
+# 模块级便捷函数
+def _extract_title(html_text: str) -> str:
+    return DocumentExtractor()._extract_title(html_text)
+
+
+def _extract_subjects(html_text: str) -> List[str]:
+    return DocumentExtractor()._extract_subjects(html_text)
+

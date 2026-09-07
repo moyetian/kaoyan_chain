@@ -250,6 +250,7 @@ MENU_GROUPS = [
         Colors.MAGENTA,
         [
             ("9", "看板更新 (Dashboard Build)", "📊", "重编译掌握度雷达并刷新本地 Web 看板", "build"),
+            ("10", "公众号检索 (WeChat Search)", "📱", "微信公众号考研经验、院校解读与文章沉淀", "wechat_search"),
             ("0", "安全退出 (Exit System)", "🚪", "保存状态并平稳退出终端导航器", "exit"),
         ]
     )
@@ -483,6 +484,18 @@ def execute_action(action_key: str, interactive: bool = True) -> bool:
                 print(colorize("\n[+] 考研看板已构建完成！可打开 docs/index.html 查看。", Colors.GREEN))
             else:
                 print(colorize("\n[!] 未找到 05-考研看板/build.py 脚本", Colors.RED))
+        elif cmd_alias in ("wechat_search", "wechat", "wx"):
+            kw = input("请输入微信公众号文章检索关键词 [默认 408计算机考研经验]: ").strip() if interactive else "408计算机考研经验"
+            if not kw:
+                kw = "408计算机考研经验"
+            from skills.wechat_searcher import wechat_search
+            res = wechat_search(keyword=kw, max_results=5, fetch_content=True, save_to_local=False)
+            print(colorize(f"\n[+] 微信公众号文章检索完成 (共找到 {res.get('total', 0)} 篇，抓取正文 {res.get('fetched', 0)} 篇)：", Colors.GREEN))
+            for idx, it in enumerate(res.get("results", [])[:5], 1):
+                st = "已抓取" if it.get("fetched") else "仅标题"
+                print(f"  [{idx}] {it.get('title')} ({it.get('source_account') or '公众号'}) [{st}]")
+                print(f"      链接: {it.get('url')}")
+
 
     except Exception as e:
         print(colorize(f"\n[!] 执行过程中发生异常: {e}", Colors.RED))

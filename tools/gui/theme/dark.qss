@@ -1,0 +1,142 @@
+/* 考研学习链 GUI · 深色学术主题 (Dark Obsidian & Indigo) */
+
+QMainWindow, QWidget {
+    background-color: #12151f;
+    color: #e2e8f0;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#HeaderBar {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1a1e2e, stop:1 #1e2438);
+    border-radius: 12px;
+    border: 1px solid #2d3748;
+    padding: 10px 16px;
+}
+
+#FunctionCard {
+    background-color: #1a1e2e;
+    border: 1px solid #2d3748;
+    border-radius: 10px;
+}
+
+#FunctionCard:hover {
+    background-color: #242b42;
+    border: 1px solid #6366f1;
+}
+
+#CardScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+QProgressBar {
+    background-color: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    text-align: center;
+    color: #f1f5f9;
+    font-weight: bold;
+}
+
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6366f1, stop:1 #818cf8);
+    border-radius: 5px;
+}
+
+QTabWidget::pane {
+    border: 1px solid #2d3748;
+    border-radius: 8px;
+    background-color: #161a29;
+}
+
+QTabBar::tab {
+    background-color: #1a1e2e;
+    color: #94a3b8;
+    padding: 9px 22px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    margin-right: 4px;
+    font-weight: 500;
+}
+
+QTabBar::tab:selected {
+    background-color: #6366f1;
+    color: #ffffff;
+    font-weight: bold;
+}
+
+QTabBar::tab:hover:!selected {
+    background-color: #242b42;
+    color: #cbd5e1;
+}
+
+QPushButton {
+    background-color: #6366f1;
+    color: #ffffff;
+    border: none;
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QPushButton:hover {
+    background-color: #4f46e5;
+}
+
+QPushButton:pressed {
+    background-color: #4338ca;
+}
+
+QLineEdit, QTextEdit, QPlainTextEdit {
+    background-color: #0b0f19;
+    border: 1px solid #2d3748;
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: #f8fafc;
+    font-size: 13px;
+    selection-background-color: #6366f1;
+}
+
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
+    border: 1px solid #6366f1;
+    background-color: #0f172a;
+}
+
+QTableWidget {
+    background-color: #0b0f19;
+    border: 1px solid #2d3748;
+    border-radius: 6px;
+    gridline-color: #1e293b;
+    color: #f8fafc;
+}
+
+QHeaderView::section {
+    background-color: #1a1e2e;
+    color: #94a3b8;
+    padding: 6px;
+    border: none;
+    border-bottom: 1px solid #2d3748;
+    font-weight: bold;
+}
+
+QTableWidget::item:selected {
+    background-color: #312e81;
+    color: #ffffff;
+}
+
+QScrollBar:vertical {
+    background-color: #12151f;
+    width: 10px;
+    margin: 0px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #2d3748;
+    min-height: 20px;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #4b5563;
+}

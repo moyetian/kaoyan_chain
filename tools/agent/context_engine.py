@@ -12,6 +12,14 @@ import re
 from pathlib import Path
 from typing import List, Dict, Any
 
+try:
+    import ky_rust_ext as _rust
+    _HAS_RUST_EXT = True
+except ImportError:
+    _rust = None
+    _HAS_RUST_EXT = False
+
+
 class ContextEngine:
     def __init__(self, workspace_root: Path, active_subject: str = "math", max_context_tokens: int = 48000, memory_manager=None):
         self.workspace_root = Path(workspace_root).resolve()
@@ -149,7 +157,12 @@ class ContextEngine:
         return "\n\n".join(sys_parts)
 
     def estimate_tokens(self, messages: List[Dict[str, Any]]) -> int:
-        """粗略估算消息 Token 量 (中英混合 1 字符约 0.6 token)"""
+        """粗略估算消息 Token 量 (中英混合 1 字符约 0.6 token，优先 Rust 极速路径)"""
+        if _HAS_RUST_EXT and not getattr(self, "_force_python", False):
+            try:
+                return _rust.estimate_tokens(messages)
+            except Exception:
+                pass
         total_chars = 0
         for m in messages:
             content = m.get("content") or ""
@@ -231,3 +244,8 @@ class ContextEngine:
             except Exception:
                 continue
         return ""
+
+
+# 别名兼容
+ContextCompactor = ContextEngine
+

@@ -2196,8 +2196,22 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                 except Exception as e:
                     print(f"启动减负异常: {e}")
                 continue
-            elif cmd in ("/clawbot", "/wechat", "/wx"):
+            elif cmd in ("/clawbot",):
                 run_wechat_clawbot_install()
+                continue
+            elif cmd in ("/gui", "/ky-gui"):
+                try:
+                    import ky_gui
+                    ky_gui.main()
+                except ImportError:
+                    try:
+                        from tools import ky_gui
+                        ky_gui.main()
+                    except ImportError:
+                        print(colorize("[!] 启动 GUI 失败，请检查是否已安装 PySide6 (pip install PySide6)", C.RED))
+                continue
+            elif cmd in ("/wechat", "/wx"):
+                cmd_wechat_search(arg.split() if arg else [])
                 continue
             elif cmd in ("/bridge", "/bot", "/webhook"):
                 show_bridge_guide()
@@ -2849,6 +2863,96 @@ def run_server(port=8088, host="127.0.0.1", gateway_token=None):
     except KeyboardInterrupt:
         print("\n网关服务已平稳停止。")
 
+def cmd_wechat_search(cli_args: list):
+    """微信公众号文章检索与爬虫子命令处理函数"""
+    if not cli_args or cli_args[0] in ("-h", "--help"):
+        print("""
+用法：ky wechat <关键词> [选项]
+别名：ky wx
+
+功能：
+  检索微信公众号考研文章与上岸经验贴 (支持搜狗/Bing多源检索与本地沉淀)
+
+参数：
+  <关键词>                     检索关键词 (如 "408计算机考研经验"、"华科计算机复试")
+
+选项：
+  --max=N                      最大检索结果数 (默认 10)
+  --save                       自动沉淀抓取文章到本地 docs/experiences/
+  --no-fetch                   仅检索标题与链接，不抓取正文
+  --school=<高校名>            联动更新目标高校社媒口碑档案 (school_scout)
+  --source=<auto|sogou|bing|local> 检索数据源 (默认 auto 自动降级)
+
+示例：
+  ky wechat "408计算机考研经验" --max=5 --save
+  ky wx "华科计算机复试" --school=华中科技大学 --save
+""")
+        return
+
+    keyword = cli_args[0]
+    max_results = 10
+    save_to_local = False
+    fetch_content = True
+    school_name = ""
+    source = "auto"
+
+    for arg in cli_args[1:]:
+        if arg.startswith("--max="):
+            try:
+                max_results = int(arg.split("=", 1)[1])
+            except ValueError:
+                pass
+        elif arg == "--save":
+            save_to_local = True
+        elif arg == "--no-fetch":
+            fetch_content = False
+        elif arg.startswith("--school="):
+            school_name = arg.split("=", 1)[1].strip()
+        elif arg.startswith("--source="):
+            source = arg.split("=", 1)[1].strip()
+
+    try:
+        from skills.wechat_searcher import wechat_search
+    except ImportError:
+        from tools.skills.wechat_searcher import wechat_search
+
+    print(colorize(f"\n▶ 正在多源检索微信公众号考研文章: 「{keyword}」 (源: {source}) ...", C.BOLD + C.CYAN))
+    res = wechat_search(
+        keyword=keyword,
+        max_results=max_results,
+        fetch_content=fetch_content,
+        save_to_local=save_to_local,
+        school_name=school_name,
+        source=source
+    )
+
+    print("\n" + "=" * 62)
+    print(colorize("  📱 微信公众号考研文章检索报告", C.BOLD))
+    print("=" * 62)
+    print(f"关键词: {res['keyword']}  |  总计发现: {res['total']} 篇  |  已抓取正文: {res['fetched']} 篇\n")
+
+    if not res["results"]:
+        print("  [i] 未检索到相关文章，建议更换关键词或使用 --source=bing / --source=local 重试。")
+    else:
+        for idx, it in enumerate(res["results"], 1):
+            st = "✅ 已抓取" if it.get("fetched") else "📋 仅标题"
+            print(f"  [{idx}] {it.get('title')}")
+            print(f"      公众号: {it.get('source_account') or '未知'}  |  日期: {it.get('publish_date') or '未知'}  |  {st}")
+            summary = it.get('summary', '')
+            if summary:
+                print(f"      摘要: {summary[:80]}...")
+            print(f"      链接: {it.get('url')}")
+            print()
+
+    if res.get("saved_paths"):
+        print(colorize(f"  📥 已沉淀 {len(res['saved_paths'])} 篇优质文章至 docs/experiences/", C.GREEN))
+        for sp in res["saved_paths"]:
+            print(f"     - {Path(sp).name}")
+    if res.get("scout_linked"):
+        print(colorize(f"  🔗 已成功联动院校侦察引擎 (school_scout) 更新【{school_name}】口碑档案", C.GREEN))
+    print()
+
+
 # ════════════════════════════════════════════════════════════════
 # 7. 主入口
 # ════════════════════════════════════════════════════════════════
@@ -2874,7 +2978,7 @@ def main():
     if not args:
         run_repl(permission_mode=permission_mode, gateway_host=gateway_host, gateway_token=gateway_token)
     elif args[0] in ("--version", "-v", "version"):
-        print(f"考研学习链专用终端工具 (ky-cli) v2.5.0 · Python {sys.version.split()[0]}")
+        print(f"考研学习链专用终端工具 (ky-cli) v2.6.0 · Python {sys.version.split()[0]}")
         sys.exit(0)
     elif args[0] in ("view", "--view", "--web", "live"):
         port = start_background_live_server(8088, host=gateway_host) or 8088
@@ -3477,8 +3581,34 @@ def main():
                 print(colorize(f"[!] 启动减负失败: {res.get('message')}", C.RED))
         except Exception as e:
             print(f"启动减负异常: {e}")
-    elif args[0] in ("clawbot", "--clawbot", "wechat", "--wechat", "wx"):
+    elif args[0] in ("clawbot", "--clawbot"):
         run_wechat_clawbot_install()
+    elif args[0] in ("gui", "--gui"):
+        if any(h in args for h in ("-h", "--help")):
+            print("""
+用法：ky gui [选项]
+
+启动考研学习链桌面可视化图形界面 (基于 PySide6)。
+
+选项：
+  -h, --help       显示此帮助信息并退出
+""")
+            return
+        try:
+            import ky_gui
+            ky_gui.main()
+        except ImportError:
+            try:
+                from tools import ky_gui
+                ky_gui.main()
+            except ImportError:
+                print(colorize("[!] 启动 GUI 失败，请检查是否已安装 PySide6 (pip install PySide6)", C.RED))
+                sys.exit(1)
+    elif args[0] in ("wechat", "--wechat", "wx", "--wx"):
+        if "--clawbot" in args:
+            run_wechat_clawbot_install()
+        else:
+            cmd_wechat_search(args[1:])
     elif args[0] in ("bridge", "--bridge", "tunnel", "--tunnel"):
         show_bridge_guide()
     elif args[0] in ("serve", "--serve"):
@@ -3586,6 +3716,8 @@ def main():
   python tools/ky_cli.py --gateway-token=xxx   显式传入网关 token
 
 子命令：
+  gui                                         启动 GUI 可视化操作端 (基于 PySide6)
+  wechat <关键词> [--max=N] [--save]          多源检索微信公众号考研文章与经验沉淀 (别名: wx)
   menu [action] / tui                         启动终端交互中枢导航器 (TUI) 或执行指定动作
   status                                      查看考研总战役大盘态势、倒计时、打卡天数与作息节律
   memory [status|prune]                       三级分层记忆健康度诊断与滚动修剪归档
