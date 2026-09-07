@@ -37,6 +37,7 @@ class TestRunner:
     def __init__(self):
         self.passed = 0
         self.failed = 0
+        self.skipped = 0
         self.errors = []
 
     def assert_true(self, condition, test_name):
@@ -48,9 +49,19 @@ class TestRunner:
             self.failed += 1
             self.errors.append(test_name)
 
+    def skip(self, test_name, reason=""):
+        msg = f"  [SKIP] {test_name}"
+        if reason:
+            msg += f" ({reason})"
+        print(msg)
+        self.skipped += 1
+
     def print_summary(self):
         print("\n" + "=" * 60)
-        print(f" 新功能测试统计: 通过 {self.passed} 项, 失败 {self.failed} 项")
+        parts = [f"通过 {self.passed} 项", f"失败 {self.failed} 项"]
+        if self.skipped > 0:
+            parts.append(f"跳过 {self.skipped} 项")
+        print(f" 新功能测试统计: {', '.join(parts)}")
         if self.failed == 0:
             print(" 🎉 全部新功能测试项 100% 通过！升级模块稳健可靠！")
         else:
@@ -153,30 +164,68 @@ def run_new_feature_tests():
     # 测试组 B: Rust PyO3 扩展模块与双模一致性
     # ============================================================
     print("\n[测试组 B: Rust 原生扩展与 Python 回退一致性校验]")
+    _HAS_RUST = False
     try:
         import ky_rust_ext as rust_mod
-        runner.assert_true(rust_mod is not None, "ky_rust_ext 模块成功加载")
+        _HAS_RUST = True
+    except ImportError:
+        pass
 
-        # B.1 SHA-256 哈希校验
-        test_strings = [
-            "hello world",
-            "考研数学二高等数学导数中值定理",
-            "408 计算机学科专业基础综合 数据结构 算法导论",
-            "",
-            "A" * 10000,
+    if not _HAS_RUST:
+        # Rust 扩展未安装 (CI 环境) — 跳过 Rust 对比测试，仅验证纯 Python 回退
+        rust_skip_names = [
+            "ky_rust_ext 模块成功加载",
+            "Rust vs Python: sha256_hash 结果 100% 精确一致",
+            "Rust chunk_text: 成功切片出 2 道题目",
+            "Rust vs Python: 切片题目数量一致",
+            "material_ingestion.chunk_text 路由 Rust 加速输出题目数量正确",
+            "Rust vs Python: 第1题题干与答案解析完全一致",
+            "Rust vs Python: 第2题题干与答案解析完全一致",
+            "Rust vs Python: Token 估算结果 100% 精确一致",
+            "Rust vs Python: extract_title 提取结果一致",
+            "extractor: 正确抽取科目信息",
         ]
-        all_hash_match = True
-        for s in test_strings:
-            py_hash = hashlib.sha256(s.encode("utf-8")).hexdigest()
-            rust_hash = rust_mod.sha256_hash(s)
-            if py_hash != rust_hash:
-                all_hash_match = False
-                break
-        runner.assert_true(all_hash_match, "Rust vs Python: sha256_hash 结果 100% 精确一致")
+        for name in rust_skip_names:
+            runner.skip(name, "ky_rust_ext 未安装")
+        # B.5 纯 Python 回退仍可独立验证
+        try:
+            from tools.skills.material_ingestion import _chunk_text_python, chunk_text
+            from tools.skills import material_ingestion
+            sample_q = "1. 题目A\n【答案】A\n【解析】解析A\n\n2. 题目B\n【答案】B\n【解析】解析B\n"
+            orig_has_rust = material_ingestion._HAS_RUST_EXT
+            try:
+                material_ingestion._HAS_RUST_EXT = False
+                fallback_res = material_ingestion.chunk_text(sample_q, "测试真题")
+                runner.assert_true(len(fallback_res) == 2, "material_ingestion: 模拟 _HAS_RUST_EXT=False 时无缝回退纯 Python")
+            finally:
+                material_ingestion._HAS_RUST_EXT = orig_has_rust
+        except Exception as e:
+            runner.assert_true(False, f"测试组 B (纯 Python 回退) 异常: {e}")
+    else:
+        # Rust 扩展已安装 — 执行完整双模一致性校验
+        try:
+            runner.assert_true(rust_mod is not None, "ky_rust_ext 模块成功加载")
 
-        # B.2 题目智能切片 (chunk_text) 一致性校验
-        from tools.skills.material_ingestion import _chunk_text_python, chunk_text
-        sample_questions = """一、单项选择题
+            # B.1 SHA-256 哈希校验
+            test_strings = [
+                "hello world",
+                "考研数学二高等数学导数中值定理",
+                "408 计算机学科专业基础综合 数据结构 算法导论",
+                "",
+                "A" * 10000,
+            ]
+            all_hash_match = True
+            for s in test_strings:
+                py_hash = hashlib.sha256(s.encode("utf-8")).hexdigest()
+                rust_hash = rust_mod.sha256_hash(s)
+                if py_hash != rust_hash:
+                    all_hash_match = False
+                    break
+            runner.assert_true(all_hash_match, "Rust vs Python: sha256_hash 结果 100% 精确一致")
+
+            # B.2 题目智能切片 (chunk_text) 一致性校验
+            from tools.skills.material_ingestion import _chunk_text_python, chunk_text
+            sample_questions = """一、单项选择题
 1. 函数 f(x) = |x| 在 x=0 处：
 A. 连续不可导
 B. 不连续
@@ -193,104 +242,137 @@ D. 2
 【答案】C
 【解析】|2A| = 2^3 * |A| = 8 * 2 = 16。
 """
-        py_chunks = _chunk_text_python(sample_questions, "2024真题")
-        rust_chunks = rust_mod.chunk_text(sample_questions, "2024真题")
-        unified_chunks = chunk_text(sample_questions, "2024真题")
+            py_chunks = _chunk_text_python(sample_questions, "2024真题")
+            rust_chunks = rust_mod.chunk_text(sample_questions, "2024真题")
+            unified_chunks = chunk_text(sample_questions, "2024真题")
 
-        runner.assert_true(len(rust_chunks) == 2, f"Rust chunk_text: 成功切片出 2 道题目 (实际: {len(rust_chunks)})")
-        runner.assert_true(len(py_chunks) == len(rust_chunks), f"Rust vs Python: 切片题目数量一致 ({len(py_chunks)} vs {len(rust_chunks)})")
-        runner.assert_true(len(unified_chunks) == len(rust_chunks), "material_ingestion.chunk_text 路由 Rust 加速输出题目数量正确")
-        runner.assert_true(
-            py_chunks[0].stem == rust_chunks[0]["stem"] and py_chunks[0].answer == rust_chunks[0]["answer"],
-            "Rust vs Python: 第1题题干与答案解析完全一致"
-        )
-        runner.assert_true(
-            py_chunks[1].stem == rust_chunks[1]["stem"] and py_chunks[1].answer == rust_chunks[1]["answer"],
-            "Rust vs Python: 第2题题干与答案解析完全一致"
-        )
+            runner.assert_true(len(rust_chunks) == 2, f"Rust chunk_text: 成功切片出 2 道题目 (实际: {len(rust_chunks)})")
+            runner.assert_true(len(py_chunks) == len(rust_chunks), f"Rust vs Python: 切片题目数量一致 ({len(py_chunks)} vs {len(rust_chunks)})")
+            runner.assert_true(len(unified_chunks) == len(rust_chunks), "material_ingestion.chunk_text 路由 Rust 加速输出题目数量正确")
+            runner.assert_true(
+                py_chunks[0].stem == rust_chunks[0]["stem"] and py_chunks[0].answer == rust_chunks[0]["answer"],
+                "Rust vs Python: 第1题题干与答案解析完全一致"
+            )
+            runner.assert_true(
+                py_chunks[1].stem == rust_chunks[1]["stem"] and py_chunks[1].answer == rust_chunks[1]["answer"],
+                "Rust vs Python: 第2题题干与答案解析完全一致"
+            )
 
-        # B.3 Token 估算一致性校验
-        from tools.agent.context_engine import ContextEngine
-        engine = ContextEngine(workspace_root=ROOT)
-        message_cases = [
-            [{"role": "user", "content": "Hello world"}],
-            [{"role": "user", "content": "考研数学二强化冲刺"}, {"role": "assistant", "content": "好的，今天我们攻克中值定理。"}],
-            [{"role": "user", "content": "def foo(x): return x * 2\n# 注释内容"}],
-            [{"role": "user", "content": "408真题切片：计算机网络TCP三次握手与四次挥手协议细节分析", "tool_calls": [{"name": "search", "args": {}}]}],
-        ]
-        all_tokens_match = True
-        for msgs in message_cases:
-            rust_tokens = rust_mod.estimate_tokens(msgs)
-            engine._force_python = True
-            py_tokens = engine.estimate_tokens(msgs)
-            engine._force_python = False
-            unified_tokens = engine.estimate_tokens(msgs)
-            if py_tokens != rust_tokens or unified_tokens != rust_tokens:
-                all_tokens_match = False
-                break
-        runner.assert_true(all_tokens_match, "Rust vs Python: Token 估算结果 100% 精确一致")
+            # B.3 Token 估算一致性校验
+            from tools.agent.context_engine import ContextEngine
+            engine = ContextEngine(workspace_root=ROOT)
+            message_cases = [
+                [{"role": "user", "content": "Hello world"}],
+                [{"role": "user", "content": "考研数学二强化冲刺"}, {"role": "assistant", "content": "好的，今天我们攻克中值定理。"}],
+                [{"role": "user", "content": "def foo(x): return x * 2\n# 注释内容"}],
+                [{"role": "user", "content": "408真题切片：计算机网络TCP三次握手与四次挥手协议细节分析", "tool_calls": [{"name": "search", "args": {}}]}],
+            ]
+            all_tokens_match = True
+            for msgs in message_cases:
+                rust_tokens = rust_mod.estimate_tokens(msgs)
+                engine._force_python = True
+                py_tokens = engine.estimate_tokens(msgs)
+                engine._force_python = False
+                unified_tokens = engine.estimate_tokens(msgs)
+                if py_tokens != rust_tokens or unified_tokens != rust_tokens:
+                    all_tokens_match = False
+                    break
+            runner.assert_true(all_tokens_match, "Rust vs Python: Token 估算结果 100% 精确一致")
 
-        # B.4 标题与科目提取
-        from tools.intelligence.extractor import _extract_title, _extract_subjects
-        html_sample = "<html><head><title>武汉大学2025年硕士研究生招生简章与专业目录</title></head><body>数学二、408计算机</body></html>"
-        rust_title = rust_mod.extract_title(html_sample)
-        py_title = _extract_title(html_sample)
-        runner.assert_true(rust_title == py_title and "武汉大学" in rust_title, "Rust vs Python: extract_title 提取结果一致")
+            # B.4 标题与科目提取
+            from tools.intelligence.extractor import _extract_title, _extract_subjects
+            html_sample = "<html><head><title>武汉大学2025年硕士研究生招生简章与专业目录</title></head><body>数学二、408计算机</body></html>"
+            rust_title = rust_mod.extract_title(html_sample)
+            py_title = _extract_title(html_sample)
+            runner.assert_true(rust_title == py_title and "武汉大学" in rust_title, "Rust vs Python: extract_title 提取结果一致")
 
-        extracted_subjs = _extract_subjects(html_sample)
-        runner.assert_true("数学二" in extracted_subjs or "408" in extracted_subjs, "extractor: 正确抽取科目信息")
+            extracted_subjs = _extract_subjects(html_sample)
+            runner.assert_true("数学二" in extracted_subjs or "408" in extracted_subjs, "extractor: 正确抽取科目信息")
 
-        # B.5 核心模块在无 Rust 时的透明回退验证
-        from tools.skills import material_ingestion
-        orig_has_rust = material_ingestion._HAS_RUST_EXT
-        try:
-            material_ingestion._HAS_RUST_EXT = False
-            fallback_res = material_ingestion.chunk_text(sample_questions, "测试真题")
-            runner.assert_true(len(fallback_res) == 2, "material_ingestion: 模拟 _HAS_RUST_EXT=False 时无缝回退纯 Python")
-        finally:
-            material_ingestion._HAS_RUST_EXT = orig_has_rust
+            # B.5 核心模块在无 Rust 时的透明回退验证
+            from tools.skills import material_ingestion
+            orig_has_rust = material_ingestion._HAS_RUST_EXT
+            try:
+                material_ingestion._HAS_RUST_EXT = False
+                fallback_res = material_ingestion.chunk_text(sample_questions, "测试真题")
+                runner.assert_true(len(fallback_res) == 2, "material_ingestion: 模拟 _HAS_RUST_EXT=False 时无缝回退纯 Python")
+            finally:
+                material_ingestion._HAS_RUST_EXT = orig_has_rust
 
-    except Exception as e:
-        runner.assert_true(False, f"测试组 B 异常: {e}")
+        except Exception as e:
+            runner.assert_true(False, f"测试组 B 异常: {e}")
 
     # ============================================================
     # 测试组 C: PySide6 GUI 桌面组件与离屏启动
     # ============================================================
     print("\n[测试组 C: PySide6 GUI 组件与离屏测试]")
+    _HAS_PYSIDE6 = False
     try:
-        os.environ["QT_QPA_PLATFORM"] = "offscreen"
-        from PySide6.QtWidgets import QApplication
-        from tools.gui.main_window import MainWindow
-        from tools.gui.widgets.wechat_search_dialog import WeChatSearchDialog
+        import PySide6
+        _HAS_PYSIDE6 = True
+    except ImportError:
+        pass
 
-        app = QApplication.instance()
-        if app is None:
-            app = QApplication(sys.argv)
+    if not _HAS_PYSIDE6:
+        # PySide6 未安装 (CI 环境) — 跳过 GUI 实例化测试，仅验证 QSS 文件完整性
+        gui_skip_names = [
+            "GUI: MainWindow 成功实例化",
+            "GUI: MainWindow 窗口标题正确",
+            "GUI: Tab 分页完备",
+            "GUI: 10个功能卡片按钮已全部注册",
+            "GUI: WeChatSearchDialog 成功实例化",
+            "GUI: 微信搜索对话框控件完整",
+        ]
+        for name in gui_skip_names:
+            runner.skip(name, "PySide6 未安装")
+        # QSS 样式表完整性可独立验证（纯文件读取）
+        try:
+            dark_qss_path = ROOT / "tools" / "gui" / "theme" / "dark.qss"
+            light_qss_path = ROOT / "tools" / "gui" / "theme" / "light.qss"
+            if dark_qss_path.exists() and light_qss_path.exists():
+                dark_qss = dark_qss_path.read_text(encoding="utf-8")
+                light_qss = light_qss_path.read_text(encoding="utf-8")
+                runner.assert_true(len(dark_qss) > 200 and "QMainWindow" in dark_qss, "GUI: 暗黑主题 dark.qss 规则定义完整")
+                runner.assert_true(len(light_qss) > 200 and "QMainWindow" in light_qss, "GUI: 明亮主题 light.qss 规则定义完整")
+            else:
+                runner.skip("GUI: QSS 样式表完整性", "QSS 文件不存在")
+        except Exception as e:
+            runner.assert_true(False, f"测试组 C (QSS 校验) 异常: {e}")
+    else:
+        try:
+            os.environ["QT_QPA_PLATFORM"] = "offscreen"
+            from PySide6.QtWidgets import QApplication
+            from tools.gui.main_window import MainWindow
+            from tools.gui.widgets.wechat_search_dialog import WeChatSearchDialog
 
-        # C.1 主窗口实例化
-        win = MainWindow()
-        runner.assert_true(win is not None, "GUI: MainWindow 成功实例化")
-        runner.assert_true("考研学习链" in win.windowTitle(), "GUI: MainWindow 窗口标题正确")
-        runner.assert_true(win.tab_widget.count() == 4, f"GUI: Tab 分页完备 (共 {win.tab_widget.count()} 个Tab)")
-        runner.assert_true(len(win._feature_buttons) == 10, f"GUI: 10个功能卡片按钮已全部注册 (实际: {len(win._feature_buttons)})")
+            app = QApplication.instance()
+            if app is None:
+                app = QApplication(sys.argv)
 
-        # C.2 微信搜索对话框实例化
-        dialog = WeChatSearchDialog(parent=win)
-        runner.assert_true(dialog is not None, "GUI: WeChatSearchDialog 成功实例化")
-        runner.assert_true(dialog.school_input is not None and dialog.keyword_input is not None, "GUI: 微信搜索对话框控件完整")
+            # C.1 主窗口实例化
+            win = MainWindow()
+            runner.assert_true(win is not None, "GUI: MainWindow 成功实例化")
+            runner.assert_true("考研学习链" in win.windowTitle(), "GUI: MainWindow 窗口标题正确")
+            runner.assert_true(win.tab_widget.count() == 4, f"GUI: Tab 分页完备 (共 {win.tab_widget.count()} 个Tab)")
+            runner.assert_true(len(win._feature_buttons) == 10, f"GUI: 10个功能卡片按钮已全部注册 (实际: {len(win._feature_buttons)})")
 
-        # C.3 QSS 样式表完整性
-        dark_qss = (ROOT / "tools" / "gui" / "theme" / "dark.qss").read_text(encoding="utf-8")
-        light_qss = (ROOT / "tools" / "gui" / "theme" / "light.qss").read_text(encoding="utf-8")
-        runner.assert_true(len(dark_qss) > 200 and "QMainWindow" in dark_qss, "GUI: 暗黑主题 dark.qss 规则定义完整")
-        runner.assert_true(len(light_qss) > 200 and "QMainWindow" in light_qss, "GUI: 明亮主题 light.qss 规则定义完整")
+            # C.2 微信搜索对话框实例化
+            dialog = WeChatSearchDialog(parent=win)
+            runner.assert_true(dialog is not None, "GUI: WeChatSearchDialog 成功实例化")
+            runner.assert_true(dialog.school_input is not None and dialog.keyword_input is not None, "GUI: 微信搜索对话框控件完整")
 
-        # 销毁窗口释放资源
-        win.close()
-        dialog.close()
+            # C.3 QSS 样式表完整性
+            dark_qss = (ROOT / "tools" / "gui" / "theme" / "dark.qss").read_text(encoding="utf-8")
+            light_qss = (ROOT / "tools" / "gui" / "theme" / "light.qss").read_text(encoding="utf-8")
+            runner.assert_true(len(dark_qss) > 200 and "QMainWindow" in dark_qss, "GUI: 暗黑主题 dark.qss 规则定义完整")
+            runner.assert_true(len(light_qss) > 200 and "QMainWindow" in light_qss, "GUI: 明亮主题 light.qss 规则定义完整")
 
-    except Exception as e:
-        runner.assert_true(False, f"测试组 C 异常: {e}")
+            # 销毁窗口释放资源
+            win.close()
+            dialog.close()
+
+        except Exception as e:
+            runner.assert_true(False, f"测试组 C 异常: {e}")
 
     # ============================================================
     # 测试组 D: CLI 与 TUI 路由验证

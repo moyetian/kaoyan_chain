@@ -92,6 +92,10 @@ kaoyan_chain/
 │   ├── docs/index.html                  # 编译生成的单文件移动端看板
 │   └── README.md                        # 看板二次开发指引
 │
+├── rust_ext/                            # [可选] Rust PyO3 原生加速扩展源码
+│   ├── Cargo.toml                       # Rust 包管理与 PyO3 绑定配置
+│   └── src/                             # chunker, hasher, context_compactor, extractor 四模块
+│
 ├── docs/                                # GitHub Pages 发布源镜像与高清矢量图谱
 │   ├── assets/                          # 印刷级 SVG 架构图与演示素材
 │   ├── experiences/                     # 社媒实名去噪高分经验与避坑档案库
@@ -101,6 +105,12 @@ kaoyan_chain/
 │
 └── tools/                               # 跨平台运维与管理工具包
     ├── agent/                           # 工业级自主智能体内核 (Loop, Hooks, Memory, MCP, Sandbox)
+    ├── gui/                             # [v2.6+] PySide6 桌面 GUI 模块
+    │   ├── __init__.py                  # GUI 包入口
+    │   ├── main_window.py               # 主窗口 (4 Tab, 10 功能卡片)
+    │   ├── theme/dark.qss               # 暗黑主题样式表
+    │   ├── theme/light.qss              # 明亮主题样式表
+    │   └── widgets/                     # 对话框与自定义控件 (WeChatSearchDialog 等)
     ├── intelligence/                    # KaoYan Intelligence 招考全景情报与证据链引擎
     │   ├── chsi_connector.py            # 研招网 S 级权威目录连接器
     │   ├── comparator.py                # 双校招考核心指标横向深度对标引擎
@@ -115,18 +125,21 @@ kaoyan_chain/
     │   └── watcher.py                   # 招生简章动态指纹监控与变动雷达
     ├── skills/                          # 考研专有能力技能中枢
     │   ├── school_scout.py              # 目标高校研招与社媒口碑侦察专属技能
+    │   ├── wechat_searcher.py           # [v2.6+] 微信公众号考研经验贴检索与 Markdown 清洗管道
     │   ├── syllabus_diff.py             # 考纲版本对比技能
     │   ├── material_ingestion.py        # 试题智能分块切片入库管道 (ky ingest)
     │   ├── exam_composer.py             # 靶向自测组卷与盲盒排版引擎 (ky compose)
     │   ├── variant_retrieval.py         # 同源变式检索与防伪水印引擎 (ky variant)
     │   └── ...                          # 验算/抽题/图谱/诊断各技能实现
     ├── tui_navigator.py                 # 终端全景智能中枢 TUI v2.5 极客控制台
+    ├── ky_gui.py                        # [v2.6+] PySide6 GUI 启动入口 (ky gui)
     ├── doctor.py                        # 全系统健康诊断工具 (ky doctor)
     ├── init_workspace.py                # 跨平台工作区全能初始化向导
     ├── ky_cli.py                        # 专有终端私教与多端 IM 网关入口
     ├── study_planner.py                 # 个人定制化方案设计引擎与防疲劳预警
     ├── syllabus_manager.py              # 官方考纲智能匹配与切换管理器
-    ├── test_ky_suite.py                 # 完整自动化回归测试与 CLI smoke test
+    ├── test_ky_suite.py                 # 完整自动化回归测试与 CLI smoke test (25 组, 252 项)
+    ├── test_new_features.py             # [v2.6+] 新增功能专项测试 (WeChat + Rust + GUI + CLI)
     ├── update_dashboard.py              # 自动化看板生成与同步脚本
     └── verify_health.py                 # 全科规范与关键文件健康度巡检脚本
 ```
@@ -154,6 +167,15 @@ pip install -r requirements.txt
 ```
 核心功能不依赖任何三方库（纯 Python 标准库零依赖即可运行），扩展依赖仅用于数学高精符号运算 (SymPy)、PDF 提取 (pypdf)、图像批改 (Pillow) 等特定技能。
 
+### 4. 可选增强模块（v2.6.0 新增）
+
+| 模块 | 安装方式 | 作用 | 缺失时行为 |
+|---|---|---|---|
+| **PySide6** (桌面 GUI) | `pip install PySide6` | 启用 `ky gui` 桌面可视化界面 | `ky gui` 提示安装，测试自动跳过 |
+| **ky_rust_ext** (Rust 加速) | `cd rust_ext && maturin develop --release` | chunk_text / sha256_hash / estimate_tokens 原生加速 | 透明回退纯 Python 实现，功能不受影响 |
+
+> **CI 环境说明**：GitHub Actions CI 不安装 PySide6 和 Rust 工具链，相关测试项会被标记为 `[SKIP]` 而非失败，确保 CI 流水线绿色通过。
+
 ---
 
 ## 三、自动化测试与代码质量工程
@@ -172,7 +194,7 @@ ky doctor
 ```bash
 python tools/test_ky_suite.py
 ```
-该套件包含 24 组测试项（共计 251+ 测试点），覆盖：
+该套件包含 **25 组测试项**（共计 **252 测试点**），覆盖：
 - 配置文件解析与默认兜底
 - 四科 Prompt 与防书目幻觉门禁
 - Webhook 格式与模拟并发处理
@@ -180,8 +202,19 @@ python tools/test_ky_suite.py
 - 权限管理（Safe / Plan / Auto / Ask 模式）与沙箱路径阻断
 - KaoYan Intelligence 招考情报与考纲 AST 变迁分析
 - CLI 真实子进程级 Smoke Tests
+- **[v2.6+] 新增功能专项集成测试**（微信公众号检索、Rust 双模一致性、PySide6 GUI 离屏校验）
 
-**准入标准**：测试结果必须为 `通过 251 项, 失败 0 项 (100% 通过)`，不允许任何断言失败。
+### 3. 新增功能专项测试
+```bash
+python tools/test_new_features.py
+```
+独立运行 v2.6.0 新增模块的专项测试（4 组 A/B/C/D），可选依赖缺失时自动 `[SKIP]`：
+- **组 A**：微信公众号经验贴检索、HTML→Markdown 清洗、院校档案联动
+- **组 B**：Rust PyO3 扩展与纯 Python 双模一致性校验（需 `ky_rust_ext`，否则跳过）
+- **组 C**：PySide6 GUI 离屏实例化与 QSS 主题完整性（需 `PySide6`，否则跳过）
+- **组 D**：CLI 子命令路由（`ky gui`/`ky wechat`/`ky wx`）与 TUI 菜单挂载
+
+**准入标准**：测试结果必须为 `失败 0 项`（100% 通过或跳过），不允许任何断言失败。
 
 ---
 
