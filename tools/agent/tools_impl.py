@@ -520,7 +520,15 @@ class ToolRegistry:
         def read_exam_paper(pdf_path: str, year: str = "", question_no: str = "", keyword: str = "") -> str:
             p = self.sandbox.resolve_safe_path(pdf_path)
             if not p.exists() or p.suffix.lower() != ".pdf":
-                return f"Error: 指定的真题 PDF 不存在或格式不正确 [{pdf_path}]"
+                # 智能在各科 参考资料/ 目录或工作区全量搜索同名 PDF
+                file_name = Path(pdf_path).name
+                candidates = list(self.workspace_root.glob(f"**/参考资料/**/{file_name}"))
+                if not candidates:
+                    candidates = list(self.workspace_root.glob(f"**/{file_name}"))
+                if candidates:
+                    p = candidates[0]
+                else:
+                    return f"Error: 指定的真题 PDF 不存在或格式不正确 [{pdf_path}]"
 
             if not pdf_extractor:
                 return f"Error: 未挂载 PDF 提取技能 pdf_extractor"

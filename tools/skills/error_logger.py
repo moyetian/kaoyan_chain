@@ -109,7 +109,45 @@ def log_error_record(subject="math", title="错题记录", error_type="计算失
     else:
         record_file.write_text(f"# {subj_folder} · 错题积累集 ({today_str})\n" + record_md, encoding="utf-8")
 
+    # 联动更新雷达错因累计
+    _sync_radar_error_count(subject, error_type, title)
+
     return f"已成功将错题归档至: {record_file.relative_to(ROOT)}"
+
+
+def _sync_radar_error_count(subject: str, error_type: str, title: str):
+    """联动更新对应科目薄弱点雷达/学情档案中的错因统计次数"""
+    folder_name = SUBJECT_DIRS.get(subject, "01-数学")
+    candidates = [
+        ROOT / folder_name / "_状态" / "薄弱点雷达.md",
+        ROOT / folder_name / "学情档案.md",
+        ROOT / folder_name / "_状态" / "学情档案.md",
+    ]
+    for r_file in candidates:
+        if not r_file.exists():
+            continue
+        try:
+            content = r_file.read_text(encoding="utf-8")
+            lines = content.splitlines()
+            new_lines = []
+            updated = False
+            for line in lines:
+                if error_type and error_type in line and line.strip().startswith("|") and line.strip().endswith("|"):
+                    parts = [p.strip() for p in line.strip().split("|")[1:-1]]
+                    if parts:
+                        for idx in reversed(range(len(parts))):
+                            if parts[idx].isdigit():
+                                cur_val = int(parts[idx])
+                                parts[idx] = str(cur_val + 1)
+                                line = "| " + " | ".join(parts) + " |"
+                                updated = True
+                                break
+                new_lines.append(line)
+            if updated:
+                r_file.write_text("\n".join(new_lines), encoding="utf-8")
+        except Exception:
+            pass
+
 
 def scan_error_records(subject=None):
     """

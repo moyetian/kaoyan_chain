@@ -234,29 +234,29 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
     print("  (让 AI 私教了解您的真实起点，从而针对性查漏，拒绝假大空)")
     if interactive:
         if m_choice != "none":
-            math_baseline = input("  1. 数学目前摸底成绩/基础水平 [如: 50分 / 零基础 / 60分]: ").strip() or "60分"
-            math_weakness = input("     数学最核心失分点/痛点 [如: 极限计算常错、中值定理证明不会、概念模糊]: ").strip() or "导数中值定理、计算失误"
+            math_baseline = input("  1. 数学目前摸底成绩/基础水平 [如: 50分 / 零基础 / 60分]: ").strip() or "待摸底 (零基础)"
+            math_weakness = input("     数学最核心失分点/痛点 [如: 极限计算常错、证明不会、概念模糊]: ").strip() or "待首次自测诊断 (从零建立学情雷达)"
         else:
             math_baseline = "不考数学"
             math_weakness = "无"
 
-        eng_baseline = input("  2. 英语目前摸底成绩/英语基础 [如: 四级450 / 六级未过 / 摸底50分]: ").strip() or "四级已过 / 摸底50分"
-        eng_weakness = input("     英语最核心失分点/痛点 [如: 长难句读不懂、阅读推断题失分多、作文写不出]: ").strip() or "长难句主干拆解慢、阅读细节定位不准"
+        eng_baseline = input("  2. 英语目前摸底成绩/英语基础 [如: 四级450 / 六级未过 / 摸底50分]: ").strip() or "待摸底 (基础起步)"
+        eng_weakness = input("     英语最核心失分点/痛点 [如: 长难句读不懂、阅读推断题失分多、作文写不出]: ").strip() or "待首次自测诊断 (从零建立长难句与题型雷达)"
 
-        pol_baseline = input("  3. 政治目前复习进度/摸底水平 [如: 未启动 / 已听网课 / 摸底40分]: ").strip() or "基础刚起步 / 摸底40分"
-        pol_weakness = input("     政治主要痛点 [如: 马原哲学原理混淆、多选常错、帽子词记不牢]: ").strip() or "马原唯物辩证法、多选题漏选错选"
+        pol_baseline = input("  3. 政治目前复习进度/摸底水平 [如: 未启动 / 已听网课 / 摸底40分]: ").strip() or "待摸底 (未启动)"
+        pol_weakness = input("     政治主要痛点 [如: 马原哲学原理混淆、多选常错、帽子词记不牢]: ").strip() or "待首次自测诊断 (从零建立选择题得分盘雷达)"
 
-        pro_baseline = input(f"  4. 专业课 ({pro_name}) 目前摸底水平 [如: 跨考零基础 / 摸底80分]: ").strip() or "科班有基础 / 摸底80分"
-        pro_weakness = input("     专业课核心失分点/痛点 [如: 计组指令系统/算法大题不会写]: ").strip() or "核心算法设计、高频大题推导步骤规范"
+        pro_baseline = input(f"  4. 专业课 ({pro_name}) 目前摸底水平 [如: 跨考零基础 / 摸底80分]: ").strip() or "待摸底 (基础起步)"
+        pro_weakness = input("     专业课核心失分点/痛点 [如: 核心考点未过、大题步骤不规范]: ").strip() or "待首次自测诊断 (从零建立专业课知识图谱雷达)"
     else:
-        math_baseline = plan.get("math_baseline", "60分")
-        math_weakness = plan.get("math_weakness", "导数中值定理、计算失误")
-        eng_baseline = plan.get("eng_baseline", "四级已过 / 摸底50分")
-        eng_weakness = plan.get("eng_weakness", "长难句主干拆解慢、阅读细节定位不准")
-        pol_baseline = plan.get("pol_baseline", "基础刚起步 / 摸底40分")
-        pol_weakness = plan.get("pol_weakness", "马原唯物辩证法、多选题漏选错选")
-        pro_baseline = plan.get("pro_baseline", "科班有基础 / 摸底80分")
-        pro_weakness = plan.get("pro_weakness", "核心算法设计、高频大题推导步骤规范")
+        math_baseline = plan.get("math_baseline", "待摸底 (零基础)")
+        math_weakness = plan.get("math_weakness", "待首次自测诊断 (从零建立学情雷达)")
+        eng_baseline = plan.get("eng_baseline", "待摸底 (基础起步)")
+        eng_weakness = plan.get("eng_weakness", "待首次自测诊断 (从零建立长难句与题型雷达)")
+        pol_baseline = plan.get("pol_baseline", "待摸底 (未启动)")
+        pol_weakness = plan.get("pol_weakness", "待首次自测诊断 (从零建立选择题得分盘雷达)")
+        pro_baseline = plan.get("pro_baseline", "待摸底 (基础起步)")
+        pro_weakness = plan.get("pro_weakness", "待首次自测诊断 (从零建立专业课知识图谱雷达)")
 
     plan["math_baseline"] = math_baseline
     plan["math_weakness"] = math_weakness
@@ -844,6 +844,8 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 """, encoding="utf-8")
 
     # 3. 自动生成四科真实今日任务文件
+    m_w = plan.get('math_weakness', '')
+    m_task_desc = "梳理考纲核心高频考点与必背公式，开展首日基础摸底自测" if (not m_w or '待首次自测' in m_w or '从零' in m_w or '无' in m_w) else f"攻坚薄弱项【{m_w}】定理条件与构造技巧"
     m_task_file = ROOT / "01-数学" / "_状态" / "今日任务.md"
     m_task_file.parent.mkdir(parents=True, exist_ok=True)
     m_status = _safe_write_today_task(m_task_file, today_str, f"""# 今日数学任务 ({today_str})
@@ -852,7 +854,7 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 
 | 模块 | 任务内容 | 预计用时 | 完成状态 |
 |---|---|---|---|
-| 概念精讲 | 攻坚薄弱项【{plan.get('math_weakness', '核心定理')}】定理条件与构造技巧 | {int(m_h*60*0.2)} 分钟 | [ ] |
+| 概念精讲 | {m_task_desc} | {int(m_h*60*0.2)} 分钟 | [ ] |
 | 习题精练 | 精选白名单【{plan.get('math_books')}】对应专题典型真题动笔演练 | {int(m_h*60*0.55)} 分钟 | [ ] |
 | 订正归档 | 在 CLI 输入「交作业」，AI 按步骤采分并自动录入错题队列 | {int(m_h*60*0.25)} 分钟 | [ ] |
 
@@ -860,6 +862,8 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 """)
     print(f"  - 数学今日任务: {m_status}")
 
+    e_w = plan.get('eng_weakness', '')
+    e_task_desc = "精读真题高频长难句语法骨架，开展首日主干拆解摸底 (输入 /dissect 实战)" if (not e_w or '待首次自测' in e_w or '从零' in e_w) else f"攻坚薄弱项【{e_w}】(输入 /dissect 实战)"
     e_task_file = ROOT / "02-英语" / "_状态" / "今日任务.md"
     e_task_file.parent.mkdir(parents=True, exist_ok=True)
     e_status = _safe_write_today_task(e_task_file, today_str, f"""# 今日英语任务 ({today_str})
@@ -869,13 +873,15 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 | 模块 | 任务内容 | 预计用时 | 完成状态 |
 |---|---|---|---|
 | 词汇破冰 | 快速复习 50 个高频核心真题词汇与派生变形 | {int(e_h*60*0.25)} 分钟 | [ ] |
-| 长难句解剖 | 攻坚薄弱项【{plan.get('eng_weakness', '长难句拆解')}】(输入 /dissect 实战) | {int(e_h*60*0.35)} 分钟 | [ ] |
+| 长难句解剖 | {e_task_desc} | {int(e_h*60*0.35)} 分钟 | [ ] |
 | 真题阅读 | 精读 1 篇历年真题阅读并定位干扰项逻辑 | {int(e_h*60*0.4)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/eng` 或 `英语报到` 开始今日英语专项训练！
 """)
     print(f"  - 英语今日任务: {e_status}")
 
+    p_w = plan.get('pol_weakness', '')
+    p_task_desc = "梳理考纲核心考点与帽子词框架，精选高频选择题摸底" if (not p_w or '待首次自测' in p_w or '从零' in p_w) else f"梳理【{p_w}】知识框架"
     p_task_file = ROOT / "03-思想政治理论" / "_状态" / "今日任务.md"
     p_task_file.parent.mkdir(parents=True, exist_ok=True)
     p_status = _safe_write_today_task(p_task_file, today_str, f"""# 今日政治任务 ({today_str})
@@ -884,7 +890,7 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 
 | 模块 | 任务内容 | 预计用时 | 完成状态 |
 |---|---|---|---|
-| 核心考点 | 梳理【{plan.get('pol_weakness', '马原哲学与核心帽子词')}】知识框架 | {int(p_h*60*0.4)} 分钟 | [ ] |
+| 核心考点 | {p_task_desc} | {int(p_h*60*0.4)} 分钟 | [ ] |
 | 选择刷题 | 精做白名单【{plan.get('pol_books')}】20 道核心选择题自测 | {int(p_h*60*0.4)} 分钟 | [ ] |
 | 易混归纳 | 记录做错的帽子词与混淆概念，固化到记忆卡 | {int(p_h*60*0.2)} 分钟 | [ ] |
 
@@ -892,6 +898,8 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 """)
     print(f"  - 政治今日任务: {p_status}")
 
+    pro_w = plan.get('pro_weakness', '')
+    pro_task_desc = "聚焦专业课官方考纲核心知识体系，完成首日题型规范度摸底" if (not pro_w or '待首次自测' in pro_w or '从零' in pro_w) else f"聚焦专业课考纲与【{pro_w}】推导"
     pro_task_file = ROOT / "04-专业课" / "_状态" / "今日任务.md"
     pro_task_file.parent.mkdir(parents=True, exist_ok=True)
     pro_status = _safe_write_today_task(pro_task_file, today_str, f"""# 今日专业课任务 ({today_str})
@@ -900,7 +908,7 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 
 | 模块 | 任务内容 | 预计用时 | 完成状态 |
 |---|---|---|---|
-| 核心知识点 | 聚焦专业课考纲与【{plan.get('pro_weakness', '核心算法设计')}】推导 | {int(pro_h*60*0.3)} 分钟 | [ ] |
+| 核心知识点 | {pro_task_desc} | {int(pro_h*60*0.3)} 分钟 | [ ] |
 | 习题精练 | 选取白名单【{plan.get('pro_books')}】经典大题 2~3 道动笔完整书写 | {int(pro_h*60*0.5)} 分钟 | [ ] |
 | AI 阅卷批改 | 将草稿或解答输入 CLI (可用 /img 上传草稿照片)，逐行诊断丢分点 | {int(pro_h*60*0.2)} 分钟 | [ ] |
 
@@ -918,8 +926,10 @@ def update_subject_agents(plan):
         t = re.sub(r"- \*\*目标分数\*\*：.*", f"- **目标分数**：`{plan.get('math_target', '110+ 分')}` (摸底: {plan.get('math_baseline', '60分')})", t)
         t = re.sub(r"- \*\*每日投入\*\*：.*", f"- **每日投入**：`{plan.get('math_hours', 2.5)} 小时`", t)
         t = re.sub(r"- \*\*核心教材.*", f"- **核心教材与白名单**：`{plan.get('math_books')}` (严禁虚构未有资料！)", t)
-        if "- **核心薄弱点**：" not in t:
-            t = t.replace("- **核心教材与白名单**：", f"- **核心薄弱点**：`{plan.get('math_weakness', '导数中值定理、计算失误')}`\n- **核心教材与白名单**：")
+        if "- **核心薄弱点**：" in t:
+            t = re.sub(r"- \*\*核心薄弱点\*\*：.*", f"- **核心薄弱点**：`{plan.get('math_weakness', '待首次自测诊断 (从零建立学情雷达)')}`", t)
+        else:
+            t = t.replace("- **核心教材与白名单**：", f"- **核心薄弱点**：`{plan.get('math_weakness', '待首次自测诊断 (从零建立学情雷达)')}`\n- **核心教材与白名单**：")
         m_file.write_text(t, encoding="utf-8")
 
     # 英语
@@ -930,8 +940,10 @@ def update_subject_agents(plan):
         t = re.sub(r"- \*\*目标分数\*\*：.*", f"- **目标分数**：`{plan.get('eng_target', '65+ 分')}` (摸底: {plan.get('eng_baseline', '50分')})", t)
         t = re.sub(r"- \*\*每日投入\*\*：.*", f"- **每日投入**：`{plan.get('eng_hours', 2.0)} 小时`", t)
         t = re.sub(r"- \*\*核心.*白名单.*", f"- **核心资料与白名单**：`{plan.get('eng_books')}`", t)
-        if "- **核心薄弱点**：" not in t:
-            t = t.replace("- **核心资料与白名单**：", f"- **核心薄弱点**：`{plan.get('eng_weakness', '长难句主干速抓')}`\n- **核心资料与白名单**：")
+        if "- **核心薄弱点**：" in t:
+            t = re.sub(r"- \*\*核心薄弱点\*\*：.*", f"- **核心薄弱点**：`{plan.get('eng_weakness', '待首次自测诊断 (从零建立长难句与题型雷达)')}`", t)
+        else:
+            t = t.replace("- **核心资料与白名单**：", f"- **核心薄弱点**：`{plan.get('eng_weakness', '待首次自测诊断 (从零建立长难句与题型雷达)')}`\n- **核心资料与白名单**：")
         e_file.write_text(t, encoding="utf-8")
 
     # 政治
