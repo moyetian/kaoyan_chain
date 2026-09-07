@@ -14,6 +14,13 @@ for p in (str(ROOT), str(TOOLS)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+# Windows 控制台安全编码
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 def main():
     try:

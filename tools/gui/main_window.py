@@ -197,11 +197,17 @@ class MainWindow(QMainWindow):
         self.task_progress_bars = {}
         self.task_count_labels = {}
 
+        sp = self.config.get("study_plan", {})
+        math_lbl = sp.get("math_name") or self.config.get("math_name") or "数学二 (302)"
+        eng_lbl = sp.get("eng_name") or self.config.get("eng_name") or "英语二 (204)"
+        pol_lbl = "思想政治理论"
+        pro_lbl = sp.get("pro_name") or self.config.get("pro_name") or "408 计算机基础"
+
         subjects = [
-            ("01-数学", "数学二 (302)", "math"),
-            ("02-英语", "英语二 (204)", "eng"),
-            ("03-思想政治理论", "思想政治理论", "pol"),
-            ("04-专业课", "408 计算机基础", "pro"),
+            ("01-数学", math_lbl, "math"),
+            ("02-英语", eng_lbl, "eng"),
+            ("03-思想政治理论", pol_lbl, "pol"),
+            ("04-专业课", pro_lbl, "pro"),
         ]
 
         for folder, label_text, key in subjects:
@@ -295,7 +301,7 @@ class MainWindow(QMainWindow):
             return 103
 
     def _load_today_task_progress(self):
-        """解析各科 _状态/今日任务.md 的勾选进度"""
+        """解析各科 _状态/今日任务.md 的勾选进度 (兼容 Markdown 列表与表格语法)"""
         subjs = [
             ("01-数学", "math"),
             ("02-英语", "eng"),
@@ -303,17 +309,26 @@ class MainWindow(QMainWindow):
             ("04-专业课", "pro"),
         ]
         for folder, key in subjs:
-            task_file = ROOT / folder / "_状态" / "今日任务.md"
+            task_file = self.workspace_root / folder / "_状态" / "今日任务.md"
             done_count = 0
             total_count = 0
             if task_file.exists():
                 try:
                     text = task_file.read_text(encoding="utf-8")
                     for line in text.splitlines():
-                        if re.match(r"^\s*-\s*\[[ xX]\]", line):
+                        l_str = line.strip()
+                        # 支持列表风格: - [ ] 或 - [x]
+                        if re.match(r"^-\s*\[[ xX]\]", l_str):
                             total_count += 1
-                            if re.match(r"^\s*-\s*\[[xX]\]", line):
+                            if re.match(r"^-\s*\[[xX]\]", l_str):
                                 done_count += 1
+                        # 支持表格风格: | 模块 | 任务内容 | 预计用时 | 完成状态 |
+                        elif "|" in l_str and not l_str.startswith("|---|") and "完成状态" not in l_str and "模块" not in l_str:
+                            parts = [p.strip() for p in l_str.split("|") if p.strip()]
+                            if len(parts) >= 3:
+                                total_count += 1
+                                if "[x]" in parts[-1].lower():
+                                    done_count += 1
                 except Exception:
                     pass
 
@@ -334,7 +349,7 @@ class MainWindow(QMainWindow):
         subjs = [("01-数学", "数学"), ("02-英语", "英语"), ("03-思想政治理论", "政治"), ("04-专业课", "专业课")]
         total_due = 0
         for folder, name in subjs:
-            mistake_dir = ROOT / folder / "错题本"
+            mistake_dir = self.workspace_root / folder / "错题本"
             if mistake_dir.exists():
                 due_files = list(mistake_dir.glob("*.md"))
                 lines.append(f"### 📚 {name}错题本: 共 {len(due_files)} 道错题档案")
@@ -373,7 +388,7 @@ class MainWindow(QMainWindow):
             "---",
             ""
         ]
-        watch_file = ROOT / ".memory" / "admission_watch.json"
+        watch_file = self.workspace_root / ".memory" / "admission_watch.json"
         if watch_file.exists():
             try:
                 data = json.loads(watch_file.read_text(encoding="utf-8"))

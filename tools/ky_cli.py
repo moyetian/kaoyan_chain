@@ -1103,11 +1103,18 @@ def cjk_width(s: str) -> int:
 
 def get_today_tasks_data() -> dict:
     """提取四科今日任务的结构化数据字典"""
+    cfg = load_config()
+    sp = cfg.get("study_plan", {})
+    math_lbl = sp.get("math_name") or cfg.get("math_name") or "数学二 (302)"
+    eng_lbl = sp.get("eng_name") or cfg.get("eng_name") or "英语二 (204)"
+    pol_lbl = "思想政治理论"
+    pro_lbl = sp.get("pro_name") or cfg.get("pro_name") or "408 计算机学科专业基础"
+
     subjs = [
-        ("01-数学", "math", "数学二 (302)"),
-        ("02-英语", "eng", "英语二 (204)"),
-        ("03-思想政治理论", "pol", "思想政治理论"),
-        ("04-专业课", "pro", "408 计算机学科专业基础"),
+        ("01-数学", "math", math_lbl),
+        ("02-英语", "eng", eng_lbl),
+        ("03-思想政治理论", "pol", pol_lbl),
+        ("04-专业课", "pro", pro_lbl),
     ]
     result = {"date": datetime.now().strftime("%Y-%m-%d"), "subjects": {}, "summary": {"total": 0, "completed": 0, "rate": 0.0}}
     total_count = 0
@@ -1118,20 +1125,35 @@ def get_today_tasks_data() -> dict:
         tasks = []
         if task_file.exists():
             content = read_text_safe(task_file)
-            lines = [l.strip() for l in content.splitlines() if "|" in l and not l.startswith("|---|") and "完成状态" not in l and "模块" not in l]
-            for l in lines:
-                parts = [p.strip() for p in l.split("|") if p.strip()]
-                if len(parts) >= 3:
-                    is_done = "[x]" in parts[-1].lower()
+            for l in content.splitlines():
+                l_str = l.strip()
+                # 支持列表项语法: - [ ] 或 - [x]
+                if re.match(r"^-\s*\[[ xX]\]", l_str):
+                    is_done = bool(re.match(r"^-\s*\[[xX]\]", l_str))
                     total_count += 1
                     if is_done:
                         done_count += 1
+                    desc = re.sub(r"^-\s*\[[ xX]\]\s*", "", l_str)
                     tasks.append({
-                        "module": parts[0],
-                        "content": parts[1],
-                        "duration": parts[2] if len(parts) > 2 else "",
+                        "module": "任务",
+                        "content": desc,
+                        "duration": "",
                         "done": is_done,
                     })
+                # 支持表格语法: | 模块 | 任务内容 | 预计用时 | 完成状态 |
+                elif "|" in l_str and not l_str.startswith("|---|") and "完成状态" not in l_str and "模块" not in l_str:
+                    parts = [p.strip() for p in l_str.split("|") if p.strip()]
+                    if len(parts) >= 3:
+                        is_done = "[x]" in parts[-1].lower()
+                        total_count += 1
+                        if is_done:
+                            done_count += 1
+                        tasks.append({
+                            "module": parts[0],
+                            "content": parts[1],
+                            "duration": parts[2] if len(parts) > 2 else "",
+                            "done": is_done,
+                        })
         result["subjects"][key] = {
             "label": label,
             "tasks": tasks,
@@ -3007,6 +3029,8 @@ def main():
             filtered_args.append(a)
 
     args = filtered_args
+    if args and args[0] in ("diff", "--diff"):
+        args = ["fetch", "diff"] + args[1:]
     if not args:
         run_repl(permission_mode=permission_mode, gateway_host=gateway_host, gateway_token=gateway_token)
     elif args[0] in ("--version", "-v", "version"):
@@ -3371,9 +3395,25 @@ def main():
                     elif (ROOT / "04-专业课" / "考试大纲.md").exists():
                         base_text = (ROOT / "04-专业课" / "考试大纲.md").read_text(encoding="utf-8", errors="ignore")
 
+                    candidate_new = None
+                    pro_ref = ROOT / "04-专业课" / "参考资料"
+                    if not new_path and pro_ref.exists():
+                        for pat in ("*2027*大纲*", "*2027*考纲*", "*新*大纲*", "*新*考纲*", "*大纲*.md", "*大纲*.txt"):
+                            cands = [f for f in pro_ref.glob(pat) if f.is_file()]
+                            if cands:
+                                candidate_new = cands[0]
+                                break
+
                     new_text = base_text
                     if new_path and Path(new_path).exists():
                         new_text = Path(new_path).read_text(encoding="utf-8", errors="ignore")
+                    elif candidate_new and candidate_new.exists():
+                        try:
+                            rel_p = str(candidate_new.relative_to(ROOT))
+                        except Exception:
+                            rel_p = str(candidate_new)
+                        print(colorize(f"\n[💡 考纲自动关联] 检测到参考资料库候选新考纲文件: {rel_p}", C.GREEN))
+                        new_text = candidate_new.read_text(encoding="utf-8", errors="ignore")
                     else:
                         # 未提供真实新考纲时仅运行内置演示样例：必须醒目标注，严禁作为备考依据
                         try:
@@ -3382,7 +3422,7 @@ def main():
                         except Exception:
                             demo_year = y2
                         print(colorize(
-                            "\n[⚠️ 演示模式] 未提供真实新考纲文件 (可用 --new=<路径> 指定)。"
+                            "\n[⚠️ 演示模式] 未提供真实新考纲文件 (可用 --new=<路径> 指定)。\n"
                             f"以下对比使用内置演示样例变动，并非官方大纲，结果仅用于了解 Diff 功能，"
                             f"严禁作为备考依据！", C.RED))
                         new_text = base_text.replace("- **理解**：图的遍历", "- **掌握**：图的遍历（新增拓扑排序与关键路径步骤考查）")
@@ -3770,6 +3810,38 @@ def main():
             tui_navigator.execute_action(tui_args[0], interactive=False)
         else:
             tui_navigator.run_tui_loop()
+    elif args[0] in ("calc", "--calc", "verify", "--verify"):
+        if len(args) < 2 or "--help" in args or "-h" in args:
+            print(colorize("""
+考研数学符号高精度验算引擎 (ky calc / verify)
+用法：
+  ky calc <数学表达式>
+示例：
+  ky calc "limit (ln(1+x)-x)/x^2 as x->0"
+  ky calc "diff x^3 * sin(x)"
+  ky calc "int x * exp(x) dx"
+  ky calc "ode y'' + 4*y = 0"
+  ky calc "det [[1,2],[3,4]]"
+说明：
+  基于 SymPy 高精度符号计算库，杜绝大模型计算幻觉，提供 100% 精确的推导验算与 LaTeX 渲染。
+""", C.YELLOW))
+            sys.exit(0 if ("--help" in args or "-h" in args) else 1)
+        expr = " ".join(args[1:])
+        mv = math_verifier
+        if not mv:
+            try:
+                from skills import math_verifier as mv
+            except Exception:
+                try:
+                    from tools.skills import math_verifier as mv
+                except Exception:
+                    mv = None
+        if mv:
+            print(colorize("\n[📐 正在运行数学符号验算引擎...]\n", C.CYAN))
+            res = mv.run_math_query(expr)
+            print(res + "\n")
+        else:
+            print("math_verifier 技能模块未载入")
     elif args[0] in ("help", "--help", "-h"):
         print(f"""
 考研学习链专用终端工具 (ky-cli)
@@ -3791,6 +3863,8 @@ def main():
   today [--json]                              查看今日四科任务清单；加 --json 输出结构化数据
   done <关键词>                               快速将包含关键词的今日任务标记为完成并回写状态
   review [math|eng|pol|pro]                   查看艾宾浩斯待复测错题列表
+  calc <表达式>                               基于 SymPy 高精度数学符号验算 (极限/导数/积分/ODE/矩阵，别名: verify)
+  diff [选项]                                 新旧考纲版本变化与动荡率对比研报 (等同于 ky fetch diff)
   style [1/2/3/4]                             查看或动态切换 4 种私教辅导风格
   doctor                                      一键系统健康诊断 (Python环境/依赖/状态/连通性)
   plan                                        启动个人专属定制化必考方案向导
