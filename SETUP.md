@@ -351,7 +351,7 @@ ky serve
 本项目已在 `.github/workflows/deploy-pages.yml` 内置自动构建流水线：
 1. 在 GitHub 建立仓库并推送：
    ```bash
-   git remote set-url origin https://github.com/<你的用户名>/<你的仓库名>.git
+   git remote set-url origin https://github.com/moyetian/kaoyan_chain.git
    git push -u origin main
    ```
 2. 在 GitHub 仓库页面 -> **Settings** -> **Pages** -> **Source** 选择 **GitHub Actions**；

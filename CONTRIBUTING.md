@@ -155,7 +155,7 @@ kaoyan_chain/
 ### 2. 可编辑模式安装
 推荐以 editable 模式挂载本地开发包：
 ```bash
-git clone https://github.com/your-name/kaoyan_chain.git
+git clone https://github.com/moyetian/kaoyan_chain.git
 cd kaoyan_chain
 python -m pip install -e .
 ```
@@ -194,7 +194,7 @@ ky doctor
 ```bash
 python tools/test_ky_suite.py
 ```
-该套件包含 **25 组测试项**（共计 **252 测试点**），覆盖：
+该套件包含 **25 组测试项**（共计 **251 项核心测试点**），覆盖：
 - 配置文件解析与默认兜底
 - 四科 Prompt 与防书目幻觉门禁
 - Webhook 格式与模拟并发处理
@@ -208,13 +208,14 @@ python tools/test_ky_suite.py
 ```bash
 python tools/test_new_features.py
 ```
-独立运行 v2.6.0 新增模块的专项测试（4 组 A/B/C/D），可选依赖缺失时自动 `[SKIP]`：
+独立运行 v2.6.0 新增模块的专项测试（5 组 A/B/C/D/E，共 52 项测试点），可选依赖缺失时自动 `[SKIP]`：
 - **组 A**：微信公众号经验贴检索、HTML→Markdown 清洗、院校档案联动
 - **组 B**：Rust PyO3 扩展与纯 Python 双模一致性校验（需 `ky_rust_ext`，否则跳过）
 - **组 C**：PySide6 GUI 离屏实例化与 QSS 主题完整性（需 `PySide6`，否则跳过）
 - **组 D**：CLI 子命令路由（`ky gui`/`ky wechat`/`ky wx`）与 TUI 菜单挂载
+- **组 E**：TUI / GUI 后端契约守卫与核心 API 连通性测试
 
-**准入标准**：测试结果必须为 `失败 0 项`（100% 通过或跳过），不允许任何断言失败。
+**准入标准**：测试结果必须为 `失败 0 项`（100% 通过或跳过），不允许任何断言失败。全套共计 **303 项测试点 100% 通过**。
 
 ---
 
