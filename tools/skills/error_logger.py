@@ -30,12 +30,14 @@ SUBJECT_DIRS = {
     "pro": "04-专业课",
 }
 
-SUBJECT_NAMES = {
-    "math": "数学二 (302)",
-    "eng": "英语二 (204)",
+# 仅作 config 缺失时的中性回退；实际科目名以 ky_config.json 的 study_plan 为准
+_SUBJECT_NAME_FALLBACK = {
+    "math": "数学",
+    "eng": "英语",
     "pol": "思想政治理论",
-    "pro": "408 计算机学科专业基础",
+    "pro": "专业课",
 }
+SUBJECT_NAMES = dict(_SUBJECT_NAME_FALLBACK)
 
 # 艾宾浩斯与 FSRS-5 简化自适应间隔参数
 EBBINGHAUS_INTERVALS = [1, 3, 7, 15, 30]
@@ -229,6 +231,25 @@ def scan_error_records(subject=None):
                         stage = 0
                     next_due = sched_m.group(2).strip()
 
+                # 提取【标准答案】用于自动判卷比对。
+                # 注意：detail_text 是「错因描述」，绝不能当作标准答案参与比对，
+                # 否则会出现"答 999 也判通过"的致命误判。
+                std_ans = ""
+                sa_m = re.search(
+                    r"-\s+\*\*标准答案\*\*[：:]\s*(.*?)(?=\n-\s+\*\*|\n---|\Z)", sec, re.DOTALL)
+                if not sa_m:
+                    sa_m = re.search(
+                        r"###\s*三[、.．]\s*标准规范解答[：:]?\s*(.*?)(?=\n###|\n---|\Z)", sec, re.DOTALL)
+                if sa_m:
+                    std_ans = sa_m.group(1).strip()
+                if not std_ans and detail_text:
+                    # 从错因分析中兜底抽取明确的"正解/最终结果"结论句
+                    concl = re.findall(
+                        r"(?:最终结果(?:为|是)?|结果为|答案是?|正解(?:为|是)?)\s*"
+                        r"([-+]?\d+(?:\.\d+)?(?:\s*/\s*\d+)?)", detail_text)
+                    if concl:
+                        std_ans = concl[-1].strip()
+
                 results.append({
                     "subject": s,
                     "subject_name": get_subject_name(s, SUBJECT_NAMES.get(s, s)),
@@ -242,6 +263,7 @@ def scan_error_records(subject=None):
                     "next_due": next_due,
                     "question": q_text or detail_text[:200],
                     "detail": detail_text or q_text or "",
+                    "standard_answer": std_ans,
                     "raw_section": sec
                 })
 

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://moyetian.github.io/kaoyan_chain/"><img src="https://img.shields.io/badge/🌐_在线看板体验-Live_Demo-6366f1?style=for-the-badge&logo=githubpages&logoColor=white" alt="Live Demo" /></a>
+  <a href="https://your-name.github.io/kaoyan_chain/"><img src="https://img.shields.io/badge/🌐_在线看板体验-Live_Demo-6366f1?style=for-the-badge&logo=githubpages&logoColor=white" alt="Live Demo" /></a>
   <a href="#-用户本地化部署与快速上手流程-3-分钟开箱"><img src="https://img.shields.io/badge/🚀_快速上手-Quick_Start-10b981?style=for-the-badge&logo=rocket&logoColor=white" alt="Quick Start" /></a>
 </p>
 
@@ -57,7 +57,7 @@
 
 ## 📊 考研全科自测看板 (Dashboard) 核心全景
 
-> 💡 **在线直达**：点击体验 👉 **[考研全科移动端自测看板 (Live Demo)](https://moyetian.github.io/kaoyan_chain/)**
+> 💡 **在线直达**：点击体验 👉 **[考研全科移动端自测看板 (Live Demo)](https://your-name.github.io/kaoyan_chain/)**
 > 
 > *(本地使用：双击工作区中的 [`docs/index.html`](docs/index.html) 即可单文件直接运行，纯原生 HTML5/CSS3/JS 构建，零第三方依赖)*
 
@@ -281,7 +281,7 @@
 在终端或命令行运行：
 ```bash
 # 克隆本仓库到本地
-git clone https://github.com/moyetian/kaoyan_chain.git my-kaoyan-chain
+git clone https://github.com/your-name/kaoyan_chain.git my-kaoyan-chain
 cd my-kaoyan-chain
 ```
 *(也可以直接在 GitHub 点击绿色 **Code -> Download ZIP** 下载压缩包解压使用)*
@@ -430,8 +430,8 @@ kaoyan_chain/
 │   ├── 01_考纲拆解与分值地图模板.md     # 考纲分值拆解模板
 │   ├── 02_核心公式与考点速查模板.md     # 核心结论速记模板
 │   ├── 03_题源核验与抽题协议模板.md     # 权威题源白名单门禁
-│   ├── 双校考情对比_华中科技大学_VS_武汉大学_计算机.md # ky compare 自动生成横向对标研报
-│   ├── 目标院校情报_华中科技大学_计算机.md # ky scout / admission 权威招考情报研报
+│   ├── 双校考情对比_对比院校B_VS_对比院校B_计算机.md # ky compare 自动生成横向对标研报
+│   ├── 目标院校情报_对比院校B_计算机.md # ky scout / admission 权威招考情报研报
 │   ├── 学情档案.template.md             # 章节掌握度记忆中枢模板
 │   ├── 每日作业/                        # 每日作业记录模板
 │   └── 错题本/                          # 错题记录模板与索引
@@ -497,8 +497,8 @@ kaoyan_chain/
 
 如果您在使用过程中遇到任何问题、需要部署指引，或者想要一起交流考研经验、组队学习打卡、提出宝贵的改进建议，欢迎随时联系我：
 
-- 🐧 **QQ 号**：`296528868`
-- 📮 **电子邮箱**：`moyetian@foxmail.com`
+- 🐧 **QQ 号**：`您的QQ号`
+- 📮 **电子邮箱**：`your-email@example.com`
 
 > 愿每一位披星戴月的考研人都能稳住节奏、拒绝内耗，一战成硕，顺利上岸！🌟
 

@@ -38,12 +38,14 @@ SUBJECT_DIRS = {
     "pro": "04-专业课",
 }
 
-SUBJECT_NAMES = {
-    "math": "数学二 (302)",
-    "eng": "英语二 (204)",
+# 仅作 config 缺失时的中性回退；实际科目名以 ky_config.json 的 study_plan 为准
+_SUBJECT_NAME_FALLBACK = {
+    "math": "数学",
+    "eng": "英语",
     "pol": "思想政治理论",
-    "pro": "408 计算机学科专业基础",
+    "pro": "专业课",
 }
+SUBJECT_NAMES = dict(_SUBJECT_NAME_FALLBACK)
 
 
 # 剥离这些常见词尾后，长考点名才能与简短错题标题匹配上

@@ -39,12 +39,54 @@ SUBJECT_DIRS = {
     "pro": "04-专业课",
 }
 
-SUBJECT_NAMES = {
-    "math": "数学二 (302)",
-    "eng": "英语二 (204)",
+# 仅作 config 缺失时的中性回退；实际科目名以 ky_config.json 的 study_plan 为准
+_SUBJECT_NAME_FALLBACK = {
+    "math": "数学",
+    "eng": "英语",
     "pol": "思想政治理论",
-    "pro": "408 计算机学科专业基础",
+    "pro": "专业课",
 }
+SUBJECT_NAMES = dict(_SUBJECT_NAME_FALLBACK)
+
+
+# 408 统考专属考点关键词（仅当科目确为 408 计算机时才允许套用其算法模板）
+_CS_KEYWORDS = ("树", "二叉树", "遍历", "AVL", "红黑树", "森林", "图", "最短路径",
+                "Dijkstra", "拓扑", "关键路径", "最小生成树", "排序", "查找", "散列", "哈希")
+
+
+def suggest_keyword(subject="pro"):
+    """从本科目「考试大纲.md」中抽取一个真实考点作为默认关键词。
+
+    杜绝硬编码他科考点（例如给 814 信号与系统 默认推荐「二叉树」）。
+    取不到时返回空串，由调用方回退到科目名。
+    """
+    subj_folder = SUBJECT_DIRS.get(subject, "01-数学")
+    sy = ROOT / subj_folder / "考试大纲.md"
+    if sy.exists():
+        try:
+            skip_section = False
+            for line in sy.read_text(encoding="utf-8", errors="ignore").splitlines():
+                s = line.strip()
+                if s.startswith("#"):
+                    # 跳过「试卷结构与分值」等非考点章节
+                    skip_section = bool(re.search(r"试卷结构|分值|题型分布|参考书目", s))
+                    continue
+                if skip_section:
+                    continue
+                m = re.match(r"^-\s+\*\*(.+?)\*\*\s*[：:]\s*(.*)$", s)
+                if m:
+                    head, rest = m.group(1).strip(), m.group(2).strip()
+                    # 数学等科目格式为「- **掌握**：极限的性质与四则运算法则…」
+                    # 加粗部分是掌握等级而非考点，需取冒号后的首个语义片段
+                    if head in ("掌握", "理解", "熟练应用", "应用能力", "了解", "熟练"):
+                        kw = re.split(r"[、，,；;（(]", rest)[0].strip()
+                    else:
+                        kw = head
+                    if 2 <= len(kw) <= 24:
+                        return kw
+        except Exception:
+            pass
+    return ""
 
 
 def search_real_variant(subject="math", keyword="", limit=2, **kwargs):
@@ -61,6 +103,9 @@ def search_real_variant(subject="math", keyword="", limit=2, **kwargs):
     subj_folder = SUBJECT_DIRS.get(subject, "01-数学")
     subj_name = get_subject_name(subject, SUBJECT_NAMES.get(subject, subject))
     kw = keyword.strip()
+    # 未指定考点时，从本科目真实考纲中推荐一个考点，绝不使用他科硬编码考点
+    if not kw:
+        kw = suggest_keyword(subject) or subj_name
 
     hits = []
 
@@ -174,26 +219,30 @@ def _generate_synthetic_variant(subject, keyword):
         )
     else:
         pro_title = get_subject_name("pro", "专业课")
-        if any(w in kw for w in ("树", "二叉树", "遍历", "AVL", "红黑树", "森林")):
+        # 只有当专业课确实是 408 计算机时才套用数据结构/算法模板，
+        # 避免给「814 信号与系统」等自命题科目出「二叉树算法设计」这种跨科错误题。
+        is_cs = ("408" in pro_title) or ("计算机" in pro_title)
+        if is_cs and any(w in kw for w in ("树", "二叉树", "遍历", "AVL", "红黑树", "森林")):
             q = (
                 f"【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】\n"
                 f"{pro_title} 数据结构算法变式题（考点：{kw}）：\n"
                 f"设一棵非空二叉树 $T$ 采用二叉链表存储，请设计一个时间和空间复杂度均最优的算法，完成关于【{kw}】的核心计算与路径判定，并按采分点标准写出三段式解答（自然语言设计思想、核心算法代码与时空复杂度分析）。"
             )
-        elif any(w in kw for w in ("图", "最短路径", "Dijkstra", "拓扑", "关键路径", "最小生成树")):
+        elif is_cs and any(w in kw for w in ("图", "最短路径", "Dijkstra", "拓扑", "关键路径", "最小生成树")):
             q = (
                 f"【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】\n"
                 f"{pro_title} 图论算法变式题（考点：{kw}）：\n"
                 f"设有向/无向带权图 $G=(V, E)$ 采用邻接表存储。请围绕考点【{kw}】设计算法并写出规范推导与证明步骤。"
             )
-        elif any(w in kw for w in ("信号", "系统", "卷积", "傅里叶", "拉普拉斯", "Z变换", "冲激")):
+        elif any(w in kw for w in ("信号", "系统", "卷积", "傅里叶", "拉普拉斯", "Z变换", "z变换",
+                                   "冲激", "采样", "滤波", "频谱", "变换", "响应", "差分", "离散")):
             q = (
                 f"【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】\n"
                 f"{pro_title} 核心大题变式（考点：{kw}）：\n"
                 f"已知连续时间线性时不变系统（LTI），其激励信号为 $x(t)$，系统冲激响应为 $h(t)$。\n"
                 f"围绕考点【{kw}】，请列出系统微分方程或系统函数 $H(s)$，求解系统零状态响应，并判定系统的因果性与稳定性。"
             )
-        elif any(w in kw for w in ("排序", "查找", "散列", "哈希")):
+        elif is_cs and any(w in kw for w in ("排序", "查找", "散列", "哈希")):
             q = (
                 f"【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】\n"
                 f"{pro_title} 查找与排序算法变式题（考点：{kw}）：\n"

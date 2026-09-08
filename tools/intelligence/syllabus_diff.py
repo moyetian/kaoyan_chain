@@ -62,13 +62,17 @@ class SyllabusDiffGenerator:
         pass
 
     def clean_text(self, text: str) -> str:
-        """清洗文本，统一标点与空白"""
+        """清洗文本，统一标点与空白，剥离 Markdown 强调符与行尾掌握等级标签"""
         if not text:
             return ""
         t = text.strip()
         t = re.sub(r"\s+", " ", t)
         t = t.replace(";", "；").replace(",", "，")
-        return t
+        # 剥离 Markdown 强调/代码符号
+        t = t.replace("**", "").replace("`", "")
+        # 剥离行尾掌握等级标签（如「…… [掌握]」），等级由 requirement 字段承载
+        t = re.sub(r"\s*[\[【](掌握|熟练应用|熟练掌握|熟练求解|灵活运用|理解|了解|会|能)[\]】]\s*$", "", t)
+        return t.strip()
 
     def parse_syllabus(self, content: str) -> List[SyllabusPoint]:
         """
@@ -77,6 +81,8 @@ class SyllabusDiffGenerator:
         points: List[SyllabusPoint] = []
         current_module = "核心考点"
         current_chapter = "未分类章节"
+        # 负面清单章节（「绝不超纲」「不考 XXX」）不是正式考点，整段跳过
+        skip_section = False
 
         lines = content.splitlines()
         for line in lines:
@@ -88,17 +94,28 @@ class SyllabusDiffGenerator:
             m_module = re.match(r"^#{1,2}\s+(?:[一二三四五六七八九十]+[、\.\s]*)?([^#]+)$", line_str)
             if m_module and not line_str.startswith("###"):
                 candidate = m_module.group(1).strip()
-                # 过滤常见提示性二级标题
-                if not any(k in candidate for k in ["说明", "红线", "准则", "背景", "范围"]):
-                    current_module = re.sub(r"\(.*?\)|（.*?）", "", candidate).strip()
-                    current_chapter = "未分类章节"
+                # 负面清单 / 提示性标题：进入跳过模式，直到下一个有效标题为止
+                if any(k in candidate for k in ["说明", "红线", "准则", "背景", "范围", "不考", "超纲", "参考书目"]):
+                    skip_section = True
                     continue
+                skip_section = False
+                current_module = re.sub(r"\(.*?\)|（.*?）", "", candidate).strip()
+                current_chapter = "未分类章节"
+                continue
 
             # 匹配三级/四级章节标题: ### 1. 函数、极限、连续
             m_chap = re.match(r"^#{3,4}\s+(?:第?[0-9一二三四五六七八九十]+[章讲节、\.\s]*)?([^#]+)$", line_str)
             if m_chap:
                 candidate = m_chap.group(1).strip()
+                if any(k in candidate for k in ["说明", "红线", "准则", "不考", "超纲"]):
+                    skip_section = True
+                    continue
+                skip_section = False
                 current_chapter = candidate
+                continue
+
+            # 处于负面清单章节内：整行跳过
+            if skip_section:
                 continue
 
             # 匹配考点行: - **掌握**：... 或 * **掌握**：... 或 1. 掌握：...
@@ -140,6 +157,12 @@ class SyllabusDiffGenerator:
                 m_plain = re.match(r"^[-*]\s+(.+)$", line_str)
                 if m_plain and not line_str.startswith("<!--"):
                     raw_text = m_plain.group(1).strip()
+                    # 行尾 [掌握]/[理解] 等等级标签优先作为考查要求
+                    req_tag = None
+                    tag_m = re.search(r"[\[【](掌握|熟练应用|熟练掌握|熟练求解|灵活运用|理解|了解|会|能)[\]】]\s*$", raw_text)
+                    if tag_m:
+                        req_tag = tag_m.group(1)
+                        raw_text = raw_text[:tag_m.start()].strip()
                     if "：" in raw_text or ":" in raw_text:
                         parts = re.split(r"[：:]", raw_text, 1)
                         maybe_req = parts[0].replace("*", "").strip()
@@ -154,11 +177,21 @@ class SyllabusDiffGenerator:
                             )
                             points.append(p)
                             continue
+                        # 加粗头是考点名而非等级：等级取行尾标签，文本保留「考点名：内容」
+                        p = SyllabusPoint(
+                            module=current_module,
+                            chapter=current_chapter,
+                            requirement=req_tag or "掌握",
+                            text=self.clean_text(raw_text),
+                            raw_line=line_str
+                        )
+                        points.append(p)
+                        continue
 
                     p = SyllabusPoint(
                         module=current_module,
                         chapter=current_chapter,
-                        requirement="掌握",
+                        requirement=req_tag or "掌握",
                         text=self.clean_text(raw_text),
                         raw_line=line_str
                     )
@@ -453,19 +486,20 @@ class SyllabusDiffGenerator:
         output_path: Optional[Path] = None
     ) -> Path:
         """将比对报告落盘为 Markdown 文件"""
-        school = report_data.get("school", "全国统考").replace(" ", "_")
-        major = report_data.get("major", "专业课").replace(" ", "_")
+        school = report_data.get("school", "全国统考")
+        major = report_data.get("major", "专业课")
+        clean_school = re.sub(r'[\\/:*?"<>|\s]+', '_', str(school))
+        clean_major = re.sub(r'[\\/:*?"<>|\s]+', '_', str(major))
         y_new = report_data.get("year_new", 2027)
 
         if not output_path:
             target_dir = ROOT / "04-专业课"
-            if not target_dir.exists():
-                target_dir.mkdir(parents=True, exist_ok=True)
-            output_path = target_dir / f"考纲变动分析_{school}_{major}_{y_new}.md"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            output_path = target_dir / f"考纲变动分析_{clean_school}_{clean_major}_{y_new}.md"
         else:
             output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         md_content = self.format_diff_markdown(report_data)
         output_path.write_text(md_content, encoding="utf-8")
         return output_path

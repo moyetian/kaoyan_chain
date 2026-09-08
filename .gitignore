@@ -123,3 +123,5 @@ rust_ext/target/
 *审查报告*.md
 *路线图*.md
 *规划.txt
+state_snapshot.json
+*.log

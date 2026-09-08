@@ -22,7 +22,7 @@ import hashlib
 import base64
 import unicodedata
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 # Windows 控制台安全编码
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
@@ -316,7 +316,12 @@ def build_system_prompt(active_subj="math"):
         mat_text = (
             f"\n=== 📚【本地真题与资料白名单清单 ({subj_name})】===\n"
             f"本地「参考资料/」目录下实际存放的文件为：{', '.join(mat_files)}。\n"
-            "若需抽题或引用，必须严格以以上文件为准，严禁引用上述列表之外的任何书籍！"
+            "若需抽题或引用，必须严格以以上文件为准，严禁引用上述列表之外的任何书籍！\n"
+            "【四大不可违背的真实性铁律】：\n"
+            "1. 严禁凭空捏造题目出处！绝对严禁声称“以下题目均来自《李林880》”、“来自《张宇1000》”、“来自《汤家凤1800》”等未核验虚假书名！\n"
+            "2. 当学员自主输入题目时：私教只针对学员给出的题目本身进行采分点批改与思路拆解；\n"
+            "3. 若在解答后提供类似题供学员巩固，必须如实标明为【私教自拟类似变式训练】，绝对禁止伪称来自某本未核验的出版物！\n"
+            "4. 若学员要求从某题册（如李林880）抽题，但本地无该文件且学员未提供题号，必须如实告知：“您本地参考资料库尚未放置该文件，请提供具体题目文字或截图，私教立刻为您解答。”"
         )
     else:
         mat_text = (
@@ -1113,10 +1118,10 @@ def get_today_tasks_data() -> dict:
     """提取四科今日任务的结构化数据字典"""
     cfg = load_config()
     sp = cfg.get("study_plan", {})
-    math_lbl = sp.get("math_name") or cfg.get("math_name") or "数学二 (302)"
-    eng_lbl = sp.get("eng_name") or cfg.get("eng_name") or "英语二 (204)"
+    math_lbl = sp.get("math_name") or cfg.get("math_name") or "数学"
+    eng_lbl = sp.get("eng_name") or cfg.get("eng_name") or "英语"
     pol_lbl = "思想政治理论"
-    pro_lbl = sp.get("pro_name") or cfg.get("pro_name") or "408 计算机学科专业基础"
+    pro_lbl = sp.get("pro_name") or cfg.get("pro_name") or "专业课"
 
     subjs = [
         ("01-数学", "math", math_lbl),
@@ -1378,11 +1383,21 @@ def print_status_summary():
     plan = cfg.get("study_plan", {})
 
     # 动态读取初试日期
-    exam_d_str = plan.get("exam_date", "2026-12-19")
+    exam_d_str = plan.get("exam_date", "")
     try:
         exam_d = datetime.strptime(exam_d_str, "%Y-%m-%d").date()
     except Exception:
-        exam_d = date(2026, 12, 19)
+        # 不再硬编码 2026-12-19；根据 current_exam_year 推断当年 12 月倒数第二个周六
+        try:
+            from intelligence.models import current_exam_year
+            y = current_exam_year()
+        except Exception:
+            y = today_d.year + (1 if today_d.month >= 10 else 0)
+        # 考研初试日为 12 月倒数第二个周六，此处近似为 12 月第 3 个周六
+        dec_first = date(y, 12, 1)
+        weekday_offset = (5 - dec_first.weekday()) % 7
+        third_saturday = dec_first + timedelta(days=weekday_offset + 14)
+        exam_d = third_saturday
     days_left = (exam_d - today_d).days
 
     hist = cfg.get("completion_history", {})
@@ -2478,10 +2493,10 @@ def query_llm_reply(user_msg, cfg=None):
         messages.append({"role": "user", "content": user_msg})
 
     api_key = cfg.get("api_key", "").strip()
-    if not api_key:
+    raw_base_url = cfg.get("base_url", "https://api.deepseek.com/v1")
+    if not api_key or api_key == "YOUR_API_KEY_HERE" or "example.com" in raw_base_url:
         return f"🎓【考研私教】收到提问: \"{user_msg}\"\n⚠️ 尚未配置大模型 API Key，请在电脑端终端运行 `ky config` 设置密钥后即可畅享网页端与群聊对话讲题！"
 
-    raw_base_url = cfg.get("base_url", "https://api.deepseek.com/v1")
     url = normalize_openai_url(raw_base_url, "chat/completions")
     model = cfg.get("model", "deepseek-chat")
 
@@ -3514,7 +3529,8 @@ def main():
                     print(colorize("【⚠️ 考查要求微调清单】", C.YELLOW))
                     for d in res['diff_items']:
                         if d.change_type == "MODIFIED":
-                            print(f"  ~ {d.detail}")
+                            p = d.point_new or d.point_old
+                            print(f"  ~ {d.detail} ｜ 考点: {p.text}")
                     print()
 
                 saved_p = diff_gen.save_diff_report(res)

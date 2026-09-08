@@ -147,14 +147,14 @@ ky review math
 ky review eng
 
 # 定向侦察目标高校招生简章、专业目录、自命题大纲与知乎/B站口碑
-ky scout 华中科技大学 计算机 --save
+ky scout 对比院校B 计算机 --save
 ky scout 浙江大学 软件工程 --apply
 
 # 双校招考核心指标横向深度对标
-ky compare 华中科技大学 武汉大学 计算机 --save
+ky compare 对比院校B 对比院校B 计算机 --save
 
 # 目标高校研招动态指纹监控雷达
-ky watch 华中科技大学
+ky watch 对比院校B
 ky watch --check
 
 # 查看或切换私教辅导风格 (1:严格把关 2:高效秒杀 3:温和启发 4:学霸溯源)
@@ -268,13 +268,13 @@ ky diagnose "1-5: A B C D A; 6-10: C B A D C"
 在确定报考院校或备考择校时，一键扫清信息壁垒与虚假宣传：
 ```bash
 # 1. 精准调取研招网 (S级) 与高校官网 (A级) 权威招考事实与证据链
-ky admission 华中科技大学 085404 --save
+ky admission 对比院校B 085404 --save
 
 # 2. 锁定特定年份招考数据 (默认当年，可指定 --year)
 ky admission 浙江大学 计算机技术 --year=2027
 
 # 3. 将高校纳入动态简章监控雷达 (比对 SHA256 指纹与最新标题)
-ky watch 华中科技大学
+ky watch 对比院校B
 
 # 4. 轮询所有监控高校，第一时间捕捉 2027 招生简章出炉
 ky watch --check
@@ -283,10 +283,10 @@ ky watch --check
 ky watch --list
 
 # 6. 双校横向对比：深度对标 408/自命题、复试线走势与一志愿保护机制
-ky compare 华中科技大学 武汉大学 计算机 --save
+ky compare 对比院校B 对比院校B 计算机 --save
 
 # 7. 综合全景侦察：聚合知乎、B站、小红书实名口碑与避坑指南
-ky scout 华中科技大学 计算机 --save
+ky scout 对比院校B 计算机 --save
 ```
 - **双校深度对标**：一键生成两校教育部代码、办学层次、自划线、初试科目差异（如 408 统考 vs 自命题）、近三年复试线走向与一志愿保护机制对比表格与 Markdown 研报；
 - **权威证据链**：严格遵循「Search = Discovery, Official Page = Evidence」，每项指标附带 S/A 级信源评级、发布时间与年份锁定预警；

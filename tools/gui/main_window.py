@@ -225,11 +225,11 @@ class MainWindow(QMainWindow):
         self.input_box.setPlaceholderText("输入口令 (如：数学报到 / 英语长难句 / 交作业) 或向私教提问...")
         self.input_box.returnPressed.connect(self._on_send_message)
 
-        send_btn = QPushButton("发送 ➤")
-        send_btn.clicked.connect(self._on_send_message)
+        self.send_btn = QPushButton("发送 ➤")
+        self.send_btn.clicked.connect(self._on_send_message)
 
         input_bar.addWidget(self.input_box, stretch=1)
-        input_bar.addWidget(send_btn)
+        input_bar.addWidget(self.send_btn)
         layout.addLayout(input_bar)
         return widget
 
@@ -242,10 +242,10 @@ class MainWindow(QMainWindow):
         self.task_count_labels = {}
 
         sp = self.config.get("study_plan", {})
-        math_lbl = sp.get("math_name") or self.config.get("math_name") or "数学二 (302)"
-        eng_lbl = sp.get("eng_name") or self.config.get("eng_name") or "英语二 (204)"
+        math_lbl = sp.get("math_name") or self.config.get("math_name") or "数学"
+        eng_lbl = sp.get("eng_name") or self.config.get("eng_name") or "英语"
         pol_lbl = "思想政治理论"
-        pro_lbl = sp.get("pro_name") or self.config.get("pro_name") or "408 计算机基础"
+        pro_lbl = sp.get("pro_name") or self.config.get("pro_name") or "专业课"
 
         subjects = [
             ("01-数学", math_lbl, "math"),
@@ -324,9 +324,9 @@ class MainWindow(QMainWindow):
 
         btn_bar = QHBoxLayout()
         btn_watch = QPushButton("📡 查看监控高校")
-        btn_watch.clicked.connect(lambda: self._on_card_clicked("watch"))
+        btn_watch.clicked.connect(lambda: self._run_action_to_display("watch", self.intel_display))
         btn_scout = QPushButton("🔍 院校深度侦察")
-        btn_scout.clicked.connect(lambda: self._on_card_clicked("scout"))
+        btn_scout.clicked.connect(lambda: self._run_action_to_display("scout", self.intel_display))
         btn_bar.addWidget(btn_watch)
         btn_bar.addWidget(btn_scout)
         btn_bar.addStretch()
@@ -410,16 +410,21 @@ class MainWindow(QMainWindow):
         self.error_info.setMarkdown("\n".join(lines))
 
     def _generate_error_quiz(self):
-        """生成自测盲盒试卷"""
+        """生成自测盲盒试卷并回显在错题本页"""
         try:
             from skills import exam_composer
             # 与 CLI/TUI 保持同一后端契约: compose_exam_paper(subject, count, include_weak, save_file)
             res = exam_composer.compose_exam_paper(subject="pro", count=3, include_weak=True, save_file=True)
+            saved = res.get("saved_path", "")
             paper_text = res.get("formatted_paper") or res.get("content") or ""
-            if res.get("saved_path"):
-                paper_text += f"\n\n> 💾 自测卷已落盘: `{res['saved_path']}`"
-            self.tabs.setCurrentIndex(0)
-            self.chat_display.append("\n\n" + "=" * 50 + "\n🎯 【错题盲盒自测卷】已生成：\n" + paper_text)
+            display = f"\n\n🎯 【错题盲盒自测卷】已生成！\n{'=' * 50}\n{paper_text}\n"
+            if saved:
+                display += f"\n> 💾 自测卷已落盘: `{saved}`"
+            # 在错题本页追加反馈，而不是跳转到私教对话分页
+            current = self.error_info.toPlainText()
+            self.error_info.setPlainText(current + display)
+            # 同时给出一条轻量提示（不切换分页）
+            self.chat_display.append(f"\n✅ 错题盲盒自测卷已生成: {saved}\n")
         except Exception as e:
             QMessageBox.warning(self, "提示", f"组卷异常: {e}")
 
@@ -519,6 +524,24 @@ class MainWindow(QMainWindow):
         self.input_box.setText(cmd_text)
         self._on_send_message()
 
+    def _run_action_to_display(self, alias: str, display_widget, brief_to_chat: bool = True):
+        """执行后端模块并将标准输出回显到指定 QTextEdit"""
+        import contextlib, io
+        display_widget.append(f"\n▶ 正在启动模块 [{alias}] ...")
+        try:
+            from tui_navigator import execute_action
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                execute_action(alias, interactive=False)
+            out_str = buf.getvalue().strip()
+            if out_str:
+                display_widget.append(out_str)
+            display_widget.append(f"✔ 模块 [{alias}] 执行调用完毕。")
+            if brief_to_chat:
+                self.chat_display.append(f"\n✔ 模块 [{alias}] 已在对应页面执行完毕，详见上方分页。")
+        except Exception as e:
+            display_widget.append(f"❌ 模块 [{alias}] 执行异常: {e}")
+
     def _on_card_clicked(self, alias: str):
         """功能卡片点击处理"""
         if alias == "wechat_search":
@@ -530,13 +553,20 @@ class MainWindow(QMainWindow):
             return
         elif alias == "watch":
             self.tabs.setCurrentIndex(3)
-            self._refresh_intel_tab()
+            self._run_action_to_display("watch", self.intel_display, brief_to_chat=True)
             return
         elif alias == "ingest":
             self._run_ingest_from_dialog()
             return
         elif alias == "diff":
             self._run_diff_from_dialog()
+            return
+        elif alias == "scout":
+            self.tabs.setCurrentIndex(3)
+            self._run_action_to_display("scout", self.intel_display, brief_to_chat=True)
+            return
+        elif alias == "compare":
+            self._run_compare_from_dialog()
             return
 
         # 其他模块在私教对话窗口中以执行日志形式展现
@@ -555,6 +585,40 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.chat_display.append(f"❌ 模块 [{alias}] 执行异常: {e}")
 
+    def _run_compare_from_dialog(self):
+        """GUI 双校对标：显式询问第二所高校与专业，避免沿用残留默认值"""
+        from PySide6.QtWidgets import QInputDialog
+        info = self.config.get("study_plan", {})
+        s1 = info.get("school") or self.config.get("target_school") or "目标院校"
+        s2, ok1 = QInputDialog.getText(self, "双校对标", "请输入第二所高校:", text="")
+        if not ok1 or not s2.strip():
+            self.chat_display.append("\n[!] 双校对标已取消：未指定第二所高校。")
+            return
+        mj, ok2 = QInputDialog.getText(
+            self, "双校对标",
+            "请输入专业关键词（可选）:",
+            text=info.get("major") or self.config.get("target_major") or ""
+        )
+        if not ok2:
+            return
+        major = mj.strip() or info.get("major") or self.config.get("target_major") or ""
+        # 透传参数到 compare 后端：直接调用 comparator，绕过 execute_action 的交互默认值
+        try:
+            from intelligence import get_school_comparator
+            comp = get_school_comparator().compare(
+                school1_query=s1, school2_query=s2.strip(),
+                major_keyword=major, save_report=True
+            )
+            report = comp.get("terminal_report", "")
+            self.tabs.setCurrentIndex(3)
+            self.intel_display.append(f"\n{report}")
+            saved = comp.get("saved_path")
+            if saved:
+                self.intel_display.append(f"\n[+] 双校对标研报已落盘: {saved}")
+                self.chat_display.append(f"\n[+] 双校对标研报已落盘: {saved}")
+        except Exception as e:
+            self.chat_display.append(f"\n❌ 双校对标执行异常: {e}")
+
     def _open_wechat_search_dialog(self):
         """打开微信公众号文章检索对话框"""
         from gui.widgets.wechat_search_dialog import WeChatSearchDialog
@@ -565,7 +629,15 @@ class MainWindow(QMainWindow):
         text = self.input_box.text().strip()
         if not text:
             return
+        # 防止连续触发导致未完成的 QThread 引用被覆盖而崩溃
+        if hasattr(self, "agent_worker") and self.agent_worker and self.agent_worker.isRunning():
+            self.chat_display.append("\n⚠️ 私教正在解答中，请稍候...")
+            return
+
         self.input_box.clear()
+        self.input_box.setEnabled(False)
+        if hasattr(self, "send_btn") and self.send_btn:
+            self.send_btn.setEnabled(False)
         self.chat_display.append(f"\n👤 你: {text}\n🤖 私教正在思考中...")
 
         from gui.workers.agent_worker import AgentWorker
@@ -575,6 +647,10 @@ class MainWindow(QMainWindow):
 
     def _on_agent_reply(self, reply: str):
         self.chat_display.append(f"\n🤖 私教:\n{reply}\n" + "-" * 50)
+        self.input_box.setEnabled(True)
+        if hasattr(self, "send_btn") and self.send_btn:
+            self.send_btn.setEnabled(True)
+        self.input_box.setFocus()
 
     def _init_timer(self):
         """定时刷新倒计时与任务进度"""

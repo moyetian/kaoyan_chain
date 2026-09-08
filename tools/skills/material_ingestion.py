@@ -80,15 +80,73 @@ class MaterialIngestionPipeline:
         从原文本中智能分块切片出题目 (支持 Rust 加速与纯 Python 自动降级)
         """
         if getattr(self, "_force_python", False) or not _HAS_RUST_EXT:
-            return self._chunk_text_python(raw_text, default_source)
+            chunks = self._chunk_text_python(raw_text, default_source)
+        else:
+            try:
+                rust_chunks = _rust.chunk_text(raw_text, default_source)
+                if rust_chunks:
+                    chunks = [self._rust_to_chunk(rc) for rc in rust_chunks]
+                else:
+                    chunks = self._chunk_text_python(raw_text, default_source)
+            except Exception:
+                chunks = self._chunk_text_python(raw_text, default_source)
+        return self._reclassify_by_sections(chunks, raw_text)
 
-        try:
-            rust_chunks = _rust.chunk_text(raw_text, default_source)
-            if rust_chunks:
-                return [self._rust_to_chunk(rc) for rc in rust_chunks]
-            return self._chunk_text_python(raw_text, default_source)
-        except Exception:
-            return self._chunk_text_python(raw_text, default_source)
+    # 修正版大题分段词表：覆盖「综合计算题」「计算分析题」「算法设计题」等组合写法
+    _SEC_LINE_PATTERN = re.compile(
+        r'^[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?'
+        r'(?P<sec_title>(?:单[项]?选择题|多[项]?选择题|不定项选择题|选择题|填空题|判断题|解答题|'
+        r'综合(?:应用|计算|分析|论述)?题|计算(?:分析)?题|证明题|算法(?:设计)?题|简(?:答|述)题|分析题|应用题|大题)[^\n]*)$',
+        re.MULTILINE
+    )
+
+    def _reclassify_by_sections(self, chunks: List[QuestionChunk], raw_text: str) -> List[QuestionChunk]:
+        """按修正后的分段词表在原文上重新定位大题分段，并据此重判每道题的题型。
+
+        背景：Rust 扩展与旧版 Python 的分段词表覆盖不全（如「三、综合计算题」），
+        导致大题被静默沿用上一分段类型（误判为填空）。此步骤保证题型统计与真实试卷一致。
+        """
+        if not chunks or not raw_text:
+            return chunks
+        sections = [(m.start(), m.group("sec_title").strip())
+                    for m in self._SEC_LINE_PATTERN.finditer(raw_text)]
+        if not sections:
+            return chunks
+
+        # 构建去空白原文与 索引映射，用于把题干前缀定位回原文位置
+        norm_chars, norm_idx = [], []
+        for i, ch in enumerate(raw_text):
+            if not ch.isspace():
+                norm_chars.append(ch)
+                norm_idx.append(i)
+        norm_text = "".join(norm_chars)
+
+        cursor = 0
+        for c in chunks:
+            probe = re.sub(r"\s+", "", c.stem or "")[:40]
+            pos = -1
+            if probe:
+                found = norm_text.find(probe, cursor)
+                if found < 0:
+                    found = norm_text.find(probe)
+                if found >= 0:
+                    pos = norm_idx[found]
+                    cursor = found + 1
+            if pos < 0:
+                continue
+            sec_title = ""
+            for s_pos, s_title in sections:
+                if s_pos <= pos:
+                    sec_title = s_title
+            if not sec_title:
+                continue
+            if "选择" in sec_title:
+                c.q_type = "choice"
+            elif "填空" in sec_title:
+                c.q_type = "blank"
+            else:
+                c.q_type = "essay"
+        return chunks
 
     def _rust_to_chunk(self, d: dict) -> QuestionChunk:
         """将 Rust 字典转换为 QuestionChunk 对象"""
@@ -115,7 +173,7 @@ class MaterialIngestionPipeline:
 
         # 识别大题分段 (Sections, 如 一、单项选择题)
         sec_pattern = re.compile(
-            r'^[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?(?P<sec_title>(?:单项?选择题|多项?选择题|选择题|填空题|解答题|综合题|综合应用题|计算题|证明题|算法题|简答题)[^\n]*)$',
+            r'^[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?(?P<sec_title>(?:单[项]?选择题|多[项]?选择题|不定项选择题|选择题|填空题|判断题|解答题|综合(?:应用|计算|分析|论述)?题|计算(?:分析)?题|证明题|算法(?:设计)?题|简(?:答|述)题|分析题|应用题|大题)[^\n]*)$',
             re.MULTILINE
         )
         sections = list(sec_pattern.finditer(text))
@@ -155,7 +213,7 @@ class MaterialIngestionPipeline:
     def _parse_single_block(self, block: str, num: int, source: str, sec_hint: str = "") -> QuestionChunk:
         """解析单个题块"""
         # 剥离题块末尾可能粘连的下一个大题标题
-        block = re.sub(r"\n+[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?(?:单项?选择题|多项?选择题|选择题|填空题|解答题|综合题|综合应用题|计算题|证明题|算法题)[^\n]*$", "", block).strip()
+        block = re.sub(r"\n+[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?(?:单[项]?选择题|多[项]?选择题|不定项选择题|选择题|填空题|判断题|解答题|综合(?:应用|计算|分析|论述)?题|计算(?:分析)?题|证明题|算法(?:设计)?题|简(?:答|述)题|分析题|应用题|大题)[^\n]*$", "", block).strip()
 
         # 提取分值：如 (本题满分 10 分) / (12分) / [5分]
         score = 0
@@ -182,7 +240,7 @@ class MaterialIngestionPipeline:
             "目录" in raw_stem and re.search(r"\d+\s*$", raw_stem.strip())
         ):
             return QuestionChunk(
-                num=num, q_type="essay", stem="", options=[], answer="",
+                number=num, q_type="essay", stem="", options=[], answer="",
                 analysis="", rubric=[], points=[], score=0, source=source
             )
 
@@ -204,7 +262,7 @@ class MaterialIngestionPipeline:
 
         # 仅当首行包含明确的大题分段词时才剔除大题段标题
         stem_clean = re.sub(
-            r"^[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?(?:单项?选择题|多项?选择题|选择题|填空题|解答题|综合题|综合应用题|计算题|证明题|算法题)[^\n]*\n+",
+            r"^[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?(?:单[项]?选择题|多[项]?选择题|不定项选择题|选择题|填空题|判断题|解答题|综合(?:应用|计算|分析|论述)?题|计算(?:分析)?题|证明题|算法(?:设计)?题|简(?:答|述)题|分析题|应用题|大题)[^\n]*\n+",
             "",
             raw_stem
         ).strip()

@@ -686,6 +686,20 @@ def apply_study_plan(plan, interactive=True):
     cfg["relief_mode_active"] = False
     CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    # 5.1 重置院校监控列表：新身份生成时，监控列表应随目标院校切换，避免残留上一考生数据
+    try:
+        from tools.intelligence.watcher import AdmissionWatcher
+        watcher = AdmissionWatcher()
+        school = plan.get("school", "").strip()
+        if school:
+            for item in watcher.list_watched():
+                code = item.get("chsi_code")
+                if code:
+                    watcher.remove_watch(code)
+            watcher.add_watch(school)
+    except Exception as e:
+        print(colorize(f"  [!] 监控列表重置提示: {e}", C.YELLOW))
+
     # 6. 全自动生成各科定制化总规划与今日真实任务清单 (注入定制 AI 攻坚战略)
     generate_plan_and_today_files(plan, ai_strategy=ai_strategy)
 

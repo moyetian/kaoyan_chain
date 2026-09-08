@@ -10,6 +10,7 @@ KaoYan Intelligence · 双校考研招考横向对比引擎 (School Comparator)
 """
 
 import json
+import re
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
@@ -58,8 +59,11 @@ class SchoolComparator:
         if save_report:
             out_dir = ROOT / "04-专业课"
             out_dir.mkdir(parents=True, exist_ok=True)
-            clean_major = major_keyword.replace("/", "_").replace("\\", "_")
-            out_path = out_dir / f"双校考情对比_{name1}_VS_{name2}_{clean_major}.md"
+            clean_n1 = re.sub(r'[\\/:*?"<>|\s]+', '_', name1)
+            clean_n2 = re.sub(r'[\\/:*?"<>|\s]+', '_', name2)
+            clean_major = re.sub(r'[\\/:*?"<>|\s]+', '_', major_keyword)
+            out_path = out_dir / f"双校考情对比_{clean_n1}_VS_{clean_n2}_{clean_major}.md"
+            out_path.parent.mkdir(parents=True, exist_ok=True)
             with open(out_path, "w", encoding="utf-8") as f:
                 f.write(markdown_report)
             saved_path = str(out_path)
@@ -188,18 +192,25 @@ class SchoolComparator:
         col2_w = 34
         col3_w = 34
 
+        def _col(text: str, width: int) -> str:
+            """按指定列宽截断并补空白，中文按字符截断并在超长时加省略号"""
+            s = str(text or "")
+            if len(s) <= width:
+                return s.ljust(width)
+            return (s[:width - 3] + "...") if width > 3 else s[:width]
+
         lines = [
             f"\n=== ⚔️ 目标高校招考深度横向对比大盘 · 【{name1}】 VS 【{name2}】 ({major}) ===",
             "-" * 86,
             f"{'对比维度':<12} | {name1:<34} | {name2:<34}",
             "-" * 86,
-            f"{'教育部代码':<12} | {info1['code']:<34} | {info2['code']:<34}",
-            f"{'所在城市':<12} | {info1['region']:<34} | {info2['region']:<34}",
-            f"{'办学层次':<12} | {info1['level'][:30]:<34} | {info2['level'][:30]:<34}",
-            f"{'数据源属性':<12} | {info1.get('catalog_source', '')[:30]:<34} | {info2.get('catalog_source', '')[:30]:<34}",
-            f"{'初试科目特征':<12} | {info1['majors'][0][:30]:<34} | {info2['majors'][0][:30]:<34}",
-            f"{'复试线走向':<12} | {info1['score_trend'][:30]:<34} | {info2['score_trend'][:30]:<34}",
-            f"{'一志愿保护':<12} | {info1['protect'][:30]:<34} | {info2['protect'][:30]:<34}",
+            f"{'教育部代码':<12} | {_col(info1['code'], 34)} | {_col(info2['code'], 34)}",
+            f"{'所在城市':<12} | {_col(info1['region'], 34)} | {_col(info2['region'], 34)}",
+            f"{'办学层次':<12} | {_col(info1['level'], 34)} | {_col(info2['level'], 34)}",
+            f"{'数据源属性':<12} | {_col(info1.get('catalog_source', ''), 34)} | {_col(info2.get('catalog_source', ''), 34)}",
+            f"{'初试科目特征':<12} | {_col(info1['majors'][0] if info1.get('majors') else '以当年简章为准', 34)} | {_col(info2['majors'][0] if info2.get('majors') else '以当年简章为准', 34)}",
+            f"{'复试线走向':<12} | {_col(info1['score_trend'], 34)} | {_col(info2['score_trend'], 34)}",
+            f"{'一志愿保护':<12} | {_col(info1['protect'], 34)} | {_col(info2['protect'], 34)}",
             "-" * 86,
             f"💡 【初试差异】: {analysis['subject_diff']}",
             f"💡 【地区分布】: {analysis['region_diff']}",

@@ -128,10 +128,10 @@ def get_subject_name(subject_key: str, default: str = None) -> str:
     from pathlib import Path
 
     defaults = {
-        "math": "数学二 (302)",
-        "eng": "英语二 (204)",
+        "math": "数学",
+        "eng": "英语",
         "pol": "思想政治理论",
-        "pro": "408 计算机学科专业基础",
+        "pro": "专业课",
     }
     alias_map = {
         "math": "math", "maths": "math", "数学": "math", "math1": "math", "math2": "math", "math3": "math",

@@ -43,6 +43,11 @@ class AgentWorker(QThread):
             reply = runner.run(self.user_input, interactive=False)
             if self._is_cancelled:
                 self.finished_signal.emit("[已取消]: 任务已中止。")
+            elif not reply or not str(reply).strip():
+                self.finished_signal.emit(
+                    "\n[Agent 未返回有效回复] 私教服务可能暂时不可用（如上游 LLM 返回 503 / 限流），"
+                    "请稍后重试。如果多次失败，可在 CLI 执行 `ky doctor` 检查 API 连通性。"
+                )
             else:
                 self.finished_signal.emit(reply)
         except Exception as e:

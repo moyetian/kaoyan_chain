@@ -473,10 +473,13 @@ def execute_action(action_key: str, interactive: bool = True) -> bool:
         elif cmd_alias == "variant":
             sub_input = input("请输入科目 [math/eng/pol/pro，默认 pro]: ").strip() if interactive else ""
             sub = sub_input or "pro"
-            kw = input("请输入需要寻找变式题的考点关键词: ").strip() if interactive else "二叉树"
-            if not kw:
-                kw = "二叉树"
             from skills import variant_retriever
+            # 默认考点必须从本科目真实考纲中推荐，严禁硬编码他科考点（如 408 的「二叉树」）
+            default_kw = variant_retriever.suggest_keyword(sub)
+            prompt = f"请输入需要寻找变式题的考点关键词 [默认 {default_kw or '考纲首个考点'}]: "
+            kw = input(prompt).strip() if interactive else ""
+            if not kw:
+                kw = default_kw
             res = variant_retriever.search_real_variant(subject=sub, keyword=kw, limit=3)
             print(variant_retriever.format_variant_output(res))
         elif cmd_alias == "diff":
@@ -501,10 +504,13 @@ def execute_action(action_key: str, interactive: bool = True) -> bool:
                     y_new = current_exam_year()
                     y_old = y_new - 1
                     gen = get_syllabus_diff_generator()
+                    _cfg = get_config_summary()
+                    # 专业名取自考生配置，与 CLI 保持一致；仅缺失时回退文件名
                     rep = gen.compare_files(
                         old_file=old_path, new_file=new_path,
-                        school=get_config_summary().get("school", "目标院校"),
-                        major=new_path.stem, year_old=y_old, year_new=y_new
+                        school=_cfg.get("school", "目标院校"),
+                        major=_cfg.get("major") or new_path.stem,
+                        year_old=y_old, year_new=y_new
                     )
                     saved = gen.save_diff_report(rep)
                     m = rep["metrics"]
@@ -546,18 +552,20 @@ def execute_action(action_key: str, interactive: bool = True) -> bool:
                 print(colorize(f"[+] 社媒真实经验档案沉淀完毕: {res.get('experience_dossier_path')}", Colors.GREEN))
         elif cmd_alias == "compare":
             info = get_config_summary()
-            target_sch = info.get("school") or "华南理工大学"
-            if target_sch in ("未指定", "目标院校"):
-                target_sch = "华南理工大学"
-            default_s2 = "中山大学" if "华南理工" in target_sch else "武汉大学"
-            s1 = input(f"请输入第一所对标高校 [默认 {target_sch}]: ").strip() if interactive else target_sch
-            s2 = input(f"请输入第二所对标高校 [默认 {default_s2}]: ").strip() if interactive else default_s2
-            if not s1: s1 = target_sch
-            if not s2: s2 = default_s2
-            target_mj = info.get("major") or "人工智能"
-            if target_mj in ("未指定", "专业方向"):
-                target_mj = "计算机"
-            mj = input(f"请输入专业关键词 [默认 {target_mj}]: ").strip() if interactive else target_mj
+            target_sch = info.get("school") or "目标院校"
+            # 第二所默认留空，避免硬编码「中山大学/武汉大学」导致误导
+            s1 = input(f"请输入第一所对标高校 [默认 {target_sch}]: ").strip() if interactive else ""
+            s2 = input("请输入第二所对标高校 [默认 无，必填]: ").strip() if interactive else ""
+            if not s1:
+                if target_sch in ("未指定", "目标院校"):
+                    print(colorize("\n[!] 双校对标需要指定第一所高校，未输入已取消。", Colors.RED))
+                    return True
+                s1 = target_sch
+            if not s2:
+                print(colorize("\n[!] 双校对标需要指定第二所高校，未输入已取消。", Colors.RED))
+                return True
+            target_mj = info.get("major") or ""
+            mj = input(f"请输入专业关键词 [默认 {target_mj}]: ").strip() if interactive else ""
             from intelligence import get_school_comparator
             comp_res = get_school_comparator().compare(
                 school1_query=s1, school2_query=s2,

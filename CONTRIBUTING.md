@@ -81,8 +81,8 @@ kaoyan_chain/
 │   ├── 01_考纲拆解与分值地图模板.md     # 考纲分值拆解模板
 │   ├── 02_核心公式与考点速查模板.md     # 核心结论速记模板
 │   ├── 03_题源核验与抽题协议模板.md     # 权威题源白名单门禁
-│   ├── 双校考情对比_华中科技大学_VS_武汉大学_计算机.md # ky compare 自动生成横向对标研报
-│   ├── 目标院校情报_华中科技大学_计算机.md # ky scout / admission 权威招考情报研报
+│   ├── 双校考情对比_对比院校B_VS_对比院校B_计算机.md # ky compare 自动生成横向对标研报
+│   ├── 目标院校情报_对比院校B_计算机.md # ky scout / admission 权威招考情报研报
 │   ├── 学情档案.template.md             # 章节掌握度记忆中枢模板
 │   ├── 每日作业/                        # 每日作业记录模板
 │   └── 错题本/                          # 错题记录模板与索引
@@ -155,7 +155,7 @@ kaoyan_chain/
 ### 2. 可编辑模式安装
 推荐以 editable 模式挂载本地开发包：
 ```bash
-git clone https://github.com/moyetian/kaoyan_chain.git
+git clone https://github.com/your-name/kaoyan_chain.git
 cd kaoyan_chain
 python -m pip install -e .
 ```

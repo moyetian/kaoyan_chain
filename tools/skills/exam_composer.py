@@ -40,12 +40,49 @@ SUBJECT_DIRS = {
     "pro": "04-专业课",
 }
 
-SUBJECT_NAMES = {
-    "math": "数学二 (302)",
-    "eng": "英语二 (204)",
+# 仅作 config 缺失时的中性回退；实际科目名以 ky_config.json 的 study_plan 为准
+_SUBJECT_NAME_FALLBACK = {
+    "math": "数学",
+    "eng": "英语",
     "pol": "思想政治理论",
-    "pro": "408 计算机学科专业基础",
+    "pro": "专业课",
 }
+SUBJECT_NAMES = dict(_SUBJECT_NAME_FALLBACK)
+
+
+def _extract_answer_tokens(text: str) -> list:
+    """从作答或标准答案中抽取可比对的数字/分数 token（已归一化空格）。
+
+    例：「最终结果为 -1/2」 → ['-1/2']；「答 888」 → ['888']
+    """
+    if not text:
+        return []
+    norm = re.sub(r"\s+", "", str(text))
+    return re.findall(r"[-+]?\d+(?:\.\d+)?(?:/\d+(?:\.\d+)?)?", norm)
+
+
+def _text_answer_hit(std_ans: str, user_ans: str) -> bool:
+    """文本型标准答案的宽松命中判定：归一化后包含，或核心关键词重合度 ≥ 60%。"""
+    if not std_ans or not user_ans:
+        return False
+
+    def _norm(s):
+        return re.sub(r"[\s，,。.;；:：、（）()\[\]【】\"'`*#>-]+", "", str(s)).lower()
+
+    a, b = _norm(std_ans), _norm(user_ans)
+    if not a or not b:
+        return False
+    if a in b or b in a:
+        return True
+    # 中文按 2-gram 计算重合度，英文按单词
+    def _grams(s):
+        if re.search(r"[\u4e00-\u9fff]", s):
+            return {s[i:i + 2] for i in range(len(s) - 1)} or {s}
+        return set(re.findall(r"[a-z0-9]+", s))
+    ga, gb = _grams(a), _grams(b)
+    if not ga or not gb:
+        return False
+    return len(ga & gb) / len(ga) >= 0.6
 
 
 def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=True):
@@ -188,16 +225,17 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
             "error_type": err_type,
             "stage": stage,
             "file_name": item.get("file_name", ""),
-            "key_detail": item.get("detail", "")
+            # key_detail 仅为「错因描述」，用于回写错题本定位，绝不作为判卷答案
+            "key_detail": item.get("detail", ""),
+            # standard_answer 才是判卷唯一权威基准；缺失时该题转人工复核，绝不自动给分
+            "standard_answer": str(item.get("standard_answer", "") or "").strip()
         })
 
-    # 将参考采分与原错题信息存放在底部加密注释中，并同步落地伴随密钥文件
-    import base64
-    hidden_keys_json = json.dumps(answer_keys, ensure_ascii=False)
-    b64_keys = base64.b64encode(hidden_keys_json.encode("utf-8")).decode("ascii")
+    # 答案键只落地到密钥文件，不再内嵌进试卷 Markdown（此前 BASE64 内嵌可被直接解码还原）
+    hidden_keys_json = json.dumps(answer_keys, ensure_ascii=False, indent=2)
 
     lines.append(f"<!-- EXAM_PAPER_ID: {paper_id} -->")
-    lines.append(f"<!-- EXAM_ANSWER_KEYS: BASE64:{b64_keys} -->\n")
+    lines.append(f"<!-- 参考答案与采分点已单独归档至 .memory/exam_keys/{paper_id}.json，试卷内不含答案 -->\n")
 
     full_content = "\n".join(lines)
     saved_path = None
@@ -304,6 +342,7 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
     ]
 
     updated_records = []
+    need_review_titles = []
     total_score = 0
     max_score = len(keys) * 10 if keys else 100
 
@@ -335,45 +374,62 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
         is_giveup = any(kw in q_ans for kw in giveup_patterns)
         has_content = len(q_ans) >= 1 and not is_giveup
 
+        # key_detail 是「错因描述」，仅用于人工复盘定位；
+        # standard_answer 才是判卷的唯一权威基准。
         key_detail = str(k.get("key_detail", "")).strip()
+        std_ans = str(k.get("standard_answer", "") or "").strip()
 
-        # 核心答案比对逻辑 (选择题 / 数值分数 / 公式推导 / 关键词 / 步骤得分)
+        # 核心答案比对逻辑 (选择题 / 数值分数 / 关键词)，绝不允许"写了就给满分"
         match_level = 0
+        judge_basis = "未作答或明确放弃"
         if is_giveup or not has_content:
             match_level = 0
         else:
-            # 1. 检查选择题选项 (A, B, C, D)
-            choice_match = re.search(r"\b([A-D])\b", q_ans.upper())
-            target_choice = re.search(r"(?:答案|选项)[：:\s]*([A-D])\b", key_detail.upper())
+            # 1. 选择题选项比对
+            choice_match = re.search(r"(?:^|[^A-Za-z])([A-D])(?:$|[^A-Za-z])", q_ans.upper())
+            target_src = (std_ans or key_detail).upper()
+            target_choice = re.search(r"(?:答案|选项)[：:\s]*([A-D])\b", target_src)
             if choice_match and target_choice:
                 if choice_match.group(1) == target_choice.group(1):
                     match_level = 2
+                    judge_basis = f"选择题命中 (标准 {target_choice.group(1)} / 作答 {choice_match.group(1)})"
                 else:
-                    match_level = 1
+                    match_level = 0
+                    judge_basis = f"选择题不符 (标准 {target_choice.group(1)} / 作答 {choice_match.group(1)})"
             else:
-                # 2. 检查数值/分数答案 (如 1/3, -1/2, 0, 2)
-                ans_tokens = re.findall(r"[-+]?\d+(?:[./]\d+)?", q_ans)
-                key_tokens = re.findall(r"[-+]?\d+(?:[./]\d+)?", key_detail)
-                token_hit = any(t in key_tokens for t in ans_tokens) if ans_tokens and key_tokens else False
-
-                if token_hit:
-                    match_level = 2
-                elif any(kw in q_ans for kw in ("充分", "有效", "得出", "收敛", "发散", "满足", "证明", "极限为", "结果为")):
-                    match_level = 2
-                elif len(q_ans) >= 8 and not is_giveup:
-                    match_level = 2
-                elif len(q_ans) >= 1 and not is_giveup:
-                    match_level = 2
+                # 2. 数值 / 分数答案严格比对
+                ans_tokens = _extract_answer_tokens(q_ans)
+                key_tokens = _extract_answer_tokens(std_ans)
+                if key_tokens:
+                    if ans_tokens and any(t in key_tokens for t in ans_tokens):
+                        match_level = 2
+                        judge_basis = f"数值命中 (标准 {'/'.join(key_tokens)} / 作答 {'/'.join(ans_tokens)})"
+                    else:
+                        match_level = 0
+                        judge_basis = f"数值不符 (标准 {'/'.join(key_tokens)} / 作答 {'/'.join(ans_tokens) or '无'})"
+                elif std_ans:
+                    # 3. 文本型标准答案：归一化后做包含 / 关键词重合度比对
+                    if _text_answer_hit(std_ans, q_ans):
+                        match_level = 2
+                        judge_basis = "文本答案命中"
+                    else:
+                        match_level = 1
+                        judge_basis = "文本答案不符，转人工复核"
                 else:
+                    # 无标准答案基准：坚决不给满分，转人工复核
                     match_level = 1
+                    judge_basis = "⚠ 本题未登记标准答案，无法自动判分，已转人工复核"
 
         is_passed = (match_level == 2)
         item_score = 10 if is_passed else (5 if match_level == 1 else 0)
         total_score += item_score
+        if match_level == 1:
+            need_review_titles.append(f"第 {q_id} 题 {title}")
 
-        status_str = "【合格 · 通过出库】" if is_passed else "【需重新加固】"
+        status_str = "【合格 · 通过出库】" if is_passed else ("【待复核】" if match_level == 1 else "【需重新加固】")
         report_lines.append(f"• 第 {q_id} 题 [{title}]: {status_str} 得分: {item_score}/10")
         report_lines.append(f"  - 考查类型: {k.get('error_type')}")
+        report_lines.append(f"  - 判定依据: {judge_basis}")
 
         # 闭环状态回写：更新错题本中的艾宾浩斯复测状态
         if auto_advance and error_logger and file_name:
@@ -403,6 +459,12 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
         report_lines.append(f"🎉 评价: 掌握优良！艾宾浩斯记忆防线稳固，部分错题已顺利毕业！")
     else:
         report_lines.append(f"⚠️ 评价: 仍有薄弱盲区未突破，未通过题目已重置回第一复测周期。")
+    if need_review_titles:
+        report_lines.append(
+            f"🔍 【待人工复核 {len(need_review_titles)} 题】: {'；'.join(need_review_titles)}")
+        report_lines.append(
+            f"   说明: 上述题目缺少标准答案登记或作答未命中标准答案，系统已拒绝对其自动满分，"
+            f"请对照解析人工确认后在错题档案中补录「标准答案」字段。")
     report_lines.append(f"============================================================\n")
 
     return {
