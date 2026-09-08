@@ -63,6 +63,8 @@ README优化方案*.md
 !**/错题本/_模板.md
 !**/错题本/_索引.md
 !**/错题本/README.md
+*.keys.json
+.*.keys.json
 
 **/错题与长难句本/*.md
 !**/错题与长难句本/_模板.md
@@ -122,6 +124,7 @@ rust_ext/target/
 # 临时分析报告、竞品方案与搜索规划文件
 *审查报告*.md
 *路线图*.md
-*规划.txt
-state_snapshot.json
+/state_snapshot.json
+!docs/state_snapshot.json
+!05-考研看板/docs/state_snapshot.json
 *.log

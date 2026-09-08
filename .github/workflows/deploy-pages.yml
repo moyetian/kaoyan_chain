@@ -1,0 +1,55 @@
+name: Deploy Dashboard to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - '01-数学/**'
+      - '02-英语/**'
+      - '03-思想政治理论/**'
+      - '04-专业课/**'
+      - '05-考研看板/**'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 不再在 CI 里重跑 build.py：
+      # - 因为 _状态/*.md 真实数据被 .gitignore 保护，CI 只能用模板重建，会覆盖真实数据
+      # - 改为本地 build 后手动 git push，由 CI 直接把 docs/ 现状上传到 Pages
+      # - 本地构建默认生成脱敏快照；运行 python tools/update_dashboard.py --local
+      # - 审阅 docs/ 后再显式运行 python tools/update_dashboard.py --push
+      - name: Verify docs/ contains built artifacts
+        run: |
+            test -f docs/index.html || (echo "[❌] docs/index.html 未找到，请先在本地运行 python 05-考研看板/build.py" && exit 1)
+            test -f docs/state_snapshot.json || (echo "[❌] docs/state_snapshot.json 未找到" && exit 1)
+            python -c "import json; p=json.load(open('docs/state_snapshot.json', encoding='utf-8')); assert p.get('meta', {}).get('sanitized') is True, '拒绝部署未脱敏快照'"
+            echo "[✅] docs/ 内容检查通过"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'docs'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
