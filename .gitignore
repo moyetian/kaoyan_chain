@@ -128,3 +128,12 @@ rust_ext/target/
 !docs/state_snapshot.json
 !05-考研看板/docs/state_snapshot.json
 *.log
+
+# ── 学员隐私：目标院校/专业社媒档案（绝不入库、绝不发布）──
+docs/experiences/
+!docs/experiences/README.md
+.memory/experiences/
+04-专业课/双校考情对比_*.md
+04-专业课/目标院校情报_*.md
+# D 盘工作区保留规则：规划类草稿不入库
+*规划.txt

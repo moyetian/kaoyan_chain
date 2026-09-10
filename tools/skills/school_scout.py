@@ -27,6 +27,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
+try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
+    from ky_io import atomic_write_text  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 CONFIG_FILE = ROOT / "ky_config.json"
 
@@ -682,7 +687,18 @@ def scout_school(school: str, major: str = "", include_social: bool = True, save
         pro_dir.mkdir(parents=True, exist_ok=True)
         safe_name = f"目标院校情报_{school}" + (f"_{major}" if major else "") + ".md"
         save_file = pro_dir / safe_name
-        save_file.write_text(formatted_report, encoding="utf-8")
+        # [P0 修复] 与 admission(证据链版) 共用同名文件，写入前备份旧报告避免互相覆盖
+        if save_file.exists():
+            try:
+                from syllabus_manager import backup_syllabus_file
+            except Exception:
+                try:
+                    from tools.syllabus_manager import backup_syllabus_file
+                except Exception:
+                    backup_syllabus_file = None
+            if backup_syllabus_file:
+                backup_syllabus_file(save_file)
+        atomic_write_text(save_file, formatted_report)
         saved_path = str(save_file)
 
         # 沉淀社媒真实经验档案至 docs/experiences/<学校>_<专业>.md
@@ -885,7 +901,7 @@ def apply_scout_to_config(school: str, major: str, metrics: Dict[str, Any] = Non
                     cfg["pro_name"] = clean_name
                     study_plan["pro_name"] = clean_name
 
-        CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_text(CONFIG_FILE, json.dumps(cfg, ensure_ascii=False, indent=2))
         return True
     except Exception:
         return False
@@ -1071,13 +1087,12 @@ def save_experience_dossier(
 ) -> Path:
     """
     将经置信度过滤降噪后的真实考研经验与就读体验生成规范化档案，
-    落盘至 docs/experiences/<学校>_<专业>.md
+    落盘至 .memory/experiences/<学校>_<专业>.md (本地隐私目录)
     """
     school = (school or "通用院校").strip()
     major = (major or "").strip()
-    metrics = metrics or {}
-
-    out_dir = output_dir or (ROOT / "docs" / "experiences")
+    # [P0 修复] 默认落地到 .memory/experiences/ 目录，避免学员考情隐私泄露至 Pages
+    out_dir = output_dir or (ROOT / ".memory" / "experiences")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     file_stem = f"{school}_{major}" if major else school
@@ -1152,7 +1167,7 @@ def save_experience_dossier(
     lines.append("*本档案由考研学习链 (Kaoyan Study Chain) AI Intelligence 模块自动生成并持续维护。*")
 
     content = "\n".join(lines)
-    target_file.write_text(content, encoding="utf-8")
+    atomic_write_text(target_file, content)
     return target_file
 
 
@@ -1165,7 +1180,7 @@ def append_experience_to_dossier(
     title: str = "",
     dossier_path: Optional[Path] = None
 ) -> bool:
-    """向目标高校的经验档案 (docs/experiences/<学校>.md 或指定路径) 追加一条经验"""
+    """向目标高校的经验档案 (.memory/experiences/<学校>.md 或指定路径) 追加一条经验"""
     try:
         source = "微信公众号"
         author = ""
@@ -1188,9 +1203,20 @@ def append_experience_to_dossier(
             target_file = Path(dossier_path)
             target_file.parent.mkdir(parents=True, exist_ok=True)
         else:
-            out_dir = ROOT / "docs" / "experiences"
+            # [P0 修复] 默认落地到 .memory/experiences/
+            out_dir = ROOT / ".memory" / "experiences"
             out_dir.mkdir(parents=True, exist_ok=True)
             target_file = out_dir / f"{school}.md"
+            old_file = ROOT / "docs" / "experiences" / f"{school}.md"
+            if not target_file.exists() and old_file.exists():
+                # [P0 修复] 旧目录文件一次性迁移到隐私目录后再追加，
+                # 严禁继续向公开发布目录 (docs/) 写入任何内容
+                try:
+                    atomic_write_text(target_file,
+                        old_file.read_text(encoding="utf-8"), encoding="utf-8"
+                    )
+                except OSError:
+                    pass  # 迁移失败则按新建档案处理，不影响联动主流程
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         block = [
@@ -1208,14 +1234,14 @@ def append_experience_to_dossier(
                     "## 💡 2. 精选高置信度学长学姐实名经验 (Top Experiences)",
                     "## 💡 2. 精选高置信度学长学姐实名经验 (Top Experiences)\n" + text_to_append
                 )
-                target_file.write_text(updated, encoding="utf-8")
+                atomic_write_text(target_file, updated)
                 return True
             else:
-                target_file.write_text(orig + "\n" + text_to_append, encoding="utf-8")
+                atomic_write_text(target_file, orig + "\n" + text_to_append)
                 return True
         else:
             header = f"# 🎓 考研社媒真实经验与就读体验档案 · {school}\n\n## 💡 2. 精选高置信度学长学姐实名经验 (Top Experiences)\n"
-            target_file.write_text(header + text_to_append, encoding="utf-8")
+            atomic_write_text(target_file, header + text_to_append)
             return True
     except Exception:
         return False

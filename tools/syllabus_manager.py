@@ -6,6 +6,11 @@
 
 from pathlib import Path
 
+try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
+    from ky_io import atomic_write_text  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # ─────────────────────────────────────────────────────────────
@@ -409,6 +414,40 @@ CS408_SYLLABUS = """# 04-专业课 · 全国统考【408 计算机学科专业�
 - **应用层**：DNS 域名解析过程、FTP、电子邮件(SMTP/POP3/IMAP)、万维网(HTTP 协议与状态码)。
 """
 
+# ─────────────────────────────────────────────────────────────
+# 专业课大纲一致性守卫
+# ─────────────────────────────────────────────────────────────
+# 背景：04-专业课/考试大纲.md 的内容由上一轮选择写入，切换报考科目时若不做校验，
+# 旧大纲（如 408）会被误判为「学员已挂载的真实考纲」而保留，导致 map/组卷/变式
+# 全部按错误科目出题，学员复习方向被系统性误导。
+
+# 408 统考大纲的强特征模块名：命中 2 个及以上即判定为 408 内容
+_408_MARKERS = ("数据结构", "计算机组成原理", "操作系统", "计算机网络")
+
+
+def looks_like_408_syllabus(text):
+    """判定大纲文本是否为 408 计算机学科专业基础内容（命中 2 个及以上特征模块）。"""
+    if not text:
+        return False
+    return sum(1 for kw in _408_MARKERS if kw in text) >= 2
+
+
+def backup_syllabus_file(file_path):
+    """按项目惯例备份为 <stem>_backup_<日期>_<时间><suffix>，返回备份路径（失败返回 None）。"""
+    import shutil
+    from datetime import datetime
+    p = Path(file_path)
+    if not p.exists():
+        return None
+    ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    backup = p.with_name(f"{p.stem}_backup_{ts}{p.suffix}")
+    try:
+        shutil.copy2(p, backup)
+        return backup
+    except Exception:
+        return None
+
+
 def apply_syllabus_selection(math_key="math2", eng_key="eng2", pro_type="custom", pro_name="专业课", school="目标院校", major="报考专业", auto_write=True):
     """
     应用并写入用户选定的考试大纲与科目配置
@@ -420,7 +459,7 @@ def apply_syllabus_selection(math_key="math2", eng_key="eng2", pro_type="custom"
     math_info = MATH_SYLLABI.get(math_key, MATH_SYLLABI["math2"])
     math_outline = ROOT / "01-数学" / "考试大纲.md"
     if auto_write:
-        math_outline.write_text(math_info["content"], encoding="utf-8")
+        atomic_write_text(math_outline, math_info["content"])
         updated_files.append(math_outline)
 
         # 同步更新 01-数学/AGENTS.md 中的科目名称与超纲禁区提示
@@ -432,34 +471,34 @@ def apply_syllabus_selection(math_key="math2", eng_key="eng2", pro_type="custom"
                 # 替换或注入超纲警示
                 if "## 1. 超纲与题源禁区" in txt:
                     txt = re.sub(r"- 严防超出所考科目大纲的偏题怪题；", f"- 严防超出所考科目大纲的偏题怪题（{math_info['anti_out_of_syllabus']}）；", txt)
-            math_agents.write_text(txt, encoding="utf-8")
+            atomic_write_text(math_agents, txt)
             updated_files.append(math_agents)
 
     # 2. 处理英语大纲
     eng_info = ENGLISH_SYLLABI.get(eng_key, ENGLISH_SYLLABI["eng2"])
     eng_outline = ROOT / "02-英语" / "考试大纲.md"
     if auto_write:
-        eng_outline.write_text(eng_info["content"], encoding="utf-8")
+        atomic_write_text(eng_outline, eng_info["content"])
         updated_files.append(eng_outline)
 
         eng_agents = ROOT / "02-英语" / "AGENTS.md"
         if eng_agents.exists():
             txt = eng_agents.read_text(encoding="utf-8")
             txt = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{eng_info['name']}`", txt)
-            eng_agents.write_text(txt, encoding="utf-8")
+            atomic_write_text(eng_agents, txt)
             updated_files.append(eng_agents)
 
     # 3. 处理政治大纲
     pol_outline = ROOT / "03-思想政治理论" / "考试大纲.md"
     if auto_write:
-        pol_outline.write_text(POLITICS_SYLLABUS, encoding="utf-8")
+        atomic_write_text(pol_outline, POLITICS_SYLLABUS)
         updated_files.append(pol_outline)
 
     # 4. 处理专业课大纲
     pro_outline = ROOT / "04-专业课" / "考试大纲.md"
     if auto_write:
         if pro_type == "408" or "408" in pro_name:
-            pro_outline.write_text(CS408_SYLLABUS, encoding="utf-8")
+            atomic_write_text(pro_outline, CS408_SYLLABUS)
             pro_real_name = "408 计算机学科专业基础"
         else:
             pro_real_name = pro_name or "专业课"
@@ -468,10 +507,15 @@ def apply_syllabus_selection(math_key="math2", eng_key="eng2", pro_type="custom"
                 existing_txt = pro_outline.read_text(encoding="utf-8", errors="ignore")
                 if len(existing_txt.strip()) > 200 and "请根据报考院校官网大纲填入" not in existing_txt:
                     has_real_content = True
+                # [一致性守卫] 当前报考科目并非 408，残留内容却是 408 大纲时，
+                # 说明是上一轮选择的遗留物而非学员挂载的真实考纲：重建骨架前先备份。
+                if has_real_content and looks_like_408_syllabus(existing_txt):
+                    has_real_content = False
+                    backup_syllabus_file(pro_outline)
 
             if not has_real_content:
                 if any(kw in str(pro_name) for kw in ["信号", "811", "通信", "控制"]):
-                    pro_outline.write_text(
+                    atomic_write_text(pro_outline,
                         f"# 04-专业课 · 【{pro_real_name}】官方考试大纲与核心考点清单\n\n"
                         f"> 本大纲为【{pro_real_name}】专业课专属复习指南。AI 私教将据此划定出题边界，不超纲，抓采分点！\n\n"
                         "## 核心考查章节与重点要求：\n"
@@ -481,17 +525,15 @@ def apply_syllabus_selection(math_key="math2", eng_key="eng2", pro_type="custom"
                         "- 第四章：连续时间系统的复频域分析（拉普拉斯变换、系统函数、极零点与因果稳定性） (要求：掌握)\n"
                         "- 第五章：离散时间系统的时域与频域分析（离散卷积、DTFT、Z变换与系统函数） (要求：理解)\n"
                         "- 第六章：系统的状态变量分析（状态方程与输出方程建立、状态转移矩阵） (要求：了解)\n",
-                        encoding="utf-8"
                     )
                 else:
-                    pro_outline.write_text(
+                    atomic_write_text(pro_outline,
                         f"# 04-专业课 · 【{pro_real_name}】官方考试大纲与核心考点清单\n\n"
                         f"> 本大纲为【{pro_real_name}】专业课专属复习指南。AI 私教将据此划定出题边界，不超纲，抓采分点！\n\n"
                         "## 核心考查章节与重点要求：\n"
                         "- 第一章：[请根据报考院校官网大纲填入，如：数据结构基本概念与算法时空复杂度分析] (要求：掌握)\n"
                         "- 第二章：[考纲核心要点，标明：掌握 / 理解 / 了解]\n"
                         "- 第三章：[考纲核心要点，标明：掌握 / 理解 / 了解]\n",
-                        encoding="utf-8"
                     )
         updated_files.append(pro_outline)
 
@@ -501,7 +543,7 @@ def apply_syllabus_selection(math_key="math2", eng_key="eng2", pro_type="custom"
             txt = re.sub(r"- \*\*目标院校\*\*：.*", f"- **目标院校**：`{school}`", txt)
             txt = re.sub(r"- \*\*专业代码与名称\*\*：.*", f"- **专业代码与名称**：`{major}`", txt)
             txt = re.sub(r"- \*\*专业课科目代码与名称\*\*：.*", f"- **专业课科目代码与名称**：`{pro_real_name}`", txt)
-            pro_agents.write_text(txt, encoding="utf-8")
+            atomic_write_text(pro_agents, txt)
             updated_files.append(pro_agents)
 
     # 5. 更新根目录 AGENTS.md
@@ -514,7 +556,7 @@ def apply_syllabus_selection(math_key="math2", eng_key="eng2", pro_type="custom"
         txt = re.sub(r"\|\s*\*\*科目一：数学\*\*.*?\|", f"| **科目一：{math_info['name']}** | [待填] 分 |", txt)
         txt = re.sub(r"\|\s*\*\*科目二：英语\*\*.*?\|", f"| **科目二：{eng_info['name']}** | [待填] 分 |", txt)
         txt = re.sub(r"\|\s*\*\*科目四：专业课\*\*.*?\|", f"| **科目四：{pro_name}** | [待填] 分 |", txt)
-        agents_root.write_text(txt, encoding="utf-8")
+        atomic_write_text(agents_root, txt)
         updated_files.append(agents_root)
 
     return math_info, eng_info, updated_files

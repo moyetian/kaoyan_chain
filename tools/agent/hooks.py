@@ -228,16 +228,23 @@ class HookManager:
             done_tasks = 0
             for d_name in ("01-数学", "02-英语", "03-思想政治理论", "04-专业课"):
                 t_file = self.workspace_root / d_name / "_状态" / "今日任务.md"
-                if t_file.exists():
-                    try:
-                        lines = t_file.read_text(encoding="utf-8", errors="ignore").splitlines()
-                        for l in lines:
-                            if "|" in l and not l.startswith("|---|") and "完成状态" not in l and "模块" not in l:
-                                total_tasks += 1
-                                if "[x]" in l.lower():
-                                    done_tasks += 1
-                    except Exception:
-                        pass
+                if not t_file.exists():
+                    continue
+                try:
+                    text = t_file.read_text(encoding="utf-8", errors="replace")
+                    # [修复] 此前这里漏掉了本行 splitlines 循环，导致下方 l 未定义、
+                    # 抛 NameError 被 except 静默吞掉，达成率恒为 0.0% (0/0)。
+                    for l in text.splitlines():
+                        # 去除空格后判定是否为 Markdown 表格分隔符，避免虚增任务总量
+                        if ("|" in l and not l.replace(" ", "").startswith("|---|")
+                                and "完成状态" not in l and "模块" not in l):
+                            total_tasks += 1
+                            if "[x]" in l.lower():
+                                done_tasks += 1
+                except Exception as e:
+                    # 不再静默吞错：统计失败会让达成率失真，必须让用户/日志看得见
+                    print(f"[warn] 今日任务统计失败 ({t_file.name}): "
+                          f"{type(e).__name__}: {e}", file=sys.stderr)
 
             rate = round(done_tasks / total_tasks * 100, 1) if total_tasks > 0 else 0.0
             summary_lines.append(f"📋 今日任务达成率: **{rate}%** ({done_tasks}/{total_tasks} 项完成)")

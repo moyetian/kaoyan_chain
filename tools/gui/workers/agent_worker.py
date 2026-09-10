@@ -32,6 +32,29 @@ class AgentWorker(QThread):
         if self._is_cancelled:
             self.finished_signal.emit("[已取消]: 用户主动取消了任务。")
             return
+
+        # [P0 修复·本地降级] 「XX报到」等纯本地口令不依赖 LLM，直接生成播报文本。
+        # 此前一律走 AgentRunner(LLM)，上游 503/限流时 GUI 报到完全不可用，
+        # 而同一口令在 CLI 走本地播报正常——现两端共用 build_subject_checkin_brief。
+        text = (self.user_input or "").strip()
+        _checkin_map = {
+            "数学报到": "math", "学数学": "math", "切换数学": "math",
+            "英语报到": "eng", "学英语": "eng", "切换英语": "eng",
+            "政治报到": "pol", "学政治": "pol", "切换政治": "pol",
+            "专业课报到": "pro", "学专业课": "pro", "切换专业课": "pro",
+        }
+        if text in _checkin_map:
+            try:
+                from ky_cli import build_subject_checkin_brief, load_config, save_config
+                cfg = dict(self.config) if self.config else load_config()
+                subj = _checkin_map[text]
+                cfg["active_subject"] = subj
+                save_config(cfg)
+                self.finished_signal.emit(build_subject_checkin_brief(cfg, subj))
+            except Exception as e:
+                self.finished_signal.emit(f"[报到播报异常]: {e}")
+            return
+
         try:
             from agent import AgentRunner
             runner = AgentRunner(

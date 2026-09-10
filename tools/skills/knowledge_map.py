@@ -181,6 +181,30 @@ def build_knowledge_map(subject="math"):
                             "full_desc": line_s
                         })
 
+    # [一致性守卫] 专业课：考纲实际内容与报考科目不符时给出醒目告警。
+    # 典型场景：上一轮按 408 建档、本轮改为院校自命题（如某校自命题科目），
+    # 若沿用残留的 408 大纲，map / 组卷 / 变式会全部按错误科目出题。
+    syllabus_warning = None
+    if subject == "pro" and syllabus_file.exists():
+        try:
+            _syl_txt = syllabus_file.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            _syl_txt = ""
+        if _syl_txt:
+            try:
+                from syllabus_manager import looks_like_408_syllabus
+            except Exception:
+                try:
+                    from tools.syllabus_manager import looks_like_408_syllabus
+                except Exception:
+                    looks_like_408_syllabus = None
+            if looks_like_408_syllabus and looks_like_408_syllabus(_syl_txt) and "408" not in str(subj_name):
+                syllabus_warning = (
+                    f"当前报考科目为【{subj_name}】，但 04-专业课/考试大纲.md 仍是 "
+                    f"408 计算机学科专业基础内容。请运行 ky plan 重建考纲，"
+                    f"或将院校官方自命题大纲覆盖到该文件后再开始复习！"
+                )
+
     # 若大纲中未解析出考点，提供内置保底模块
     if not chapters:
         chapters = [
@@ -236,8 +260,12 @@ def build_knowledge_map(subject="math"):
             ]
             unmastered_errs = [e for e in matched_errs if "已掌握" not in e.get("status", "")]
 
-            # 匹配雷达薄弱项
-            in_radar = any(p_name in " ".join(r) for r in radar_pain_points)
+            # 匹配雷达薄弱项：与「错题匹配」同理，必须沿「短片段 → 长文本」的方向判断。
+            # 此前写作 `p_name in " ".join(r)`，即用**长考点名**去 in **短雷达模块名**，
+            # 恒为 False；导致「雷达已标红 + 1 道活跃错题」本应判 D(高危盲区)，
+            # 却被降级为 C(易错生疏)，知识图谱会系统性低估高危区。
+            in_radar = any(any(f in " ".join(r) for f in frags)
+                           for r in radar_pain_points)
 
             # 综合评级算法
             if len(unmastered_errs) >= 2 or (in_radar and len(unmastered_errs) >= 1):
@@ -274,6 +302,7 @@ def build_knowledge_map(subject="math"):
         "assessed_count": assessed_count,
         "unassessed_count": grade_counts["U"],
         "assessed_rate": assessed_rate,
+        "syllabus_warning": syllabus_warning,
         "chapters": chapters,
         "modules": {c["title"]: c["points"] for c in chapters}
     }
@@ -291,6 +320,11 @@ def format_knowledge_map_table(subject="math"):
     lines.append(f"考点覆盖总量: {data['total_points']} 个 ｜ 全局大纲掌握率: {data['mastery_rate']}%")
     gc = data["grade_counts"]
     lines.append(f"等级分布: A (熟练) {gc['A']} | B (巩固) {gc['B']} | C (生疏) {gc['C']} | D (盲区) {gc['D']} | U (待自测) {gc['U']}\n")
+
+    if data.get("syllabus_warning"):
+        lines.append(f"⚠️⚠️⚠️ 【考纲一致性告警】 ⚠️⚠️⚠️")
+        lines.append(f"  {data['syllabus_warning']}")
+        lines.append(f"============================================================\n")
 
     for chap in data["chapters"]:
         lines.append(f"【{chap['title']}】")

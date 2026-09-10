@@ -41,7 +41,7 @@
     <g transform="translate(0, 0)">
       <!-- 高校 A 头部 -->
       <rect x="0" y="0" width="370" height="56" rx="8" fill="#172554" stroke="#2563eb" stroke-width="1.2" />
-      <text x="20" y="26" class="sch-name" fill="#60a5fa">【高校 A】对比院校B</text>
+      <text x="20" y="26" class="sch-name" fill="#60a5fa">【高校 A】示例院校A</text>
       <text x="20" y="44" font-size="11" fill="#93c5fd">院校代码: 10487 ｜ 985 / 211 / 自划线 ｜ 湖北武汉</text>
 
       <!-- VS 中枢徽章 -->
@@ -131,7 +131,7 @@
       <text x="90" y="15" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">🎯 私教量化择校处方 (Gap Analysis)</text>
       
       <text x="0" y="44" fill="#e2e8f0" font-size="12" font-weight="600">联动学员 370+ 目标分：</text>
-      <text x="135" y="44" fill="#94a3b8" font-size="11.5">冲刺【华科】具备 15~25 分复试安全缓冲垫，数学(110+)与 408(120+)合计需稳拿 230+ 分基本盘；</text>
+      <text x="135" y="44" fill="#94a3b8" font-size="11.5">冲刺【示例院校A】具备 15~25 分复试安全缓冲垫，数学(110+)与 408(120+)合计需稳拿 230+ 分基本盘；</text>
       <text x="0" y="65" fill="#94a3b8" font-size="11.5">报考【东莞理工/河南科大】初试总分处于碾压级优势（超出复试线 70~100 分），战略核心在于【严守单科线】＋【真题回忆卷还原】！</text>
     </g>
   </g>

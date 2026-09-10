@@ -14,6 +14,11 @@ import sys
 import json
 from typing import Dict, Any, Tuple
 
+try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
+    from ky_io import atomic_write_text  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text  # noqa: E402
+
 class PermissionLevel:
     READ_ONLY = 0      # 只读 (read_file, list_dir, grep, read_exam_paper, verify_math)
     SAFE_EDIT = 1      # 安全编辑 (write_file, edit_file, log_mistake)
@@ -78,7 +83,7 @@ class PermissionManager:
             "relative_file": str(rel_p),
             "backup_file": str(backup_file)
         }
-        meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_text(meta_file, json.dumps(meta, ensure_ascii=False, indent=2))
         return str(backup_file)
 
     def restore_last_checkpoint(self) -> Dict[str, Any]:

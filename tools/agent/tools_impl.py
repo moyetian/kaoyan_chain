@@ -11,6 +11,7 @@
 """
 
 import os
+import re
 import sys
 import json
 import fnmatch
@@ -21,6 +22,11 @@ from typing import Dict, Any, Callable, List, Optional
 
 from .sandbox import Sandbox, SecurityException
 from .permissions import PermissionLevel, PermissionManager
+
+try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
+    from ky_io import atomic_write_text  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text  # noqa: E402
 
 # 引入现有考研 Skills 模块
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -133,7 +139,7 @@ class ToolRegistry:
             level=PermissionLevel.READ_ONLY
         )
         def read_file(path: str, offset: int = 0, limit: int = 2000) -> str:
-            p = self.sandbox.resolve_safe_path(path)
+            p = self.sandbox.resolve_safe_path(path, read_only=True)
             if not p.exists():
                 return f"Error: 文件不存在 [{p}]"
 
@@ -173,11 +179,11 @@ class ToolRegistry:
             level=PermissionLevel.SAFE_EDIT
         )
         def write_file(path: str, content: str, overwrite: bool = False) -> str:
-            p = self.sandbox.resolve_safe_path(path, allow_create=True)
+            p = self.sandbox.resolve_safe_path(path, allow_create=True, read_only=False)
             if p.exists() and not overwrite:
                 return f"Error: 文件已存在且 overwrite=False [{p}]"
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content, encoding="utf-8")
+            atomic_write_text(p, content)
             return f"Success: 成功写入文件 [{p.name}] ({len(content)} 字符)"
 
         @self.register(
@@ -195,14 +201,14 @@ class ToolRegistry:
             level=PermissionLevel.SAFE_EDIT
         )
         def edit_file(path: str, target_content: str, replacement: str) -> str:
-            p = self.sandbox.resolve_safe_path(path)
+            p = self.sandbox.resolve_safe_path(path, read_only=False)
             if not p.exists():
                 return f"Error: 文件不存在 [{p}]"
             raw = p.read_text(encoding="utf-8")
             if target_content not in raw:
                 return f"Error: 在文件中未找到指定的 target_content 文本"
             updated = raw.replace(target_content, replacement, 1)
-            p.write_text(updated, encoding="utf-8")
+            atomic_write_text(p, updated)
             return f"Success: 成功修改文件 [{p.name}]"
 
         @self.register(
@@ -218,7 +224,7 @@ class ToolRegistry:
             level=PermissionLevel.DANGEROUS
         )
         def delete_file(path: str) -> str:
-            p = self.sandbox.resolve_safe_path(path)
+            p = self.sandbox.resolve_safe_path(path, read_only=False)
             if not p.exists():
                 return f"Error: 文件不存在 [{p}]"
             p.unlink()
@@ -237,7 +243,7 @@ class ToolRegistry:
             level=PermissionLevel.READ_ONLY
         )
         def list_directory(path: str = ".", max_depth: int = 2) -> str:
-            target_dir = self.sandbox.resolve_safe_path(path)
+            target_dir = self.sandbox.resolve_safe_path(path, read_only=True)
             if not target_dir.is_dir():
                 return f"Error: 路径不是有效目录 [{target_dir}]"
 
@@ -273,7 +279,7 @@ class ToolRegistry:
             level=PermissionLevel.READ_ONLY
         )
         def search_files(pattern: str, path: str = ".") -> str:
-            start_dir = self.sandbox.resolve_safe_path(path)
+            start_dir = self.sandbox.resolve_safe_path(path, read_only=True)
             matched = []
             for root, dirs, files in os.walk(start_dir):
                 for f in files:
@@ -309,7 +315,7 @@ class ToolRegistry:
             level=PermissionLevel.READ_ONLY
         )
         def grep(query: str, path: str = ".", case_sensitive: bool = False) -> str:
-            target = self.sandbox.resolve_safe_path(path)
+            target = self.sandbox.resolve_safe_path(path, read_only=True)
             results = []
             q_comp = query if case_sensitive else query.lower()
 
@@ -364,11 +370,89 @@ class ToolRegistry:
             level=PermissionLevel.SHELL_EXEC
         )
         def run_command(command: str, timeout: int = 30) -> str:
+            # 1. 基础安全检查
             self.sandbox.check_command_safety(command)
+            # 2. [P0 修复] 白名单可执行文件校验 + shell=False 执行，根除 RCE 注入
+            import shlex
+            try:
+                argv = shlex.split(command, posix=(os.name != "nt"))
+            except ValueError:
+                return "Error: 命令解析失败：引号不匹配"
+            if not argv:
+                return "Error: 空命令"
+
+            prog = os.path.basename(argv[0]).lower()
+            if prog.endswith(".exe"):
+                prog = prog[:-4]
+
+            _allowed_cmds = {"python", "python3", "pytest", "git", "ls", "cat", "head", "tail", "wc", "grep"}
+            if prog not in _allowed_cmds:
+                return (
+                    f"安全拦截：命令 `{prog}` 不在白名单内。"
+                    f"允许：{', '.join(sorted(_allowed_cmds))}。"
+                    f"如需执行其他命令，请在宿主机终端手动运行。"
+                )
+
+            # [P0 修复·增强] shell=False 挡不住 Python 自身的任意代码执行：
+            # `python -c "import shutil;shutil.rmtree('/')"` 既在白名单内又不命中参数黑名单。
+            # 因此对 python 收紧为「只允许运行工作区内的 .py 脚本」，其余调用形式一律拒绝。
+            if prog in ("python", "python3"):
+                first_arg = argv[1] if len(argv) > 1 else ""
+                if first_arg in ("-c", "--command"):
+                    return (
+                        "安全拦截：`python -c` 可执行任意代码，已被禁用。"
+                        "请将逻辑写入工作区内的 .py 脚本后以 `python 脚本.py` 方式运行。"
+                    )
+                if first_arg == "-m" and len(argv) > 2 and argv[2].split(".")[0] in ("pip", "venv", "ensurepip", "pip3"):
+                    return "安全拦截：禁止通过 run_command 安装依赖或改动 Python 环境，请在宿主机终端手动运行。"
+                if first_arg not in ("--version", "-V", "-h", "--help"):
+                    if not (first_arg and not first_arg.startswith("-")
+                            and first_arg.lower().endswith(".py")):
+                        return (
+                            "安全拦截：python 仅允许运行工作区内的 .py 脚本（如 `python tools/xxx.py`），"
+                            "拒绝其他调用形式。"
+                        )
+                    # [契约对齐] 上面的文案一直声称「只允许运行工作区内的 .py 脚本」，
+                    # 但实现只校验了后缀，从未校验路径 —— 于是 `python ../../evil.py`
+                    # 或 `python C:/anywhere/script.py` 能执行工作区外的既有脚本。
+                    # 这里补上沙箱校验，让实现与自述契约一致。
+                    try:
+                        self.sandbox.resolve_safe_path(first_arg, read_only=True)
+                    except SecurityException as e:
+                        return (f"安全拦截：python 脚本必须位于工作区内或已授权目录，"
+                                f"已拒绝 {first_arg}（{e}）")
+
+            # 纵深防御：按程序类别拦截高危参数模式
+            # - 只读命令 (ls/cat/head/tail/wc/grep) 不做内容模式匹配，避免 grep 源码时误伤；
+            # - git 拦截破坏性子命令（会清空学员学习数据）；
+            # - pytest 拦截代码执行类模式。
+            joined = " ".join(argv[1:])
+            _read_only_cmds = {"ls", "cat", "head", "tail", "wc", "grep"}
+            if prog not in _read_only_cmds:
+                patterns = [
+                    r"\brm\s+-rf\b", r";\s*rm\b", r"\|\s*sh\b", r"\|\s*bash\b", r">\s*/dev/",
+                ]
+                if prog == "git":
+                    patterns += [
+                        r"reset\s+--hard",          # 丢弃全部未提交修改
+                        r"checkout\s+--",           # 检出覆盖工作区文件
+                        r"restore\s+\S",            # 同上（新版语法）
+                        r"clean\s+-[a-zA-Z]*[fd]",  # 清除未跟踪文件
+                        r"push\s+.*--force",        # 强推覆盖远端
+                    ]
+                else:
+                    patterns += [
+                        r"\bshutil\b", r"rmtree", r"os\.system", r"\bsubprocess\b",
+                        r"\bpopen\b", r"__import__", r"\beval\s*\(", r"\bexec\s*\(",
+                    ]
+                for pat in patterns:
+                    if re.search(pat, joined):
+                        return f"安全拦截：检测到高危参数模式 {pat}"
+
             try:
                 proc = subprocess.run(
-                    command,
-                    shell=True,
+                    argv,
+                    shell=False,
                     cwd=str(self.sandbox.workspace_root),
                     capture_output=True,
                     text=True,
@@ -443,6 +527,15 @@ class ToolRegistry:
         def fetch_url(url: str) -> str:
             if not url.startswith(("http://", "https://")):
                 return "Error: 仅支持 http:// 或 https:// 协议"
+            # [P1 修复] 防范 SSRF：禁止访问本地回环与私有内网地址
+            import urllib.parse
+            parsed = urllib.parse.urlparse(url)
+            hostname = (parsed.hostname or "").lower()
+            if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "169.254.169.254", "::1"):
+                return f"Error: 安全拦截 - 禁止访问本地与元数据地址 [{hostname}]"
+            if hostname.startswith(("10.", "192.168.")) or (hostname.startswith("172.") and any(hostname.startswith(f"172.{i}.") for i in range(16, 32))):
+                return f"Error: 安全拦截 - 禁止访问私有内网地址 [{hostname}]"
+
             try:
                 import re
                 req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Kaoyan-Tutor/1.0"})
@@ -518,13 +611,13 @@ class ToolRegistry:
             level=PermissionLevel.READ_ONLY
         )
         def read_exam_paper(pdf_path: str, year: str = "", question_no: str = "", keyword: str = "") -> str:
-            p = self.sandbox.resolve_safe_path(pdf_path)
+            p = self.sandbox.resolve_safe_path(pdf_path, read_only=True)
             if not p.exists() or p.suffix.lower() != ".pdf":
                 # 智能在各科 参考资料/ 目录或工作区全量搜索同名 PDF
                 file_name = Path(pdf_path).name
-                candidates = list(self.workspace_root.glob(f"**/参考资料/**/{file_name}"))
+                candidates = list(self.sandbox.workspace_root.glob(f"**/参考资料/**/{file_name}"))
                 if not candidates:
-                    candidates = list(self.workspace_root.glob(f"**/{file_name}"))
+                    candidates = list(self.sandbox.workspace_root.glob(f"**/{file_name}"))
                 if candidates:
                     p = candidates[0]
                 else:

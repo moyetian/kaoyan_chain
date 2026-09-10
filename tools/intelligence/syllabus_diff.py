@@ -20,6 +20,11 @@ from typing import Dict, Any, List, Optional, Tuple, Set
 from pathlib import Path
 from datetime import datetime
 
+try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
+    from ky_io import atomic_write_text  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 
 
@@ -486,22 +491,21 @@ class SyllabusDiffGenerator:
         output_path: Optional[Path] = None
     ) -> Path:
         """将比对报告落盘为 Markdown 文件"""
-        school = report_data.get("school", "全国统考")
-        major = report_data.get("major", "专业课")
-        clean_school = re.sub(r'[\\/:*?"<>|\s]+', '_', str(school))
-        clean_major = re.sub(r'[\\/:*?"<>|\s]+', '_', str(major))
+        school = report_data.get("school", "全国统考").replace(" ", "_")
+        major = report_data.get("major", "专业课").replace(" ", "_")
         y_new = report_data.get("year_new", 2027)
 
         if not output_path:
             target_dir = ROOT / "04-专业课"
-            target_dir.mkdir(parents=True, exist_ok=True)
-            output_path = target_dir / f"考纲变动分析_{clean_school}_{clean_major}_{y_new}.md"
+            if not target_dir.exists():
+                target_dir.mkdir(parents=True, exist_ok=True)
+            output_path = target_dir / f"考纲变动分析_{school}_{major}_{y_new}.md"
         else:
             output_path = Path(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        output_path.parent.mkdir(parents=True, exist_ok=True)
         md_content = self.format_diff_markdown(report_data)
-        output_path.write_text(md_content, encoding="utf-8")
+        atomic_write_text(output_path, md_content)
         return output_path
 
 

@@ -594,7 +594,10 @@ def build_radar_html(root_path: pathlib.Path) -> str:
     # 3. 社媒真实经验与就读体验精选 (Community Experiences)
     exp_html = []
     exp_html.append("<section class='radar-sec'><h3><span>💬</span>社媒真实经验与避坑口碑档案 (Community Experiences)</h3>")
-    exp_dir = root_path / "docs" / "experiences"
+    # [P0 修复] 优先读取 .memory/experiences/（隐私目录），兼容旧 docs/experiences/ 存量
+    exp_dir = root_path / ".memory" / "experiences"
+    if not exp_dir.exists():
+        exp_dir = root_path / "docs" / "experiences"
     exp_files = sorted(list(exp_dir.glob("*.md")), key=lambda p: (0 if target_school and target_school in p.name else 1, -p.stat().st_mtime)) if exp_dir.exists() else []
     if exp_files:
         exp_html.append("<div style='font-size:12px;color:var(--mut);margin-bottom:8px'>聚合知乎、B站、小红书实名学长学姐真实就读体验与避坑指南 (AI 置信度降噪清洗)：</div>")
@@ -612,7 +615,8 @@ def build_radar_html(root_path: pathlib.Path) -> str:
                 exp_html.append("<div style='font-size:12px;margin:4px 0;color:var(--ok);'><b>🟢 优势亮点:</b> " + html.escape(" · ".join(pos_matches[:3])) + "</div>")
             if risk_matches:
                 exp_html.append("<div style='font-size:12px;margin:4px 0;color:var(--bad);'><b>🔴 避坑防线:</b> " + html.escape(" · ".join(risk_matches[:3])) + "</div>")
-            exp_html.append(f"<div style='font-size:11.5px;color:var(--mut);margin-top:6px;'>详细经验条目与社媒直通车已归档至 <code>docs/experiences/{html.escape(ef.name)}</code></div>")
+            rel_exp = f".memory/experiences/{ef.name}" if ".memory" in str(ef) else f"docs/experiences/{ef.name}"
+            exp_html.append(f"<div style='font-size:11.5px;color:var(--mut);margin-top:6px;'>详细经验条目与社媒直通车已归档至 <code>{html.escape(rel_exp)}</code></div>")
             exp_html.append("</div>")
     else:
         exp_html.append("<div class='empty' style='padding:16px;'><div class='ei'>💡</div>暂无沉淀的社媒经验贴<br><small>在终端输入 <code>ky fetch info 目标院校 目标专业 --save</code> 即可自动清洗并归档学长学姐实名经验</small></div>")

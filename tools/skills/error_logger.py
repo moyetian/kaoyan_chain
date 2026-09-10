@@ -10,6 +10,7 @@
 
 import os
 import re
+import sys
 from datetime import datetime, date
 from pathlib import Path
 
@@ -22,6 +23,11 @@ except Exception:
         from tools.skills import get_subject_name
     except Exception:
         get_subject_name = lambda s, d=None: SUBJECT_NAMES.get(s, s)
+
+try:  # 公共 IO 工具：原子写 + 文件名净化 + 路径包含断言（双导入路径兼容）
+    from ky_io import atomic_write_text, safe_filename, is_within
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text, safe_filename, is_within
 
 SUBJECT_DIRS = {
     "math": "01-数学",
@@ -39,8 +45,8 @@ _SUBJECT_NAME_FALLBACK = {
 }
 SUBJECT_NAMES = dict(_SUBJECT_NAME_FALLBACK)
 
-# 艾宾浩斯与 FSRS-5 简化自适应间隔参数
-EBBINGHAUS_INTERVALS = [1, 3, 7, 15, 30]
+# FSRS-5 简化自适应间隔参数（1, 3, 7, 16, 35 天）。
+# 注：曾有一份同值的 EBBINGHAUS_INTERVALS 死常量（全项目零引用），已删除以免文案与实现再度分叉。
 FSRS_GOOD_INTERVALS = [1, 3, 7, 16, 35]
 FSRS_EASY_INTERVALS = [3, 10, 28, 60]
 
@@ -105,7 +111,7 @@ def log_error_record(subject="math", title="错题记录", error_type="计算失
 ## 📌 [{today_str}] {title}
 - **掌握状态**：`[待复测]` (艾宾浩斯复测中)
 - **错因分类**：`{error_type}` (概念漏洞 / 审题偏差 / 公式记错 / 计算失误 / 书写丢分){q_block}
-- **复测节奏**：`stage=0` · 下次到期 `{next_due_str}`（1/3/7/15/30 天阶梯）
+- **复测节奏**：`stage=0` · 下次到期 `{next_due_str}`（1/3/7/16/35 天阶梯）
 - **错题现场与漏洞分析**：
 {detail.strip()}
 - **专家处方与改进建议**：
@@ -117,7 +123,8 @@ def log_error_record(subject="math", title="错题记录", error_type="计算失
         with open(record_file, "a", encoding="utf-8") as f:
             f.write(record_md)
     else:
-        record_file.write_text(f"# {subj_folder} · 错题积累集 ({today_str})\n" + record_md, encoding="utf-8")
+        atomic_write_text(record_file,
+                          f"# {subj_folder} · 错题积累集 ({today_str})\n" + record_md)
 
     # 联动更新雷达错因累计
     _sync_radar_error_count(subject, error_type, title)
@@ -154,9 +161,10 @@ def _sync_radar_error_count(subject: str, error_type: str, title: str):
                                 break
                 new_lines.append(line)
             if updated:
-                r_file.write_text("\n".join(new_lines), encoding="utf-8")
-        except Exception:
-            pass
+                atomic_write_text(r_file, "\n".join(new_lines))
+        except Exception as e:
+            # 不再静默吞错：雷达统计回写失败必须可见，否则错因计数会悄悄失真
+            print(f"[warn] 薄弱点雷达回写失败 ({r_file.name}): {e}", file=sys.stderr)
 
 
 def scan_error_records(subject=None):
@@ -242,13 +250,6 @@ def scan_error_records(subject=None):
                         r"###\s*三[、.．]\s*标准规范解答[：:]?\s*(.*?)(?=\n###|\n---|\Z)", sec, re.DOTALL)
                 if sa_m:
                     std_ans = sa_m.group(1).strip()
-                if not std_ans and detail_text:
-                    # 从错因分析中兜底抽取明确的"正解/最终结果"结论句
-                    concl = re.findall(
-                        r"(?:最终结果(?:为|是)?|结果为|答案是?|正解(?:为|是)?)\s*"
-                        r"([-+]?\d+(?:\.\d+)?(?:\s*/\s*\d+)?)", detail_text)
-                    if concl:
-                        std_ans = concl[-1].strip()
 
                 results.append({
                     "subject": s,
@@ -369,11 +370,35 @@ def mark_error_status(subject, file_name, title_keyword=None, new_status="已掌
     """
     if title_keyword is None:
         title_keyword = kwargs.get("title", "")
-    title_keyword = str(title_keyword or "")
+    title_keyword = str(title_keyword or "").strip()
+    # [P0 修复] 空标题会让下方正则退化为"匹配第一条记录"，
+    # 导致静默篡改无关错题（不可逆的数据损坏），必须显式拒绝。
+    if not title_keyword:
+        return False, "缺少定位标题（title_keyword 为空），已拒绝回写以避免误改错题卡片"
     folder_name = SUBJECT_DIRS.get(subject, "01-数学")
-    target_file = ROOT / folder_name / "错题本" / file_name
+
+    # [安全] file_name 来自外部载荷（答卷密钥 / 切片题源出处），必须先取 basename。
+    # 未净化时可被构造成 "../../02-英语/错题与长难句本/错题本.md"，
+    # 从而用本错题的内容跨目录整体覆盖另一份已存在的文件（不可逆的数据损坏）。
+    # 这里取最后一个路径分量而不是直接拒绝：合法的 file_name 本就是单层文件名，
+    # 取 basename 对它完全无影响；而任何穿越片段都会因此失效，落入下列「未找到」分支。
+    raw_name = str(file_name or "").strip()
+    safe_name = Path(raw_name).name
+    if not safe_name:
+        return False, "错题文件名为空，已拒绝回写以避免误改文件"
+    if safe_name != raw_name:
+        print(f"[warn] 错题文件名含路径分量，已收敛为单层文件名: "
+              f"{raw_name!r} -> {safe_name!r}", file=sys.stderr)
+
+    mistake_dir = ROOT / folder_name / "错题本"
+    target_file = mistake_dir / safe_name
     if subject == "eng" and not target_file.exists():
-        target_file = ROOT / folder_name / "错题与长难句本" / file_name
+        mistake_dir = ROOT / folder_name / "错题与长难句本"
+        target_file = mistake_dir / safe_name
+
+    # 双保险：解析后必须仍落在预期的错题目录内
+    if not is_within(target_file, mistake_dir):
+        return False, f"错题文件路径越界，已拒绝回写: {raw_name}"
 
     if not target_file.exists():
         return False, f"未找到错题文件: {file_name}"
@@ -438,7 +463,7 @@ def mark_error_status(subject, file_name, title_keyword=None, new_status="已掌
     )
 
     new_content = content.replace(section_text, new_section, 1)
-    target_file.write_text(new_content, encoding="utf-8")
+    atomic_write_text(target_file, new_content)
     if actual_status == "已掌握":
         msg = f"已掌握，下一次复测日 {next_due_str}（stage={new_stage}, 间隔 {interval_days} 天, 评级: {rating}）"
     else:

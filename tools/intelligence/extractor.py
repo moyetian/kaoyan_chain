@@ -31,14 +31,17 @@ class DocumentExtractor:
         html_text: str,
         page_url: str,
         school_name: str,
-        target_year: int = current_exam_year(),
-        source_type: str = "graduate_school"
+        target_year: Optional[int] = None,
+        source_type: str = "graduate_school",
+        ssl_verified: bool = True,
+        access_status: str = "OK"
     ) -> List[EvidenceObject]:
         """从官方通知 HTML 提取关键事实并转化为证据对象"""
         evidences: List[EvidenceObject] = []
         if not html_text:
             return evidences
 
+        target_year = target_year or current_exam_year()
         # 1. 抽取标题
         title = self._extract_title(html_text)
         pub_date = self._extract_pub_date(html_text)
@@ -60,7 +63,8 @@ class DocumentExtractor:
                 source_name=f"{school_name} 官方公告",
                 source_url=page_url,
                 published_at=pub_date,
-                target_year=target_year
+                target_year=target_year,
+                ssl_verified=ssl_verified
             )
             evidences.append(ev_notice)
 
@@ -80,7 +84,8 @@ class DocumentExtractor:
                 source_name=f"{school_name} 官方通告",
                 source_url=page_url,
                 published_at=pub_date,
-                target_year=target_year
+                target_year=target_year,
+                ssl_verified=ssl_verified
             )
             evidences.append(ev_quota)
 
@@ -96,7 +101,8 @@ class DocumentExtractor:
                 source_name=f"{school_name} 官方大纲/目录",
                 source_url=page_url,
                 published_at=pub_date,
-                target_year=target_year
+                target_year=target_year,
+                ssl_verified=ssl_verified
             )
             evidences.append(ev_sub)
 
@@ -112,7 +118,8 @@ class DocumentExtractor:
                 source_name=f"{school_name} 官方附件",
                 source_url=page_url,
                 published_at=pub_date,
-                target_year=target_year
+                target_year=target_year,
+                ssl_verified=ssl_verified
             )
             evidences.append(ev_pdf)
 
@@ -192,12 +199,18 @@ class DocumentExtractor:
         pdf_path_or_bytes: Any,
         school_name: str,
         source_url: str = "",
-        target_year: int = current_exam_year(),
-        major_keyword: Optional[str] = None
+        target_year: Optional[int] = None,
+        major_keyword: Optional[str] = None,
+        ssl_verified: bool = True
     ) -> List[EvidenceObject]:
         """
         从招生专业目录或大纲 PDF 纯文本中抽取初试科目组合、专业方向与拟招计划
+
+        :param ssl_verified: PDF 下载过程是否通过完整 SSL 证书链核验。
+                             [P0 修复] 经 SSL 降级通道获取的 PDF 必须传 False，
+                             否则抽出的招生人数/科目会以 VERIFIED 级别进入研报。
         """
+        target_year = target_year or current_exam_year()
         from pathlib import Path
         text = ""
         
@@ -255,7 +268,8 @@ class DocumentExtractor:
                     source_type="graduate_school",
                     source_name=f"{school_name} 官方招生简章/专业目录 (PDF文件)",
                     source_url=source_url,
-                    target_year=target_year
+                    target_year=target_year,
+                    ssl_verified=ssl_verified
                 )
                 evidences.append(ev_majors)
 
@@ -270,7 +284,8 @@ class DocumentExtractor:
                 source_type="graduate_school",
                 source_name=f"{school_name} 官方初试大纲 (PDF文件)",
                 source_url=source_url,
-                target_year=target_year
+                target_year=target_year,
+                ssl_verified=ssl_verified
             )
             evidences.append(ev_sub)
 
@@ -288,7 +303,8 @@ class DocumentExtractor:
                 source_type="graduate_school",
                 source_name=f"{school_name} 官方招生简章 (PDF文件)",
                 source_url=source_url,
-                target_year=target_year
+                target_year=target_year,
+                ssl_verified=ssl_verified
             )
             evidences.append(ev_quota)
 

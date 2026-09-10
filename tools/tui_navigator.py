@@ -128,7 +128,13 @@ def get_countdown_days() -> int:
     try:
         if CONFIG_FILE.exists():
             cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-            exam_str = cfg.get("exam_date", "2026-12-19")
+            # [P0 修复] exam_date 只存在于 study_plan 下；旧逻辑只读顶层键，
+            # 恒回退默认日期，导致考生改期后 TUI 倒计时不更新。
+            exam_str = (
+                cfg.get("study_plan", {}).get("exam_date")
+                or cfg.get("exam_date")
+                or "2026-12-19"
+            )
         else:
             exam_str = "2026-12-19"
         exam_d = datetime.strptime(exam_str, "%Y-%m-%d").date()
@@ -144,8 +150,8 @@ def get_exam_year() -> int:
         if CONFIG_FILE.exists():
             cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
             exam_str = (
-                cfg.get("exam_date")
-                or cfg.get("study_plan", {}).get("exam_date")
+                cfg.get("study_plan", {}).get("exam_date")
+                or cfg.get("exam_date")
                 or ""
             )
             if exam_str:
@@ -167,7 +173,13 @@ def get_config_summary() -> dict:
         school = sp.get("school") or cfg.get("target_school") or "未指定"
         major = sp.get("major") or cfg.get("target_major") or "未指定"
         stage = cfg.get("stage", "强化题型攻坚阶段")
-        style = cfg.get("coaching_style", "严格把关·保姆提分型 (Strict)")
+        # [P0 修复·风格单一真源] 旧逻辑只读顶层 coaching_style，向导写入的
+        # study_plan.style_name 永远读不到，导致 TUI 与向导选择显示不一致。
+        style = (
+            cfg.get("coaching_style")
+            or sp.get("style_name")
+            or "严格把关·保姆提分型 (Strict)"
+        )
         style_short = style.split("·")[0] if "·" in style else style
         hours = float(cfg.get("daily_budget_hours", 8.5))
         return {
@@ -197,7 +209,7 @@ def get_today_progress() -> tuple[int, int]:
                         total += 1
                         if re.match(r"^-\s*\[[xX]\]", l_str):
                             done += 1
-                    elif "|" in l_str and not l_str.startswith("|---|") and "完成状态" not in l_str and "模块" not in l_str:
+                    elif "|" in l_str and not l_str.replace(" ", "").startswith("|---|") and "完成状态" not in l_str and "模块" not in l_str:
                         parts = [p.strip() for p in l_str.split("|") if p.strip()]
                         if len(parts) >= 3:
                             total += 1
@@ -258,7 +270,10 @@ def get_intel_ribbon() -> list[str]:
             ribbon.append(f"📑 考纲变动: 【{target_school}】考纲已核验入库")
 
     # 3. 社媒经验贴
-    exp_dir = ROOT / "docs" / "experiences"
+    # [P0 修复] 经验档案属学员隐私，主读取路径迁移至 .memory/experiences/（兼容旧目录存量）
+    exp_dir = ROOT / ".memory" / "experiences"
+    if not exp_dir.exists():
+        exp_dir = ROOT / "docs" / "experiences"  # 旧版存量目录，仅只读兼容
     if exp_dir.exists():
         exp_files = list(exp_dir.glob("*.md"))
         if exp_files:
@@ -605,9 +620,18 @@ def execute_action(action_key: str, interactive: bool = True) -> bool:
             else:
                 print(colorize("\n[!] 未找到 05-考研看板/build.py 脚本", Colors.RED))
         elif cmd_alias in ("wechat_search", "wechat", "wx"):
-            kw = input("请输入微信公众号文章检索关键词 [默认 408计算机考研经验]: ").strip() if interactive else "408计算机考研经验"
+            # [P0 修复] 非交互默认词此前硬编码「408计算机考研经验」，
+            # 对自命题考生（如院校自命题科目）完全无关；改为取自考生档案。
+            _cfg_info = get_config_summary()
+            _school = _cfg_info.get("school", "")
+            _major = _cfg_info.get("major", "")
+            if _school and _school not in ("未指定", "目标院校"):
+                default_kw = f"{_school} {_major} 考研"
+            else:
+                default_kw = "408计算机考研经验"
+            kw = input(f"请输入微信公众号文章检索关键词 [默认 {default_kw}]: ").strip() if interactive else default_kw
             if not kw:
-                kw = "408计算机考研经验"
+                kw = default_kw
             from skills.wechat_searcher import wechat_search
             res = wechat_search(keyword=kw, max_results=5, fetch_content=True, save_to_local=False)
             print(colorize(f"\n[+] 微信公众号文章检索完成 (共找到 {res.get('total', 0)} 篇，抓取正文 {res.get('fetched', 0)} 篇)：", Colors.GREEN))

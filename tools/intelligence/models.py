@@ -46,9 +46,12 @@ class EvidenceObject:
     exam_year: int                    # 对应的考研年份，如 2026, 2027
     source: EvidenceSource            # 来源
     retrieved_at: str                 # 抓取/提取时间戳
-    confidence: float                 # 置信度 (0.0 ~ 1.0)
+    confidence: float = 1.0           # 置信度 (0.0 ~ 1.0)
     status: str = "VERIFIED"          # "VERIFIED", "CONFLICT", "OUTDATED", "UNVERIFIED"
     conflict_detail: Optional[str] = None # 若存在冲突，记录冲突说明与对比
+    ssl_verified: bool = True         # 抓取过程是否通过完整权威 SSL 证书链验证
+    fetched_at: str = ""              # 真实网络抓取时间戳 (ISO8601 或 YYYY-MM-DD HH:MM:SS)
+    extractor_version: str = "v2.6"   # 抽取管道版本号
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)

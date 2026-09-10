@@ -197,6 +197,35 @@ def run_doctor(return_summary=False):
         masked_key = api_key[:4] + "****" + api_key[-4:] if len(api_key) > 8 else "****"
         check_item("大模型 API Key 状态", True, f"已配置 ({masked_key}, 模型: {cfg.get('model', 'deepseek-chat')})")
 
+        # [P0 修复] 模型有效性探测：此前仅校验 Key 是否配置，若配置的模型名已在
+        # 上游下线（如 gpt-5.4-mini），私教对话会持续失败而体检仍显示全绿。
+        model_name = (cfg.get("model") or "").strip()
+        base_url = (cfg.get("base_url") or "").strip().rstrip("/")
+        if model_name and base_url:
+            probe_reachable = False
+            model_found = False
+            try:
+                import urllib.request
+                req = urllib.request.Request(
+                    base_url + "/v1/models",
+                    headers={"Authorization": "Bearer " + api_key},
+                )
+                with urllib.request.urlopen(req, timeout=4) as resp:
+                    data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                ids = {str(m.get("id", "")) for m in (data.get("data") or [])}
+                model_found = model_name in ids
+                probe_reachable = True
+            except Exception:
+                probe_reachable = False
+            if probe_reachable and model_found:
+                check_item("模型有效性 (上游 /v1/models)", True, f"{model_name} 在上游可用模型列表中")
+            elif probe_reachable:
+                check_item("模型有效性 (上游 /v1/models)", False, "",
+                           f"模型 {model_name} 不在上游可用列表中，私教对话将持续失败；请运行 ky config 更换模型", warn=True)
+                warnings += 1
+            else:
+                check_item("模型有效性 (上游 /v1/models)", True, "上游暂不可达，已跳过探测 (离线环境属正常)")
+
     # ── 5. 网关与看板构建环境 ──
     print(color("\n【5. Web 伴侣网关与看板系统】", C.BOLD))
     build_script = ROOT / "05-考研看板" / "build.py"

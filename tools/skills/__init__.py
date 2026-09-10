@@ -26,6 +26,7 @@ from . import school_scout
 from . import material_ingestion
 from . import wechat_searcher
 from . import material_scanner
+from . import open_grader
 
 SKILLS_REGISTRY = {
     "vision_solver": {
@@ -111,6 +112,13 @@ SKILLS_REGISTRY = {
         "desc": "多源检索微信考研经验、院校解读与考点精讲，清洗为 Markdown 并联动沉淀至经验档案",
         "command": "ky wechat <关键词> [--max=N] [--save] [--school=校名] 或 /wx",
         "status": "已就绪"
+    },
+    "open_grader": {
+        "name": "🧑‍⚖️ 开放题多模型判分引擎 (Open-Ended Multi-Model Grader)",
+        "desc": "论述/推导类开放题：要点抽取→多模型并行初评→分歧仲裁→确定性裁决，"
+                "未启用或异常时自动回落人工复核，绝不臆造分数",
+        "command": "自动接入 exam-submit 的开放题判分链路",
+        "status": open_grader.get_status()
     }
 }
 

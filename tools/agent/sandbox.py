@@ -7,6 +7,7 @@ r"""
 3. 严格运行于工具层，绝不依赖 Prompt 自觉
 """
 
+import logging
 import os
 import re
 from pathlib import Path
@@ -51,6 +52,28 @@ DANGEROUS_COMMAND_PATTERNS = [
     r"\b(?:net\s+user|net\s+localgroup)\b",       # 修改系统用户
 ]
 
+#: 允许「工作区外只读访问」的扩展名白名单。
+#: ⚠ 这是**有意保留**的能力，不是漏判：/img <绝对路径> 拍照批改、
+#:   直接读取桌面上的真题 PDF，都依赖它。
+#:   收口手段：.json 被刻意排除（防凭据/密钥外泄）、仅对 read_only=True 生效、
+#:   相对路径穿越一律拒绝、每次使用都留审计日志。如需彻底禁用，
+#:   正确做法是让命令层把用户显式给出的路径注册进 allowed_extra_paths。
+EXTERNAL_READ_EXTS = {".pdf", ".txt", ".md", ".docx", ".doc",
+                      ".png", ".jpg", ".jpeg", ".csv"}
+
+_LOGGER = logging.getLogger("ky.sandbox")
+
+
+def _log_external_read(resolved: Path, raw_path) -> None:
+    """工作区外只读访问必须留下审计记录。
+
+    默认 WARNING 级（未配置 logging 时会经 lastResort 输出到 stderr），
+    这样「谁读了工作区外的什么文件」事后可追溯。
+    """
+    _LOGGER.warning("沙箱只读豁免：允许读取工作区外文件 %s（原始输入: %s）",
+                    resolved, raw_path)
+
+
 class SecurityException(PermissionError):
     """沙箱拦截抛出的安全异常"""
     pass
@@ -60,12 +83,20 @@ class Sandbox:
         self.workspace_root = Path(workspace_root).resolve() if workspace_root else Path.cwd().resolve()
         self.allowed_extra_paths = [Path(p).resolve() for p in (allowed_extra_paths or [])]
 
-    def resolve_safe_path(self, raw_path, allow_create=False) -> Path:
+    def resolve_safe_path(self, raw_path, allow_create=False, read_only=False) -> Path:
         """
         解析并校验路径安全性:
         1. 允许工作区 root 内部的相对与绝对路径
-        2. 允许用户显式指定的参考资料外部路径
-        3. 拦截敏感系统目录穿越
+        2. 允许用户显式指定的参考资料外部路径 (allowed_extra_paths)
+        3. 拦截敏感系统目录、凭据目录与私钥文件
+        4. 拒绝「相对路径穿越出工作区」(如 ../../x.md)
+
+        关于工作区外的只读豁免（第 4 步之后的 EXTERNAL_READ_EXTS 分支）：
+        当 read_only=True 且文件已存在、后缀在白名单内时，允许读取工作区外的文件。
+        这是**有意保留**的能力（/img 绝对路径拍照批改、读桌面真题 PDF 依赖它），
+        因此不是漏判；但收口为「仅只读、.json 除外、记录审计日志」。
+        若要彻底禁用，应在命令层把用户显式给出的路径注册进 allowed_extra_paths，
+        而不是依赖扩展名白名单。
         """
         if not raw_path:
             raise SecurityException("路径不能为空")
@@ -134,15 +165,32 @@ class Sandbox:
                 str(resolved).lower().startswith(str(extra_p).lower())
                 for extra_p in self.allowed_extra_paths
             )
-            # 若是读取已存在的文件（如用户外部放置的考研真题 PDF），且非系统敏感目录，允许只读访问
-            if not is_in_extra and not allow_create and resolved.exists() and resolved.is_file():
-                # 额外允许考生外部合法的考研复习文件（pdf/doc/txt/md/jpg/png）
-                valid_exts = {".pdf", ".txt", ".md", ".docx", ".doc", ".png", ".jpg", ".jpeg", ".csv", ".json"}
-                if resolved.suffix.lower() in valid_exts:
+
+            # [安全修复] 相对路径穿越出工作区（如 "../../secret.txt"）一律拒绝。
+            # 理由：外部**绝对**路径是人工显式给出的正常用法（下面的只读豁免需要它），
+            # 而相对路径逃出工作区没有任何正常使用场景，是越权/注入尝试的典型特征。
+            _segs = [seg for seg in re.split(r"[/\\]+", raw_str) if seg]
+            if ".." in _segs and not (is_windows_abs or p.is_absolute()):
+                raise SecurityException(
+                    f"沙箱拦截: 拒绝相对路径穿越出工作区 [{raw_path}]")
+
+            # 只读豁免：仅对「只读」操作生效，且 .json 不再豁免（防凭据外泄）；
+            # edit/delete/write 等修改操作严禁穿越到外部。
+            if (
+                read_only
+                and not is_in_extra
+                and not allow_create
+                and resolved.exists()
+                and resolved.is_file()
+            ):
+                if resolved.suffix.lower() in EXTERNAL_READ_EXTS:
+                    _log_external_read(resolved, raw_path)   # 留审计记录
                     return resolved
 
             if not is_in_extra:
-                raise SecurityException(f"沙箱拦截: 路径超出工作区范围且未获外部授权 [{resolved}]")
+                raise SecurityException(
+                    f"沙箱拦截: 路径超出工作区范围且未获外部授权 [{resolved}]"
+                    f"（仅允许已授权目录，或只读访问白名单扩展名的外部文件）")
 
         return resolved
 

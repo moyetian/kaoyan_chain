@@ -43,12 +43,13 @@ class KaoYanIntelligenceEngine:
         self,
         school_query: str,
         major_query: Optional[str] = None,
-        exam_year: int = current_exam_year(),
+        exam_year: Optional[int] = None,
         save_report: bool = False
     ) -> Dict[str, Any]:
         """
         全流程执行高校招考情报检索与证据链聚合
         """
+        exam_year = exam_year or current_exam_year()
         # 1. 解析目标高校实体
         entity = resolve_university(school_query)
         school_name = entity.name if entity else school_query
@@ -91,7 +92,9 @@ class KaoYanIntelligenceEngine:
                     page_url=url,
                     school_name=school_name,
                     target_year=exam_year,
-                    source_type=src_type
+                    source_type=src_type,
+                    ssl_verified=getattr(fetch_res, "ssl_verified", True),
+                    access_status=getattr(fetch_res, "access_status", "OK"),
                 )
                 all_evidences.extend(extracted)
 
@@ -285,14 +288,27 @@ class KaoYanIntelligenceEngine:
         """保存研报到 04-专业课/"""
         target_dir = ROOT / "04-专业课"
         target_dir.mkdir(parents=True, exist_ok=True)
-        
+
         safe_major = f"_{major_query.strip()}" if major_query else ""
         filename = f"目标院校情报_{school_name}{safe_major}.md"
         filepath = target_dir / filename
-        
+
+        # [P0 修复] admission(证据链版) 与 scout(口碑版) 均落盘到同名文件，
+        # 后写者会直接覆盖前者导致证据链/口碑研报丢失。写入前按项目惯例备份旧报告。
+        if filepath.exists():
+            try:
+                from syllabus_manager import backup_syllabus_file
+            except Exception:
+                try:
+                    from tools.syllabus_manager import backup_syllabus_file
+                except Exception:
+                    backup_syllabus_file = None
+            if backup_syllabus_file:
+                backup_syllabus_file(filepath)
+
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(content)
-            
+
         return filepath
 
 

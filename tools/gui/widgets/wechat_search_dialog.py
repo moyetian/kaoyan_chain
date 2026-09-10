@@ -177,7 +177,7 @@ class WeChatSearchDialog(QDialog):
         total = result.get("total", len(items))
         fetched = result.get("fetched", 0)
 
-        saved_msg = f" | 已沉淀 {len(result.get('saved_paths', []))} 篇到 docs/experiences/" if result.get("saved_paths") else ""
+        saved_msg = f" | 已沉淀 {len(result.get('saved_paths', []))} 篇到 .memory/experiences/ (本地隐私目录)" if result.get("saved_paths") else ""
         scout_msg = " | 已联动更新目标校口碑档案" if result.get("scout_linked") else ""
         self.status_label.setText(f"✅ 检索完成：找到 {total} 篇，正文抓取 {fetched} 篇{saved_msg}{scout_msg}")
 

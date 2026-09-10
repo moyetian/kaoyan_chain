@@ -1,59 +1,58 @@
-<div align="center">
-
 # 考研学习链 (Kaoyan AI Study Chain) · 数字化备考工程
 
 **基于 AI Agent 私人教师协议、外置状态机驱动与自动化自测看板的开源考研备考工程**
 
-<p align="center">
-  <a href="https://moyetian.github.io/kaoyan_chain/"><img src="https://img.shields.io/badge/🌐_在线看板体验-Live_Demo-6366f1?style=for-the-badge&logo=githubpages&logoColor=white" alt="Live Demo" /></a>
-  <a href="#-用户本地化部署与快速上手流程-3-分钟开箱"><img src="https://img.shields.io/badge/🚀_快速上手-Quick_Start-10b981?style=for-the-badge&logo=rocket&logoColor=white" alt="Quick Start" /></a>
-  <a href="操作手册.md"><img src="https://img.shields.io/badge/📘_学员实操手册-Handbook-3b82f6?style=for-the-badge&logo=read-the-docs&logoColor=white" alt="Handbook" /></a>
-  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/🛠️_开发与贡献-Contributing-f59e0b?style=for-the-badge&logo=git&logoColor=white" alt="Contributing" /></a>
-</p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
-  <img src="https://img.shields.io/badge/Release-v2.6.0-blue?style=flat-square&logo=github&logoColor=white" alt="Release v2.6.0" />
-  <img src="https://img.shields.io/badge/Tests-251%2F251%20Passed%20(100%25)-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
-  <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-6366f1?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
-  <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
-  <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
-  <img src="https://img.shields.io/badge/KaoYan%20Intelligence-55%2B%E7%9C%81%E7%BA%A7%E9%AB%98%E6%A0%A1%E6%A1%A3%E6%A1%88-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white" alt="KaoYan Intelligence" />
-  <img src="https://img.shields.io/badge/Terminal%20TUI-v2.5%20%E6%9E%81%E5%AE%A2%E6%8E%A7%E5%88%B6%E5%8F%B0-3b82f6?style=flat-square&logo=gnometerminal&logoColor=white" alt="Terminal TUI" />
-  <img src="https://img.shields.io/badge/Dashboard-6%20Tabs%20(%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE%2B%E5%9B%BE%E8%B0%B1%2B%E8%B6%8B%E5%8A%BF%E7%BA%BF)-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
-  <img src="https://img.shields.io/badge/Memory-3--Tier%20Pruning-f59e0b?style=flat-square&logo=speedtest&logoColor=white" alt="Memory" />
-  <img src="https://img.shields.io/badge/Privacy-Local--First-10b981?style=flat-square&logo=shield&logoColor=white" alt="Privacy" />
-  <img src="https://img.shields.io/badge/License-MIT-lightgrey.svg?style=flat-square" alt="License" />
-</p>
 
-<p align="center">
-  <a href="#-用户本地化部署与快速上手流程-3-分钟开箱">🚀 极速开箱</a> •
-  <a href="#1-🖥️-桌面可视化操作端-pyside6-desktop-client--ky-gui">🖥️ 桌面 GUI</a> •
-  <a href="#4-📟-终端全景智能中枢-tui-v25-极客控制台">📟 终端 TUI</a> •
-  <a href="#2-📱-微信公众号考研经验检索与爬虫-ky-wechat--ky-wx">📱 经验检索</a> •
-  <a href="#6-🏛️-kaoyan-intelligence-招考全景情报与证据链引擎">🏛️ 研招情报</a> •
-  <a href="#-常用私教交互与指令速查">⌨️ 指令速查</a> •
-  <a href="操作手册.md">📘 实操手册</a> •
-  <a href="CONTRIBUTING.md">🛠️ 开发贡献</a>
-</p>
+![Live Demo](https://img.shields.io/badge/🌐_在线看板体验-Live_Demo-6366f1?style=for-the-badge&logo=githubpages&logoColor=white)
 
-<p align="center">
-  <img src="docs/assets/hero_banner.jpg" alt="Kaoyan AI Study Chain Banner" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
-</p>
+![Quick Start](https://img.shields.io/badge/🚀_快速上手-Quick_Start-10b981?style=for-the-badge&logo=rocket&logoColor=white)
 
-</div>
+![Handbook](https://img.shields.io/badge/📘_学员实操手册-Handbook-3b82f6?style=for-the-badge&logo=read-the-docs&logoColor=white)
+
+![Contributing](https://img.shields.io/badge/🛠️_开发与贡献-Contributing-f59e0b?style=for-the-badge&logo=git&logoColor=white)
+
+
+
+![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)
+
+![Release v2.6.0](https://img.shields.io/badge/Release-v2.6.0-blue?style=flat-square&logo=github&logoColor=white)
+
+![Tests](https://img.shields.io/badge/Tests-380%2B%20Cases-10b981?style=flat-square&logo=checkmarx&logoColor=white)
+
+![PySide6 GUI](https://img.shields.io/badge/GUI-PySide6%20Desktop-6366f1?style=flat-square&logo=qt&logoColor=white)
+
+![Rust Native](https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white)
+
+![WeChat Searcher](https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white)
+
+![KaoYan Intelligence](https://img.shields.io/badge/KaoYan%20Intelligence-55%2B%E7%9C%81%E7%BA%A7%E9%AB%98%E6%A0%A1%E6%A1%A3%E6%A1%88-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white)
+
+![Terminal TUI](https://img.shields.io/badge/Terminal%20TUI-v2.5%20%E6%9E%81%E5%AE%A2%E6%8E%A7%E5%88%B6%E5%8F%B0-3b82f6?style=flat-square&logo=gnometerminal&logoColor=white)
+
+![Dashboard](https://img.shields.io/badge/Dashboard-6%20Tabs%20(%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE%2B%E5%9B%BE%E8%B0%B1%2B%E8%B6%8B%E5%8A%BF%E7%BA%BF)-6366f1?style=flat-square&logo=speedtest&logoColor=white)
+
+![Memory](https://img.shields.io/badge/Memory-3--Tier%20Pruning-f59e0b?style=flat-square&logo=speedtest&logoColor=white)
+
+![Privacy](https://img.shields.io/badge/Privacy-Local--First-10b981?style=flat-square&logo=shield&logoColor=white)
+
+![License](https://img.shields.io/badge/License-MIT-lightgrey.svg?style=flat-square)
+
+
+
+![Kaoyan AI Study Chain Banner](docs/assets/hero_banner.jpg)
 
 ---
 
 ## 📖 这是什么？
 
-<p align="center">
-  <img src="docs/assets/readme_system_overview.svg" alt="考研学习链系统架构与工作流全景" style="max-width:100%;border-radius:10px;" />
-</p>
 
-<p align="center">
-  <img src="docs/assets/feature_comparison.svg" alt="传统 AI 对话与考研学习链对比" style="max-width:100%;border-radius:10px;" />
-</p>
+
+![考研学习链系统架构与工作流全景](docs/assets/readme_system_overview.svg)
+
+
+
+![传统 AI 对话与考研学习链对比](docs/assets/feature_comparison.svg)
 
 **考研学习链 (Kaoyan AI Study Chain)** 是一套面向考研学子的**数字化、工程化 AI 私人教师备考系统**。
 
@@ -73,32 +72,38 @@
 ### 环境依赖
 
 - **操作系统**：Windows 10/11、macOS 或 Linux
-- **Python**：**Python 3.10+** (推荐 3.11 / 3.12)
-- **Git**（版本管理与多端同步）
+- **Python**：**Python 3.10+**（推荐 3.11 / 3.12）
+- **Git**：版本管理与多端同步
+- **第三方依赖**：**可选**。核心的 REPL 对话、协议路由与状态管理**零依赖即可运行**；
+只有在需要 PDF 抽取 / 数学符号验算 / 桌面 GUI 等增强技能时，才需要安装下列依赖。
 
-### 极速 4 步走：
+### 极速 5 步走：
 
 ```bash
 # 1. 克隆项目仓库到本地
 git clone https://github.com/moyetian/kaoyan_chain.git
 cd kaoyan_chain
 
-# 2. 运行跨平台交互式初始化向导 (锁定考研倒计时、科目大纲与提分目标)
-# Windows 平台推荐使用 py -3 或直接双击 ky.bat (规避系统应用商店空别名)
-py -3 tools/init_workspace.py
-# 或 python tools/init_workspace.py
+# 2. (可选) 安装增强依赖 —— 按需安装，核心功能无需任何第三方库
+pip install -r requirements.txt
 
-# 3. 配置大模型 API Key (支持 DeepSeek、GLM、Qwen、Kimi、OpenAI 或本地 Ollama)
+# 3. 运行跨平台交互式初始化向导 (锁定考研倒计时、科目大纲与提分目标)
+python tools/init_workspace.py
+
+# 4. 配置大模型 API Key (支持 DeepSeek、GLM、Qwen、Kimi、OpenAI 或本地 Ollama)
 python tools/ky_cli.py config
 # 或 Windows 双击 ky.bat 后输入 config
 
-# 4. 启动私教开始复习！
+# 5. 启动终端私教开始复习！
 ky
-# 桌面图形端: ky gui
-# 终端控制台: ky menu
+# 或 python tools/ky_cli.py
 ```
 
-> [!TIP]
+> \[!IMPORTANT\]
+> **第 3 步不可跳过**。初始化向导会生成 `ky_config.json`（已被 `.gitignore` 保护）。
+> 缺少该文件时，倒计时、任务编排与部分指令会不可用。
+
+> \[!TIP\]
 > 考研学习链提供 **三大操作端** 供你自由选用：
 >
 > - 🖥️ **桌面可视化端**：输入 `ky gui`，享受 PySide6 构建的高颜值暗黑/明亮双主题看板、倒计时与可视化做题面板！
@@ -109,9 +114,9 @@ ky
 
 ## 🌟 核心功能全景亮点
 
-<p align="center">
-  <img src="docs/assets/persona_triad_matrix.svg" alt="三类考研学生画像与差异化提分闭环矩阵" style="max-width:100%;border-radius:10px;" />
-</p>
+
+
+![三类考研学生画像与差异化提分闭环矩阵](docs/assets/persona_triad_matrix.svg)
 
 ### 1. 🖥️ 桌面可视化操作端 (PySide6 Desktop Client · `ky gui`)
 
@@ -124,7 +129,7 @@ ky
 
 - **多源智能检索**：搜狗微信搜索 (主源) ➔ Bing 微信定向搜索 (备用源) ➔ 本地经验库 (离线兜底)；
 - **HTML ➔ Markdown 强力清洗管道**：剥离广告、样式与追踪脚本，提取公众号名、发布时间与正文内容；
-- **本地沉淀与口碑档案联动**：通过 `--save` 自动落地至 `docs/experiences/`，并无缝追加进目标高校社媒口碑研报。
+- **本地沉淀与口碑档案联动**：通过 `--save` 自动落地至 `.memory/experiences/` (本地隐私目录，不入库)，并无缝追加进目标高校社媒口碑研报。
 
 ### 3. ⚡ Rust (PyO3) 原生性能加速与透明零依赖降级 (`ky_rust_ext`)
 
@@ -167,21 +172,91 @@ ky
 | 交互场景      | 推荐口令 / 子命令                         | 行为说明                                   |
 | --------- | ---------------------------------- | -------------------------------------- |
 | **桌面操作**  | `ky gui` / `ky-gui`                | 启动 PySide6 桌面可视化图形操作端 (支持暗黑/明亮双主题)     |
-| **终端中枢**  | `ky menu` / `ky tui`               | 启动 TUI 极客全景控制台，键鼠双控一键穿透                 |
 | **公众号检索** | `ky wechat 408经验 --save` / `ky wx` | 多源检索微信公众号考研文章与上岸经验贴，沉淀至本地并联动研报         |
 | **晨起看盘**  | `ky status` / `ky today`           | 查看初试倒计时、今日四科任务攻坚清单与进度                  |
 | **学科报到**  | `数学报到` / `英语报到` / `ky`             | 私教调取昨日错题，从白名单题库抽取题目派发                  |
 | **提交作业**  | `交作业` / `/submit`                  | 逐行给出采分点 `[+2分]`/`[-1分]`，追查错因五分类并归档错题   |
 | **微步提示**  | `/hint`                            | 唤醒苏格拉底三级脚手架（破题定性 ➔ 首步搭桥 ➔ 避坑），拒绝剧透     |
 | **错题重测**  | `ky review` / `ky exam`            | 调取艾宾浩斯到期错题，隐去原答案进行盲盒自测                 |
-| **符号验算**  | `ky calc "diff(sin(x)*exp(x), x)"` | 基于 SymPy 高精度数学符号验算 (极限/导数/积分/ODE/矩阵，别名: `verify`) |
 | **智能减负**  | `ky relieve` / `ky fatigue`        | 检查疲劳警报；一键将时间预算下调 25%，切换为鼓励型风格          |
-| **院校对标**  | `ky compare 华科 武大 计算机`             | 横向深度对标两校招考指标、408/自命题、复试线与一志愿保护         |
-| **考纲比对**  | `ky diff` / `ky fetch diff`        | 解析新旧大纲 AST，标注考点增删与考查要求跃迁，测算动荡率         |
+| **院校对标**  | `ky compare 示例院校A 示例院校B 计算机`       | 横向深度对标两校招考指标、408/自命题、复试线与一志愿保护         |
+| **考纲比对**  | `ky fetch diff --school=示例院校A`     | 解析新旧大纲 AST，标注考点增删与考查要求跃迁，测算动荡率         |
 | **切片入库**  | `ky ingest 2024真题.md`              | 试卷智能切片与标准化题卡入库 (支持 Rust 毫秒级加速)         |
 | **刷新看板**  | `ky build`                         | 重新编译并刷新本地与移动端自测看板（默认本地构建）              |
 | **系统体检**  | `ky doctor`                        | 7 维度全系统健康诊断（Python/依赖/状态/API/端口/Git隐私） |
 
+
+---
+
+## 📁 项目目录结构
+
+```text
+考研学习链/
+├── AGENTS.md                    # 顶层中枢协议：AI 私教的最高指令与调度路由
+├── README.md / SETUP.md         # 项目总览 / 安装与部署详解
+├── 操作手册.md                  # 学员实操通关手册（日常使用主文档）
+├── CONTRIBUTING.md              # 开发者与贡献指南（含完整架构树）
+├── GEMINI.md                    # Gemini / Antigravity 适配入口
+├── 00_考研全科总战役规划.md      # 总战役规划（由 ky plan 依据你的配置生成）
+│
+├── 01-数学/  02-英语/  03-思想政治理论/  04-专业课/
+│   ├── AGENTS.md                # 该科目的专属私教协议
+│   ├── 考试大纲.md              # 该科目考纲（公共课内置；专业课需 ky plan 生成）
+│   ├── 00_XX备考总规划.md       # 该科目的阶段作战规划
+│   ├── _状态/                   # 学情状态（*模板* 入库，个人数据不上云）
+│   ├── 错题本/                  # 错题卡片与索引（*模板* 入库）
+│   ├── 每日笔记/                # 每日笔记（*模板* 入库）
+│   └── 参考资料/                # 你的真题与教材（个人资料，绝不上云）
+│
+├── 05-考研看板/                 # 移动端自测看板的构建工程
+│   ├── build.py                 # 看板生成器（生成 docs/index.html 与脱敏快照）
+│   └── docs/                    # 看板产物与静态资源
+├── docs/                        # 发布到 GitHub Pages 的静态看板与配图
+├── data/universities/           # 内置高校考研档案库（55+ 所，公开数据）
+├── rust_ext/                    # Rust (PyO3) 原生加速扩展源码（可选构建）
+└── tools/                       # 全部 Python 源码
+    ├── ky_cli.py                # 主命令行入口（34 个子命令）
+    ├── tui_navigator.py         # 终端全景智能中枢 (TUI)
+    ├── ky_gui.py / gui/         # PySide6 桌面可视化操作端
+    ├── agent/                   # Agent 内核：沙箱 / 权限 / 记忆 / 生命周期钩子
+    ├── skills/                  # 私教技能：判分 / 错题 / 组卷 / 变式 / 检索 / 切片
+    ├── intelligence/            # 研招情报、考纲 Diff 与证据链引擎
+    └── test_ky_suite.py         # 全链路自动化回归测试套件
+```
+
+---
+
+## ⚠️ 使用注意事项
+
+1. **先初始化，再使用**
+ 首次克隆后务必运行 `python tools/init_workspace.py` 生成 `ky_config.json`，
+ 否则倒计时、任务编排与部分指令不可用。
+2. **API Key 安全**
+ `ky_config.json` / `ky_history.json` 已被 `.gitignore` 保护，**切勿提交或分享**。
+ 若不小心推送了含 Key 的文件，请立即在服务商处吊销并更换密钥。
+3. **联网功能与离线可用性**
+ `ky scout`、`ky admission`、`ky watch`、`ky wechat`、`ky fetch` 等情报类命令需要连接网络；  
+ 断网或受限网络下会给出明确提示。做题、判分、看板生成等核心功能**可部分离线使用**。
+4. **自命题科目需自行生成考纲**
+ `01-数学` / `02-英语` / `03-思想政治理论` 三门公共课考纲随项目内置；
+ 专业课为院校自命题，需运行 `ky plan` 生成。若大纲科目与报考科目不符，系统会主动告警。
+5. **资料版权与白名单门禁**
+ `参考资料/` 目录与所有 PDF 均已由 `.gitignore` 排除，不会上云。
+ 请自行确保资料的合法来源，**不要公开传播受版权保护的教材与真题**。
+ AI 私教只从你放入的白名单资料出题，白名单为空时仅按官方考纲命题，绝不虚构书目。
+6. **隐私边界**
+ 个人学情状态（`_状态/*.md`、`学情档案.md`）、错题本、每日笔记与经验档案均在忽略名单内。
+ 只要不绕过 Git 强推，这些数据不会被误上传。
+7. **Rust 加速为可选**
+ 未编译 `ky_rust_ext` 原生扩展时，系统会自动降级为等价的纯 Python 实现，
+ 功能与结果一致，仅性能不同。
+8. **Windows 终端编码**
+ 中文输出建议在 Windows Terminal 下运行，或先执行 `chcp 65001` 切换到 UTF-8 代码页，避免乱码。
+9. **Python 版本**
+ 低于 3.10 会因语言特性与类型标注报错，请升级到 3.11 / 3.12 获得最佳兼容性。
+10. **提交 PR 前请自测**
+ 运行 `python tools/test_ky_suite.py` 与 `python tools/test_new_features.py`，
+ 确认无失败后再提交。更多排查思路见 [SETUP.md](SETUP.md) 与 [操作手册.md](操作手册.md) 第 7 章「常见突发场景速查」。
 
 ---
 
@@ -209,24 +284,26 @@ ky
 本项目包含覆盖全链路功能、权限沙箱、研招情报、Rust加速与真实 CLI 进程级 smoke test 的自动化回归套件：
 
 ```bash
-# 运行全套自动化质量回归测试 (25 组测试，共 251 项测试点)
+# 运行全套自动化质量回归测试 (25 组全链路回归测试，共 265 项断言)
 python tools/test_ky_suite.py
 
-# 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、契约守卫共 52 项测试点)
+# 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、开放题判分等，共 122 项断言)
 python tools/test_new_features.py
 ```
 
-- **测试保障**：全量 25 组回归测试集 + 5 组升级功能专项集，**303 项测试点 100% 全部通过**；
+- **测试保障**：主套件 25 组测试集 **265 项断言** + 新功能专项 **122 项断言**，全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
 - **CI 流水线**：内置 GitHub Actions 多平台 (Linux/Windows) 与多 Python 版本自动化测试保障；
 - **开发者文档**：如需参与贡献或了解完整项目架构树，请参阅 [🛠️ 开发者与贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。
 
 ---
 
-## 🤝 交流与联系 (Contact &amp; Community)
+## 🤝 交流与反馈 (Contact &amp; Community)
 
+- 🐛 **问题反馈 / 功能建议**：[提交 GitHub Issue](https://github.com/moyetian/kaoyan_chain/issues)
+- 🔧 **参与共建**：欢迎阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 后提交 Pull Request
+- 📘 **详细实操通关指南**：请阅读 [操作手册.md](操作手册.md)
 - 🐧 **QQ 号**：`296528868`
 - 📮 **电子邮箱**：`moyetian@foxmail.com`
-- 📘 **详细实操通关指南**：请阅读 [操作手册.md](操作手册.md)
 
 > 愿每一位披星戴月的考研人都能稳住节奏、拒绝内耗，一战成硕，顺利上岸！🌟
 

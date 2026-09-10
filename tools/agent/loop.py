@@ -96,8 +96,7 @@ class AgentRunner:
         self.hooks.trigger_session_start(ctx)
 
         api_key = self.config.get("api_key", "").strip()
-        raw_base_url = self.config.get("base_url", "https://api.deepseek.com/v1")
-        if not api_key or api_key == "YOUR_API_KEY_HERE" or "example.com" in raw_base_url:
+        if not api_key:
             err_msg = "[!] 错误: 未配置大模型 API Key！请在终端输入 /config 进行配置。"
             print(f"\033[91m{err_msg}\033[0m")
             return err_msg

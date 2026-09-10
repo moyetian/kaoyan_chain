@@ -45,6 +45,11 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
+      - name: 清理学员隐私产物
+        run: |
+          rm -rf docs/experiences
+          echo "已移除隐私目录，仅发布脱敏看板"
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

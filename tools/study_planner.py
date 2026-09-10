@@ -18,6 +18,11 @@ import json
 from pathlib import Path
 from datetime import datetime, date
 
+try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
+    from ky_io import atomic_write_text  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_FILE = ROOT / "ky_config.json"
 
@@ -669,7 +674,7 @@ def apply_study_plan(plan, interactive=True):
     else:
         content = content.replace("### 二、四种私教辅导风格设定", schedule_section + "\n### 二、四种私教辅导风格设定")
 
-    agents_path.write_text(content, encoding="utf-8")
+    atomic_write_text(agents_path, content)
 
     # 4. 同步更新各子目录 AGENTS.md
     update_subject_agents(plan)
@@ -683,8 +688,11 @@ def apply_study_plan(plan, interactive=True):
             cfg = {}
     cfg["onboarding_completed"] = True
     cfg["study_plan"] = plan
+    # [P0 修复·风格单一真源] coaching_style 与 study_plan.style_name 必须同步写入。
+    # 此前向导只写 style_name，而 TUI/CLI 读顶层 coaching_style，三端显示互相矛盾。
+    cfg["coaching_style"] = plan.get("style_name", cfg.get("coaching_style", ""))
     cfg["relief_mode_active"] = False
-    CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(CONFIG_FILE, json.dumps(cfg, ensure_ascii=False, indent=2))
 
     # 5.1 重置院校监控列表：新身份生成时，监控列表应随目标院校切换，避免残留上一考生数据
     try:
@@ -723,7 +731,7 @@ def _safe_write_today_task(task_file: Path, today_str: str, content: str) -> str
     import shutil
     if not task_file.exists():
         task_file.parent.mkdir(parents=True, exist_ok=True)
-        task_file.write_text(content, encoding="utf-8")
+        atomic_write_text(task_file, content)
         return "已创建"
     try:
         existing_first = task_file.read_text(encoding="utf-8").splitlines()[0]
@@ -737,10 +745,10 @@ def _safe_write_today_task(task_file: Path, today_str: str, content: str) -> str
             shutil.copy2(task_file, backup)
         except Exception:
             pass
-        task_file.write_text(content, encoding="utf-8")
+        atomic_write_text(task_file, content)
         return f"已备份到 {backup.name} 后覆盖"
     # 不同日 → 旧文件已被搁置，直接覆盖
-    task_file.write_text(content, encoding="utf-8")
+    atomic_write_text(task_file, content)
     return "已覆盖（非同日任务）"
 
 
@@ -809,11 +817,11 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 
 {ai_strategy}
 """
-    root_plan_file.write_text(root_plan_content, encoding="utf-8")
+    atomic_write_text(root_plan_file, root_plan_content)
 
     # 2. 生成各科备考总规划
     math_plan_file = ROOT / "01-数学" / "00_数学备考总规划.md"
-    math_plan_file.write_text(f"""# {m_n} · 备考总规划与阶段蓝图
+    atomic_write_text(math_plan_file, f"""# {m_n} · 备考总规划与阶段蓝图
 
 - **目标成绩**：`{plan.get('math_target', '110+ 分')}` ｜ **摸底基准**：`{plan.get('math_baseline', '60分')}`
 - **每日投入**：`{m_h} 小时 ({int(m_h*60)} 分钟)`
@@ -834,10 +842,10 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 - **概念方法精讲**：{int(m_h*60*0.2)} 分钟 (吃透定理推导与防陷阱技巧)
 - **核心习题精练**：{int(m_h*60*0.55)} 分钟 (紧扣白名单与真题专题精练)
 - **AI 批改与错题归档**：{int(m_h*60*0.25)} 分钟 (输入「交作业」，AI 分步采分与归因)
-""", encoding="utf-8")
+""")
 
     eng_plan_file = ROOT / "02-英语" / "00_英语备考总规划.md"
-    eng_plan_file.write_text(f"""# {e_n} · 备考总规划与阶段蓝图
+    atomic_write_text(eng_plan_file, f"""# {e_n} · 备考总规划与阶段蓝图
 
 - **目标成绩**：`{plan.get('eng_target', '65+ 分')}` ｜ **摸底基准**：`{plan.get('eng_baseline', '50分')}`
 - **每日投入**：`{e_h} 小时 ({int(e_h*60)} 分钟)`
@@ -849,10 +857,10 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 2. **强化期**：历年真题阅读精读，吃透微观长难句与宏观段落逻辑，阅读错题控制在 1 题/篇；
 3. **突破期**：小作文与大作文功能句型固化，翻译精准意群转换；
 4. **冲刺期**：全真 3 小时闭卷模考，合理分配答题节奏。
-""", encoding="utf-8")
+""")
 
     pol_plan_file = ROOT / "03-思想政治理论" / "00_政治备考总规划.md"
-    pol_plan_file.write_text(f"""# 思想政治理论 · 备考总规划与高分策略
+    atomic_write_text(pol_plan_file, f"""# 思想政治理论 · 备考总规划与高分策略
 
 - **目标成绩**：`{plan.get('pol_target', '70+ 分')}` ｜ **摸底基准**：`{plan.get('pol_baseline', '40分')}`
 - **每日投入**：`{p_h} 小时 ({int(p_h*60)} 分钟)`
@@ -863,10 +871,10 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 - **单项选择题**：稳拿 14-16 分，不丢基本常识分；
 - **多项选择题**：冲刺 24-28 分，主攻【{plan.get('pol_weakness', '多选漏选错选')}】，强化干扰项排除技巧；
 - **分析大题**：30-34 分，原理帽子词对应到位 + 结合材料规范分点答题。
-""", encoding="utf-8")
+""")
 
     pro_plan_file = ROOT / "04-专业课" / "00_专业课备考总规划.md"
-    pro_plan_file.write_text(f"""# {pro_n} · 备考总规划与专业课高分图谱
+    atomic_write_text(pro_plan_file, f"""# {pro_n} · 备考总规划与专业课高分图谱
 
 - **目标成绩**：`{plan.get('pro_target', '120-130 分')}` ｜ **摸底基准**：`{plan.get('pro_baseline', '80分')}`
 - **每日投入**：`{pro_h} 小时 ({int(pro_h*60)} 分钟)`
@@ -878,7 +886,7 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 2. **专题突破期**：深挖高频大题与核心算法，规范推导与代码书写采分点；
 3. **真题闭卷期**：近 10-15 年真题全真演练，形成考点分值地图；
 4. **押题回归期**：回归知识图谱骨架，消除一切薄弱项盲区。
-""", encoding="utf-8")
+""")
 
     # 3. 自动生成四科真实今日任务文件
     m_w = plan.get('math_weakness', '')
@@ -967,7 +975,7 @@ def update_subject_agents(plan):
             t = re.sub(r"- \*\*核心薄弱点\*\*：.*", f"- **核心薄弱点**：`{plan.get('math_weakness', '待首次自测诊断 (从零建立学情雷达)')}`", t)
         else:
             t = t.replace("- **核心教材与白名单**：", f"- **核心薄弱点**：`{plan.get('math_weakness', '待首次自测诊断 (从零建立学情雷达)')}`\n- **核心教材与白名单**：")
-        m_file.write_text(t, encoding="utf-8")
+        atomic_write_text(m_file, t)
 
     # 英语
     e_file = ROOT / "02-英语" / "AGENTS.md"
@@ -981,7 +989,7 @@ def update_subject_agents(plan):
             t = re.sub(r"- \*\*核心薄弱点\*\*：.*", f"- **核心薄弱点**：`{plan.get('eng_weakness', '待首次自测诊断 (从零建立长难句与题型雷达)')}`", t)
         else:
             t = t.replace("- **核心资料与白名单**：", f"- **核心薄弱点**：`{plan.get('eng_weakness', '待首次自测诊断 (从零建立长难句与题型雷达)')}`\n- **核心资料与白名单**：")
-        e_file.write_text(t, encoding="utf-8")
+        atomic_write_text(e_file, t)
 
     # 政治
     p_file = ROOT / "03-思想政治理论" / "AGENTS.md"
@@ -992,7 +1000,7 @@ def update_subject_agents(plan):
         else:
             t = re.sub(r"- \*\*核心书目\*\*：.*", f"- **核心书目**：`{plan.get('pol_books')}`", t)
             t = re.sub(r"- \*\*核心薄弱点\*\*：.*", f"- **核心薄弱点**：`{plan.get('pol_weakness')}`", t)
-        p_file.write_text(t, encoding="utf-8")
+        atomic_write_text(p_file, t)
 
     # 专业课
     pro_file = ROOT / "04-专业课" / "AGENTS.md"
@@ -1003,7 +1011,7 @@ def update_subject_agents(plan):
         t = re.sub(r"- \*\*专业课科目代码与名称\*\*：.*", f"- **专业课科目代码与名称**：`{plan.get('pro_name', '专业课')}`", t)
         t = re.sub(r"- \*\*满分与目标成绩\*\*：.*", f"- **满分与目标成绩**：`目标 {plan.get('pro_target', '120-130 分')}` (摸底: {plan.get('pro_baseline', '80分')})", t)
         t = re.sub(r"- \*\*指定.*白名单.*", f"- **指定白名单资料**：`{plan.get('pro_books')}`", t)
-        pro_file.write_text(t, encoding="utf-8")
+        atomic_write_text(pro_file, t)
 
 def print_study_plan_summary(plan):
     """打印全彩考研总战役全景看板"""
@@ -1084,7 +1092,7 @@ def record_daily_completion(rate: float, total: int = 0, completed: int = 0, dat
         "recorded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
     cfg["completion_history"] = hist
-    cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(cfg_path, json.dumps(cfg, ensure_ascii=False, indent=2))
 
 def check_fatigue_alert(cfg: dict = None) -> dict:
     """
@@ -1118,7 +1126,11 @@ def check_fatigue_alert(cfg: dict = None) -> dict:
         d2 = datetime.strptime(last_two_dates[1], "%Y-%m-%d").date()
         is_consecutive = ((d2 - d1).days == 1)
     except Exception:
-        is_consecutive = True
+        # 解析失败时必须保守判「非连续」。原实现默认 True，与上一行注释
+        # 「跨周或非连续日期不应判定为连续疲劳」正好相反：一条非法日期就会
+        # 把两个不相邻的日子误判为连续，叠加完成率 <60% 后误触发「防疲劳减负」，
+        # 错误下调学员 25% 任务量。
+        is_consecutive = False
 
     rates = [hist[d].get("rate", 0.0) for d in last_two_dates]
     all_below_60 = all(r < 60.0 for r in rates) and is_consecutive
@@ -1193,14 +1205,14 @@ def apply_relief_mode(scale: float = 0.75) -> dict:
     cfg["coaching_style"] = relief_style
     cfg["study_plan"] = plan
     cfg["relief_mode_active"] = True
-    cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(cfg_path, json.dumps(cfg, ensure_ascii=False, indent=2))
 
     agents_file = ROOT / "AGENTS.md"
     if agents_file.exists():
         content = agents_file.read_text(encoding="utf-8", errors="ignore")
         content = re.sub(r"- \*\*当前激活辅导风格\*\*：.*", f"- **当前激活辅导风格**：`{relief_style}`", content)
         content = re.sub(r"每日投入 `[\d\.]+ 小时`", f"每日投入 `{new_hours} 小时`", content)
-        agents_file.write_text(content, encoding="utf-8")
+        atomic_write_text(agents_file, content)
 
     return {
         "success": True,

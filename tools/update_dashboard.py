@@ -46,7 +46,11 @@ def main():
     # 2. Git 提交
     print("\n[2/3] 正在暂存并提交更新...")
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-    subprocess.run(["git", "add", "-A"], cwd=str(ROOT))
+    # [P0 修复] 显式白名单，杜绝隐私文件被顺带提交
+    allowed = ["docs/index.html", "docs/live.html", "docs/assets/", "docs/state_snapshot.json"]
+    valid_allowed = [p for p in allowed if (ROOT / p).exists()]
+    if valid_allowed:
+        subprocess.run(["git", "add", *valid_allowed], cwd=str(ROOT), check=True)
     commit_res = subprocess.run(["git", "commit", "-m", f"study-chain update {ts}"], cwd=str(ROOT))
     if commit_res.returncode != 0:
         print("  -> 本地无增量变更或已是最新状态。")

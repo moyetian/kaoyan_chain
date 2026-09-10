@@ -342,7 +342,11 @@ def run_math_query(query_str):
         # 通用计算化简尝试
         clean_q = query_str.replace("^", "**")
         expr = sp.sympify(clean_q)
-        return f"💡 【精确化简结果】\n原式: ${latex(expr)}$\n化简: ${latex(simplify(expr))}$"
+        # [P0 修复] sympify 默认 evaluate=True，对 integrate/limit/diff 等函数调用会
+        # 直接求值：expr 已是计算结果而非表达式。旧逻辑把求值结果同时印在
+        # 「原式」与「化简」两栏（如 integrate(x*exp(-x),(x,0,oo)) 两栏都显示 1），
+        # 学员无法核对输入是否被正确解析。改为回显原始输入文本。
+        return f"💡 【精确化简结果】\n原式: `{query_str.strip()}`\n化简: ${latex(simplify(expr))}$"
 
     except Exception as e:
         return f"❌ 【计算解析异常】: {e}\n提示：请检查符号语法是否标准，如乘号请用 `*`，幂次请用 `^` 或 `**`。"

@@ -17,6 +17,11 @@ from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
 
+try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
+    from ky_io import atomic_write_text, read_text_fallback  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text, read_text_fallback  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 
 # 尝试加载 Rust 极速题目切片扩展，失败时透明降级为纯 Python
@@ -240,7 +245,7 @@ class MaterialIngestionPipeline:
             "目录" in raw_stem and re.search(r"\d+\s*$", raw_stem.strip())
         ):
             return QuestionChunk(
-                number=num, q_type="essay", stem="", options=[], answer="",
+                num=num, q_type="essay", stem="", options=[], answer="",
                 analysis="", rubric=[], points=[], score=0, source=source
             )
 
@@ -452,7 +457,7 @@ class MaterialIngestionPipeline:
             card_mds.append(self.format_question_card(c, subject=subject))
 
         full_output = "\n".join(card_mds)
-        target_path.write_text(full_output, encoding="utf-8")
+        atomic_write_text(target_path, full_output)
 
         choices = sum(1 for c in chunks if c.q_type == "choice")
         blanks = sum(1 for c in chunks if c.q_type == "blank")
@@ -501,7 +506,24 @@ class MaterialIngestionPipeline:
             except Exception as e:
                 return {"success": False, "msg": f"读取 PDF 异常: {e} (若未安装 pypdf/cryptography 请运行 pip install pypdf cryptography)", "count": 0}
         else:
-            raw_text = p.read_text(encoding="utf-8", errors="ignore")
+            # 原实现为 read_text(encoding="utf-8", errors="ignore")：GBK 编码的
+            # .txt/.md 真题会让无法解码的中文字节被**静默丢弃**，而下游照常汇报
+            # 「成功入库 N 道」—— 入库的是残缺内容。改为按候选编码显式解码，
+            # 全部失败则明确报错并给出可操作建议，绝不静默丢数据。
+            try:
+                raw_text = read_text_fallback(p)
+            except Exception as e:
+                return {
+                    "success": False,
+                    "count": 0,
+                    "msg": (f"文本编码无法识别（已尝试 UTF-8 / UTF-8-BOM / GBK）：{e}。"
+                            f"请将《{src_name}》另存为 UTF-8 编码后重试，"
+                            f"以免中文内容被静默丢弃。")
+                }
+
+        if not raw_text.strip():
+            return {"success": False, "count": 0,
+                    "msg": f"《{src_name}》解码后内容为空，未入库任何题目。"}
 
         return self.ingest_text(
             text_content=raw_text,

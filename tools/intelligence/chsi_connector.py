@@ -158,19 +158,25 @@ class CHSIConnector:
         self,
         school_name: str,
         major_keyword: Optional[str] = None,
-        target_year: int = current_exam_year()
+        # [P0 修复] 默认参数改为运行时求值，避免跨年长驻进程把目标年份锁死在启动时刻
+        target_year: Optional[int] = None
     ) -> List[EvidenceObject]:
         """
         查询研招网专业目录，并返回标准 EvidenceObject 列表
         采用网络抓取 + 离线权威基准双轨保障
         """
+        target_year = target_year or current_exam_year()
         query_url = self.build_catalog_url(school_name, major_keyword)
         evidences: List[EvidenceObject] = []
 
         # 1. 优先尝试向研招网获取真实目录页面
+        # 注：_fetch_chsi_html 使用系统默认 SSL 上下文，证书校验失败即抛异常回落
+        # 离线基准，不存在"降级仍标 VERIFIED"的通道，故此处恒为完整核验。
         html_content = self._fetch_chsi_html(query_url)
         if html_content:
-            parsed_items = self._parse_catalog_html(html_content, school_name, query_url, target_year)
+            parsed_items = self._parse_catalog_html(
+                html_content, school_name, query_url, target_year, ssl_verified=True
+            )
             if parsed_items:
                 evidences.extend(parsed_items)
 
@@ -205,7 +211,8 @@ class CHSIConnector:
         html_text: str,
         school_name: str,
         source_url: str,
-        target_year: int
+        target_year: int,
+        ssl_verified: bool = True
     ) -> List[EvidenceObject]:
         """解析研招网目录表格"""
         evidences = []
@@ -236,7 +243,8 @@ class CHSIConnector:
                         source_type="chsi",
                         source_name="中国研究生招生信息网 (研招网官方专业目录)",
                         source_url=source_url,
-                        target_year=target_year
+                        target_year=target_year,
+                        ssl_verified=ssl_verified
                     )
                     evidences.append(ev)
         return evidences

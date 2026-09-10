@@ -12,6 +12,11 @@ import re
 from pathlib import Path
 from datetime import datetime
 
+try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
+    from ky_io import atomic_write_text  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text  # noqa: E402
+
 # Windows 控制台编码重配置
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     try:
@@ -82,7 +87,7 @@ def ensure_material_folders():
             ref_dir.mkdir(exist_ok=True)
             readme_ref = ref_dir / "README.md"
             if not readme_ref.exists():
-                readme_ref.write_text(
+                atomic_write_text(readme_ref,
                     f"# {s} · 本地参考资料库\n\n"
                     "> [!NOTE]\n"
                     "> 本目录已被 `.gitignore` 全面忽略，大体积教材 PDF、历年真题扫描件、个人笔记资料均可安心存放于此，绝不会泄露至 GitHub！\n\n"
@@ -90,7 +95,6 @@ def ensure_material_folders():
                     "1. 官方指定教材电子版 / 课后习题答案扫描件\n"
                     "2. 权威大纲解析 / 历年真题试卷\n"
                     "3. 核心公式表或个人提纲\n",
-                    encoding="utf-8"
                 )
     print("  [√] 已为数学、英语、政治、专业课创建私密「参考资料/」文件夹。")
 
@@ -222,7 +226,7 @@ def configure_profile(interactive=True, math_key="math2", eng_key="eng2", pro_ty
     content = re.sub(r"\|\s*\*\*科目三.*", f"| **科目三：思想政治理论** | [摸底] 分 | **{pol_target}** | 1.0 小时 (60分) | 单选+多选得分盘（38~42分），帽子词秒杀，后期背诵闭环 |", content)
     content = re.sub(r"\|\s*\*\*科目四.*", f"| **科目四：{pro_name}** | [摸底] 分 | **{pro_target}** | 3.0 小时 (180分) | 权威教材体系+历年真题深度解剖，白名单题源抽题门禁 |", content)
 
-    agents_path.write_text(content, encoding="utf-8")
+    atomic_write_text(agents_path, content)
     print(f"  [√] 已将目标矩阵更新至 AGENTS.md:")
     print(f"      - 院校与专业: {school} / {major}")
     print(f"      - 选考科目: {m_name} + {e_name} + 政治 + {pro_name}")

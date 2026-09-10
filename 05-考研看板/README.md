@@ -135,13 +135,13 @@
 6. **🌿 科学作息与防内耗调节机制**：锁定每周固定放松窗口与每月全真模考复盘日；
 7. **🎯 私教辅导风格与提分目标矩阵**：设定目标成绩，自动激活匹配的辅导风格。
 
-完成后，系统调动**深度规划引擎**，自动为学员生成专属全科备考方案书 [`00_考研全科总战役规划.md`](../00_考研全科总战役规划.md) 以及首日（Day 1）四科针对性攻坚清单！
+完成后，系统调动**深度规划引擎**，自动为学员生成专属全科备考方案书 [`00_考研全科总战役规划.md`](00_考研全科总战役规划.md) 以及首日（Day 1）四科针对性攻坚清单！
 
 ---
 
 ## 🎭 四大私教辅导风格（按需切换）
 
-每位考研学子的备考基础与性格特点各不相同，本项目在顶层协议 [`AGENTS.md`](../AGENTS.md) 中原生内置了**四大可切换的私教辅导风格**，AI 私教将根据您的选择自动调整语气、批改尺度与讲解深度：
+每位考研学子的备考基础与性格特点各不相同，本项目在顶层协议 [`AGENTS.md`](AGENTS.md) 中原生内置了**四大可切换的私教辅导风格**，AI 私教将根据您的选择自动调整语气、批改尺度与讲解深度：
 
 | 风格名称 | 核心特征 | 教学行为准则 | 适合人群 |
 |---|---|---|---|
@@ -150,7 +150,7 @@
 | 🌱 **温和启发·减负鼓励型**<br>*(Encouraging Mentor)* | 降低挫败，微步提示 | 将综合大题拆解为 2-3 个微小提示；多用日常生活生动比喻解释抽象定理；即便答错也先肯定思考亮点，再温和指出盲区 | 跨考新手、容易焦虑内耗、面对难题容易畏难卡壳的同学 |
 | 🧠 **深度原理·学霸溯源型**<br>*(Deep Conceptual Master)* | 追根溯源，融会贯通 | 引导学员从“命题人命制陷阱”的角度审视题干；追溯定理的几何意义与物理背景；启发学员推导底层定理并自制知识图谱 | 基础扎实、冲刺名校专业第一、渴望探究底层数学/工程本质的学霸 |
 
-> 💡 **如何切换风格**：在终端输入 `/plan` 重新配置，或随时在 [`AGENTS.md`](../AGENTS.md) 的「当前激活辅导风格」一行中填入对应的风格名称即可生效！
+> 💡 **如何切换风格**：在终端输入 `/plan` 重新配置，或随时在 [`AGENTS.md`](AGENTS.md) 的「当前激活辅导风格」一行中填入对应的风格名称即可生效！
 
 ---
 
@@ -259,11 +259,11 @@
 ```
 
 1. **Google Antigravity (原生支持)**：官方全功能深度适配，直接在 Antigravity 中打开本仓库目录，在对话框输入 `学数学` 或 `数学报到`，AI 自动完成任务读取、批改与状态写回；
-2. **Cursor**：内置 [`.cursorrules`](../.cursorrules) 全局协议，快捷键 `Ctrl + L`（Chat）或 `Ctrl + I`（Composer）发送 `[科目]报到` 或 `交作业`；
+2. **Cursor**：内置 [`.cursorrules`](.cursorrules) 全局协议，快捷键 `Ctrl + L`（Chat）或 `Ctrl + I`（Composer）发送 `[科目]报到` 或 `交作业`；
 3. **Trae (字节跳动自适应 AI IDE)**：打开工作区，在 Chat 侧边栏中开启 Agent 模式，输入 `@workspace 数学报到` 自动联动全库文件；
-4. **Cherry Studio (桌面多模型客户端)**：将根目录 [`AGENTS.md`](../AGENTS.md) 设为系统提示词，将四科目录添加为「知识库」即可；
-5. **VS Code (Roo Code / Cline)**：内置 [`.clinerules`](../.clinerules)，插件会自动加载并注入作为顶层系统约束；
-6. **网页端通用大模型**：在 ChatGPT 创建 Custom GPT 或在 Claude 创建 Project，将 [`AGENTS.md`](../AGENTS.md) 设置为 Instructions 即可零门槛使用。
+4. **Cherry Studio (桌面多模型客户端)**：将根目录 [`AGENTS.md`](AGENTS.md) 设为系统提示词，将四科目录添加为「知识库」即可；
+5. **VS Code (Roo Code / Cline)**：内置 [`.clinerules`](.clinerules)，插件会自动加载并注入作为顶层系统约束；
+6. **网页端通用大模型**：在 ChatGPT 创建 Custom GPT 或在 Claude 创建 Project，将 [`AGENTS.md`](AGENTS.md) 设置为 Instructions 即可零门槛使用。
 
 ---
 
@@ -272,7 +272,7 @@
 ### 环境依赖
 - **操作系统**：Windows、macOS 或 Linux
 - **Git**（版本管理）
-- **Python 3.8+**（无需安装任何 pip 第三方库，全部使用 Python 标准库）
+- **Python 3.10+**（无需安装任何 pip 第三方库，全部使用 Python 标准库）
 
 ---
 
@@ -335,7 +335,7 @@ python -m http.server 8080 --directory docs
 1. 在 GitHub 创建您的个人专属私有或公开仓库；
 2. 绑定远程仓库并推送：
    ```bash
-   git remote set-url origin https://github.com/moyetian/kaoyan_chain.git
+   git remote set-url origin https://github.com/<你的用户名>/<你的仓库名>.git
    git push -u origin main
    ```
 3. 打开 GitHub 仓库页面 -> **Settings** -> **Pages** -> **Build and deployment** 下将 **Source** 切换为 **GitHub Actions**；
@@ -430,8 +430,8 @@ kaoyan_chain/
 │   ├── 01_考纲拆解与分值地图模板.md     # 考纲分值拆解模板
 │   ├── 02_核心公式与考点速查模板.md     # 核心结论速记模板
 │   ├── 03_题源核验与抽题协议模板.md     # 权威题源白名单门禁
-│   ├── 双校考情对比_对比院校B_VS_对比院校B_计算机.md # ky compare 自动生成横向对标研报
-│   ├── 目标院校情报_对比院校B_计算机.md # ky scout / admission 权威招考情报研报
+│   ├── 双校考情对比_示例院校A_VS_示例院校B_计算机.md # ky compare 自动生成横向对标研报
+│   ├── 目标院校情报_示例院校A_计算机.md # ky scout / admission 权威招考情报研报
 │   ├── 学情档案.template.md             # 章节掌握度记忆中枢模板
 │   ├── 每日作业/                        # 每日作业记录模板
 │   └── 错题本/                          # 错题记录模板与索引
@@ -493,12 +493,12 @@ kaoyan_chain/
 
 ---
 
-## 🤝 交流与联系 (Contact & Community)
+## 🤝 交流与反馈 (Contact & Community)
 
-如果您在使用过程中遇到任何问题、需要部署指引，或者想要一起交流考研经验、组队学习打卡、提出宝贵的改进建议，欢迎随时联系我：
+如果您在使用过程中遇到任何问题、需要部署指引，或者想要一起交流考研经验、组队学习打卡、提出宝贵的改进建议，欢迎通过以下方式反馈：
 
-- 🐧 **QQ 号**：`296528868`
-- 📮 **电子邮箱**：`moyetian@foxmail.com`
+- 🐛 **问题反馈 / 功能建议**：[提交 GitHub Issue](https://github.com/moyetian/kaoyan_chain/issues)
+- 🔧 **参与共建**：欢迎提交 Pull Request
 
 > 愿每一位披星戴月的考研人都能稳住节奏、拒绝内耗，一战成硕，顺利上岸！🌟
 
@@ -506,4 +506,4 @@ kaoyan_chain/
 
 ## 📄 开源许可证
 
-本项目基于 [MIT License](../LICENSE) 开源。欢迎所有考研同学 Star、Fork、根据个人科目灵活定制，祝大家一战成硕！
+本项目基于 [MIT License](LICENSE) 开源。欢迎所有考研同学 Star、Fork、根据个人科目灵活定制，祝大家一战成硕！

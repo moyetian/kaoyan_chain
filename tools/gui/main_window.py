@@ -62,6 +62,11 @@ class MainWindow(QMainWindow):
     def __init__(self, parent=None, workspace_root=None):
         super().__init__(parent)
         self.workspace_root = Path(workspace_root) if workspace_root else ROOT
+        # [P0 修复] 私教工作线程强引用池与当前线程句柄。
+        # QThread 无 parent，若仅靠 self.agent_worker 单引用持有，
+        # 再次发送时被覆盖会导致运行中线程对象被 GC 销毁、进程直接崩溃。
+        self.agent_worker = None
+        self._worker_refs = []
         self.setWindowTitle("考研学习链 · 全科智能私教中枢")
         self.setMinimumSize(1180, 780)
         self._load_config()
@@ -116,7 +121,12 @@ class MainWindow(QMainWindow):
         sp = self.config.get("study_plan", {})
         school = sp.get("school") or self.config.get("target_school") or "目标院校"
         major = sp.get("major") or self.config.get("target_major") or "报考专业"
-        style = sp.get("coach_style") or self.config.get("active_style") or "严格把关·保姆提分型"
+        # [P0 修复·风格单一真源] 旧键名 coach_style 无人写入，GUI 永远回退默认值；
+        # 统一读 study_plan.style_name → 顶层 coaching_style 的既有写入路径。
+        style = (sp.get("style_name")
+                 or self.config.get("coaching_style")
+                 or sp.get("coach_style")
+                 or "严格把关·保姆提分型")
 
         countdown = QLabel(f"⏳ 初试倒计时: {days_left} 天")
         countdown.setStyleSheet("font-size: 15px; font-weight: bold; color: #f59e0b;")
@@ -225,11 +235,11 @@ class MainWindow(QMainWindow):
         self.input_box.setPlaceholderText("输入口令 (如：数学报到 / 英语长难句 / 交作业) 或向私教提问...")
         self.input_box.returnPressed.connect(self._on_send_message)
 
-        self.send_btn = QPushButton("发送 ➤")
-        self.send_btn.clicked.connect(self._on_send_message)
+        send_btn = QPushButton("发送 ➤")
+        send_btn.clicked.connect(self._on_send_message)
 
         input_bar.addWidget(self.input_box, stretch=1)
-        input_bar.addWidget(self.send_btn)
+        input_bar.addWidget(send_btn)
         layout.addLayout(input_bar)
         return widget
 
@@ -629,28 +639,36 @@ class MainWindow(QMainWindow):
         text = self.input_box.text().strip()
         if not text:
             return
-        # 防止连续触发导致未完成的 QThread 引用被覆盖而崩溃
-        if hasattr(self, "agent_worker") and self.agent_worker and self.agent_worker.isRunning():
-            self.chat_display.append("\n⚠️ 私教正在解答中，请稍候...")
+
+        # [P0 修复] 重入保护：上一轮私教仍在思考时若再次发送，会覆盖 self.agent_worker
+        # 引用，使仍在运行的 QThread 被 Python GC 销毁，进程直接崩溃且无异常可捕获。
+        # 此处直接拒绝并提示，保证同一时刻只有一个工作线程。
+        worker = getattr(self, "agent_worker", None)
+        if worker is not None and worker.isRunning():
+            self.chat_display.append(
+                "\n⚠️ 私教仍在思考中，请等待本轮回复完成后再发送下一条指令。")
             return
 
         self.input_box.clear()
-        self.input_box.setEnabled(False)
-        if hasattr(self, "send_btn") and self.send_btn:
-            self.send_btn.setEnabled(False)
         self.chat_display.append(f"\n👤 你: {text}\n🤖 私教正在思考中...")
 
         from gui.workers.agent_worker import AgentWorker
         self.agent_worker = AgentWorker(self.config, text)
+        # [P0 修复] 额外保留强引用，杜绝线程运行期间对象被回收
+        self._worker_refs.append(self.agent_worker)
         self.agent_worker.finished_signal.connect(self._on_agent_reply)
+        self.agent_worker.finished.connect(self._on_agent_finished)
         self.agent_worker.start()
+
+    def _on_agent_finished(self):
+        """[P0 修复] 工作线程结束后释放强引用并安全销毁，避免引用池无限增长。"""
+        w = self.sender()
+        if w is not None and w in self._worker_refs:
+            self._worker_refs.remove(w)
+            w.deleteLater()
 
     def _on_agent_reply(self, reply: str):
         self.chat_display.append(f"\n🤖 私教:\n{reply}\n" + "-" * 50)
-        self.input_box.setEnabled(True)
-        if hasattr(self, "send_btn") and self.send_btn:
-            self.send_btn.setEnabled(True)
-        self.input_box.setFocus()
 
     def _init_timer(self):
         """定时刷新倒计时与任务进度"""

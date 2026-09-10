@@ -37,6 +37,7 @@ class TestRunner:
     def __init__(self):
         self.passed = 0
         self.failed = 0
+        self.skipped = 0
         self.errors = []
 
     def assert_true(self, condition, test_name):
@@ -48,11 +49,19 @@ class TestRunner:
             self.failed += 1
             self.errors.append(test_name)
 
+    def skip(self, test_name, reason=""):
+        """显式跳过：环境依赖缺失时如实记录，不计入通过数 (对齐 9.1 诚实原则)"""
+        print(f"  [SKIP] {test_name} ({reason})")
+        self.skipped += 1
+
     def print_summary(self):
         print("\n" + "=" * 60)
-        print(f" 测试结果统计: 通过 {self.passed} 项, 失败 {self.failed} 项")
+        _skip_part = f", 跳过 {self.skipped} 项" if self.skipped else ""
+        print(f" 测试结果统计: 通过 {self.passed} 项, 失败 {self.failed} 项{_skip_part}")
         if self.failed == 0:
-            print(" 🎉 全部测试项 100% 通过！系统各模块运转稳健！")
+            print(" 🎉 全部已执行测试项通过！系统各模块运转稳健！")
+            if self.skipped > 0:
+                print(f" ⚠️ 存在 {self.skipped} 项可选依赖跳过，补齐环境后可实现全覆盖")
         else:
             print(f" ❌ 以下测试未通过: {', '.join(self.errors)}")
         print("=" * 60)
@@ -66,8 +75,10 @@ def run_tests():
     for rel in (
         "ky_config.json",
         "00_考研全科总战役规划.md",
-        "04-专业课/双校考情对比_华中科技大学_VS_武汉大学_计算机.md",
-        "docs/experiences/华中科技大学_计算机.md",
+        "01-数学/考试大纲.md",
+        "04-专业课/考试大纲.md",
+        "04-专业课/双校考情对比_示例院校A_VS_示例院校B_计算机.md",
+        ".memory/experiences/示例院校_计算机.md",
         "docs/index.html",
         "docs/state_snapshot.json",
         "05-考研看板/docs/index.html",
@@ -121,23 +132,28 @@ def run_tests():
     ok, err = ky_cli.send_to_qq("", "", "测试消息")
     runner.assert_true(not ok and "未配置" in err, "QQ 空配置安全拦截")
 
-    # 钉钉加签算法校验
-    import hmac, hashlib, base64
+    # 钉钉加签算法校验 (真实产品函数与 Golden Value 比对)
     secret = "SECtestsecret123"
     ts = "1600000000000"
-    string_to_sign = f"{ts}\n{secret}"
-    hmac_code = hmac.new(secret.encode("utf-8"), string_to_sign.encode("utf-8"), digestmod=hashlib.sha256).digest()
-    sign = base64.b64encode(hmac_code).decode("utf-8")
-    runner.assert_true(len(sign) > 10, "钉钉 HMAC-SHA256 加签签名计算有效")
+    sign = ky_cli._dingtalk_sign(secret, ts)
+    expected_sign = "R1BmbVl3GwTONO5nCeA0LVuIzyKwygJAlXbu0iABmio%3D"
+    runner.assert_true(sign == expected_sign, "钉钉 HMAC-SHA256 加签签名产品函数计算值与黄金基准精确吻合")
 
     # ------------------------------------------------------------
     # 测试 4: 晨报与任务卡片提取引擎
     # ------------------------------------------------------------
     print("\n[测试组 4: 每日晨报与自测卡片自动提取]")
     # 模拟静默广播调用（空 webhook 模式，不应抛出任何异常）
+    # [P0 修复] 确定性分支验证：空 webhook 下捕获 stdout，断言给出配置引导提示而非恒真
+    import io as _io_bc
+    from contextlib import redirect_stdout as _redirect_stdout_bc
+    _bc_buf = _io_bc.StringIO()
     try:
-        ky_cli.broadcast_briefing(cfg, custom_msg="【自动化测试】考研学习链自检中")
-        runner.assert_true(True, "广播简报提取与分发管道运行正常且无异常崩溃")
+        with _redirect_stdout_bc(_bc_buf):
+            ky_cli.broadcast_briefing(cfg, custom_msg="【自动化测试】考研学习链自检中")
+        _bc_out = _bc_buf.getvalue()
+        runner.assert_true("暂未检测到已配置的 IM 机器人 Webhook" in _bc_out,
+                           "广播引擎：空 Webhook 时给出清晰配置引导而非静默忽略或崩溃")
     except Exception as e:
         runner.assert_true(False, f"广播发生异常: {e}")
 
@@ -253,7 +269,10 @@ def run_tests():
         with urllib.request.urlopen(live_req, timeout=5) as resp:
             runner.assert_true(resp.status == 200, "Web 伴侣前端页面 /live 访问正常 (HTTP 200)")
             html_text = resp.read().decode("utf-8")
-            runner.assert_true("katex" in html_text.lower(), "Web 伴侣前端正确集成了 KaTeX 渲染引擎")
+            # [P0 修复] 断言语义与实现对齐：此处校验的是渲染引擎"引用声明"，
+            # 离线可用性 (katex/marked 内联) 属 P2 前端自包含改造，不在此冒充行为验证
+            runner.assert_true("katex" in html_text.lower() and "marked" in html_text.lower(),
+                               "Web 伴侣前端同时声明 KaTeX 公式与 marked 渲染引擎引用")
         
         api_req = urllib.request.Request(f"http://127.0.0.1:{test_port}/api/live")
         with urllib.request.urlopen(api_req, timeout=5) as resp:
@@ -294,19 +313,21 @@ def run_tests():
     # ------------------------------------------------------------
     print("\n[测试组 7: Git 隐私隔离机制实测]")
     import subprocess
-    # 校验 ky_config.json 是否被 Git 忽略 (妥善备份并还原原本配置)
-    fake_config = ROOT / "ky_config.json"
-    old_content = fake_config.read_text(encoding="utf-8") if fake_config.exists() else None
-    fake_config.write_text(json.dumps({"test_api_key": "sk-secret123456"}), encoding="utf-8")
+    inside = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"],
+                            cwd=str(ROOT), capture_output=True, text=True)
+    runner.assert_true(inside.returncode == 0 and inside.stdout.strip() == "true",
+                       "隐私门禁前置条件：必须位于 Git 工作区内，否则检查无效")
 
-    git_check = subprocess.run(["git", "status", "--porcelain"], cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace")
-    runner.assert_true("ky_config.json" not in (git_check.stdout or ""), "ky_config.json 被 .gitignore 正确忽略 (无泄漏风险)")
-
-    # 恢复或清理
-    if old_content is not None:
-        fake_config.write_text(old_content, encoding="utf-8")
-    elif fake_config.exists():
-        fake_config.unlink()
+    targets = [
+        "ky_config.json",
+        "docs/experiences/示例院校_计算机.md",
+        ".memory/experiences/test.md",
+        "04-专业课/双校考情对比_示例院校A_VS_示例院校B_计算机.md",
+        "04-专业课/目标院校情报_测试.md"
+    ]
+    for t in targets:
+        chk = subprocess.run(["git", "check-ignore", "--no-index", "-q", t], cwd=str(ROOT))
+        runner.assert_true(chk.returncode == 0, f"隐私目标应被 .gitignore 忽略: {t}")
 
     # ------------------------------------------------------------
     # 测试 8: 考研专有 Skills 体系校验
@@ -346,14 +367,40 @@ def run_tests():
     beautified = skills.latex_beautifier.prettify_latex_for_terminal(raw_latex)
     runner.assert_true("∫" in beautified and "f(x)" in beautified and "\\" not in beautified, "终端 LaTeX 美化器成功将积分和反斜杠公式还原为直观符号")
 
-    # 验证本地 RapidOCR 图像提取引擎
+    # 验证本地 RapidOCR 图像提取引擎（能力感知：无兼容 OCR 运行环境时显式跳过而非误报失败）
     if test_img.exists():
-        ocr_res = skills.vision_solver.extract_text_with_local_ocr(str(test_img))
-        runner.assert_true(ocr_res is not None and len(ocr_res) > 0, "本地 RapidOCR 成功识别并提取图片文字内容")
+        try:
+            import rapidocr_onnxruntime  # noqa: F401
+            _HAS_LOCAL_OCR = True
+        except ImportError:
+            _HAS_LOCAL_OCR = False
+        if _HAS_LOCAL_OCR:
+            ocr_res = skills.vision_solver.extract_text_with_local_ocr(str(test_img))
+            runner.assert_true(ocr_res is not None and len(ocr_res) > 0, "本地 RapidOCR 成功识别并提取图片文字内容")
+        else:
+            runner.skip("本地 RapidOCR 图像文本提取", "rapidocr-onnxruntime 未安装 (当前 Python 无兼容发行版)")
 
-    # 验证系统剪贴板图像抓取与多模态容错调用
-    clip_test = ky_cli.grab_clipboard_image()
-    runner.assert_true(clip_test is None or isinstance(clip_test, Path), "剪贴板图像抓取模块正常工作")
+    # [P0 修复] 剪贴板抓取改为打桩行为级验证：注入模拟剪贴板图像，
+    # 验证真实走通「读取 → 暂存 PNG → 返回路径」链路，而非依赖本机剪贴板状态的恒真断言
+    try:
+        import PIL.ImageGrab as _IG  # noqa: F401
+        _HAS_PIL_GRAB = True
+    except Exception:
+        _HAS_PIL_GRAB = False
+    if _HAS_PIL_GRAB:
+        class _FakeClipImage:
+            def save(self, path, fmt=None):
+                Path(path).write_bytes(b"\x89PNG\r\n\x1a\nfake-clipboard-image")
+        _saved_grab = _IG.grabclipboard
+        try:
+            _IG.grabclipboard = lambda: _FakeClipImage()
+            clip_test = ky_cli.grab_clipboard_image()
+            runner.assert_true(isinstance(clip_test, Path) and clip_test.exists(),
+                               "剪贴板图像抓取：模拟剪贴板图像成功暂存为 PNG 并返回有效路径")
+        finally:
+            _IG.grabclipboard = _saved_grab
+    else:
+        runner.assert_true(callable(ky_cli.grab_clipboard_image), "剪贴板图像抓取：PIL 未安装，仅验证入口函数可调用")
 
     # 验证非流式视觉调用无异常且杜绝模块路径错误
     vis_res = skills.vision_solver.solve_image_with_model(str(test_img), "测试批改", {"model": "deepseek-chat"}, stream=False)
@@ -542,16 +589,59 @@ def run_tests():
         caught_cmd = True
     runner.assert_true(caught_cmd is True, "沙箱防护：坚决阻断系统高危命令 (rm -rf /) 破坏性执行")
 
+    # [P0 验证] 沙箱写/删模式阻断工作区外扩展名穿越，且 .json 不再豁免
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".md", delete=False) as tf_md:
+        out_md = Path(tf_md.name)
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tf_json:
+        out_json = Path(tf_json.name)
+
+    caught_write_out = False
+    try:
+        sb_test.resolve_safe_path(out_md, read_only=False)
+    except SecurityException:
+        caught_write_out = True
+    runner.assert_true(caught_write_out is True, "沙箱防护：修改/删除模式严禁穿越到外部 .md 文件")
+
+    caught_json_out = False
+    try:
+        sb_test.resolve_safe_path(out_json, read_only=True)
+    except SecurityException:
+        caught_json_out = True
+    runner.assert_true(caught_json_out is True, "沙箱防护：外部 .json 文件坚决阻断只读豁免，防密钥窃取")
+
+    out_md.unlink(missing_ok=True)
+    out_json.unlink(missing_ok=True)
+
     # 2. 权限分级系统 (Safe / Auto / Ask 策略)
     pm_safe = PermissionManager(mode="safe")
     tr_safe = ToolRegistry(sandbox=sb_test, permissions=pm_safe)
     safe_rej = tr_safe.execute_tool("write_file", {"path": "test_perm.txt", "content": "hello"})
     runner.assert_true("PermissionDenied" in safe_rej, "权限引擎：严格安全模式 (--permission=safe) 成功阻断非只读写入")
 
+    # [P0 验证] run_command 白名单制拦截非白名单与高危指令
+    cmd_rej = tr_safe.execute_tool("run_command", {"command": "find . -delete"})
+    runner.assert_true("安全拦截" in cmd_rej or "PermissionDenied" in cmd_rej, "沙箱防护：run_command 成功拦截非白名单或高危命令")
+
     pm_auto = PermissionManager(mode="auto")
     tr_auto = ToolRegistry(sandbox=sb_test, permissions=pm_auto)
     ro_res = tr_auto.execute_tool("list_directory", {"path": ".", "max_depth": 1})
     runner.assert_true("README.md" in ro_res, "权限引擎：只读探索工具 (Level 0) 全自动秒级放行")
+
+    # [P0 验证] python -c 任意代码执行与破坏性 git 操作必须被拦截
+    # （补丁清单修复 5 的原始验收用例：python 在白名单内，shell=False 挡不住其自身代码执行）
+    py_rce_rej = tr_auto.execute_tool("run_command", {"command": "python -c \"import shutil;shutil.rmtree('/')\""})
+    runner.assert_true("安全拦截" in py_rce_rej, "沙箱防护：python -c 任意代码执行被显式拒绝 (RCE 主通道封死)")
+    py_pip_rej = tr_auto.execute_tool("run_command", {"command": "python -m pip install evil"})
+    runner.assert_true("安全拦截" in py_pip_rej, "沙箱防护：python -m pip 环境改动操作被拒绝")
+    git_destroy_rej = tr_auto.execute_tool("run_command", {"command": "git reset --hard"})
+    runner.assert_true(
+        "安全拦截" in git_destroy_rej or "SecurityError" in git_destroy_rej or "安全黑名单" in git_destroy_rej,
+        "沙箱防护：git reset --hard 等破坏性子命令被拦截 (沙箱黑名单或命令白名单双层防御)"
+    )
+    # 放行验证：白名单内的只读命令与工作区脚本不受误伤
+    ro_cmd_res = tr_auto.execute_tool("run_command", {"command": "grep -rn subprocess tools/agent/sandbox.py"})
+    runner.assert_true("安全拦截" not in ro_cmd_res, "沙箱防护：只读命令 grep 检索源码不被高危模式误伤")
 
     # 3. 标准工具集功能回归
     temp_p = "01-数学/_状态/test_agent_card.tmp.md"
@@ -793,14 +883,49 @@ def run_tests():
         paper = exam_composer.compose_exam_paper("math", count=2, save_file=False)
         p_id = paper.get("paper_id", "")
         key_file = ROOT / ".memory" / "exam_keys" / f"{p_id}.json"
+        key_raw = key_file.read_text(encoding="utf-8") if key_file.exists() else ""
         runner.assert_true(
-            ("EXAM_PAPER_ID" in paper["content"] and key_file.exists()) or ("EXAM_ANSWER_KEYS" in paper["content"]),
-            "教学闭环 S2-1：自测卷正确嵌入加密采分点与题解元数据"
+            ("EXAM_PAPER_ID" in paper["content"] and key_file.exists()
+             and key_raw.startswith("ENC1:") and "standard_answer" not in key_raw)
+            or ("EXAM_ANSWER_KEYS" in paper["content"]),
+            "教学闭环 S2-1：自测卷答案密钥以 ENC1 加密落盘，密钥文件不可直接读出答案"
         )
 
-        grade_res = exam_composer.grade_exam_paper(paper["content"], "1. 答案推导步骤充分有效，得出极限为 1/3", auto_advance=False)
-        runner.assert_true(grade_res.get("success") is True and grade_res.get("score") > 0, "教学闭环 S2-1：自动批改自测卷作答并计算得分与通过率")
+        # [P0 修复·测试健壮性] 原固定样例作答 "得出极限为 1/3" 隐含假设抽题必命中极限题，
+        # 而抽题池来自学员真实到期错题（数据强耦合），在真实学情数据下必然失配 → 假失败。
+        # 改为：解密本轮密钥，取标准答案动态作答；若抽到的题均未登记标准答案，
+        # 则按 [P1 修复] 契约断言「0 分 + 转人工复核」，两条分支均为正确产品行为。
+        _grade_answer = "1. 答案推导步骤充分有效，得出极限为 1/3"
+        try:
+            _k_list = json.loads(exam_composer._open_keys_payload(p_id, key_raw)) if key_raw.startswith("ENC1:") else []
+        except Exception:
+            _k_list = []
+        for _k in _k_list:
+            _sa = str(_k.get("standard_answer", "") or "").strip()
+            if _sa:
+                _grade_answer = f"1. {_sa}"
+                break
+        grade_res = exam_composer.grade_exam_paper(paper["content"], _grade_answer, auto_advance=False)
+        _has_std_ans = any(str(k.get("standard_answer", "") or "").strip() for k in _k_list)
+        if _has_std_ans:
+            runner.assert_true(grade_res.get("success") is True and grade_res.get("score") > 0,
+                               "教学闭环 S2-1：自动批改自测卷作答并计算得分与通过率")
+        else:
+            runner.assert_true(
+                grade_res.get("success") is True and grade_res.get("score") == 0
+                and "待人工复核" in grade_res.get("report", ""),
+                "教学闭环 S2-1：无标准答案题正确执行 0 分 + 转人工复核 (拒绝虚高通过率)"
+            )
         runner.assert_true("自动阅卷与采分诊断报告" in grade_res.get("report", ""), "教学闭环 S2-1：生成规范采分点批改诊断报告")
+
+        # [P0 验证] 错题回写空标题拒绝回写防损坏机制
+        from skills import error_logger
+        ok_empty, msg_empty = error_logger.mark_error_status("math", "test.md", title_keyword="", rating="good")
+        runner.assert_true(ok_empty is False and "缺少定位标题" in msg_empty, "错题状态机：空标题显式拒绝回写，杜绝静默篡改数据")
+
+        # [P0 验证] HTTPFetcher 模块定义与 download_file 上下文存在性
+        import intelligence.fetcher as ifetcher
+        runner.assert_true(hasattr(ifetcher, "_DEFAULT_SSL_CONTEXT"), "KaoYan Intelligence：fetcher 模块正确定义 _DEFAULT_SSL_CONTEXT")
 
         # 2. S2-5 变式题真实检索与防虚构溯源 (variant_retriever)
         v_res = variant_retriever.search_real_variant(subject="math", keyword="导数中值定理")
@@ -924,9 +1049,18 @@ def run_tests():
             runner.assert_true(stage_easy == 4 and days_easy == 28, "体验生态 S3-5：FSRS easy 评级跨级跳跃推进至 28 天")
 
             # 6. S3-6 考前心理节律关怀与 CLI 命令集成
-            runner.assert_true(hasattr(ky_cli, "print_status_summary"), "体验生态 S3-6：ky_cli 成功集成 print_status_summary 态势函数")
-            ky_cli.print_status_summary()
-            runner.assert_true(True, "体验生态 S3-6：print_status_summary 打印大盘倒计时与作息节律正常不崩溃")
+            # [P0 修复] 行为级验证：捕获真实 stdout，必须输出非空态势内容而非仅验证函数存在
+            import io as _io2
+            from contextlib import redirect_stdout as _redirect_stdout2
+            _ps_buf = _io2.StringIO()
+            try:
+                with _redirect_stdout2(_ps_buf):
+                    ky_cli.print_status_summary()
+                _ps_out = _ps_buf.getvalue()
+                runner.assert_true(len(_ps_out.strip()) > 20,
+                                   "体验生态 S3-6：print_status_summary 真实输出大盘态势/倒计时内容")
+            except Exception as e:
+                runner.assert_true(False, f"体验生态 S3-6 print_status_summary 异常: {e}")
 
             # ------------------------------------------------------------
             # 测试 18: 目标高校研招与社媒考研情报侦察引擎 (School Scout)
@@ -1039,6 +1173,10 @@ def run_tests():
 
             ev_c = ki.build_evidence("就读评价", "学风良好", "项", 2027, "social_media", "知乎", "https://zhihu.com")
             runner.assert_true(ev_c.source.level == "C" and ev_c.confidence == 0.30, "Intelligence 19-9：社媒信源生成 C 级证据且置信度为 30%")
+
+            # [P0 验证] SSL 校验失败降级时强制标为 D 级与 UNVERIFIED，杜绝假官方认证
+            ev_unverified = ki.build_evidence("招生人数", 60, "人", 2027, "chsi", "研招网", "https://yz.chsi.com.cn", ssl_verified=False)
+            runner.assert_true(ev_unverified.status == "UNVERIFIED" and ev_unverified.source.level == "D" and ev_unverified.confidence <= 0.30, "Intelligence：SSL 证书校验未通过时强制降为 D 级与 UNVERIFIED")
 
             # 19-10: 年份锁定机制 (Exam Year Locking)
             ev_old = ki.build_evidence("招生人数", 50, "人", 2024, "graduate_school", "研究生院", "http://test.edu.cn", target_year=2027)
@@ -1259,7 +1397,7 @@ D. 无度为2的结点
 
             # 验证经验档案落盘
             test_exp_file = school_scout.save_experience_dossier("华中科技大学", "计算机", filtered_posts, metrics={"level": "985", "positive_signals": ["保护一志愿"]})
-            runner.assert_true(test_exp_file.exists() and "华中科技大学" in test_exp_file.read_text(encoding="utf-8"), "Sprint 6 22-4：成功归档并落盘经验档案至 docs/experiences/")
+            runner.assert_true(test_exp_file.exists() and "华中科技大学" in test_exp_file.read_text(encoding="utf-8"), "Sprint 6 22-4：成功归档并落盘经验档案至 .memory/experiences/ (隐私目录)")
 
             # 验证分省 YAML 导出与 Schema 校验
             from intelligence.registry import export_to_provincial_yamls, validate_university_yaml, get_registry
@@ -1427,13 +1565,21 @@ D. 无度为2的结点
                 errors="replace",
                 timeout=60,
             )
-            # CI 环境下可选依赖 (PySide6/ky_rust_ext) 缺失时部分测试被 [SKIP]，
-            # 只要 exit code 为 0 且「失败 0 项」即为通过
-            nf_passed = new_features_res.returncode == 0 and "失败 0 项" in new_features_res.stdout
+            # CI 环境下可选依赖 (PySide6/ky_rust_ext) 缺失时部分测试被 [SKIP]：
+            # [P0 修复·对齐 9.1] 集成判定与子套件守门规则一致 ——
+            # 只有出现「失败 N 项 (N>0)」才判红；仅有 SKIP 时提示补齐依赖但不阻断主套件，
+            # 避免子套件"不能判定为全绿"的非零退出码被误读为功能失败。
+            import re as _re_mod
+            _nf_fail_m = _re_mod.search(r"失败 (\d+) 项", new_features_res.stdout)
+            _nf_failed = int(_nf_fail_m.group(1)) if _nf_fail_m else -1
+            _nf_skip_m = _re_mod.search(r"跳过 (\d+) 项", new_features_res.stdout)
+            nf_passed = _nf_failed == 0
             runner.assert_true(
                 nf_passed,
                 "升级新功能专项：微信检索、Rust双模一致性与PySide6离屏测试全部通过 (可选依赖缺失项已安全跳过)",
             )
+            if nf_passed and _nf_skip_m and int(_nf_skip_m.group(1)) > 0:
+                print(f"    [NOTE] 子套件存在 {_nf_skip_m.group(1)} 项可选依赖跳过 (ky_rust_ext 等)，不判定为全绿")
             if not nf_passed:
                 # 输出子进程详细信息帮助 CI 排错
                 print(f"    [DEBUG] test_new_features.py returncode={new_features_res.returncode}")

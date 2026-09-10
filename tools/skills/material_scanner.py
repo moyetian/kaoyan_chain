@@ -6,7 +6,7 @@
   1. 扫描 01-数学、02-英语、03-思想政治理论、04-专业课 下的「参考资料/」真实目录
   2. 智能过滤空文件、README.md 与系统隐藏文件，识别真实试卷与真题书籍 (PDF/MD/TXT)
   3. 原子写入更新 ky_config.json 与根目录 AGENTS.md 中的「手头资料白名单」
-  4. 自动识别学员当前目标院校 (如目标院校)，自动激活研招动态监控并生成专属研报
+  4. 自动识别学员当前目标院校 (如华南理工大学)，自动激活研招动态监控并生成专属研报
 """
 
 import os
@@ -14,6 +14,11 @@ import re
 import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional
+
+try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
+    from ky_io import atomic_write_text  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -104,11 +109,9 @@ def scan_and_mount_materials(workspace_root: Optional[Path] = None, auto_scout_s
             except Exception:
                 pass
 
-    # 3. 原子写回 ky_config.json
+    # 3. 原子写回 ky_config.json（原子性由 ky_io.atomic_write_text 统一保证）
     try:
-        cfg_tmp = cfg_file.with_suffix(".json.tmp")
-        cfg_tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
-        cfg_tmp.replace(cfg_file)
+        atomic_write_text(cfg_file, json.dumps(cfg, ensure_ascii=False, indent=2))
     except Exception as e:
         return {"success": False, "msg": f"写入 ky_config.json 失败: {e}"}
 
@@ -120,10 +123,18 @@ def scan_and_mount_materials(workspace_root: Optional[Path] = None, auto_scout_s
             for key, (folder, config_key, label) in SUBJECT_FOLDER_MAP.items():
                 val = study_plan[config_key]
                 # 正则替换对应科目行
-                pattern = rf"(  - {label}: `)([^`]+)(`)"
+                pattern = rf"(  - {re.escape(label)}: `)([^`]+)(`)"
                 if re.search(pattern, agents_text):
-                    agents_text = re.sub(pattern, rf"\g<1>{val}\g<3>", agents_text)
-            agents_file.write_text(agents_text, encoding="utf-8")
+                    # [P1 修复] 改用 lambda 替换：val 是真实文件名列表，
+                    # 直接拼进 repl 字符串时，若文件名含反斜杠或 \g 会被解释为
+                    # 正则反向引用而破坏替换结果（甚至抛 re.error）。
+                    agents_text = re.sub(
+                        pattern,
+                        lambda m, _v=val: f"{m.group(1)}{_v}{m.group(3)}",
+                        agents_text)
+            # [P1 修复] 原子写回：AGENTS.md 是主协议文件，直接 write_text 若中途
+            # 失败会留下被截断的损坏内容，改为临时文件 + replace 原子替换。
+            atomic_write_text(agents_file, agents_text)
         except Exception:
             pass
 

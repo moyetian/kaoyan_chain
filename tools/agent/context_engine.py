@@ -116,8 +116,10 @@ class ContextEngine:
                 pass
 
         if target_school and target_school != "未指定":
-            # 检索 docs/experiences/<学校>_*.md 或 <学校>.md
-            exp_dir = self.workspace_root / "docs" / "experiences"
+            # 检索 .memory/experiences/<学校>_*.md 或 docs/experiences/<学校>_*.md
+            exp_dir = self.workspace_root / ".memory" / "experiences"
+            if not exp_dir.exists():
+                exp_dir = self.workspace_root / "docs" / "experiences"
             if exp_dir.exists():
                 for exp_file in exp_dir.glob("*.md"):
                     if target_school in exp_file.stem:

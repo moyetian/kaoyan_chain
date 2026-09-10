@@ -29,6 +29,27 @@ QMainWindow, QWidget {
     border: none;
 }
 
+/* 主页任务行 (main_window.py -> TaskRow) */
+#TaskRow {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+
+#TaskRow:hover {
+    border: 1px solid #6366f1;
+}
+
+/* 主页顶部快捷胶囊 (main_window.py -> QuickPill) */
+#QuickPill {
+    background-color: #eef2ff;
+    color: #4338ca;
+    border: 1px solid #c7d2fe;
+    border-radius: 12px;
+    padding: 4px 12px;
+    font-weight: 600;
+}
+
 QProgressBar {
     background-color: #e2e8f0;
     border: 1px solid #cbd5e1;

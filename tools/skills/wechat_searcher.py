@@ -5,7 +5,7 @@
 核心功能：
   1. 多源检索：搜狗微信搜索 (主源) + Bing 微信文章搜索 (备用源) + 本地经验缓存
   2. 文章正文抓取与 HTML→Markdown 清洗解析
-  3. 优质内容沉淀到 docs/experiences/ 作为社媒考研经验档案
+  3. 优质内容沉淀到 .memory/experiences/ 作为社媒考研经验档案 (本地隐私目录)
   4. 联动 school_scout.py 院校侦察引擎丰富研报数据源
 
 合规声明：本工具仅用于个人学习研究，遵循各平台使用条款，不进行大规模分布式爬取。
@@ -24,6 +24,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
+
+try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
+    from ky_io import atomic_write_text  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -146,10 +151,14 @@ class WeChatSearchEngine:
             return []
 
     def search_local_cache(self, keyword: str, max_results: int) -> List[WeChatArticleItem]:
-        """检索已沉淀在 docs/experiences/ 中的本地文章"""
-        exp_dir = ROOT / "docs" / "experiences"
+        """检索已沉淀在 .memory/experiences/ 中的本地文章（兼容读取旧 docs/experiences/ 存量）"""
+        # [P0 修复] 经验档案属学员隐私，主读取路径迁移至 .memory/experiences/
+        exp_dir = ROOT / ".memory" / "experiences"
         if not exp_dir.exists():
-            return []
+            legacy_dir = ROOT / "docs" / "experiences"  # 旧版存量目录，仅只读兼容
+            if not legacy_dir.exists():
+                return []
+            exp_dir = legacy_dir
 
         results = []
         kw_lower = keyword.lower()
@@ -375,11 +384,13 @@ class WeChatArticleFetcher:
 class WeChatContentPipeline:
     """微信文章内容沉淀管道"""
 
-    EXPERIENCES_DIR = ROOT / "docs" / "experiences"
+    # [P0 修复] 经验档案含学员目标院校/专业隐私，落盘迁移至 .memory/experiences/
+    # （.memory/ 已被 .gitignore 保护，绝不入库、绝不发布到 GitHub Pages）
+    EXPERIENCES_DIR = ROOT / ".memory" / "experiences"
 
     def save_article(self, item: WeChatArticleItem, category: str = "考研经验") -> str:
         """
-        将抓取的文章沉淀为 Markdown 文件到 docs/experiences/
+        将抓取的文章沉淀为 Markdown 文件到 .memory/experiences/
         :return: 保存路径
         """
         self.EXPERIENCES_DIR.mkdir(parents=True, exist_ok=True)
@@ -408,7 +419,7 @@ class WeChatContentPipeline:
             "*本文由考研学习链微信公众号检索工具自动抓取并沉淀，仅用于个人学习研究。*",
         ]
 
-        filepath.write_text("\n".join(md_lines), encoding="utf-8")
+        atomic_write_text(filepath, "\n".join(md_lines))
         return str(filepath)
 
     def feed_to_scout(self, item: WeChatArticleItem, school_name: str = "") -> bool:
@@ -424,16 +435,20 @@ class WeChatContentPipeline:
             from skills import school_scout
 
             if hasattr(school_scout, "append_experience_to_dossier") and school_name:
+                # [P0 修复] 对齐 school_scout.append_experience_to_dossier 真实签名
                 return school_scout.append_experience_to_dossier(
                     school_name=school_name,
-                    source="微信公众号",
-                    author=item.source_account or "微信学长",
+                    source_or_major="微信公众号",
+                    author_or_info=item.source_account or "微信学长",
                     content=(item.content_markdown or item.summary)[:1500],
                     url=item.url,
                     title=item.title
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "微信经验联动到院校档案失败（%s）: %s", school_name, exc
+            )
         return False
 
 
@@ -451,7 +466,7 @@ def wechat_search(
     :param keyword: 检索关键词
     :param max_results: 最大结果数
     :param fetch_content: 是否抓取文章正文
-    :param save_to_local: 是否沉淀到本地 docs/experiences/
+    :param save_to_local: 是否沉淀到本地 .memory/experiences/
     :param school_name: 联动院校侦察引擎的目标校名
     :param source: 检索源 "sogou" / "bing" / "local" / "auto"
     :return: 包含检索状态、结果列表与落盘路径的字典

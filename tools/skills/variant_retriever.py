@@ -57,7 +57,7 @@ _CS_KEYWORDS = ("树", "二叉树", "遍历", "AVL", "红黑树", "森林", "图
 def suggest_keyword(subject="pro"):
     """从本科目「考试大纲.md」中抽取一个真实考点作为默认关键词。
 
-    杜绝硬编码他科考点（例如给 814 信号与系统 默认推荐「二叉树」）。
+    杜绝硬编码他科考点（例如给自命题科目默认推荐「二叉树」）。
     取不到时返回空串，由调用方回退到科目名。
     """
     subj_folder = SUBJECT_DIRS.get(subject, "01-数学")
@@ -220,7 +220,7 @@ def _generate_synthetic_variant(subject, keyword):
     else:
         pro_title = get_subject_name("pro", "专业课")
         # 只有当专业课确实是 408 计算机时才套用数据结构/算法模板，
-        # 避免给「814 信号与系统」等自命题科目出「二叉树算法设计」这种跨科错误题。
+        # 避免给「自命题科目」等出「二叉树算法设计」这种跨科错误题。
         is_cs = ("408" in pro_title) or ("计算机" in pro_title)
         if is_cs and any(w in kw for w in ("树", "二叉树", "遍历", "AVL", "红黑树", "森林")):
             q = (

@@ -58,12 +58,16 @@ def build_evidence(
     source_name: str,
     source_url: str,
     published_at: Optional[str] = None,
-    target_year: int = current_exam_year(),
-    extra_confidence_decay: float = 0.0
+    target_year: Optional[int] = None,
+    extra_confidence_decay: float = 0.0,
+    ssl_verified: bool = True,
+    fetched_at: Optional[str] = None,
+    extractor_version: str = "v2.6"
 ) -> EvidenceObject:
     """
     构建标准化证据对象并自动计算置信度与状态
     """
+    target_year = target_year or current_exam_year()
     base_score = get_source_score(source_type)
     level = get_source_level(source_type)
     
@@ -101,6 +105,14 @@ def build_evidence(
             "⚠️ 离线基准：研招网/官网当期页面未能成功抓取，本条为「全国统考科目标准模板」兜底推定值，"
             "并非该校官方核实数据（院校可能改为自命题），务必以官方简章为准。"
         )
+
+    # [P0 修复] SSL 未通过完整权威证书链校验 -> 禁止标为 VERIFIED，级别强制降为 D
+    if not ssl_verified:
+        status = "UNVERIFIED"
+        level = "D"
+        source.level = "D"
+        confidence = min(confidence, 0.3)
+        conflict_detail = "⚠️ 该来源 SSL 证书链校验失败，内容可能被中间人篡改，请勿据此决策"
         
     retrieved_at = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
     
@@ -113,7 +125,10 @@ def build_evidence(
         retrieved_at=retrieved_at,
         confidence=round(confidence, 2),
         status=status,
-        conflict_detail=conflict_detail
+        conflict_detail=conflict_detail,
+        ssl_verified=ssl_verified,
+        fetched_at=fetched_at or retrieved_at,
+        extractor_version=extractor_version
     )
 
 

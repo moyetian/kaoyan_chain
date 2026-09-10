@@ -13,6 +13,11 @@ import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 
+try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
+    from ky_io import atomic_write_text  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text  # noqa: E402
+
 class MemoryScope:
     GLOBAL = "global"       # 全局学员习惯
     PROJECT = "project"     # 考研项目战役
@@ -67,7 +72,7 @@ class MemoryManager:
         fp = self.get_file_path(scope)
         try:
             fp.parent.mkdir(parents=True, exist_ok=True)
-            fp.write_text(content.strip() + "\n", encoding="utf-8")
+            atomic_write_text(fp, content.strip() + "\n")
             return True
         except Exception:
             return False

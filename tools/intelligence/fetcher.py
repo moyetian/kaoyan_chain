@@ -177,7 +177,7 @@ class HTTPFetcher:
                 "Accept": "*/*"
             }
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=self.timeout * 2, context=_SSL_CONTEXT) as resp:
+            with urllib.request.urlopen(req, timeout=self.timeout * 2, context=_DEFAULT_SSL_CONTEXT) as resp:
                 if resp.status != 200:
                     return False
                 from pathlib import Path
@@ -194,7 +194,9 @@ class HTTPFetcher:
                             return False
                         f.write(chunk)
                 return True
-        except Exception:
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception("download_file 失败: %s", url)
             return False
 
 

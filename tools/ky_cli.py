@@ -21,8 +21,14 @@ import hmac
 import hashlib
 import base64
 import unicodedata
+import html
 from pathlib import Path
 from datetime import datetime, date, timedelta
+
+try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
+    from ky_io import atomic_write_text  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text  # noqa: E402
 
 # Windows 控制台安全编码
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
@@ -239,12 +245,23 @@ def load_config():
             if "webhooks" in cfg:
                 merged["webhooks"] = {**DEFAULT_CONFIG["webhooks"], **cfg["webhooks"]}
             return merged
-        except Exception:
+        except Exception as e:
+            # [P1 修复] 备份可能损坏的配置文件，防止被静默覆盖丢 API Key
+            try:
+                import shutil
+                bak = CONFIG_FILE.with_suffix(".corrupted.bak")
+                shutil.copyfile(CONFIG_FILE, bak)
+                print(f"[!] 警告: 读取 {CONFIG_FILE.name} 失败: {e}，已备份至 {bak.name} 并回退默认配置")
+            except Exception:
+                pass
             return DEFAULT_CONFIG.copy()
     return DEFAULT_CONFIG.copy()
 
 def save_config(cfg):
-    CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    # [P1 修复] 原子写入：中断不会留下半截 JSON 导致配置损坏。
+    # 原子性由 ky_io.atomic_write_text 统一实现（同目录临时文件 + fsync + replace），
+    # 此处不必再手工 tmp + replace。
+    atomic_write_text(CONFIG_FILE, json.dumps(cfg, ensure_ascii=False, indent=2))
 
 # ════════════════════════════════════════════════════════════════
 # 1. 考研私教上下文与状态加载器
@@ -478,6 +495,12 @@ def stream_chat(messages, config):
 # 3. 聊天平台 Webhook / 消息桥接 (微信 / QQ / 钉钉 / 飞书)
 # ════════════════════════════════════════════════════════════════
 
+def _dingtalk_sign(secret: str, ts: str) -> str:
+    """计算钉钉加签签名 (HMAC-SHA256 + Base64 + URL编码)"""
+    string_to_sign = f"{ts}\n{secret}"
+    hmac_code = hmac.new(secret.encode("utf-8"), string_to_sign.encode("utf-8"), digestmod=hashlib.sha256).digest()
+    return urllib.parse.quote_plus(base64.b64encode(hmac_code))
+
 def send_to_dingtalk(webhook_url, text, secret=None):
     """向钉钉机器人推送消息 (支持加签)"""
     if not webhook_url:
@@ -485,9 +508,7 @@ def send_to_dingtalk(webhook_url, text, secret=None):
     target_url = webhook_url
     if secret:
         ts = str(round(time.time() * 1000))
-        string_to_sign = f"{ts}\n{secret}"
-        hmac_code = hmac.new(secret.encode("utf-8"), string_to_sign.encode("utf-8"), digestmod=hashlib.sha256).digest()
-        sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
+        sign = _dingtalk_sign(secret, ts)
         sep = "&" if "?" in webhook_url else "?"
         target_url = f"{webhook_url}{sep}timestamp={ts}&sign={sign}"
 
@@ -931,10 +952,10 @@ def manage_syllabi_cli(cfg):
         m_sel = input("  请选择 (1~4) [默认 1]: ").strip() or "1"
         m_key = {"1": "math2", "2": "math1", "3": "math3", "4": "math396"}.get(m_sel, "math2")
         math_info = syllabus_manager.MATH_SYLLABI[m_key]
-        (ROOT / "01-数学" / "考试大纲.md").write_text(math_info["content"], encoding="utf-8")
+        atomic_write_text((ROOT / "01-数学" / "考试大纲.md"), math_info["content"])
         txt = read_text_safe(math_agents)
         txt = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{math_info['name']}`", txt)
-        math_agents.write_text(txt, encoding="utf-8")
+        atomic_write_text(math_agents, txt)
         print(colorize(f"\n[√] 已切换为 {math_info['name']}！已将官方大纲与超纲红线写入 01-数学/考试大纲.md", C.GREEN))
     elif c == "2":
         print("\n  --- 📖 请选择您的英语考试科目 ---")
@@ -943,10 +964,10 @@ def manage_syllabi_cli(cfg):
         e_sel = input("  请选择 (1~2) [默认 1]: ").strip() or "1"
         e_key = {"1": "eng2", "2": "eng1"}.get(e_sel, "eng2")
         eng_info = syllabus_manager.ENGLISH_SYLLABI[e_key]
-        (ROOT / "02-英语" / "考试大纲.md").write_text(eng_info["content"], encoding="utf-8")
+        atomic_write_text((ROOT / "02-英语" / "考试大纲.md"), eng_info["content"])
         txt = read_text_safe(eng_agents)
         txt = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{eng_info['name']}`", txt)
-        eng_agents.write_text(txt, encoding="utf-8")
+        atomic_write_text(eng_agents, txt)
         print(colorize(f"\n[√] 已切换为 {eng_info['name']}！已将官方大纲写入 02-英语/考试大纲.md", C.GREEN))
     elif c == "3":
         print("\n  --- 💻 请选择您的专业课方案 ---")
@@ -955,17 +976,16 @@ def manage_syllabi_cli(cfg):
         print("    [3] 院校自命题专业课")
         p_sel = input("  请选择 (1~3) [默认 3]: ").strip() or "3"
         if p_sel == "1":
-            (ROOT / "04-专业课" / "考试大纲.md").write_text(syllabus_manager.CS408_SYLLABUS, encoding="utf-8")
+            atomic_write_text((ROOT / "04-专业课" / "考试大纲.md"), syllabus_manager.CS408_SYLLABUS)
             pro_title = "408 计算机学科专业基础"
         else:
             pro_title = input("  请输入专业课代码与名称 [如 801 信号与系统]: ").strip() or "专业课"
-            (ROOT / "04-专业课" / "考试大纲.md").write_text(
+            atomic_write_text((ROOT / "04-专业课" / "考试大纲.md"),
                 f"# 04-专业课 · 【{pro_title}】官方考试大纲\n\n> 本大纲为报考院校官方考纲。\n\n## 考查要点\n- 请在此填入各章节掌握/理解要求",
-                encoding="utf-8"
             )
         txt = read_text_safe(pro_agents)
         txt = re.sub(r"- \*\*专业课科目代码与名称\*\*：.*", f"- **专业课科目代码与名称**：`{pro_title}`", txt)
-        pro_agents.write_text(txt, encoding="utf-8")
+        atomic_write_text(pro_agents, txt)
         print(colorize(f"\n[√] 专业课已更新为: {pro_title}！", C.GREEN))
     elif c == "4":
         import subprocess
@@ -1154,7 +1174,7 @@ def get_today_tasks_data() -> dict:
                         "done": is_done,
                     })
                 # 支持表格语法: | 模块 | 任务内容 | 预计用时 | 完成状态 |
-                elif "|" in l_str and not l_str.startswith("|---|") and "完成状态" not in l_str and "模块" not in l_str:
+                elif "|" in l_str and not l_str.replace(" ", "").startswith("|---|") and "完成状态" not in l_str and "模块" not in l_str:
                     parts = [p.strip() for p in l_str.split("|") if p.strip()]
                     if len(parts) >= 3:
                         is_done = "[x]" in parts[-1].lower()
@@ -1198,7 +1218,7 @@ def mark_today_task_done(keyword: str, subject: str = None) -> tuple:
         lines = content.splitlines()
         new_lines = []
         for line in lines:
-            if "|" in line and keyword in line and not line.startswith("|---|") and "完成状态" not in line and "模块" not in line:
+            if "|" in line and keyword in line and not line.replace(" ", "").startswith("|---|") and "完成状态" not in line and "模块" not in line:
                 if "[x]" in line.lower():
                     match_info = f"任务此前已是完成状态: {line.strip()}"
                     matched = True
@@ -1214,7 +1234,7 @@ def mark_today_task_done(keyword: str, subject: str = None) -> tuple:
             else:
                 new_lines.append(line)
         if matched:
-            task_file.write_text("\n".join(new_lines), encoding="utf-8")
+            atomic_write_text(task_file, "\n".join(new_lines))
             return True, match_info
 
     if not matched:
@@ -1227,6 +1247,49 @@ COACHING_STYLES = {
     "3": ("温和启发·减负鼓励型 (Encouraging Mentor)", "耐心倾听、正向激励，大题微步化拆解，降低复习挫败感与焦虑内耗"),
     "4": ("深度原理·学霸溯源型 (Deep Conceptual Master)", "溯源定理物理与几何背景，从命题设计反推陷阱，打通底层知识图谱"),
 }
+
+def build_subject_checkin_brief(cfg: dict, curr_subj: str) -> str:
+    """生成某科目的「私教报到就绪」本地播报文本 (纯展示、无副作用)。
+
+    [P0 修复·本地降级] 供 GUI 快捷指令复用：GUI 此前把「XX报到」也交给
+    AgentRunner(LLM)，上游不可用时连纯本地口令都失败；CLI 同口令却正常。
+    本函数抽出与 CLI REPL 报到一致的播报口径，两端共用。
+    """
+    plan = cfg.get("study_plan", {})
+    subj_name = plan.get(f"{curr_subj}_name") or SUBJECT_DIRS[curr_subj][1]
+    hours = plan.get(f"{curr_subj}_hours", 2.0)
+    target = plan.get(f"{curr_subj}_target", "高分冲刺")
+    weak = plan.get(f"{curr_subj}_weakness", "核心考点攻坚")
+
+    lines = [
+        f"🎓 【{subj_name} · 私教报到就绪】",
+        f"• 今日规划投入: {hours} 小时 ｜ 战役目标: {target}",
+        f"• 核心薄弱防线: 【{weak}】",
+    ]
+
+    due_count = 0
+    if error_logger:
+        try:
+            due_count = len(error_logger.get_due_reviews(curr_subj, max_count=3))
+        except Exception:
+            due_count = 0
+    if due_count:
+        lines.append(f"🔔 检测到您有 {due_count} 道艾宾浩斯到期错题！完成作答并输入「交作业」即可启动盲盒复测。")
+    else:
+        t_file = ROOT / SUBJECT_DIRS[curr_subj][0] / "_状态" / "今日任务.md"
+        task_lines = []
+        if t_file.exists():
+            txt = read_text_safe(t_file)
+            for l in txt.splitlines():
+                l_s = l.strip()
+                if re.match(r"^-\s*\[ \]", l_s) or ("|" in l_s and "[ ]" in l_s):
+                    task_lines.append(l_s)
+        if task_lines:
+            lines.append("📋 今日攻坚任务清单（前 2 项）：")
+            lines.extend(f"  {t}" for t in task_lines[:2])
+    lines.append("💡 私教提示：可直接输入题目或题干提问，完成后输入「交作业」按采分点批改！")
+    return "\n".join(lines)
+
 
 def manage_coaching_style(choice: str = None) -> tuple:
     """查看或切换私教辅导风格，并同步至 AGENTS.md 与 ky_config.json"""
@@ -1263,10 +1326,13 @@ def manage_coaching_style(choice: str = None) -> tuple:
             content = re.sub(r"- \*\*当前激活辅导风格\*\*：.*", f"- **当前激活辅导风格**：`{new_style_name}`", content)
         else:
             content = content.replace("## 0. 你的身份与总目标", f"## 0. 你的身份与总目标\n\n- **当前激活辅导风格**：`{new_style_name}`")
-        agents_root.write_text(content, encoding="utf-8")
+        atomic_write_text(agents_root, content)
 
     # 更新 ky_config.json
     cfg["coaching_style"] = new_style_name
+    # [P0 修复·风格单一真源] 同步 study_plan.style_name，避免向导字段与 CLI 字段各自为政
+    if isinstance(cfg.get("study_plan"), dict):
+        cfg["study_plan"]["style_name"] = new_style_name
     save_config(cfg)
     return new_style_name, True
 
@@ -1308,7 +1374,7 @@ def print_today_tasks_summary(as_json: bool = False):
             has_any = True
             content = read_text_safe(task_file)
             print(f"  {colorize(f'【{label}】', color)}")
-            lines = [l.strip() for l in content.splitlines() if "|" in l and not l.startswith("|---|") and "完成状态" not in l and "模块" not in l]
+            lines = [l.strip() for l in content.splitlines() if "|" in l and not l.replace(" ", "").startswith("|---|") and "完成状态" not in l and "模块" not in l]
             for line in lines:
                 parts = [p.strip() for p in line.split("|") if p.strip()]
                 if len(parts) >= 3:
@@ -1433,10 +1499,20 @@ def print_status_summary():
 
     agents_root = ROOT / "AGENTS.md"
     if agents_root.exists():
+        # [P0 修复] 前缀过滤此前把「四种私教辅导风格」的特点/行为准则行与
+        # 「AI Agent 工具接入矩阵」表格一并打印，态势大盘混入大段无关内容。
+        # 这里维护一个排除清单：这些行属于协议说明，不属于学员基本盘。
+        _status_skip_prefixes = (
+            "- **特点**：", "- **行为准则**：",
+            "| **Google", "| **Cursor", "| **Trae", "| **Cherry",
+            "| **WorkBuddy", "| **VS Code", "| **网页端",
+        )
         txt = read_text_safe(agents_root)
         for line in txt.split("\n"):
             clean_l = line.strip()
             clean_l = clean_l.replace("（示例模板）", "").replace("(示例模板)", "")
+            if clean_l.startswith(_status_skip_prefixes):
+                continue
             if clean_l.startswith(("- **", "| **科目", "| 合计", "| **", "- 数学:", "- 英语:", "- 政治:", "- 专业课:", "- 数学薄弱点:", "- 英语薄弱点:", "- 政治薄弱点:", "- 专业课薄弱点:")):
                 print("  " + clean_l)
             elif clean_l.startswith(("### 【个性化", "### 一、各科")):
@@ -2080,6 +2156,8 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
             elif cmd == "/config":
                 interactive_config()
                 cfg = load_config()
+                if agent_runner and hasattr(agent_runner, "config"):
+                    agent_runner.config.update(cfg)
                 continue
             elif cmd == "/notify":
                 broadcast_briefing(cfg)
@@ -2665,7 +2743,8 @@ def create_gateway_handler(token: str = ""):
                     try:
                         header_sep = img_base64.find(",")
                         raw_b64 = img_base64[header_sep+1:] if header_sep != -1 else img_base64
-                        img_path.write_bytes(base64.b64decode(raw_b64))
+                        decoded_bytes = base64.b64decode(raw_b64, validate=True)
+                        img_path.write_bytes(decoded_bytes)
                         print(colorize(f"\n[📸 收到 Web 伴侣上传图片: {img_filename}，启动视觉技能阅卷批改...]", C.CYAN))
                         vs = vision_solver
                         if vs is None:
@@ -2676,9 +2755,18 @@ def create_gateway_handler(token: str = ""):
                         prompt_text = user_msg or "请详细批改本题并按步骤给分，指出关键推导与可能的丢分点。"
                         reply = vs.solve_image_with_model(str(img_path), prompt_text, cfg, stream=False)
                     except Exception as err:
-                        reply = f"【图片解析异常】: {err}"
+                        # [P0 修复] 解码/解析失败直接返回 400，严禁继续拼接 HTML 造成存储型 XSS
+                        self.send_response(400)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.send_header("Access-Control-Allow-Origin", "*")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"reply": f"【图片解析异常】: {err}"}, ensure_ascii=False).encode("utf-8"))
+                        return
 
-                    user_display = f'<img src="{img_base64}" class="bubble-uploaded-img" alt="手写草稿" />' + (f'<div>{user_msg}</div>' if user_msg else '')
+                    # 严格转义防范 XSS
+                    safe_msg = html.escape(user_msg) if user_msg else ""
+                    safe_img_src = html.escape(img_base64) if img_base64.startswith("data:image/") else f"data:image/png;base64,{html.escape(raw_b64)}"
+                    user_display = f'<img src="{safe_img_src}" class="bubble-uploaded-img" alt="手写草稿" />' + (f'<div>{safe_msg}</div>' if safe_msg else '')
                     append_live_message("user", user_display)
                     append_live_message("assistant", reply)
                 else:
@@ -3002,7 +3090,7 @@ def cmd_wechat_search(cli_args: list):
 
 选项：
   --max=N                      最大检索结果数 (默认 10)
-  --save                       自动沉淀抓取文章到本地 docs/experiences/
+  --save                       自动沉淀抓取文章到本地 .memory/experiences/ (隐私目录，不入库)
   --no-fetch                   仅检索标题与链接，不抓取正文
   --school=<高校名>            联动更新目标高校社媒口碑档案 (school_scout)
   --source=<auto|sogou|bing|local> 检索数据源 (默认 auto 自动降级)
@@ -3013,7 +3101,9 @@ def cmd_wechat_search(cli_args: list):
 """)
         return
 
-    keyword = cli_args[0]
+    # [P0 修复] 多词关键词此前只取第一个词：「某高校 电子信息 考研」被截断为
+    # 「某高校」，检索出教师招聘等无关内容。非选项的位置参数应整体拼接为关键词。
+    keyword = " ".join(a for a in cli_args if not a.startswith("-")).strip()
     max_results = 10
     save_to_local = False
     fetch_content = True
@@ -3021,6 +3111,8 @@ def cmd_wechat_search(cli_args: list):
     source = "auto"
 
     for arg in cli_args[1:]:
+        if not arg.startswith("-"):
+            continue  # 已并入 keyword 的位置参数
         if arg.startswith("--max="):
             try:
                 max_results = int(arg.split("=", 1)[1])
@@ -3069,7 +3161,7 @@ def cmd_wechat_search(cli_args: list):
             print()
 
     if res.get("saved_paths"):
-        print(colorize(f"  📥 已沉淀 {len(res['saved_paths'])} 篇优质文章至 docs/experiences/", C.GREEN))
+        print(colorize(f"  📥 已沉淀 {len(res['saved_paths'])} 篇优质文章至 .memory/experiences/ (本地隐私目录)", C.GREEN))
         for sp in res["saved_paths"]:
             print(f"     - {Path(sp).name}")
     if res.get("scout_linked"):
@@ -3118,6 +3210,13 @@ def main():
         try:
             import study_planner
             study_planner.run_study_plan_wizard(interactive=True)
+        except EOFError:
+            # [P0 修复] 向导共 35 项输入，管道输入行数不足时 EOF 会直接抛栈崩溃；
+            # 且落盘动作在全部问答结束后才执行，中断即意味着已填内容全部丢失。
+            # 这里改为安全中止并明确告知，避免用户误以为档案已更新。
+            print(colorize("\n[!] 输入流提前结束 (EOF)，方案设计向导已安全中止，本次填写未保存。", C.YELLOW))
+            print(colorize("    向导共 35 项输入（含默认回车项），请在交互式终端运行 `ky plan` 完整作答；", C.DIM))
+            print(colorize("    脚本化场景请核对输入行数后重试，或在 `ky subject` 中单项调整。", C.DIM))
         except Exception as e:
             print(f"方案设计提示: {e}")
     elif args[0] in ("today", "--today", "tasks", "--tasks"):
@@ -3179,7 +3278,12 @@ def main():
         broadcast_briefing(cfg, custom_msg=custom)
     elif args[0] in ("subject", "--subject", "syllabus", "--syllabus"):
         cfg = load_config()
-        manage_syllabi_cli(cfg)
+        try:
+            manage_syllabi_cli(cfg)
+        except EOFError:
+            # [P0 修复] 非交互/管道场景下 EOF 不再抛栈崩溃，给出友好引导
+            print(colorize("\n[!] 检测到输入流结束 (EOF)，科目配置菜单已安全退出，未做任何修改。", C.YELLOW))
+            print(colorize("    提示：请在交互式终端运行 `ky subject` 选择菜单项；脚本化场景可直接编辑 ky_config.json。", C.DIM))
     elif args[0] in ("exam", "--exam", "compose", "--compose"):
         target_subj = "math"
         count = 3
@@ -3675,12 +3779,25 @@ def main():
             print(colorize(f"[!] 资料挂载失败: {mount_res.get('msg')}", C.RED))
     elif args[0] in ("variant", "--variant"):
         if len(args) < 2:
-            print(colorize("用法: ky variant <考点关键词或原题干>\n示例: ky variant 导数中值定理", C.YELLOW))
+            print(colorize("用法: ky variant <考点关键词或原题干> [--subject=math/eng/pol/pro]\n示例: ky variant 傅里叶变换 --subject=pro", C.YELLOW))
             sys.exit(1)
-        topic = " ".join(args[1:])
+        # [P0 修复] 新增 --subject 参数：此前变式检索固定使用会话科目(active_subject)，
+        # 输入「ky variant 傅里叶变换」会被归到数学二并生成生硬拼接的自拟题。
+        v_subj = None
+        v_words = []
+        for a in args[1:]:
+            if a.startswith("--subject="):
+                v_subj = a.split("=", 1)[1].strip().lower()
+            else:
+                v_words.append(a)
+        topic = " ".join(v_words)
+        cfg = load_config()
+        active_subj = cfg.get("active_subject", "math")
+        v_subj = v_subj if v_subj in SUBJECT_DIRS else active_subj
+        if v_subj != active_subj:
+            print(colorize(f"[i] 变式检索科目: {SUBJECT_DIRS[v_subj][1]} (会话科目为 {SUBJECT_DIRS[active_subj][1]}，可用 --subject 调整)", C.CYAN))
         if variant_retriever:
-            cfg = load_config()
-            res = variant_retriever.search_real_variant(subject=cfg.get("active_subject", "math"), keyword=topic)
+            res = variant_retriever.search_real_variant(subject=v_subj, keyword=topic)
             print(variant_retriever.format_variant_output(res))
         else:
             print("variant_retriever 技能模块未载入")
@@ -3704,9 +3821,16 @@ def main():
             print("knowledge_map 技能模块未载入")
     elif args[0] in ("diagnose", "--diagnose"):
         if len(args) < 2:
-            print(colorize("用法: ky diagnose <模考答题卡文本或文件路径>\n示例: ky diagnose 模考记录.txt 或 ky diagnose '1-5: A B C D A'", C.YELLOW))
+            print(colorize("用法: ky diagnose <模考答题卡文本或文件路径> [--subject=math/eng/pol/pro]\n示例: ky diagnose 模考记录.txt 或 ky diagnose '1-5: A B C D A'", C.YELLOW))
             sys.exit(1)
-        raw_target = " ".join(args[1:])
+        d_subj = None
+        d_words = []
+        for a in args[1:]:
+            if a.startswith("--subject="):
+                d_subj = a.split("=", 1)[1].strip().lower()
+            else:
+                d_words.append(a)
+        raw_target = " ".join(d_words)
         content = raw_target
         is_file = False
         target_file = None
@@ -3727,9 +3851,21 @@ def main():
         if not str(content).strip():
             print(colorize("[!] 答题卡内容不能为空", C.RED))
             sys.exit(1)
+        # [P0 修复] 从试卷路径反查科目目录，避免「04-专业课的试卷」被按会话科目(数学)诊断；
+        # 也可用 --subject 显式指定，路径推断优先级低于显式参数。
+        if not d_subj and is_file and target_file:
+            p_str = str(target_file)
+            for s_k, (s_folder, _) in SUBJECT_DIRS.items():
+                if s_folder in p_str:
+                    d_subj = s_k
+                    break
+        cfg = load_config()
+        active_subj = cfg.get("active_subject", "math")
+        d_subj = d_subj if d_subj in SUBJECT_DIRS else active_subj
+        if d_subj != active_subj:
+            print(colorize(f"[i] 已按试卷归属科目诊断: {SUBJECT_DIRS[d_subj][1]} (会话科目为 {SUBJECT_DIRS[active_subj][1]})", C.CYAN))
         if exam_diagnoser:
-            cfg = load_config()
-            res = exam_diagnoser.diagnose_mock_exam(subject=cfg.get("active_subject", "math"), exam_input=content)
+            res = exam_diagnoser.diagnose_mock_exam(subject=d_subj, exam_input=content)
             print(exam_diagnoser.format_diagnosis_report(res))
         else:
             print("exam_diagnoser 技能模块未载入")
