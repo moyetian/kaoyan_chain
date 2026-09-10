@@ -1,58 +1,59 @@
+<div align="center">
+
 # 考研学习链 (Kaoyan AI Study Chain) · 数字化备考工程
 
 **基于 AI Agent 私人教师协议、外置状态机驱动与自动化自测看板的开源考研备考工程**
 
+<p align="center">
+  <a href="https://moyetian.github.io/kaoyan_chain/"><img src="https://img.shields.io/badge/🌐_在线看板体验-Live_Demo-6366f1?style=for-the-badge&logo=githubpages&logoColor=white" alt="Live Demo" /></a>
+  <a href="#-用户本地化部署与快速上手流程-3-分钟开箱"><img src="https://img.shields.io/badge/🚀_快速上手-Quick_Start-10b981?style=for-the-badge&logo=rocket&logoColor=white" alt="Quick Start" /></a>
+  <a href="操作手册.md"><img src="https://img.shields.io/badge/📘_学员实操手册-Handbook-3b82f6?style=for-the-badge&logo=read-the-docs&logoColor=white" alt="Handbook" /></a>
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/🛠️_开发与贡献-Contributing-f59e0b?style=for-the-badge&logo=git&logoColor=white" alt="Contributing" /></a>
+</p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
+  <img src="https://img.shields.io/badge/Release-v2.6.0-blue?style=flat-square&logo=github&logoColor=white" alt="Release v2.6.0" />
+  <img src="https://img.shields.io/badge/Tests-380%2B%20Cases-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
+  <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-6366f1?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
+  <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
+  <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
+  <img src="https://img.shields.io/badge/KaoYan%20Intelligence-55%2B%E7%9C%81%E7%BA%A7%E9%AB%98%E6%A0%A1%E6%A1%A3%E6%A1%88-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white" alt="KaoYan Intelligence" />
+  <img src="https://img.shields.io/badge/Terminal%20TUI-v2.5%20%E6%9E%81%E5%AE%A2%E6%8E%A7%E5%88%B6%E5%8F%B0-3b82f6?style=flat-square&logo=gnometerminal&logoColor=white" alt="Terminal TUI" />
+  <img src="https://img.shields.io/badge/Dashboard-6%20Tabs%20(%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE%2B%E5%9B%BE%E8%B0%B1%2B%E8%B6%8B%E5%8A%BF%E7%BA%BF)-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
+  <img src="https://img.shields.io/badge/Memory-3--Tier%20Pruning-f59e0b?style=flat-square&logo=speedtest&logoColor=white" alt="Memory" />
+  <img src="https://img.shields.io/badge/Privacy-Local--First-10b981?style=flat-square&logo=shield&logoColor=white" alt="Privacy" />
+  <img src="https://img.shields.io/badge/License-MIT-lightgrey.svg?style=flat-square" alt="License" />
+</p>
 
-![Live Demo](https://img.shields.io/badge/🌐_在线看板体验-Live_Demo-6366f1?style=for-the-badge&logo=githubpages&logoColor=white)
+<p align="center">
+  <a href="#-用户本地化部署与快速上手流程-3-分钟开箱">🚀 极速开箱</a> •
+  <a href="#1-🖥️-桌面可视化操作端-pyside6-desktop-client--ky-gui">🖥️ 桌面 GUI</a> •
+  <a href="#4-📟-终端全景智能中枢-tui-v25-极客控制台">📟 终端 TUI</a> •
+  <a href="#2-📱-微信公众号考研经验检索与爬虫-ky-wechat--ky-wx">📱 经验检索</a> •
+  <a href="#6-🏛️-kaoyan-intelligence-招考全景情报与证据链引擎">🏛️ 研招情报</a> •
+  <a href="#-常用私教交互与指令速查">⌨️ 指令速查</a> •
+  <a href="操作手册.md">📘 实操手册</a> •
+  <a href="CONTRIBUTING.md">🛠️ 开发贡献</a>
+</p>
 
-![Quick Start](https://img.shields.io/badge/🚀_快速上手-Quick_Start-10b981?style=for-the-badge&logo=rocket&logoColor=white)
+<p align="center">
+  <img src="docs/assets/hero_banner.jpg" alt="Kaoyan AI Study Chain Banner" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
+</p>
 
-![Handbook](https://img.shields.io/badge/📘_学员实操手册-Handbook-3b82f6?style=for-the-badge&logo=read-the-docs&logoColor=white)
-
-![Contributing](https://img.shields.io/badge/🛠️_开发与贡献-Contributing-f59e0b?style=for-the-badge&logo=git&logoColor=white)
-
-
-
-![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)
-
-![Release v2.6.0](https://img.shields.io/badge/Release-v2.6.0-blue?style=flat-square&logo=github&logoColor=white)
-
-![Tests](https://img.shields.io/badge/Tests-380%2B%20Cases-10b981?style=flat-square&logo=checkmarx&logoColor=white)
-
-![PySide6 GUI](https://img.shields.io/badge/GUI-PySide6%20Desktop-6366f1?style=flat-square&logo=qt&logoColor=white)
-
-![Rust Native](https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white)
-
-![WeChat Searcher](https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white)
-
-![KaoYan Intelligence](https://img.shields.io/badge/KaoYan%20Intelligence-55%2B%E7%9C%81%E7%BA%A7%E9%AB%98%E6%A0%A1%E6%A1%A3%E6%A1%88-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white)
-
-![Terminal TUI](https://img.shields.io/badge/Terminal%20TUI-v2.5%20%E6%9E%81%E5%AE%A2%E6%8E%A7%E5%88%B6%E5%8F%B0-3b82f6?style=flat-square&logo=gnometerminal&logoColor=white)
-
-![Dashboard](https://img.shields.io/badge/Dashboard-6%20Tabs%20(%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE%2B%E5%9B%BE%E8%B0%B1%2B%E8%B6%8B%E5%8A%BF%E7%BA%BF)-6366f1?style=flat-square&logo=speedtest&logoColor=white)
-
-![Memory](https://img.shields.io/badge/Memory-3--Tier%20Pruning-f59e0b?style=flat-square&logo=speedtest&logoColor=white)
-
-![Privacy](https://img.shields.io/badge/Privacy-Local--First-10b981?style=flat-square&logo=shield&logoColor=white)
-
-![License](https://img.shields.io/badge/License-MIT-lightgrey.svg?style=flat-square)
-
-
-
-![Kaoyan AI Study Chain Banner](docs/assets/hero_banner.jpg)
+</div>
 
 ---
 
 ## 📖 这是什么？
 
+<p align="center">
+  <img src="docs/assets/readme_system_overview.svg" alt="考研学习链系统架构与工作流全景" style="max-width:100%;border-radius:10px;" />
+</p>
 
-
-![考研学习链系统架构与工作流全景](docs/assets/readme_system_overview.svg)
-
-
-
-![传统 AI 对话与考研学习链对比](docs/assets/feature_comparison.svg)
+<p align="center">
+  <img src="docs/assets/feature_comparison.svg" alt="传统 AI 对话与考研学习链对比" style="max-width:100%;border-radius:10px;" />
+</p>
 
 **考研学习链 (Kaoyan AI Study Chain)** 是一套面向考研学子的**数字化、工程化 AI 私人教师备考系统**。
 
@@ -114,9 +115,9 @@ ky
 
 ## 🌟 核心功能全景亮点
 
-
-
-![三类考研学生画像与差异化提分闭环矩阵](docs/assets/persona_triad_matrix.svg)
+<p align="center">
+  <img src="docs/assets/persona_triad_matrix.svg" alt="三类考研学生画像与差异化提分闭环矩阵" style="max-width:100%;border-radius:10px;" />
+</p>
 
 ### 1. 🖥️ 桌面可视化操作端 (PySide6 Desktop Client · `ky gui`)
 
