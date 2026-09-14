@@ -1,0 +1,24 @@
+chsi_code: '10699'
+name: 西北工业大学
+aliases:
+- 西工大
+- NPU
+- 国防七子
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 陕西西安
+province: 陕西
+official_domain: https://www.nwpu.edu.cn
+graduate_domain: https://yzb.nwpu.edu.cn
+admission_domain: https://yzb.nwpu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机学院 / 软件学院
+    college_domain: http://jsj.nwpu.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

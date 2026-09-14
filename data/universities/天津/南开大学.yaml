@@ -1,0 +1,24 @@
+chsi_code: '10055'
+name: 南开大学
+aliases:
+- 南开
+- NKU
+- Nankai University
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 天津
+province: 天津
+official_domain: https://www.nankai.edu.cn
+graduate_domain: https://yzb.nankai.edu.cn
+admission_domain: https://yzb.nankai.edu.cn
+departments:
+  计算机:
+    college_name: 计算机学院 / 网络空间安全学院
+    college_domain: https://cc.nankai.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085412

@@ -1,0 +1,22 @@
+chsi_code: '10423'
+name: 中国海洋大学
+aliases:
+- 海大
+- OUC
+- 中国海大
+level:
+- '985'
+- '211'
+- 双一流A类
+region: 山东青岛
+province: 山东
+official_domain: https://www.ouc.edu.cn
+graduate_domain: http://yz.ouc.edu.cn
+admission_domain: http://yz.ouc.edu.cn
+departments:
+  计算机:
+    college_name: 信息科学与工程学部
+    college_domain: http://it.ouc.edu.cn
+    default_majors:
+    - 081200
+    - 085404

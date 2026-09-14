@@ -1,0 +1,96 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kaoyan-study-chain"
+version = "2.7.0"
+description = "考研全科 AI 私人教师与全自动备考总控系统 (Kaoyan Study Chain)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Kaoyan Study Chain Team" }
+]
+keywords = [
+    "kaoyan",
+    "study-assistant",
+    "ai-agent",
+    "postgraduate-exam",
+    "cli",
+    "gui",
+    "rust"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Education :: Computer Aided Instruction (CAI)",
+]
+dependencies = [
+    "PyYAML>=6.0",
+    # 必须 >= 5.0：代码使用 Scheduler API；4.x 及更早的 fsrs.FSRS 已移除
+    "fsrs>=5.0.0",
+    "filelock>=3.12.0"
+]
+
+[project.optional-dependencies]
+gui = [
+    "PySide6>=6.6.0",
+]
+tui = [
+    "textual>=0.40.0",
+]
+fast = [
+    "ky-rust-ext>=0.1.0",
+]
+full = [
+    "sympy>=1.12",
+    "pypdf>=3.0.0",
+    "Pillow>=9.0.0",
+    "rapidocr-onnxruntime>=1.3.0",
+    "PySide6>=6.6.0",
+    "textual>=0.40.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-timeout",
+    "pytest-socket",
+    "maturin>=1.0.0",
+]
+
+[project.scripts]
+ky = "tools.ky_cli:main"
+ky-gui = "tools.ky_gui:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tools"]
+# 开发/测试脚本随源码留在仓库，但**不进入 wheel 分发**：
+# 它们只服务于本地开发与 CI，装到用户环境里既无用又容易被误执行。
+exclude = [
+    "tools/test_ky_suite.py",
+    "tools/test_new_features.py",
+    "tools/simulate_workflow.py",
+    "tools/build_svg_assets.py",
+]
+
+[tool.hatch.build.targets.wheel.force-include]
+"AGENTS.md" = "tools/protocol/AGENTS.md"
+"GEMINI.md" = "tools/protocol/GEMINI.md"
+"00_考研全科总战役规划.md" = "tools/protocol/00_考研全科总战役规划.md"
+
+[tool.hatch.build]
+artifacts = ["*.md", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = ["error"]
+addopts = "--strict-markers -ra"
+markers = ["live: 调用真实 API，需显式开启", "slow", "bench"]
+timeout = 120

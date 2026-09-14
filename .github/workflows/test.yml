@@ -1,0 +1,58 @@
+name: CI Test Suite
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -e .
+
+    - name: Run Ky Doctor Self-Check
+      run: |
+        python tools/doctor.py
+
+    - name: Static Lint (zero-dependency)
+      # 语法错误 / 裸 except / 可变默认参数 / 未使用导入 / 导入时副作用
+      run: |
+        python tools/lint_check.py --quiet
+
+    - name: Dashboard Artifact Guard
+      # 重新构建看板并校验产物内嵌 JS 语法 + 前端契约 + 无空图标
+      # （历史上曾因模板引号错误导致整页 JS 失效却顺利通过 CI）
+      run: |
+        python tools/check_dashboard.py
+
+    - name: Run Full Kaoyan Test Suite
+      run: |
+        python tools/test_ky_suite.py
+
+    - name: Run New-Feature Test Suite
+      run: |
+        python tools/test_new_features.py
+
+    - name: Run pytest Unit/Process Suite
+      run: |
+        python -m pytest tests/ -q -p no:cacheprovider

@@ -1,0 +1,20 @@
+chsi_code: '10613'
+name: 西南交通大学
+aliases:
+- 西南交大
+- SWJTU
+level:
+- '211'
+- 双一流
+region: 四川成都
+province: 四川
+official_domain: https://www.swjtu.edu.cn
+graduate_domain: http://yjsy.swjtu.edu.cn
+admission_domain: http://yz.swjtu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机与人工智能学院
+    college_domain: http://scai.swjtu.edu.cn
+    default_majors:
+    - 081200
+    - 085404

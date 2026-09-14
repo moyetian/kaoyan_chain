@@ -1,0 +1,24 @@
+chsi_code: '10247'
+name: 同济大学
+aliases:
+- 同济
+- Tongji
+- TJU-SH
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 上海
+province: 上海
+official_domain: https://www.tongji.edu.cn
+graduate_domain: https://yz.tongji.edu.cn
+admission_domain: https://yz.tongji.edu.cn
+departments:
+  计算机:
+    college_name: 电子与信息工程学院
+    college_domain: https://see.tongji.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

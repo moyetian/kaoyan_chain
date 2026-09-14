@@ -1,0 +1,21 @@
+chsi_code: '10217'
+name: 哈尔滨工程大学
+aliases:
+- 哈工程
+- HEU
+- 三海一核
+level:
+- '211'
+- 双一流
+region: 黑龙江哈尔滨
+province: 黑龙江
+official_domain: http://www.hrbeu.edu.cn
+graduate_domain: http://yjsy.hrbeu.edu.cn
+admission_domain: http://yzb.hrbeu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学与技术学院
+    college_domain: http://cst.hrbeu.edu.cn
+    default_majors:
+    - 081200
+    - 085404

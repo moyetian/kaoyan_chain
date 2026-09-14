@@ -1,0 +1,27 @@
+chsi_code: '12111'
+name: 南方医科大学
+aliases:
+- 南医大
+- SMU
+- 第一军医大学
+level:
+- 省部共建
+- 全国首批卓越医生教育培养计划
+region: 广东广州
+province: 广东
+official_domain: https://www.smu.edu.cn
+graduate_domain: https://portal.smu.edu.cn/yjsy
+admission_domain: https://portal.smu.edu.cn/yjsy/zsxx.htm
+departments:
+  医学:
+    college_name: 第一临床医学院 / 南方医院
+    college_domain: https://portal.smu.edu.cn/yjsy
+    default_majors:
+    - '100200'
+    - '105100'
+  计算机与生工:
+    college_name: 生物医学工程学院
+    college_domain: http://bme.smu.edu.cn
+    default_majors:
+    - 083100
+    - 085409

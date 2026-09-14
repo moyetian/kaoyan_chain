@@ -1,0 +1,176 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc_probe
+*$py.class
+.pytest_cache/
+.playwright-cli/
+.pytest_tmp/
+.cargo_target/
+dist_wheels/
+scripts/gui_shots/
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+ENV/
+.env
+.env.*
+config.json
+ky_config.json
+ky_history.json
+
+# 内部开发审查与优化方案报告 (不推送到远端)
+考研学习链_代码审查与改进报告*.md
+README优化方案*.md
+新功能技术方案*.md
+*_extracted.txt
+
+# ==========================================
+# 隐私防泄露铁律 (Privacy Guardrails)
+# 真实个人学情状态、做题记录、作业与错题保留在本地，不上传云端
+# ==========================================
+**/_状态/*.md
+!**/_状态/*.template.md
+!**/_状态/*.example.md
+!**/*核心速记*.md
+
+**/学情档案.md
+!**/学情档案.template.md
+!**/学情档案.example.md
+
+# 个人每日笔记与作业
+**/每日笔记/*.md
+!**/每日笔记/_模板.md
+!**/每日笔记/README.md
+
+**/每日作业/*.md
+!**/每日作业/_模板.md
+!**/每日作业/README.md
+
+# 个人错题本
+**/错题本/*.md
+!**/错题本/_模板.md
+!**/错题本/_索引.md
+!**/错题本/README.md
+*.keys.json
+.*.keys.json
+
+**/错题与长难句本/*.md
+!**/错题与长难句本/_模板.md
+!**/错题与长难句本/_索引.md
+!**/错题与长难句本/README.md
+
+# 个人参考资料库 (大体积课件与教材 PDF 本地存放，不上传)
+**/参考资料/*
+!**/参考资料/README.md
+
+# Large binary files & PDFs (Keep local for copyright & storage)
+*.pdf
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# OCR & Temporary Scratch Images
+scratch/
+scratch_*.png
+scratch_*.jpg
+temp_*.png
+temp_*.jpg
+*.tmp
+.tmp.driveupload/
+*.docx
+考研学习链_功能规划与竞品分析报告*.txt
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.workbuddy/
+.claude/
+.agents/
+
+# 三级分层记忆 (学员个人学情与决策，本地独占)
+.memory/
+
+# Plan Mode 快照备份沙箱 (本地独占，不上传云端)
+.checkpoint/
+
+# Rust / Cargo 构建目录与本地动态库 (源码保留在 rust_ext/src，二进制产物不入库)
+target/
+**/target/
+rust_ext/target/
+*.pyd
+*.pdb
+
+# 临时分析报告、竞品方案与搜索规划文件
+*审查报告*.md
+*路线图*.md
+/state_snapshot.json
+!docs/state_snapshot.json
+!05-考研看板/docs/state_snapshot.json
+*.log
+
+# ── 学员隐私：目标院校/专业社媒档案（绝不入库、绝不发布）──
+docs/experiences/
+!docs/experiences/README.md
+.memory/experiences/
+04-专业课/双校考情对比_*.md
+04-专业课/目标院校情报_*.md
+# D 盘工作区保留规则：规划类草稿不入库
+*规划.txt
+
+public_release/
+test_out.txt
+simulation_report.md
+*考纲变动分析*.md
+*考试大纲_backup*.md
+*演示样例*.md
+
+# Global Backup & Test Artifacts
+*_backup_*.md
+*测试*.md
+*演示样例*.md
+
+# ── 开源发布整理（2026-09-14）──
+# 个人本地备份（脱敏前的真实配置，仅本机保留）
+*.local.md
+# 内部审查/调研文档（含本机路径，不随仓库公开）
+FSRS重构审查与修正报告.md
+kaoyan_chain_github_调研.md
+.sim_*.txt
+.sim_review_*.txt
+simulation_cli.json
+.dashboard_check_*.js
+.llm_*.txt
+.atomic_test.log
+.httpd.log
+.lint_out.txt
+.pytest_out.txt
+x.js
+# 历史遗留开发脚本（含本机路径，不公开）
+scripts/legacy/

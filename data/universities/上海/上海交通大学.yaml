@@ -1,0 +1,26 @@
+chsi_code: '10248'
+name: 上海交通大学
+aliases:
+- 上交
+- 上交大
+- SJTU
+- C9联盟
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+- C9联盟
+region: 上海
+province: 上海
+official_domain: https://www.sjtu.edu.cn
+graduate_domain: https://yzb.sjtu.edu.cn
+admission_domain: https://yzb.sjtu.edu.cn
+departments:
+  计算机:
+    college_name: 电子信息与电气工程学院 (电院)
+    college_domain: https://seiee.sjtu.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

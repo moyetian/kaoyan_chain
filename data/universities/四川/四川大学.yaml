@@ -1,0 +1,30 @@
+chsi_code: '10610'
+name: 四川大学
+aliases:
+- 川大
+- SCU
+- Sichuan University
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 四川成都
+province: 四川
+official_domain: https://www.scu.edu.cn
+graduate_domain: https://yz.scu.edu.cn
+admission_domain: https://yz.scu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机学院 / 软件学院
+    college_domain: http://cs.scu.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405
+  医学:
+    college_name: 华西临床医学院 (华西医院)
+    college_domain: http://yjs.cd120.com
+    default_majors:
+    - '100200'
+    - '105100'

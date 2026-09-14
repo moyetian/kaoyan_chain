@@ -1,0 +1,21 @@
+chsi_code: '10590'
+name: 深圳大学
+aliases:
+- 深大
+- SZU
+level:
+- 双非顶流
+- 地方高水平大学
+region: 广东深圳
+province: 广东
+official_domain: https://www.szu.edu.cn
+graduate_domain: https://yz.szu.edu.cn
+admission_domain: https://yz.szu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机与软件学院
+    college_domain: https://csse.szu.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

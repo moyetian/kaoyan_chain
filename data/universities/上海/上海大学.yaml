@@ -1,0 +1,20 @@
+chsi_code: '10252'
+name: 上海大学
+aliases:
+- 上大
+- SHU
+level:
+- '211'
+- 双一流
+region: 上海
+province: 上海
+official_domain: https://www.shu.edu.cn
+graduate_domain: https://yjszs.shu.edu.cn
+admission_domain: https://yjszs.shu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机工程与科学学院
+    college_domain: https://cs.shu.edu.cn
+    default_majors:
+    - 081200
+    - 085404

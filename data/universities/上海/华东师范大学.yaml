@@ -1,0 +1,24 @@
+chsi_code: '10269'
+name: 华东师范大学
+aliases:
+- 华东师大
+- ECNU
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 上海
+province: 上海
+official_domain: https://www.ecnu.edu.cn
+graduate_domain: https://yjsy.ecnu.edu.cn
+admission_domain: https://yjszs.ecnu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学与技术学院 / 软件工程学院
+    college_domain: https://cs.ecnu.edu.cn
+    default_majors:
+    - 081200
+    - 083500
+    - 085404
+    - 085405

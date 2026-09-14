@@ -1,0 +1,148 @@
+# -*- coding: utf-8 -*-
+"""
+考研参考书与历年真题抽取技能 (PDF & Document Extractor Skill)
+功能：
+  1. 扫描数学、英语、政治、专业课的「参考资料/」目录
+  2. 提取 PDF、Markdown、文本资料中的题目、章节与真题
+  3. 支持免开阅读器，直接在终端中调取题干或知识点
+"""
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+
+try:
+    import pypdf
+    HAS_PYPDF = True
+except ImportError:
+    HAS_PYPDF = False
+
+def list_materials():
+    """列出四科参考资料库中的所有文献与试卷"""
+    res = {}
+    for s in ("01-数学", "02-英语", "03-思想政治理论", "04-专业课"):
+        ref_dir = ROOT / s / "参考资料"
+        if ref_dir.exists():
+            files = [f.name for f in ref_dir.iterdir() if f.is_file() and f.name != "README.md"]
+            res[s] = files
+    return res
+
+def search_text_in_materials(keyword):
+    """在参考资料文本或 Markdown 中进行关键词搜索"""
+    matches = []
+    for s in ("01-数学", "02-英语", "03-思想政治理论", "04-专业课"):
+        ref_dir = ROOT / s / "参考资料"
+        if not ref_dir.exists():
+            continue
+        for f in ref_dir.glob("*.*"):
+            if f.suffix.lower() in (".txt", ".md"):
+                try:
+                    text = f.read_text(encoding="utf-8", errors="ignore")
+                    for idx, line in enumerate(text.split("\n"), 1):
+                        if keyword.lower() in line.lower():
+                            matches.append(f"[{s}/{f.name}:L{idx}] {line.strip()[:100]}")
+                except Exception:
+                    continue
+    return matches
+
+def extract_pdf_page(pdf_path, page_num=1):
+    """提取指定 PDF 文件的某页文本"""
+    p = Path(pdf_path)
+    if not p.exists():
+        return f"未找到文件: {pdf_path}"
+
+    if not HAS_PYPDF:
+        return (
+            f"检测到文件: {p.name} (大小: {p.stat().st_size // 1024} KB)\n"
+            "⚠️ 当前 Python 环境未安装 `pypdf`，无法直接读取二进制 PDF。\n"
+            "建议在终端运行：`pip install pypdf` 激活 PDF 纯文本抽取能力！"
+        )
+
+    try:
+        reader = pypdf.PdfReader(str(p))
+        if page_num > len(reader.pages) or page_num < 1:
+            return f"页码超出范围，该 PDF 共有 {len(reader.pages)} 页。"
+        text = reader.pages[page_num - 1].extract_text()
+        return f"=== [{p.name}] 第 {page_num} 页 ===\n\n{text}"
+    except Exception as e:
+        return f"读取 PDF 异常: {e}"
+
+
+def extract_pdf_pages(pdf_path, max_pages=8):
+    """
+    批量提取 PDF 前 N 页，供 Agent 工具 read_file / read_exam_paper 调用。
+    返回结构化字典：
+      {
+        "success": bool,
+        "file_name": str,
+        "total_pages": int,
+        "pages": [{"page": int, "text": str}, ...],
+        "error": str (仅失败时存在),
+      }
+    """
+    p = Path(pdf_path)
+    out = {"success": False, "file_name": p.name, "total_pages": 0, "pages": []}
+
+    if not p.exists():
+        out["error"] = f"未找到文件: {pdf_path}"
+        return out
+
+    if not HAS_PYPDF:
+        out["error"] = (
+            f"当前 Python 环境未安装 `pypdf`，无法直接读取二进制 PDF。"
+            f"建议在终端运行 `pip install pypdf` 激活 PDF 纯文本抽取能力。"
+        )
+        return out
+
+    try:
+        reader = pypdf.PdfReader(str(p))
+        total = len(reader.pages)
+        out["total_pages"] = total
+        cap = min(max_pages, total) if max_pages else total
+        for i in range(cap):
+            try:
+                txt = reader.pages[i].extract_text() or ""
+            except Exception as page_err:
+                txt = f"[第 {i+1} 页提取失败: {page_err}]"
+            out["pages"].append({"page": i + 1, "text": txt})
+        out["success"] = True
+        return out
+    except Exception as e:
+        out["error"] = f"读取 PDF 异常: {e}"
+        return out
+
+
+def find_questions_by_keyword(pdf_path, keyword, max_results=3):
+    """
+    在指定 PDF 中按关键词检索相关考点与试题片段，返回匹配的文本摘要列表
+    """
+    p = Path(pdf_path)
+    if not p.exists() or not HAS_PYPDF:
+        return []
+
+    results = []
+    kw_lower = str(keyword).lower()
+    try:
+        reader = pypdf.PdfReader(str(p))
+        for page_idx, page in enumerate(reader.pages, 1):
+            try:
+                page_text = page.extract_text() or ""
+            except Exception:
+                continue
+
+            if kw_lower in page_text.lower():
+                # 寻找匹配位置并截取题干上下文
+                lines = page_text.splitlines()
+                for line_idx, line in enumerate(lines):
+                    if kw_lower in line.lower():
+                        start = max(0, line_idx - 2)
+                        end = min(len(lines), line_idx + 6)
+                        snippet = "\n".join(lines[start:end]).strip()
+                        results.append(f"[第 {page_idx} 页 / 考点相关片段]:\n{snippet}")
+                        if len(results) >= max_results:
+                            return results
+    except Exception:
+        pass
+
+    return results
+

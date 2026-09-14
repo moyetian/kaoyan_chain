@@ -1,0 +1,20 @@
+chsi_code: '10287'
+name: 南京航空航天大学
+aliases:
+- 南航
+- NUAA
+level:
+- '211'
+- 双一流
+region: 江苏南京
+province: 江苏
+official_domain: http://www.nuaa.edu.cn
+graduate_domain: http://www.graduate.nuaa.edu.cn
+admission_domain: http://zs.nuaa.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学与技术学院
+    college_domain: http://cs.nuaa.edu.cn
+    default_majors:
+    - 081200
+    - 085404

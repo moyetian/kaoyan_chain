@@ -1,0 +1,24 @@
+chsi_code: '10486'
+name: 武汉大学
+aliases:
+- 武大
+- WHU
+- Wuhan University
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 湖北武汉
+province: 湖北
+official_domain: https://www.whu.edu.cn
+graduate_domain: http://gs.whu.edu.cn
+admission_domain: http://gs.whu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机学院 / 国家网络安全学院
+    college_domain: http://cs.whu.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085412

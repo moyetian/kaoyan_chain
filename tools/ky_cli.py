@@ -1,0 +1,4862 @@
+# -*- coding: utf-8 -*-
+"""
+考研学习链 (Kaoyan AI Study Chain) · 专有智能终端 CLI (ky-cli)
+全功能考研私教终端：类似 Claude Code 的全功能命令行智能体
+支持：
+  1. 多模型 API 接入 (DeepSeek / OpenAI / Claude / Kimi / Qwen / Ollama 等兼容协议)
+  2. 聊天机器人桥接 (微信 ClawBot/企微、QQ OneBot/NapCat、钉钉、飞书 Webhook)
+  3. 四科私教智能路由、流式打字输出、任务读取与状态写回
+  4. 纯 Python 3.8+ 标准库实现，零 pip 第三方依赖！
+"""
+
+import os
+import sys
+import json
+import time
+import re
+import urllib.request
+import urllib.error
+import urllib.parse
+import hmac
+import hashlib
+import base64
+import unicodedata
+import html
+from pathlib import Path
+from datetime import datetime, date, timedelta
+
+try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
+    from ky_io import atomic_write_text  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text  # noqa: E402
+
+# [根因修复·日期硬编码] 初试日期统一由 exam_calendar 提供。旧兜底用
+# current_exam_year()（返回的是「入学年」）直接当年份去算 12 月，会让倒计时整体
+# 偏移一年；TUI/GUI/看板另有各自写死的兜底日期，三端口径互不一致。
+try:
+    import exam_calendar  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools import exam_calendar  # type: ignore  # noqa: E402
+
+# Windows 控制台安全编码
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+ROOT = Path(__file__).resolve().parent.parent
+CONFIG_FILE = ROOT / "ky_config.json"
+HISTORY_FILE = ROOT / "ky_history.json"
+
+# 引入考研专用 Skills 体系与路径配置
+tools_dir = Path(__file__).resolve().parent
+for p_item in (str(ROOT), str(tools_dir)):
+    if p_item not in sys.path:
+        sys.path.insert(0, p_item)
+
+try:
+    from skills import vision_solver, math_verifier, english_dissector, socratic_tutor, pdf_extractor, error_logger, latex_beautifier, list_skills, exam_composer, variant_retriever, knowledge_map, exam_diagnoser, school_scout, material_ingestion
+except Exception as _e:
+    try:
+        from tools.skills import vision_solver, math_verifier, english_dissector, socratic_tutor, pdf_extractor, error_logger, latex_beautifier, list_skills, exam_composer, variant_retriever, knowledge_map, exam_diagnoser, school_scout, material_ingestion
+    except Exception:
+        list_skills = lambda: {}
+        vision_solver = None
+        math_verifier = None
+        english_dissector = None
+        socratic_tutor = None
+        pdf_extractor = None
+        error_logger = None
+        latex_beautifier = None
+        exam_composer = None
+        variant_retriever = None
+        knowledge_map = None
+        exam_diagnoser = None
+        school_scout = None
+        material_ingestion = None
+
+try:
+    import intelligence
+except Exception:
+    try:
+        from tools import intelligence
+    except Exception:
+        intelligence = None
+
+try:
+    from agent import AgentRunner, Sandbox, PermissionManager, ToolRegistry, ContextEngine
+except Exception:
+    try:
+        from tools.agent import AgentRunner, Sandbox, PermissionManager, ToolRegistry, ContextEngine
+    except Exception:
+        AgentRunner = None
+
+try:
+    import ky_io
+except Exception:
+    try:
+        from tools import ky_io
+    except Exception:
+        ky_io = None
+
+# Web 可视化伴侣会话缓存
+LIVE_SESSION_MESSAGES = []
+
+def grab_clipboard_image():
+    """从 Windows/macOS/Linux 系统剪贴板中提取图像并暂存为本地图片文件"""
+    upload_dir = ROOT / "tools" / "scratch" / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    target_path = upload_dir / f"clip_{int(time.time() * 1000)}.png"
+
+    # 1. 优先使用 Pillow ImageGrab (跨平台，支持微信截图、SnippingTool、浏览器复制图像等)
+    try:
+        from PIL import ImageGrab
+        im = ImageGrab.grabclipboard()
+        if im is not None:
+            if hasattr(im, "save"):
+                im.save(str(target_path), "PNG")
+                return target_path
+            elif isinstance(im, list):
+                for item in im:
+                    p = Path(item)
+                    if p.is_file() and p.suffix.lower() in ('.png', '.jpg', '.jpeg', '.webp', '.bmp'):
+                        return p
+    except Exception:
+        pass
+
+    # 2. Windows PowerShell 底层读取剪贴板位图
+    if sys.platform == "win32":
+        try:
+            import subprocess
+            safe_target_str = str(target_path).replace("\\", "/")
+            ps_cmd = f"""
+            Add-Type -AssemblyName System.Windows.Forms;
+            $img = [System.Windows.Forms.Clipboard]::GetImage();
+            if ($img -ne $null) {{
+                $img.Save('{safe_target_str}', [System.Drawing.Imaging.ImageFormat]::Png);
+                Write-Output 'OK';
+            }}
+            """
+            res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, timeout=4)
+            if "OK" in (res.stdout or "") and target_path.exists():
+                return target_path
+        except Exception:
+            pass
+
+    return None
+
+def get_clipboard_text():
+    """读取系统剪贴板中的纯文本 (跨平台，支持自动捕获复制的 API Key)"""
+    if sys.platform == "win32":
+        try:
+            import subprocess
+            res = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-Clipboard"], capture_output=True, text=True, timeout=2)
+            if res.returncode == 0 and res.stdout:
+                return res.stdout.strip()
+        except Exception:
+            pass
+    elif sys.platform == "darwin":
+        try:
+            import subprocess
+            res = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=2)
+            if res.returncode == 0 and res.stdout:
+                return res.stdout.strip()
+        except Exception:
+            pass
+    elif sys.platform.startswith("linux"):
+        try:
+            import subprocess
+            res = subprocess.run(["xclip", "-selection", "clipboard", "-o"], capture_output=True, text=True, timeout=2)
+            if res.returncode == 0 and res.stdout:
+                return res.stdout.strip()
+        except Exception:
+            pass
+    return ""
+
+def open_provider_console_and_get_key(provider_name, console_url, current_key=""):
+    """
+    自动打开服务商官方认证/API Key 管理页面，并支持一键套用剪贴板密钥
+    """
+    import webbrowser
+    print(colorize(f"\n🌐 正在为您自动打开 {provider_name} 官方控制台: {console_url}", C.CYAN))
+    print(colorize("💡 提示：在网页中登录后，点击「创建 API Key」并复制即可！\n", C.YELLOW))
+    try:
+        webbrowser.open(console_url)
+    except Exception as e:
+        print(colorize(f"   [提示] 自动唤起浏览器受阻: {e}，请手动访问上方链接。", C.DIM))
+
+    # 检测当前系统剪贴板中是否已有密钥
+    time.sleep(0.4)
+    clip_text = get_clipboard_text().strip()
+    is_key_like = bool(clip_text and (clip_text.startswith("sk-") or len(clip_text) >= 20) and "\n" not in clip_text and " " not in clip_text)
+
+    if is_key_like and clip_text != current_key:
+        masked = clip_text[:6] + "..." + clip_text[-4:]
+        print(colorize(f"📋 检测到剪贴板中已有密钥: {masked}", C.GREEN))
+        choice = input(f"👉 直接回车(Enter)立即套用剪贴板密钥，或手动粘贴新密钥: ").strip()
+        if not choice:
+            print(colorize(f"[√] 已成功套用剪贴板密钥！\n", C.GREEN))
+            return clip_text
+        return choice
+
+    curr_display = (current_key[:6] + "..." + current_key[-4:]) if len(current_key) > 10 else (current_key or "未设置")
+    user_key = input(f"请输入 API Key (直接回车保持现有: {curr_display}): ").strip()
+    return user_key if user_key else current_key
+
+def append_live_message(role, content):
+    """向网页可视化伴侣推送同步消息"""
+    LIVE_SESSION_MESSAGES.append({
+        "role": role,
+        "content": content,
+        "time": datetime.now().strftime("%H:%M:%S")
+    })
+    if len(LIVE_SESSION_MESSAGES) > 60:
+        LIVE_SESSION_MESSAGES.pop(0)
+
+# ANSI 终端色彩
+class C:
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    MAGENTA = "\033[95m"
+
+def colorize(text, color_code):
+    # Windows 终端若不支持 ANSI 则优雅降级
+    if os.name == "nt" and "WT_SESSION" not in os.environ and "TERM" not in os.environ:
+        return text
+    return f"{color_code}{text}{C.RESET}"
+
+# 默认配置
+DEFAULT_CONFIG = {
+    "api_provider": "deepseek",
+    "base_url": "https://api.deepseek.com/v1",
+    "api_key": "",
+    "model": "deepseek-chat",
+    "temperature": 0.3,
+    "active_subject": "math",  # math, eng, pol, pro
+    "webhooks": {
+        "wechat": "",       # 企业微信 / 微信 ClawBot Webhook URL
+        "qq_onebot": "",    # QQ OneBot11 HTTP 接口 (如 http://127.0.0.1:3000)
+        "qq_target_id": "", # QQ 目标群号或好友 QQ 号
+        "dingtalk": "",     # 钉钉自定义机器人 Webhook URL
+        "dingtalk_secret": "", # 钉钉加签密钥 (可选)
+        "feishu": "",       # 飞书群自定义机器人 Webhook URL
+    }
+}
+
+def load_config():
+    if CONFIG_FILE.exists():
+        try:
+            cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            # 合并默认缺失字段
+            merged = DEFAULT_CONFIG.copy()
+            merged.update(cfg)
+            if "webhooks" in cfg:
+                merged["webhooks"] = {**DEFAULT_CONFIG["webhooks"], **cfg["webhooks"]}
+            return merged
+        except Exception as e:
+            # [P1 修复] 备份可能损坏的配置文件，防止被静默覆盖丢 API Key
+            try:
+                import shutil
+                bak = CONFIG_FILE.with_suffix(".corrupted.bak")
+                shutil.copyfile(CONFIG_FILE, bak)
+                print(f"[!] 警告: 读取 {CONFIG_FILE.name} 失败: {e}，已备份至 {bak.name} 并回退默认配置")
+            except Exception:
+                pass
+            return DEFAULT_CONFIG.copy()
+    return DEFAULT_CONFIG.copy()
+
+def save_config(cfg):
+    # [P1 修复] 原子写入：中断不会留下半截 JSON 导致配置损坏。
+    # 原子性由 ky_io.atomic_write_text 统一实现（同目录临时文件 + fsync + replace），
+    # 此处不必再手工 tmp + replace。
+    atomic_write_text(CONFIG_FILE, json.dumps(cfg, ensure_ascii=False, indent=2))
+
+# ════════════════════════════════════════════════════════════════
+# 1. 考研私教上下文与状态加载器
+# ════════════════════════════════════════════════════════════════
+
+SUBJECT_DIRS = {
+    "math": ("01-数学", "数学专属私教"),
+    "eng": ("02-英语", "英语专属私教"),
+    "pol": ("03-思想政治理论", "政治专属私教"),
+    "pro": ("04-专业课", "专业课专属私教"),
+}
+
+def read_text_safe(path):
+    if not path.exists():
+        return ""
+    for enc in ("utf-8", "utf-8-sig", "gbk"):
+        try:
+            return path.read_text(encoding=enc)
+        except Exception:
+            continue
+    return ""
+
+def build_system_prompt(active_subj="math"):
+    """组装当前激活学科的私教系统提示词与外置记忆上下文"""
+    sys_parts = []
+    
+    # 1. 顶层总控协议
+    # [打包修复] 旧实现直接读 ROOT/"AGENTS.md"：源码模式正常，但 wheel 安装后
+    # ROOT 指向 site-packages，而协议文件被 force-include 到 tools/protocol/ 内，
+    # 于是顶层协议**静默丢失**（私教失去总控约束却不报错）。
+    # 现统一委托 protocol_loader（包内资源优先 → 工作区根目录兜底）。
+    try:
+        try:
+            from protocol_loader import DEFAULT_PROTOCOL, load_protocol
+        except ImportError:
+            from tools.protocol_loader import DEFAULT_PROTOCOL, load_protocol
+        sys_parts.append("=== 【顶层协议 AGENTS.md】 ===\n" + load_protocol(DEFAULT_PROTOCOL))
+    except FileNotFoundError as e:
+        print(colorize(f"[!] 顶层协议加载失败：{e}", C.YELLOW))
+    except Exception as e:
+        print(colorize(f"[!] 顶层协议加载异常：{e}", C.YELLOW))
+
+    # 2. 当前学科协议与状态
+    subj_folder, subj_name = SUBJECT_DIRS.get(active_subj, ("01-数学", "数学专属私教"))
+    s_dir = ROOT / subj_folder
+    
+    agents_subj = s_dir / "AGENTS.md"
+    if agents_subj.exists():
+        sys_parts.append(f"\n=== 【当前学科协议：{subj_name}】 ===\n" + read_text_safe(agents_subj))
+        
+    # 学情状态文件挂载 (优先读 .md，无则读 .template.md)
+    state_files = [
+        ("今日任务", s_dir / "_状态" / "今日任务.md", s_dir / "_状态" / "今日任务.template.md"),
+        ("学员档案", s_dir / "_状态" / "学员档案.md", s_dir / "_状态" / "学员档案.template.md"),
+        ("薄弱点雷达", s_dir / "_状态" / "薄弱点雷达.md", s_dir / "_状态" / "薄弱点雷达.template.md"),
+        ("专业课学情", s_dir / "学情档案.md", s_dir / "学情档案.template.md"),
+        ("考试大纲", s_dir / "考试大纲.md", None),
+    ]
+    
+    state_context = []
+    for label, real_p, tmpl_p in state_files:
+        p = real_p if real_p.exists() else (tmpl_p if (tmpl_p and tmpl_p.exists()) else None)
+        if p and p.exists():
+            txt = read_text_safe(p)
+            if txt.strip():
+                state_context.append(f"--- [{label}] ({p.name}) ---\n{txt}")
+
+    if state_context:
+        sys_parts.append(f"\n=== 【当前学员学情档案与记忆状态 ({subj_name})】 ===\n" + "\n\n".join(state_context))
+
+    # 3. 动态核验参考资料真实性 (杜绝假冒李林880等虚构题源)
+    mat_dir = s_dir / "参考资料"
+    mat_files = []
+    if mat_dir.exists():
+        for f in mat_dir.iterdir():
+            if f.is_file() and f.name.lower() not in ("readme.md", ".gitkeep", ".gitignore"):
+                mat_files.append(f.name)
+
+    if mat_files:
+        mat_text = (
+            f"\n=== 📚【本地真题与资料白名单清单 ({subj_name})】===\n"
+            f"本地「参考资料/」目录下实际存放的文件为：{', '.join(mat_files)}。\n"
+            "若需抽题或引用，必须严格以以上文件为准，严禁引用上述列表之外的任何书籍！\n"
+            "【四大不可违背的真实性铁律】：\n"
+            "1. 严禁凭空捏造题目出处！绝对严禁声称“以下题目均来自《李林880》”、“来自《张宇1000》”、“来自《汤家凤1800》”等未核验虚假书名！\n"
+            "2. 当学员自主输入题目时：私教只针对学员给出的题目本身进行采分点批改与思路拆解；\n"
+            "3. 若在解答后提供类似题供学员巩固，必须如实标明为【私教自拟类似变式训练】，绝对禁止伪称来自某本未核验的出版物！\n"
+            "4. 若学员要求从某题册（如李林880）抽题，但本地无该文件且学员未提供题号，必须如实告知：“您本地参考资料库尚未放置该文件，请提供具体题目文字或截图，私教立刻为您解答。”"
+        )
+    else:
+        mat_text = (
+            f"\n=== 🚨【最高红线：本地未放入参考资料 · 绝对禁止虚构题源出处】===\n"
+            f"系统物理核验结果：当前学科【{subj_name}】的「参考资料/」目录下【尚未放置任何教材或题库文件】！\n"
+            "【四大不可违背的真实性铁律】：\n"
+            "1. 严禁凭空捏造题目出处！绝对严禁声称“以下题目均来自《李林880》”、“来自《张宇1000》”、“来自《汤家凤1800》”等虚假书名！\n"
+            "2. 当学员自主输入题目时：私教只针对学员给出的题目本身进行采分点批改与思路拆解；\n"
+            "3. 若在解答后提供类似题供学员巩固，必须如实标明为【私教自拟类似变式训练】，绝对禁止伪称来自某本未核验的出版物！\n"
+            "4. 若学员要求从某题册（如李林880）抽题，但本地无该文件且学员未提供题号，必须如实告知：“您本地参考资料库尚未放置该文件，请提供具体题目文字或截图，私教立刻为您解答。”"
+        )
+    sys_parts.append(mat_text)
+
+    sys_parts.append(
+        "\n=== 【CLI 指令与行为规则】 ===\n"
+        "1. 严格遵守当前配置的私教辅导风格（严格/秒杀/鼓励/溯源）；\n"
+        "2. 所有派题必须来自题源白名单或学员指定题号，坚决杜绝随性自编偏题超纲题；\n"
+        "3. 学员交作业时，必须输出明晰的【采分点步骤分】与【错因五分类归因】；\n"
+        "4. 输出排版尽量精简、结构清晰、便于终端与手机屏幕阅读。"
+    )
+
+    sys_parts.append(
+        "\n=== 📋【学员“报到”口令核心响应规范 (必读必遵)】 ===\n"
+        "当学员输入“报到”、“数学报到”、“英语报到”、“政治报到”、“专业课报到”或会话首次启动时：\n"
+        "【第一阶段：全景学情战况汇报与今日规划】\n"
+        "1. 首先明确读取并向学员汇报学员的基本盘信息：目标院校、报考专业、考试科目、目标分数、初试倒计时、每日时间预算；\n"
+        "2. 汇报今日该科目的复习攻坚路线图（根据今日任务与学员薄弱点，分段规划：如概念梳理 XX 分钟、真题实战 XX 分钟、订正归档 XX 分钟）；\n"
+        "3. 明确通报当前本地已就绪的白名单实体参考资料（如真实存在的张宇1000题、历年真题等）；\n"
+        "【第二阶段：主动派发今日实战第 1 题】\n"
+        "4. 汇报完规划后，主动从本地真题或对应考点库中派发今日第 1 道针对性试题（展示清晰题干、分值、考查考点）；\n"
+        "5. 提示学员在草稿纸上动笔演算，完成后直接在输入框提交作答或拍照上传（/img），由私教按考研采分点逐步赋分并归因错题！\n"
+        "严禁一上来完全不汇报学员信息与整体规划就自说自话！"
+    )
+
+    sys_parts.append(
+        "\n=== 📝【学员作答与“交作业”批改规范】 ===\n"
+        "当学员提交了题目答案、推导草稿或输入“交作业”时：\n"
+        "1. 严格按照考研阅卷人标准分步骤批改：在推导每个关键步骤明确标注采分点（如 [+2分]、[-1分]）；\n"
+        "2. 若有失误，坚决指出错因五分类（概念漏洞/审题偏差/公式记错/计算失误/书写丢分），并给出针对性改进处方；\n"
+        "3. 督促学员记录错因并纳入 FSRS 复测队列！"
+    )
+
+    return "\n\n".join(sys_parts)
+
+# ════════════════════════════════════════════════════════════════
+# 2. LLM 多模型 API 交互引擎 (零依赖流式输出)
+# ════════════════════════════════════════════════════════════════
+
+def normalize_openai_url(base_url: str, endpoint: str = "chat/completions") -> str:
+    """智能规范化 OpenAI 兼容接口地址 (自动补齐 /v1 容错)"""
+    b = (base_url or "https://api.deepseek.com/v1").strip().rstrip("/")
+    if b.endswith("/chat/completions"):
+        return b
+    if b.endswith("/v1") or "/v1/" in b:
+        return f"{b}/{endpoint.lstrip('/')}"
+    # 针对未带 /v1 的中转站或自建代理，智能补齐 /v1
+    return f"{b}/v1/{endpoint.lstrip('/')}"
+
+
+def stream_chat(messages, config):
+    """向 OpenAI 兼容 API 发起流式请求并打字机式打印"""
+    raw_base_url = config.get("base_url", "https://api.deepseek.com/v1")
+    url = normalize_openai_url(raw_base_url, "chat/completions")
+    api_key = config.get("api_key", "").strip()
+    model = config.get("model", "deepseek-chat")
+
+    if not api_key:
+        print(colorize("\n[!] 错误: 未配置 API Key！请先运行 /config 设置您的模型密钥。\n", C.RED))
+        return ""
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Kaoyan-Study-Chain/1.0",
+        "Accept": "application/json, text/event-stream"
+    }
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": config.get("temperature", 0.3),
+        "stream": True
+    }
+
+    data_bytes = json.dumps(payload).encode("utf-8")
+
+    import threading
+    stop_spinner = threading.Event()
+
+    def spinner_task():
+        if not sys.stdout.isatty():
+            sys.stdout.write(f"  {C.CYAN}* [考研私教正在审阅题干与思考推导步骤...]{C.RESET}\n")
+            sys.stdout.flush()
+            return
+        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        idx = 0
+        while not stop_spinner.is_set():
+            frame = frames[idx % len(frames)]
+            sys.stdout.write(f"\r  {C.CYAN}{frame}{C.RESET} {C.DIM}[考研私教正在审阅题干关键采分点与推导步骤...]{C.RESET}")
+            sys.stdout.flush()
+            idx += 1
+            time.sleep(0.08)
+        # 清除 spinner 行
+        sys.stdout.write("\r" + " " * 48 + "\r")
+        sys.stdout.flush()
+
+    # [根因修复·静默空响应] 上游偶发"连接被对端关闭但没抛异常"，此时 HTTP 层走完
+    # 却一个 token 都没收到，full_reply 为空。过去 stream_chat 用 "" 同时表示
+    # 「没配 Key / HTTP 错 / 网络异常 / 上游零内容」四种语义，调用方无从分辨，
+    # 用户看到的就成了"命令跑了却什么都没出"。这里做两件事：
+    #   1) 仅对"无异常但零内容"这种静默失败自动重试 1 次（超时/HTTP 错不重试，避免雪崩）；
+    #   2) 仍然拿不到内容时，明确告知用户，而不是静默返回空串。
+    _MAX_ATTEMPTS = 2
+    for _attempt in range(1, _MAX_ATTEMPTS + 1):
+        req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
+        stop_spinner = threading.Event()
+        spinner_thread = threading.Thread(target=spinner_task, daemon=True)
+        spinner_thread.start()
+
+        full_reply = []
+        first_token = True
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                for raw_line in resp:
+                    line = raw_line.decode("utf-8", errors="ignore").strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data_str = line[len("data:"):].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        choices = chunk.get("choices", [])
+                        if choices:
+                            delta = choices[0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                if first_token:
+                                    stop_spinner.set()
+                                    spinner_thread.join(timeout=0.2)
+                                    first_token = False
+                                sys.stdout.write(content)
+                                sys.stdout.flush()
+                                full_reply.append(content)
+                    except Exception:
+                        continue
+            stop_spinner.set()
+            print()  # 换行
+            if full_reply:
+                return "".join(full_reply)
+            # 连接正常走完但一个 token 都没有 —— 上游静默空响应
+            if _attempt < _MAX_ATTEMPTS:
+                print(colorize(
+                    f"\n[!] 上游未返回任何内容（连接可能被中断），正在重试 (1/{_MAX_ATTEMPTS - 1})...\n", C.YELLOW))
+                continue
+            print(colorize(
+                "\n[!] 上游未返回任何内容（连接被中断或模型无输出）。本次未拿到结果，请稍后重试。\n", C.YELLOW))
+            return ""
+        except urllib.error.HTTPError as e:
+            stop_spinner.set()
+            err_msg = e.read().decode("utf-8", errors="ignore")
+            print(colorize(f"\n[API 错误 {e.code}]: {err_msg}\n", C.RED))
+            return ""
+        except Exception as e:
+            stop_spinner.set()
+            print(colorize(f"\n[网络连接异常]: {e}\n", C.RED))
+            return ""
+        finally:
+            stop_spinner.set()
+    return ""
+
+# ════════════════════════════════════════════════════════════════
+# 3. 聊天平台 Webhook / 消息桥接 (微信 / QQ / 钉钉 / 飞书)
+# ════════════════════════════════════════════════════════════════
+
+def _dingtalk_sign(secret: str, ts: str) -> str:
+    """计算钉钉加签签名 (HMAC-SHA256 + Base64 + URL编码)"""
+    string_to_sign = f"{ts}\n{secret}"
+    hmac_code = hmac.new(secret.encode("utf-8"), string_to_sign.encode("utf-8"), digestmod=hashlib.sha256).digest()
+    return urllib.parse.quote_plus(base64.b64encode(hmac_code))
+
+def send_to_dingtalk(webhook_url, text, secret=None):
+    """向钉钉机器人推送消息 (支持加签)"""
+    if not webhook_url:
+        return False, "未配置钉钉 Webhook"
+    target_url = webhook_url
+    if secret:
+        ts = str(round(time.time() * 1000))
+        sign = _dingtalk_sign(secret, ts)
+        sep = "&" if "?" in webhook_url else "?"
+        target_url = f"{webhook_url}{sep}timestamp={ts}&sign={sign}"
+
+    data = {
+        "msgtype": "markdown",
+        "markdown": {"title": "考研学习链 · 每日简报", "text": text}
+    }
+    req = urllib.request.Request(target_url, data=json.dumps(data).encode("utf-8"), headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            ret = json.loads(resp.read().decode("utf-8"))
+            return (ret.get("errcode") == 0), ret.get("errmsg", "ok")
+    except Exception as e:
+        return False, str(e)
+
+def send_to_feishu(webhook_url, text):
+    """向飞书群机器人推送消息"""
+    if not webhook_url:
+        return False, "未配置飞书 Webhook"
+    data = {
+        "msg_type": "text",
+        "content": {"text": text}
+    }
+    req = urllib.request.Request(webhook_url, data=json.dumps(data).encode("utf-8"), headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            ret = json.loads(resp.read().decode("utf-8"))
+            return (ret.get("code") == 0 or ret.get("StatusCode") == 0), ret.get("msg", "ok")
+    except Exception as e:
+        return False, str(e)
+
+def send_to_wechat(webhook_url, text):
+    """向企业微信 / 微信 ClawBot Webhook 推送 Markdown 消息"""
+    if not webhook_url:
+        return False, "未配置微信 Webhook"
+    data = {
+        "msgtype": "markdown",
+        "markdown": {"content": text}
+    }
+    req = urllib.request.Request(webhook_url, data=json.dumps(data).encode("utf-8"), headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            ret = json.loads(resp.read().decode("utf-8"))
+            return (ret.get("errcode") == 0), ret.get("errmsg", "ok")
+    except Exception as e:
+        return False, str(e)
+
+def send_to_qq(endpoint, target_id, text):
+    """向 QQ OneBot 11 (NapCat / Go-CQHTTP) 推送群/私聊消息"""
+    if not endpoint or not target_id:
+        return False, "未配置 QQ OneBot 接口或目标 ID"
+    url = endpoint.rstrip("/") + "/send_msg"
+    data = {
+        "message_type": "group" if len(str(target_id)) > 6 else "private",
+        "group_id": int(target_id) if len(str(target_id)) > 6 else 0,
+        "user_id": int(target_id) if len(str(target_id)) <= 6 else 0,
+        "message": text
+    }
+    req = urllib.request.Request(url, data=json.dumps(data).encode("utf-8"), headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            ret = json.loads(resp.read().decode("utf-8"))
+            return (ret.get("status") == "ok"), str(ret)
+    except Exception as e:
+        return False, str(e)
+
+def broadcast_briefing(config, custom_msg=None):
+    """一键向所有已配置的群机器人广播备考晨报与任务"""
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    msg = custom_msg
+    if not msg:
+        # 自动提取今日任务
+        tasks = []
+        for key, (folder, name) in SUBJECT_DIRS.items():
+            t_file = ROOT / folder / "_状态" / "今日任务.md"
+            if not t_file.exists():
+                t_file = ROOT / folder / "_状态" / "今日任务.template.md"
+            if t_file.exists():
+                txt = read_text_safe(t_file)
+                lines = [l.strip() for l in txt.split("\n") if l.strip().startswith("|") and not l.startswith("| 模块") and not l.startswith("|---")][:3]
+                if lines:
+                    tasks.append(f"📚 **{name}**:\n" + "\n".join(lines))
+
+        msg = f"🌅 **考研学习链 · 今日任务与晨报 ({today_str})**\n\n" + \
+              ( "\n\n".join(tasks) if tasks else "今日任务待生成，请在终端输入 /math 或 /eng 进行晨间报到！" ) + \
+              f"\n\n👉 手机自测看板: 查看 docs/index.html 开启遮罩默写！"
+
+    print(colorize("\n[正在向配置的 IM 机器人推送简报...]", C.CYAN))
+    hooks = config.get("webhooks", {})
+    has_hook = any(hooks.get(k) for k in ("dingtalk", "feishu", "wechat", "qq_onebot"))
+    if not has_hook:
+        print(colorize("  [!] 暂未检测到已配置的 IM 机器人 Webhook。", C.YELLOW))
+        print(colorize("  💡 提示：运行 ky config 或在 ky_config.json 的 webhooks 中配置机器人地址后即可一键广播推送。\n", C.CYAN))
+        return
+    
+    # 钉钉
+    if hooks.get("dingtalk"):
+        ok, res = send_to_dingtalk(hooks["dingtalk"], msg, hooks.get("dingtalk_secret"))
+        print(f"  - 钉钉机器人: {colorize('成功', C.GREEN) if ok else colorize(f'失败 ({res})', C.RED)}")
+    # 飞书
+    if hooks.get("feishu"):
+        ok, res = send_to_feishu(hooks["feishu"], msg)
+        print(f"  - 飞书机器人: {colorize('成功', C.GREEN) if ok else colorize(f'失败 ({res})', C.RED)}")
+    # 微信
+    if hooks.get("wechat"):
+        ok, res = send_to_wechat(hooks["wechat"], msg)
+        print(f"  - 微信机器人 (ClawBot/企微): {colorize('成功', C.GREEN) if ok else colorize(f'失败 ({res})', C.RED)}")
+    # QQ
+    if hooks.get("qq_onebot"):
+        ok, res = send_to_qq(hooks["qq_onebot"], hooks.get("qq_target_id"), msg)
+        print(f"  - QQ OneBot: {colorize('成功', C.GREEN) if ok else colorize(f'失败 ({res})', C.RED)}")
+
+    print()
+
+# ════════════════════════════════════════════════════════════════
+# 4. 交互式配置管理中心 (/config)
+# ════════════════════════════════════════════════════════════════
+
+def configure_llm(cfg):
+    """配置大模型 API 服务商与密钥 (支持一键直达官方控制台认证与剪贴板密钥捕获)"""
+    print(colorize("\n--- 🧠 1. 大模型 API 服务商与密钥配置 ---", C.CYAN))
+    print("支持接入各大主流大模型 API (选择后将自动在默认浏览器中打开官方认证与密钥页面)：")
+    print("  [1] DeepSeek (api.deepseek.com) (V3/R1 理工科解题)")
+    print("  [2] 智谱清言 GLM (open.bigmodel.cn)")
+    print("  [3] 阿里云百炼通义千问 Qwen (dashscope.aliyuncs.com)")
+    print("  [4] 硅基流动 SiliconFlow (api.siliconflow.cn - 聚合主流开源模型)")
+    print("  [5] 月之暗面 Kimi (api.moonshot.cn)")
+    print("  [6] 本地 Ollama (http://localhost:11434/v1)")
+    print("  [7] 自定义 OpenAI 兼容接口 / 豆包 / Claude / GPT 等\n")
+
+    p_choice = input(f"选择服务商 (1~7，直接回车保持现有: {cfg.get('api_provider','deepseek')}): ").strip()
+    if p_choice == "1":
+        cfg["api_provider"] = "deepseek"
+        cfg["base_url"] = "https://api.deepseek.com/v1"
+        cfg["model"] = "deepseek-chat"
+        cfg["api_key"] = open_provider_console_and_get_key("DeepSeek", "https://platform.deepseek.com/api_keys", cfg.get("api_key", ""))
+    elif p_choice == "2":
+        cfg["api_provider"] = "glm"
+        cfg["base_url"] = "https://open.bigmodel.cn/api/paas/v4"
+        cfg["model"] = "glm-4-plus"
+        cfg["api_key"] = open_provider_console_and_get_key("智谱清言 GLM", "https://open.bigmodel.cn/usercenter/apikeys", cfg.get("api_key", ""))
+    elif p_choice == "3":
+        cfg["api_provider"] = "qwen"
+        cfg["base_url"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        cfg["model"] = "qwen-plus"
+        cfg["api_key"] = open_provider_console_and_get_key("阿里云百炼 (通义千问)", "https://dashscope.console.aliyun.com/apiKey", cfg.get("api_key", ""))
+    elif p_choice == "4":
+        cfg["api_provider"] = "siliconflow"
+        cfg["base_url"] = "https://api.siliconflow.cn/v1"
+        cfg["model"] = "deepseek-ai/DeepSeek-V3"
+        cfg["api_key"] = open_provider_console_and_get_key("硅基流动 SiliconFlow", "https://cloud.siliconflow.cn/account/ak", cfg.get("api_key", ""))
+    elif p_choice == "5":
+        cfg["api_provider"] = "kimi"
+        cfg["base_url"] = "https://api.moonshot.cn/v1"
+        cfg["model"] = "moonshot-v1-32k"
+        cfg["api_key"] = open_provider_console_and_get_key("月之暗面 Kimi", "https://platform.moonshot.cn/console/api-keys", cfg.get("api_key", ""))
+    elif p_choice == "6":
+        cfg["api_provider"] = "ollama"
+        cfg["base_url"] = "http://localhost:11434/v1"
+        cfg["model"] = "deepseek-r1:14b"
+        cfg["api_key"] = "ollama"
+        print(colorize("\n[√] 本地 Ollama 接口已配置就绪 (无需 API Key)！", C.GREEN))
+    elif p_choice == "7":
+        cfg["api_provider"] = "custom"
+        new_url = input(f"Base URL (直接回车保持现有: {cfg.get('base_url', '')}): ").strip()
+        if new_url: cfg["base_url"] = new_url
+        new_model = input(f"Model 模型代号 (直接回车保持现有: {cfg.get('model', '')}): ").strip()
+        if new_model: cfg["model"] = new_model
+        curr_key_display = cfg['api_key'][:6] + "..." if len(cfg.get('api_key','')) > 8 else (cfg.get('api_key','') or "未设置")
+        new_key = input(f"API Key (输入新密钥或直接回车保持现有: {curr_key_display}): ").strip()
+        if new_key: cfg["api_key"] = new_key
+
+    save_config(cfg)
+    print(colorize(f"[√] 模型 API 配置已更新为 [{cfg['api_provider']} / {cfg['model']}]！", C.GREEN))
+
+def run_wechat_clawbot_install():
+    """启动腾讯官方微信 ClawBot 扫码连接工具 (@tencent-weixin/openclaw-weixin-cli)"""
+    import shutil
+    import subprocess
+
+    print(f"""
+{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮
+│  📱 微信个人号 · WeChat ClawBot 手机扫码直连专属中枢                     │
+│  (腾讯官方 @tencent-weixin/openclaw-weixin-cli 驱动)                  │
+╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
+""")
+    print(colorize("🔍 正在核验 Node.js 与 NPX 环境...", C.DIM))
+    if not shutil.which("npx"):
+        print(colorize("❌ 未检测到 npx 命令。请先安装 Node.js (https://nodejs.org) 或在终端运行: winget install OpenJS.NodeJS\n", C.RED))
+        return
+    
+    print(colorize("✔ Node.js / NPX 环境正常！", C.GREEN))
+    print(f"""
+{C.BOLD}【微信 ClawBot 连接原理与步骤说明】{C.RESET}
+• 微信个人号是由腾讯官方开源的 OpenClaw 微信连接器驱动；
+• 它{C.YELLOW}并非普通 Webhook{C.RESET}，而是直接在终端打印【登录二维码】，手机微信扫码授权即可；
+• 扫码成功后，微信接收到的考研提问会自动转发给本地私教大模型并推回微信！
+• 本地 OpenAI 兼容接口地址: {C.GREEN}http://127.0.0.1:8088/v1{C.RESET} (已自动挂载考研私教 Prompt 与技能)
+
+{C.CYAN}[执行命令]: npx -y @tencent-weixin/openclaw-weixin-cli@latest install{C.RESET}
+""")
+    try:
+        act = input("是否立即启动腾讯官方扫码安装程序? (y/n) [y]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("\n操作已取消。")
+        return
+    if act != "n":
+        print(colorize("\n🚀 正在拉取腾讯官方微信连接器并启动二维码，请准备好手机微信扫一扫...\n", C.CYAN))
+        try:
+            subprocess.run("npx -y @tencent-weixin/openclaw-weixin-cli@latest install", shell=True)
+        except Exception as e:
+            print(colorize(f"执行异常: {e}", C.RED))
+
+def configure_webhooks(cfg):
+    """多选菜单式配置各个聊天机器人 Webhook"""
+    hooks = cfg.setdefault("webhooks", {})
+
+    while True:
+        wc_tag = colorize("已配置", C.GREEN) if hooks.get("wechat") else colorize("未配置", C.DIM)
+        dt_tag = colorize("已配置", C.GREEN) if hooks.get("dingtalk") else colorize("未配置", C.DIM)
+        fs_tag = colorize("已配置", C.GREEN) if hooks.get("feishu") else colorize("未配置", C.DIM)
+        qq_tag = colorize("已配置", C.GREEN) if hooks.get("qq_onebot") else colorize("未配置", C.DIM)
+
+        print(colorize("\n--- 📱 2. 聊天机器人 / 消息推送与双向讲题配置 ---", C.CYAN))
+        print("请选择您想配置或连接的机器人平台：")
+        print(f"  [1] 📱 微信个人号 (WeChat ClawBot 手机扫码直连)")
+        print(f"  [2] 🏢 企业微信群机器人 (Webhook 推送模式) [{wc_tag}]")
+        print(f"  [3] 📌 钉钉群自定义机器人 (DingTalk)       [{dt_tag}]")
+        print(f"  [4] 🐦 飞书群自定义机器人 (Feishu)         [{fs_tag}]")
+        print(f"  [5] 🐧 QQ 机器人 (OneBot 11 / NapCat)      [{qq_tag}]")
+        print(f"  [6] 📢 发送一条测试消息验证所有已配机器人")
+        print(f"  [7] 🗑️ 清空某个平台的配置")
+        print(f"  [0] 💾 保存并返回上级菜单")
+
+        choice = input("\n请选择平台编号 (0~7) [默认 0]: ").strip() or "0"
+        
+        if choice == "0":
+            save_config(cfg)
+            print(colorize("[√] 机器人 Webhook 配置已安全保存！", C.GREEN))
+            break
+        elif choice == "1":
+            # 微信个人号 ClawBot (扫码直连，非 Webhook)
+            run_wechat_clawbot_install()
+        elif choice == "2":
+            print(colorize("\n[配置 企业微信群机器人 Webhook]", C.BOLD))
+            print("说明：适用于企业微信群添加的机器人。在群聊 -> 添加群机器人 获取 Webhook。")
+            print("地址格式如：https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxx")
+            curr = hooks.get("wechat", "")
+            val = input(f"请输入 Webhook URL (直接回车保持现有: {curr or '空'}): ").strip()
+            if val:
+                hooks["wechat"] = val
+            save_config(cfg)
+            if hooks.get("wechat"):
+                t = input("是否立即向该微信机器人发送测试消息? (y/n) [y]: ").strip().lower()
+                if t != "n":
+                    ok, res = send_to_wechat(hooks["wechat"], "🎓【考研学习链】企业微信机器人连接成功！每日任务与晨报将在此推送。")
+                    print(colorize(f"  -> 发送成功！", C.GREEN) if ok else colorize(f"  -> 发送失败: {res}", C.RED))
+        elif choice == "3":
+            print(colorize("\n[配置 钉钉群自定义机器人]", C.BOLD))
+            print("说明：在钉钉电脑端群聊 -> 群设置 -> 智能群助手 -> 添加机器人 -> 自定义。")
+            print("地址格式如：https://oapi.dingtalk.com/robot/send?access_token=xxxxxx")
+            curr = hooks.get("dingtalk", "")
+            val = input(f"请输入 Webhook URL (直接回车保持现有: {curr or '空'}): ").strip()
+            if val:
+                hooks["dingtalk"] = val
+            sec = input(f"请输入加签 Secret (若机器人未勾选加签直接回车，当前: {hooks.get('dingtalk_secret','') or '无'}): ").strip()
+            if sec != "":
+                hooks["dingtalk_secret"] = sec
+            save_config(cfg)
+            if hooks.get("dingtalk"):
+                t = input("是否立即向钉钉发送测试消息? (y/n) [y]: ").strip().lower()
+                if t != "n":
+                    ok, res = send_to_dingtalk(hooks["dingtalk"], "🎓 **【考研学习链】** 钉钉群机器人连接成功！每日任务与晨报将在此推送。", hooks.get("dingtalk_secret"))
+                    print(colorize(f"  -> 发送成功！", C.GREEN) if ok else colorize(f"  -> 发送失败: {res}", C.RED))
+        elif choice == "4":
+            print(colorize("\n[配置 飞书群自定义机器人]", C.BOLD))
+            print("说明：在飞书群设置 -> 机器人 -> 添加机器人 -> 自定义机器人。")
+            print("地址格式如：https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxx")
+            curr = hooks.get("feishu", "")
+            val = input(f"请输入 Webhook URL (直接回车保持现有: {curr or '空'}): ").strip()
+            if val:
+                hooks["feishu"] = val
+            save_config(cfg)
+            if hooks.get("feishu"):
+                t = input("是否立即向飞书发送测试消息? (y/n) [y]: ").strip().lower()
+                if t != "n":
+                    ok, res = send_to_feishu(hooks["feishu"], "🎓【考研学习链】飞书群机器人连接成功！每日任务与晨报将在此推送。")
+                    print(colorize(f"  -> 发送成功！", C.GREEN) if ok else colorize(f"  -> 发送失败: {res}", C.RED))
+        elif choice == "5":
+            print(colorize("\n[配置 QQ 机器人 (OneBot 11 / NapCat / Go-CQHTTP)]", C.BOLD))
+            print("说明：使用 NapCat QQ、LLOneBot 或 Go-CQHTTP 提供的 OneBot 11 HTTP 接口。")
+            print("地址格式如：http://127.0.0.1:3000")
+            curr = hooks.get("qq_onebot", "")
+            val = input(f"请输入 OneBot HTTP 接口 (直接回车保持现有: {curr or '空'}): ").strip()
+            if val:
+                hooks["qq_onebot"] = val
+            qid = input(f"请输入目标群号或好友 QQ 号 (当前: {hooks.get('qq_target_id','') or '无'}): ").strip()
+            if qid:
+                hooks["qq_target_id"] = qid
+            save_config(cfg)
+            if hooks.get("qq_onebot") and hooks.get("qq_target_id"):
+                t = input("是否立即向 QQ 发送测试消息? (y/n) [y]: ").strip().lower()
+                if t != "n":
+                    ok, res = send_to_qq(hooks["qq_onebot"], hooks.get("qq_target_id"), "🎓【考研学习链】QQ 机器人连接成功！每日任务与晨报将在此推送。")
+                    print(colorize(f"  -> 发送成功！", C.GREEN) if ok else colorize(f"  -> 发送失败: {res}", C.RED))
+        elif choice == "6":
+            broadcast_briefing(cfg, custom_msg="🎓【考研学习链】这是一条自检广播测试消息，您的机器人连接状态正常！")
+        elif choice == "7":
+            print("\n请选择要清空的平台：")
+            print("  [1] 微信  [2] 钉钉  [3] 飞书  [4] QQ  [5] 清空全部")
+            c = input("请输入数字: ").strip()
+            if c == "1": hooks["wechat"] = ""
+            elif c == "2": hooks["dingtalk"] = ""; hooks["dingtalk_secret"] = ""
+            elif c == "3": hooks["feishu"] = ""
+            elif c == "4": hooks["qq_onebot"] = ""; hooks["qq_target_id"] = ""
+            elif c == "5":
+                for k in list(hooks.keys()): hooks[k] = ""
+            save_config(cfg)
+            print(colorize("[√] 已清空所选平台的配置。", C.YELLOW))
+
+def show_config(cfg):
+    """显示当前完整配置清单"""
+    print(colorize("\n=== 📄 当前考研私教 CLI 配置清单 ===", C.BOLD))
+    print(f"  - 服务商类型: {cfg.get('api_provider')}")
+    print(f"  - 接口地址:   {cfg.get('base_url')}")
+    print(f"  - 模型代号:   {cfg.get('model')}")
+    curr_key = cfg.get('api_key', '')
+    masked_key = curr_key[:6] + "..." + curr_key[-4:] if len(curr_key) > 12 else (curr_key or "未设置")
+    print(f"  - API 密钥:   {masked_key}")
+    print(f"  - 当前学科:   {SUBJECT_DIRS.get(cfg.get('active_subject','math'), ('',''))[1]}")
+    
+    hooks = cfg.get("webhooks", {})
+    print(colorize("\n--- 机器人 Webhook 配置状态 ---", C.CYAN))
+    print(f"  - 微信 Webhook: {hooks.get('wechat') or '未设置'}")
+    print(f"  - 钉钉 Webhook: {hooks.get('dingtalk') or '未设置'} (加签: {'已启用' if hooks.get('dingtalk_secret') else '未启用'})")
+    print(f"  - 飞书 Webhook: {hooks.get('feishu') or '未设置'}")
+    print(f"  - QQ OneBot:    {hooks.get('qq_onebot') or '未设置'} (目标: {hooks.get('qq_target_id') or '无'})")
+    
+    vis_m = cfg.get("vision_model")
+    print(colorize("\n--- 视觉大模型 (Vision Model) 配置状态 ---", C.CYAN))
+    print(f"  - 视觉模型:     {vis_m or '未独立配置 (默认调用本地 RapidOCR 提取题干后交由主模型)'}")
+    if vis_m:
+        print(f"  - 视觉 Base URL: {cfg.get('vision_base_url', '跟随主模型')}")
+
+    print(f"\n配置文件绝对路径: {CONFIG_FILE}")
+    print("本文件已被 .gitignore 严密保护，绝不会被 Git 追踪提交。\n")
+
+def configure_vision_model(cfg):
+    """配置用于视觉识图的多模态大模型 (支持一键直达官方控制台认证与剪贴板密钥捕获)"""
+    print(colorize("\n--- 📸 配置多模态视觉大模型 (Vision Model) ---", C.BOLD))
+    print("可选模型预设 (选择后将自动在默认浏览器中打开官方认证与密钥页面)：")
+    print("  [1] 智谱清言 GLM-4V-Flash (open.bigmodel.cn)")
+    print("  [2] 阿里通义千问 Qwen2-VL (DashScope / dashscope.console.aliyun.com)")
+    print("  [3] 硅基流动 SiliconFlow Qwen-VL (cloud.siliconflow.cn)")
+    print("  [4] 谷歌 Gemini 1.5 Flash (aistudio.google.com)")
+    print("  [5] OpenAI GPT-4o-mini (platform.openai.com)")
+    print("  [6] 自定义 Vision API (兼容 OpenAI 规范)")
+    print("  [7] 清空配置 (使用主模型 + 本地 RapidOCR 引擎)")
+    print("  [0] 取消返回")
+
+    c = input("\n请选择视觉模型预设 (0~7) [默认 1]: ").strip() or "1"
+    if c == "0":
+        return
+    elif c == "1":
+        cfg["vision_model"] = "glm-4v-flash"
+        cfg["vision_base_url"] = "https://open.bigmodel.cn/api/paas/v4"
+        cfg["vision_api_key"] = open_provider_console_and_get_key("智谱清言 GLM-4V", "https://open.bigmodel.cn/usercenter/apikeys", cfg.get("vision_api_key") or cfg.get("api_key", ""))
+    elif c == "2":
+        cfg["vision_model"] = "qwen-vl-max"
+        cfg["vision_base_url"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        cfg["vision_api_key"] = open_provider_console_and_get_key("阿里云百炼 (通义千问)", "https://dashscope.console.aliyun.com/apiKey", cfg.get("vision_api_key") or cfg.get("api_key", ""))
+    elif c == "3":
+        cfg["vision_model"] = "Qwen/Qwen2-VL-72B-Instruct"
+        cfg["vision_base_url"] = "https://api.siliconflow.cn/v1"
+        cfg["vision_api_key"] = open_provider_console_and_get_key("硅基流动 SiliconFlow", "https://cloud.siliconflow.cn/account/ak", cfg.get("vision_api_key") or cfg.get("api_key", ""))
+    elif c == "4":
+        cfg["vision_model"] = "gemini-1.5-flash"
+        cfg["vision_base_url"] = "https://generativelanguage.googleapis.com/v1beta/openai"
+        cfg["vision_api_key"] = open_provider_console_and_get_key("Google AI Studio", "https://aistudio.google.com/app/apikey", cfg.get("vision_api_key") or cfg.get("api_key", ""))
+    elif c == "5":
+        cfg["vision_model"] = "gpt-4o-mini"
+        cfg["vision_base_url"] = "https://api.openai.com/v1"
+        cfg["vision_api_key"] = open_provider_console_and_get_key("OpenAI", "https://platform.openai.com/api-keys", cfg.get("vision_api_key") or cfg.get("api_key", ""))
+    elif c == "6":
+        cfg["vision_model"] = input("请输入模型代号 (如 claude-3-5-sonnet): ").strip()
+        cfg["vision_base_url"] = input("请输入 Base URL: ").strip()
+        cfg["vision_api_key"] = input("请输入 API Key: ").strip()
+    elif c == "7":
+        cfg.pop("vision_model", None)
+        cfg.pop("vision_base_url", None)
+        cfg.pop("vision_api_key", None)
+        print(colorize("\n[√] 已清空独立视觉模型，将优先使用本地 RapidOCR 引擎进行图文提取！\n", C.GREEN))
+        save_config(cfg)
+        return
+
+    save_config(cfg)
+    print(colorize(f"\n[√] 视觉模型已更新为: {cfg.get('vision_model')}！\n", C.GREEN))
+
+def manage_syllabi_cli(cfg):
+    """交互式切换考研科目与重载官方标准考纲"""
+    try:
+        from tools import syllabus_manager
+    except ImportError:
+        import syllabus_manager
+
+    math_agents = ROOT / "01-数学" / "AGENTS.md"
+    eng_agents = ROOT / "02-英语" / "AGENTS.md"
+    pro_agents = ROOT / "04-专业课" / "AGENTS.md"
+
+    curr_m = "数学二 (302)"
+    curr_e = "英语二 (204)"
+    curr_p = "专业课"
+    if math_agents.exists():
+        m = re.search(r"- \*\*考试科目\*\*：`([^`]+)`", read_text_safe(math_agents))
+        if m: curr_m = m.group(1)
+    if eng_agents.exists():
+        m = re.search(r"- \*\*考试科目\*\*：`([^`]+)`", read_text_safe(eng_agents))
+        if m: curr_e = m.group(1)
+    if pro_agents.exists():
+        m = re.search(r"- \*\*专业课科目代码与名称\*\*：`([^`]+)`", read_text_safe(pro_agents))
+        if m: curr_p = m.group(1)
+
+    print(colorize("\n--- 🎓 考研科目精细配置与官方考纲管理 ---", C.BOLD))
+    print(f"当前绑定状态：数学: [{colorize(curr_m, C.CYAN)}]  英语: [{colorize(curr_e, C.CYAN)}]  专业课: [{colorize(curr_p, C.CYAN)}]")
+    print("\n请选择您想调整的科目：")
+    print("  [1] 📐 切换数学考试科目 (数一 / 数二 / 数三 / 396 / 自命题)")
+    print("  [2] 📖 切换英语考试科目 (英语一 / 英语二 / 单独命题)")
+    print("  [3] 💻 修改专业课科目 (408统考 / 199管综 / 院校自命题)")
+    print("  [4] 🔄 运行完整工作区向导 (重选院校、专业与全科考纲)")
+    print("  [0] 取消返回")
+
+    c = input("\n请选择 (0~4) [默认 0]: ").strip() or "0"
+    if c == "0":
+        return
+    elif c == "1":
+        print("\n  --- 📐 请选择您的数学考试科目 ---")
+        print("    [1] 数学二 (302) [高数78% + 线代22%，严控不考概率/级数/曲面积分/三重积分] (专硕主流)")
+        print("    [2] 数学一 (301) [高数56% + 线代22% + 概率22%，考查范围最广/工学学硕]")
+        print("    [3] 数学三 (303) [微积分56% + 线代22% + 概率22%，经管门类/差分方程]")
+        print("    [4] 396 经济类综合能力数学 [微积分+线代+概率，单选与计算]")
+        m_sel = input("  请选择 (1~4) [默认 1]: ").strip() or "1"
+        m_key = {"1": "math2", "2": "math1", "3": "math3", "4": "math396"}.get(m_sel, "math2")
+        math_info = syllabus_manager.MATH_SYLLABI[m_key]
+        atomic_write_text((ROOT / "01-数学" / "考试大纲.md"), math_info["content"])
+        txt = read_text_safe(math_agents)
+        txt = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{math_info['name']}`", txt)
+        atomic_write_text(math_agents, txt)
+        print(colorize(f"\n[√] 已切换为 {math_info['name']}！已将官方大纲与超纲红线写入 01-数学/考试大纲.md", C.GREEN))
+    elif c == "2":
+        print("\n  --- 📖 请选择您的英语考试科目 ---")
+        print("    [1] 英语二 (204) [专硕为主，整段段落英译汉 15分 + 图表数据大作文 15分] (专硕主流)")
+        print("    [2] 英语一 (201) [学硕为主，5大高难长难句精译 10分 + 图画哲理漫画大作文 20分]")
+        e_sel = input("  请选择 (1~2) [默认 1]: ").strip() or "1"
+        e_key = {"1": "eng2", "2": "eng1"}.get(e_sel, "eng2")
+        eng_info = syllabus_manager.ENGLISH_SYLLABI[e_key]
+        atomic_write_text((ROOT / "02-英语" / "考试大纲.md"), eng_info["content"])
+        txt = read_text_safe(eng_agents)
+        txt = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{eng_info['name']}`", txt)
+        atomic_write_text(eng_agents, txt)
+        print(colorize(f"\n[√] 已切换为 {eng_info['name']}！已将官方大纲写入 02-英语/考试大纲.md", C.GREEN))
+    elif c == "3":
+        print("\n  --- 💻 请选择您的专业课方案 ---")
+        print("    [1] 全国统考 408 计算机学科专业基础")
+        print("    [2] 全国统考 199 管理类综合能力")
+        print("    [3] 院校自命题专业课")
+        p_sel = input("  请选择 (1~3) [默认 3]: ").strip() or "3"
+        pro_outline = ROOT / "04-专业课" / "考试大纲.md"
+
+        # [P0 修复·考纲防丢失] 本分支此前无条件 atomic_write_text 覆盖 04-专业课/考试大纲.md，
+        # 是「用占位桩顶掉学员已挂载的真实官方大纲」且不留任何备份的唯一致命路径
+        # （已实测：83 行 814 官方大纲 → 被 7 行占位覆盖，目录内无备份）。
+        # 现改为：无论切换到哪一类专业课，都先备份既有大纲，再重建骨架。
+        existed_outline = pro_outline.exists()
+        if existed_outline:
+            bak = syllabus_manager.backup_syllabus_file(pro_outline)
+            if bak:
+                print(colorize(f"  [i] 已将原大纲备份至: {bak.name}", C.CYAN))
+
+        if p_sel == "1":
+            atomic_write_text(pro_outline, syllabus_manager.CS408_SYLLABUS)
+            pro_title = "408 计算机学科专业基础"
+        else:
+            pro_title = input("  请输入专业课代码与名称 [如 801 信号与系统]: ").strip() or "专业课"
+            # 自命题分支：若既有大纲已含真实内容（非占位、长度充分），说明学员此前挂载过官方考纲，
+            # 仅切换名称不应抹掉内容 —— 保留原文并提示，交由 `ky plan` 向导重建。
+            existing_txt = read_text_safe(pro_outline) if existed_outline else ""
+            has_real_content = (
+                len(existing_txt.strip()) > 200
+                and "请根据报考院校官网大纲填入" not in existing_txt
+                and "请在此填入各章节掌握" not in existing_txt
+            )
+            if has_real_content:
+                print(colorize(
+                    f"  [i] 检测到 04-专业课/考试大纲.md 已有 {len(existing_txt.splitlines())} 行真实考纲内容，"
+                    f"本次仅更新科目名称，不覆盖正文。\n"
+                    f"      如需按新科目重建大纲骨架，请运行 `ky plan` 完整向导，或在 `ky subject` 中先把科目改为 408 再改回。",
+                    C.YELLOW))
+            else:
+                atomic_write_text(pro_outline,
+                    f"# 04-专业课 · 【{pro_title}】官方考试大纲\n\n> 本大纲为报考院校官方考纲。\n\n## 考查要点\n- 请在此填入各章节掌握/理解要求",
+                )
+        txt = read_text_safe(pro_agents)
+        txt = re.sub(r"- \*\*专业课科目代码与名称\*\*：.*", f"- **专业课科目代码与名称**：`{pro_title}`", txt)
+        atomic_write_text(pro_agents, txt)
+        print(colorize(f"\n[√] 专业课已更新为: {pro_title}！", C.GREEN))
+    elif c == "4":
+        import subprocess
+        init_py = ROOT / "tools" / "init_workspace.py"
+        subprocess.run([sys.executable, str(init_py)])
+
+def interactive_config():
+    """配置管理中心主路由"""
+    cfg = load_config()
+    while True:
+        curr_p = cfg.get("api_provider", "deepseek")
+        curr_m = cfg.get("model", "deepseek-chat")
+        has_key = bool(cfg.get("api_key"))
+        key_tag = colorize("已设置", C.GREEN) if has_key else colorize("未设置", C.RED)
+
+        vis_m = cfg.get("vision_model", "本地 RapidOCR 引擎")
+        
+        hooks = cfg.get("webhooks", {})
+        active_hooks = [k for k, v in hooks.items() if v and not k.endswith("_secret") and not k.endswith("_id")]
+        hooks_tag = colorize(f"已配 {len(active_hooks)} 个 ({', '.join(active_hooks)})", C.GREEN) if active_hooks else colorize("未配任何平台", C.DIM)
+
+        print(colorize("\n=== ⚙️ 考研私教 CLI 配置管理中心 ===", C.BOLD))
+        print(f"  [1] 🧠 配置主大模型 API 与密钥     [当前: {curr_p} / {curr_m} / {key_tag}]")
+        print(f"  [2] 📸 配置多模态视觉大模型 API   [当前: {colorize(vis_m, C.CYAN)}]")
+        print(f"  [3] 📱 配置聊天机器人 Webhook 推送 [当前: {hooks_tag}]")
+        print(f"  [4] 📋 个人定制化必考方案设计     [时间/考纲/已有资料白名单/学情摸底/时间预算/作息]")
+        print(f"  [5] 🎓 考研科目与官方考纲快速切换 [数一/数二/数三/396、英一/英二、408/自命题]")
+        print(f"  [6] 📄 查看当前完整配置清单")
+        print(f"  [7] 📢 一键测试所有机器人推送")
+        print(f"  [0] 💾 完成配置并返回")
+
+        # [根因修复] 输入流提前结束时（管道 / 脚本 / 非交互环境）未捕获 EOFError，
+        # 会直接崩栈退出并丢掉已改配置 —— 顶层 `ky plan` 已做安全中止，配置中心漏了同一防护。
+        try:
+            choice = input("\n请选择功能 (0~7) [默认 0]: ").strip() or "0"
+        except (EOFError, KeyboardInterrupt):
+            print(colorize("\n[!] 输入流提前结束 (EOF)，配置向导已安全中止，本次未做的改动不会保存。\n", C.YELLOW))
+            save_config(cfg)
+            break
+        if choice == "0":
+            save_config(cfg)
+            print(colorize("\n[√] 配置已安全保存至 ky_config.json！\n", C.GREEN))
+            break
+        elif choice == "1":
+            configure_llm(cfg)
+        elif choice == "2":
+            configure_vision_model(cfg)
+        elif choice == "3":
+            configure_webhooks(cfg)
+        elif choice == "4":
+            try:
+                import study_planner
+                study_planner.run_study_plan_wizard(interactive=True)
+                cfg = load_config()
+            except Exception as e:
+                print(f"方案设计提示: {e}")
+        elif choice == "5":
+            manage_syllabi_cli(cfg)
+        elif choice == "6":
+            show_config(cfg)
+        elif choice == "7":
+            broadcast_briefing(cfg, custom_msg="🎓【考研学习链】这是一条自检测试广播消息，您的机器人连接状态正常！")
+
+# ════════════════════════════════════════════════════════════════
+# 5. 交互式 TUI 主界面 (Claude Code / Codex / Gemini 融合风格)
+# ════════════════════════════════════════════════════════════════
+
+def print_welcome(live_port=8088, animate=True):
+    # [P3 修复·D12] 启动横幅文案与实际装载结果统一取数：
+    # 此前动画写死「唤醒 12 项」、状态栏写死「14项全就绪」，与 /skills 真实注册数、当前私教科目三方口径互不一致。
+    try:
+        _skills_map = list_skills() or {}
+    except Exception:
+        _skills_map = {}
+    skill_count = len(_skills_map)
+    _preview = [str(k) for k in list(_skills_map.keys())[:6]]
+    skill_preview = " / ".join(_preview) if _preview else "Vision/Math/Composer"
+    # 注册表不可用时不以「0 项」误导用户，退化为不带数字的口径
+    skill_count_text = f"{skill_count} 项" if skill_count else "全部"
+    skill_status_text = f"{skill_count}项全就绪" if skill_count else "已就绪"
+
+    # ── 1. 彩色渐变 ASCII 大字艺术标题 ──
+    gradient_ascii = f"""
+{C.CYAN}{C.BOLD}  ██╗  ██╗ █████╗  ██████╗ ██╗   ██╗ █████╗ ███╗   ██╗     ██████╗██╗     ██╗{C.RESET}
+{C.CYAN}{C.BOLD}  ██║ ██╔╝██╔══██╗██╔═══██╗╚██╗ ██╔╝██╔══██╗████╗  ██║    ██╔════╝██║     ██║{C.RESET}
+{C.GREEN}{C.BOLD}  █████═╝ ███████║██║   ██║ ╚████╔╝ ███████║██╔██╗ ██║    ██║     ██║     ██║{C.RESET}
+{C.GREEN}{C.BOLD}  ██╔═██╗ ██╔══██║██║   ██║  ╚██╔╝  ██╔══██║██║╚██╗██║    ██║     ██║     ██║{C.RESET}
+{C.YELLOW}{C.BOLD}  ██║ ╚██╗██║  ██║╚██████╔╝   ██║   ██║  ██║██║ ╚████║    ╚██████╗███████╗██║{C.RESET}
+{C.YELLOW}{C.BOLD}  ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝    ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═══╝     ╚═════╝╚══════╝╚═╝{C.RESET}
+"""
+    print(gradient_ascii)
+
+    # ── 2. 动感载入动画 (Boot Sequence) ──
+    if animate:
+        steps = [
+            ("装载考研全科中枢总控协议 (AGENTS.md)...", 0.04),
+            (f"唤醒 {skill_count_text}考研专有技能 ({skill_preview})...", 0.04),
+            (f"启动 Web 实时可视化伴侣 (:{live_port}/live)...", 0.04)
+        ]
+        for step, delay in steps:
+            sys.stdout.write(f"  {C.CYAN}⠋{C.RESET} {step}")
+            sys.stdout.flush()
+            time.sleep(delay)
+            sys.stdout.write(f"\r  {C.GREEN}✔{C.RESET} {step} {C.GREEN}[就绪]{C.RESET}\n")
+            sys.stdout.flush()
+        print()
+
+    # ── 3. 现代化状态与快捷指令大盘卡片 ──
+    today = datetime.now().date()
+    exam_date = datetime(today.year, 12, 19).date()
+    if today > exam_date:
+        exam_date = datetime(today.year + 1, 12, 19).date()
+    days_left = (exam_date - today).days
+
+    cfg = load_config()
+    curr_subj = cfg.get("active_subject", "math")
+    subj_name = SUBJECT_DIRS.get(curr_subj, ("01-数学", "数学"))[1]
+    provider = cfg.get("api_provider", "deepseek")
+    model_name = cfg.get("model", "deepseek-chat")
+
+    style_tag = "严格把关·保姆流"
+    agents_root = ROOT / "AGENTS.md"
+    if agents_root.exists():
+        txt = read_text_safe(agents_root)
+        m = re.search(r"- \*\*当前激活辅导风格\*\*：`([^`]+)`", txt)
+        if m:
+            raw_s = m.group(1).strip().strip("[]")
+            m_s = re.search(r"(\d+\.\s*)?([^\s/\]]+(?:·[^\s/\]]+)?)", raw_s)
+            if m_s:
+                style_tag = re.sub(r"^\d+\.\s*", "", m_s.group(2)).strip()
+            else:
+                style_tag = "严格把关保姆流"
+
+    subj_short = subj_name.replace("专属私教", "").replace("私教", "").strip()
+    style_short = style_tag.split("·")[0] if "·" in style_tag else style_tag
+
+    print(f"""{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮{C.RESET}
+{C.CYAN}│{C.RESET}  {C.BOLD}🎓 考研全科 AI 专属私教终端 · Kaoyan CLI (Claude Code / Gemini 体验版){C.RESET}  {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  [ 专属私教: {C.GREEN}{subj_short}{C.RESET} · {C.YELLOW}{style_short}{C.RESET} ]   [ 🎯 研考初试倒计时: {C.MAGENTA}{days_left} 天{C.RESET} ]          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  [ 🧠 模型: {C.BLUE}{provider}/{model_name}{C.RESET} ]   [ 🌐 伴侣: {C.CYAN}:{live_port}/live{C.RESET} ]   [ 🧩 技能: {C.GREEN}{skill_status_text}{C.RESET} ]{C.CYAN}│{C.RESET}
+{C.CYAN}├────────────────────────────────────────────────────────────────────────┤{C.RESET}
+{C.CYAN}│{C.RESET}  {C.BOLD}快捷指令速查 (随时输入 / 展开完整指令大盘)：                            {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}   {C.GREEN}/math{C.RESET} 数学  {C.GREEN}/eng{C.RESET} 英语  {C.GREEN}/pol{C.RESET} 政治  {C.GREEN}/pro{C.RESET} 专业课  {C.CYAN}/view{C.RESET} 网页伴侣            {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}   {C.YELLOW}/admission{C.RESET} 招考证据  {C.YELLOW}/watch{C.RESET} 简章监控  {C.YELLOW}/exam{C.RESET} 靶向组卷  {C.YELLOW}/variant{C.RESET} 变式检索  {C.CYAN}│{C.RESET}
+{C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
+""")
+
+    # ── 4. 防疲劳减负保障警报 ──
+    try:
+        import study_planner
+        fatigue_info = study_planner.check_fatigue_alert(cfg)
+        if fatigue_info.get("alert"):
+            print(f"{C.YELLOW}{C.BOLD}╭── ⚠️ 防疲劳减负保障警报 (Fatigue Protection Alert) ─────────────────╮{C.RESET}")
+            for l in fatigue_info.get("message", "").splitlines():
+                print(f"{C.YELLOW}│{C.RESET}  {l}")
+            print(f"{C.YELLOW}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}\n")
+    except Exception:
+        pass
+
+def cjk_width(s: str) -> int:
+    """计算考虑中文字符宽度的显示列数（去除 ANSI 逃逸码）"""
+    clean = re.sub(r'\033\[[0-9;]*m', '', s)
+    w = 0
+    for ch in clean:
+        ea = unicodedata.east_asian_width(ch)
+        w += 2 if ea in ('W', 'F') else 1
+    return w
+
+def get_today_tasks_data() -> dict:
+    """提取四科今日任务的结构化数据字典"""
+    cfg = load_config()
+    sp = cfg.get("study_plan", {})
+    math_lbl = sp.get("math_name") or cfg.get("math_name") or "数学"
+    eng_lbl = sp.get("eng_name") or cfg.get("eng_name") or "英语"
+    pol_lbl = "思想政治理论"
+    pro_lbl = sp.get("pro_name") or cfg.get("pro_name") or "专业课"
+
+    subjs = [
+        ("01-数学", "math", math_lbl),
+        ("02-英语", "eng", eng_lbl),
+        ("03-思想政治理论", "pol", pol_lbl),
+        ("04-专业课", "pro", pro_lbl),
+    ]
+    result = {"date": datetime.now().strftime("%Y-%m-%d"), "subjects": {}, "summary": {"total": 0, "completed": 0, "rate": 0.0}}
+    total_count = 0
+    done_count = 0
+
+    for dir_name, key, label in subjs:
+        task_file = ROOT / dir_name / "_状态" / "今日任务.md"
+        tasks = []
+        if task_file.exists():
+            content = read_text_safe(task_file)
+            for l in content.splitlines():
+                l_str = l.strip()
+                # 支持列表项语法: - [ ] 或 - [x]
+                if re.match(r"^-\s*\[[ xX]\]", l_str):
+                    is_done = bool(re.match(r"^-\s*\[[xX]\]", l_str))
+                    total_count += 1
+                    if is_done:
+                        done_count += 1
+                    desc = re.sub(r"^-\s*\[[ xX]\]\s*", "", l_str)
+                    tasks.append({
+                        "module": "任务",
+                        "content": desc,
+                        "duration": "",
+                        "done": is_done,
+                    })
+                # 支持表格语法: | 模块 | 任务内容 | 预计用时 | 完成状态 |
+                elif "|" in l_str and not l_str.replace(" ", "").startswith("|---|") and "完成状态" not in l_str and "模块" not in l_str:
+                    parts = [p.strip() for p in l_str.split("|") if p.strip()]
+                    if len(parts) >= 3:
+                        is_done = "[x]" in parts[-1].lower()
+                        total_count += 1
+                        if is_done:
+                            done_count += 1
+                        tasks.append({
+                            "module": parts[0],
+                            "content": parts[1],
+                            "duration": parts[2] if len(parts) > 2 else "",
+                            "done": is_done,
+                        })
+        result["subjects"][key] = {
+            "label": label,
+            "tasks": tasks,
+            "total": len(tasks),
+            "completed": sum(1 for t in tasks if t["done"])
+        }
+    result["summary"]["total"] = total_count
+    result["summary"]["completed"] = done_count
+    result["summary"]["rate"] = round(done_count / total_count * 100, 1) if total_count > 0 else 0.0
+    return result
+
+def mark_today_task_done(keyword: str, subject: str = None) -> tuple:
+    """在今日任务中根据关键词匹配并标记为 [x] 完成"""
+    subjs = [
+        ("01-数学", "math"),
+        ("02-英语", "eng"),
+        ("03-思想政治理论", "pol"),
+        ("04-专业课", "pro"),
+    ]
+    matched = False
+    match_info = ""
+    for dir_name, s_key in subjs:
+        if subject and subject != s_key:
+            continue
+        task_file = ROOT / dir_name / "_状态" / "今日任务.md"
+        if not task_file.exists():
+            continue
+        content = read_text_safe(task_file)
+        lines = content.splitlines()
+        new_lines = []
+        for line in lines:
+            if "|" in line and keyword in line and not line.replace(" ", "").startswith("|---|") and "完成状态" not in line and "模块" not in line:
+                if "[x]" in line.lower():
+                    match_info = f"任务此前已是完成状态: {line.strip()}"
+                    matched = True
+                    new_lines.append(line)
+                else:
+                    new_line = re.sub(r'\[\s*\]', '[x]', line, count=1)
+                    if new_line != line:
+                        matched = True
+                        match_info = f"已完成打卡: {new_line.strip()}"
+                        new_lines.append(new_line)
+                    else:
+                        new_lines.append(line)
+            else:
+                new_lines.append(line)
+        if matched:
+            atomic_write_text(task_file, "\n".join(new_lines))
+            return True, match_info
+
+    if not matched:
+        return False, f"未找到包含关键词「{keyword}」的今日任务"
+    return True, match_info
+
+COACHING_STYLES = {
+    "1": ("严格把关·保姆提分型 (Strict & Disciplined)", "以真题阅卷人严苛视角审视解答，步步赋分，零容忍计算与书写失误，强制归因"),
+    "2": ("高效应试·高频秒杀型 (High-Yield Hacker)", "80/20法则，只抓必考得分盘，传授代入/特值/排除/帽子词口诀与解题模板"),
+    "3": ("温和启发·减负鼓励型 (Encouraging Mentor)", "耐心倾听、正向激励，大题微步化拆解，降低复习挫败感与焦虑内耗"),
+    "4": ("深度原理·学霸溯源型 (Deep Conceptual Master)", "溯源定理物理与几何背景，从命题设计反推陷阱，打通底层知识图谱"),
+}
+
+def build_subject_checkin_brief(cfg: dict, curr_subj: str) -> str:
+    """生成某科目的「私教报到就绪」本地播报文本 (纯展示、无副作用)。
+
+    [P0 修复·本地降级] 供 GUI 快捷指令复用：GUI 此前把「XX报到」也交给
+    AgentRunner(LLM)，上游不可用时连纯本地口令都失败；CLI 同口令却正常。
+    本函数抽出与 CLI REPL 报到一致的播报口径，两端共用。
+    """
+    plan = cfg.get("study_plan", {})
+    subj_name = plan.get(f"{curr_subj}_name") or SUBJECT_DIRS[curr_subj][1]
+    hours = plan.get(f"{curr_subj}_hours", 2.0)
+    target = plan.get(f"{curr_subj}_target", "高分冲刺")
+    weak = plan.get(f"{curr_subj}_weakness", "核心考点攻坚")
+
+    lines = [
+        f"🎓 【{subj_name} · 私教报到就绪】",
+        f"• 今日规划投入: {hours} 小时 ｜ 战役目标: {target}",
+        f"• 核心薄弱防线: 【{weak}】",
+    ]
+
+    due_count = 0
+    if error_logger:
+        try:
+            due_count = len(error_logger.get_due_reviews(curr_subj, max_count=3))
+        except Exception:
+            due_count = 0
+    if due_count:
+        lines.append(f"🔔 检测到您有 {due_count} 道 FSRS 到期错题！完成作答并输入「交作业」即可启动盲盒复测。")
+    else:
+        t_file = ROOT / SUBJECT_DIRS[curr_subj][0] / "_状态" / "今日任务.md"
+        task_lines = []
+        if t_file.exists():
+            txt = read_text_safe(t_file)
+            for l in txt.splitlines():
+                l_s = l.strip()
+                if re.match(r"^-\s*\[ \]", l_s) or ("|" in l_s and "[ ]" in l_s):
+                    task_lines.append(l_s)
+        if task_lines:
+            lines.append("📋 今日攻坚任务清单（前 2 项）：")
+            lines.extend(f"  {t}" for t in task_lines[:2])
+    lines.append("💡 私教提示：可直接输入题目或题干提问，完成后输入「交作业」按采分点批改！")
+    return "\n".join(lines)
+
+
+def manage_coaching_style(choice: str = None) -> tuple:
+    """查看或切换私教辅导风格，并同步至 AGENTS.md 与 ky_config.json"""
+    agents_root = ROOT / "AGENTS.md"
+    content = read_text_safe(agents_root) if agents_root.exists() else ""
+    cfg = load_config()
+
+    current_style = ""
+    m = re.search(r"- \*\*当前激活辅导风格\*\*：`([^`]+)`", content)
+    if m:
+        current_style = m.group(1).strip()
+    if not current_style:
+        current_style = cfg.get("coaching_style", COACHING_STYLES["1"][0])
+
+    if not choice:
+        return current_style, False
+
+    choice = choice.strip()
+    new_style_name = None
+    if choice in COACHING_STYLES:
+        new_style_name = COACHING_STYLES[choice][0]
+    else:
+        for k, (name, _) in COACHING_STYLES.items():
+            if choice in name or choice in k:
+                new_style_name = name
+                break
+
+    if not new_style_name:
+        return current_style, False
+
+    # 更新 AGENTS.md
+    if agents_root.exists() and content:
+        if "- **当前激活辅导风格**：" in content:
+            content = re.sub(r"- \*\*当前激活辅导风格\*\*：.*", f"- **当前激活辅导风格**：`{new_style_name}`", content)
+        else:
+            content = content.replace("## 0. 你的身份与总目标", f"## 0. 你的身份与总目标\n\n- **当前激活辅导风格**：`{new_style_name}`")
+        atomic_write_text(agents_root, content)
+
+    # 更新 ky_config.json
+    cfg["coaching_style"] = new_style_name
+    # [P0 修复·风格单一真源] 同步 study_plan.style_name，避免向导字段与 CLI 字段各自为政
+    if isinstance(cfg.get("study_plan"), dict):
+        cfg["study_plan"]["style_name"] = new_style_name
+    save_config(cfg)
+    return new_style_name, True
+
+def print_today_tasks_summary(as_json: bool = False):
+    """读取并打印四科今日真实任务清单，支持终端全彩或结构化 JSON"""
+    if as_json:
+        print(json.dumps(get_today_tasks_data(), ensure_ascii=False, indent=2))
+        return
+
+    subjs = [
+        ("01-数学", "数学", C.GREEN),
+        ("02-英语", "英语", C.CYAN),
+        ("03-思想政治理论", "思想政治理论", C.RED),
+        ("04-专业课", "专业课", C.YELLOW)
+    ]
+    # ── 研招动态监控晨报置顶提醒 ──
+    try:
+        if intelligence:
+            watcher = intelligence.AdmissionWatcher()
+            if watcher.list_watched():
+                findings = watcher.check_updates()
+                updated_findings = [f for f in findings if f.get("status") == "UPDATED"]
+                if updated_findings:
+                    print(f"{C.RED}{C.BOLD}╭── 🔥 研招动态突发情报速递 (Admission News Flash) ────────────────────╮{C.RESET}")
+                    for uf in updated_findings:
+                        print(f"{C.YELLOW}│{C.RESET}  📢 【{uf['school']}】官方研究生院发布最新招生变动：")
+                        for tit in uf.get("alert_titles", []):
+                            print(f"{C.YELLOW}│{C.RESET}     • {tit}")
+                    print(f"{C.RED}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}\n")
+    except Exception:
+        pass
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    print(f"\n{C.CYAN}╭── 📋 今日全科复习任务清单 ({today_str}) ─────────────────────────╮{C.RESET}")
+    has_any = False
+    for dir_name, label, color in subjs:
+        task_file = ROOT / dir_name / "_状态" / "今日任务.md"
+        if task_file.exists():
+            has_any = True
+            content = read_text_safe(task_file)
+            print(f"  {colorize(f'【{label}】', color)}")
+            lines = [l.strip() for l in content.splitlines() if "|" in l and not l.replace(" ", "").startswith("|---|") and "完成状态" not in l and "模块" not in l]
+            for line in lines:
+                parts = [p.strip() for p in line.split("|") if p.strip()]
+                if len(parts) >= 3:
+                    status = f"{C.GREEN}[√]{C.RESET}" if "[x]" in parts[-1].lower() else f"{C.DIM}[ ]{C.RESET}"
+                    print(f"    {status} {parts[0]} ({parts[2]}): {parts[1]}")
+            print()
+        else:
+            print(f"  {colorize(f'【{label}】', color)}: 暂未生成今日任务，输入 /plan 一键生成。\n")
+    print(f"{C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}")
+    print(f"💡 开始学习口令: 输入 {C.GREEN}[科目]报到{C.RESET} (如「数学报到」) 立即由私教派题；完成输入 {C.YELLOW}交作业{C.RESET} 自动批改打分！\n")
+
+def resolve_major_keyword(cfg=None, fallback: str = "计算机") -> str:
+    """解析「双校对标」使用的专业关键词，未显式指定时回退到考生档案里的报考专业。
+
+    [根因修复·默认值硬编码] 该默认值此前在三个入口各写各的：
+      - REPL `/compare` 分支已改为读档案；
+      - 顶层 `ky compare` 分支仍硬编码 "计算机"；
+      - TUI 与 GUI 各自另有一套回退。
+    对 085400 / 814 信号这类非计算机考生，硬编码 "计算机" 会产出**别的专业**的
+    对比研报，并据此在 04-专业课 下落盘一份错误专业的文件。现统一由本函数解析，
+    三端共用同一口径，避免兄弟分支再次漏改。
+    """
+    cfg = cfg if isinstance(cfg, dict) else load_config()
+    plan = cfg.get("study_plan") if isinstance(cfg.get("study_plan"), dict) else {}
+    major = (plan.get("major") or cfg.get("major") or "").strip()
+    if major in ("", "报考专业", "未指定", "目标院校"):
+        return fallback
+    return major
+
+
+def resolve_profile_schools(cfg=None) -> tuple:
+    """解析考生档案里的「报考院校」与「备选院校」，供双校对标缺参时兜底。
+
+    [P3 修复·D5] `ky compare` 无参/单参时此前直接打印用法并 exit=1，与帮助文案
+    「专业关键词可省略，默认取 ky_config.json 中的报考专业」的口径不一致，考生按
+    帮助操作必然失败。现统一：缺第一所 -> 取 study_plan.school；缺第二所 -> 取
+    study_plan.backup_school（兼容 backup_target 等键名）。两者皆缺时由调用方提示。
+    """
+    cfg = cfg if isinstance(cfg, dict) else load_config()
+    plan = cfg.get("study_plan") if isinstance(cfg.get("study_plan"), dict) else {}
+    bad = ("", "未指定", "目标院校", "未填写")
+    s1 = (plan.get("school") or cfg.get("school") or "").strip()
+    s2 = ""
+    for cand in (plan.get("backup_school"), cfg.get("backup_school"),
+                 cfg.get("backup_target"), plan.get("backup_target")):
+        v = (cand or "").strip()
+        if v and v not in bad:
+            s2 = v
+            break
+    return ("" if s1 in bad else s1), s2
+
+
+def _discover_new_syllabus():
+    """在 04-专业课/参考资料 内探测候选「新考纲」文件（排除演示样例目录）。"""
+    pro_ref = ROOT / "04-专业课" / "参考资料"
+    if not pro_ref.exists():
+        return None
+    for pat in ("*2027*大纲*", "*2027*考纲*", "*新*大纲*", "*新*考纲*", "*大纲*.md", "*大纲*.txt"):
+        cands = [f for f in pro_ref.glob(pat) if f.is_file() and "演示样例" not in str(f)]
+        if cands:
+            return cands[0]
+    return None
+
+
+def render_syllabus_diff(res, school, major, y1, y2):
+    """[P3 修复·D6] 考纲 Diff 看板渲染，供 REPL `/diff` 与 CLI 共用同一口径。"""
+    m = res["metrics"]
+    print(colorize(f"=== 考纲变动全景看板 · {school} ({y1} vs {y2}) ===", C.BOLD))
+    print(f"  • 变动等级: {colorize(m['stability_grade'], C.GREEN if m['volatility_percentage'] < 10 else C.YELLOW)} (波动率: {m['volatility_percentage']}%)")
+    print(f"  • 考点统计: 基准 {m['total_old']} 项 ➔ 最新 {m['total_new']} 项 ({m['total_new'] - m['total_old']:+d})")
+    print(f"  • 🚨 新增考点: {colorize(str(m['added_count']) + ' 处 (当年高危必考点)', C.RED)}")
+    print(f"  • 🍃 剔除考点: {colorize(str(m['removed_count']) + ' 处 (已彻底移出考纲，减负止损)', C.GREEN)}")
+    print(f"  • ⚠️ 考查微调: {colorize(str(m['modified_count']) + ' 处 (掌握等级升降级调整)', C.YELLOW)}")
+    print(f"  • 🔒 稳定考点: {m['unchanged_count']} 处\n")
+    if m["added_count"] > 0:
+        print(colorize("【🚨 新增考点清单】", C.RED))
+        for d in res["diff_items"]:
+            if d.change_type == "ADDED":
+                p = d.point_new
+                print(f"  + [{p.module} / {p.chapter}] [{p.requirement}] {p.text}")
+        print()
+    if m["removed_count"] > 0:
+        print(colorize("【🍃 删减考点清单】", C.GREEN))
+        for d in res["diff_items"]:
+            if d.change_type == "REMOVED":
+                p = d.point_old
+                print(f"  - [{p.module} / {p.chapter}] {p.text}")
+        print()
+    if m["modified_count"] > 0:
+        print(colorize("【⚠️ 考查要求微调清单】", C.YELLOW))
+        for d in res["diff_items"]:
+            if d.change_type == "MODIFIED":
+                p = d.point_new or d.point_old
+                print(f"  ~ {d.detail} ｜ 考点: {p.text}")
+        print()
+
+
+def run_syllabus_diff(arg: str = "") -> bool:
+    """[P3 修复·D6] REPL `/diff` 实现：与 CLI `ky fetch diff` 同源同口径。
+
+    用法: /diff [基准大纲路径] [--new=新考纲路径] [--subject=pro]
+    未指定新考纲时自动探测 04-专业课/参考资料 候选文件；均无则跑内置演示样例，
+    并强制隔离落盘（04-专业课/演示样例/），避免污染正式研报。
+    """
+    try:
+        import intelligence
+    except ImportError:
+        try:
+            from tools import intelligence
+        except ImportError:
+            print(colorize("[!] intelligence 模块未载入", C.RED))
+            return False
+
+    tokens = str(arg or "").split()
+    old_path, new_path = "", ""
+    free = []
+    for t in tokens:
+        if t.startswith("--old="):
+            old_path = t.split("=", 1)[1].strip()
+        elif t.startswith("--new="):
+            new_path = t.split("=", 1)[1].strip()
+        elif t.startswith("--subject=") or t.startswith("-s="):
+            continue
+        else:
+            free.append(t)
+    if free and not old_path:
+        old_path = free[0]
+
+    cfg = load_config()
+    plan = cfg.get("study_plan", {}) or {}
+    school = (plan.get("school") or "目标院校").strip() or "目标院校"
+    major = (plan.get("major") or "专业课").strip() or "专业课"
+    try:
+        from intelligence.models import current_exam_year as _cey
+        y2 = _cey()
+    except Exception:
+        y2 = 2027
+    y1 = y2 - 1
+
+    diff_gen = intelligence.get_syllabus_diff_generator()
+    print(colorize(f"\n[📊 KaoYan Intelligence: 正在比对【{school}】{major} 大纲考点版本异动 ({y1} vs {y2})...]\n", C.CYAN))
+
+    base_text = ""
+    if old_path and Path(old_path).exists():
+        base_text = Path(old_path).read_text(encoding="utf-8", errors="ignore")
+    elif (ROOT / "04-专业课" / "考试大纲.md").exists():
+        base_text = (ROOT / "04-专业课" / "考试大纲.md").read_text(encoding="utf-8", errors="ignore")
+    else:
+        try:
+            import syllabus_manager as sm
+            base_text = sm.CS408_SYLLABUS if isinstance(sm.CS408_SYLLABUS, str) else sm.CS408_SYLLABUS.get("content", "")
+        except Exception:
+            print(colorize("[!] 找不到基准考纲文件（04-专业课/考试大纲.md），请在 /subject 中先维护考纲", C.YELLOW))
+            return False
+
+    demo_mode = False
+    new_text = base_text
+    if new_path and Path(new_path).exists():
+        new_text = Path(new_path).read_text(encoding="utf-8", errors="ignore")
+    else:
+        cand = _discover_new_syllabus()
+        if cand:
+            try:
+                rel_p = str(cand.relative_to(ROOT))
+            except Exception:
+                rel_p = str(cand)
+            print(colorize(f"\n[💡 考纲自动关联] 检测到参考资料库候选新考纲文件: {rel_p}", C.GREEN))
+            new_text = cand.read_text(encoding="utf-8", errors="ignore")
+        else:
+            print(colorize(
+                "\n[⚠️ 演示模式] 未提供真实新考纲文件 (可用 --new=<路径> 指定)。\n"
+                f"以下对比使用内置演示样例变动，并非官方大纲，结果仅用于了解 Diff 功能，"
+                f"严禁作为备考依据！", C.RED))
+            new_text = base_text.replace("- **理解**：图的遍历", "- **掌握**：图的遍历（新增拓扑排序与关键路径步骤考查）")
+            new_text += f"\n\n### 4. {y2}新增考纲知识点（演示样例·非官方）\n- **掌握**：红黑树的插入与平衡旋转调整；B+树在索引文件中的应用；\n- **了解**：外部排序的多路平衡归并。\n"
+            demo_mode = True
+
+    res = diff_gen.compare_texts(old_text=base_text, new_text=new_text,
+                                 school=school, major=major, year_old=y1, year_new=y2)
+    res["is_demo"] = demo_mode
+    render_syllabus_diff(res, school, major, y1, y2)
+    saved_p = diff_gen.save_diff_report(res)
+    if demo_mode:
+        print(colorize(f"[√ 演示样例报告已隔离归档至（非官方，不可作为备考依据）]: {saved_p}\n", C.YELLOW))
+    else:
+        print(colorize(f"[√ 考纲异动深度研报已生成并归档至]: {saved_p}\n", C.GREEN))
+    return True
+
+
+def run_material_ingest(arg: str = "") -> bool:
+    """[P3 修复·D6] REPL `/ingest` 实现：与 CLI `ky ingest` 同源同口径。"""
+    tokens = str(arg or "").split()
+    target_file, subject, source_title = "", "pro", ""
+    for t in tokens:
+        if t.startswith("--subject=") or t.startswith("-s="):
+            subject = t.split("=", 1)[1].strip() or "pro"
+        elif t.startswith("--source="):
+            source_title = t.split("=", 1)[1].strip()
+        elif not t.startswith("-") and not target_file:
+            target_file = t
+    if not target_file:
+        print(colorize("用法: /ingest <试题文件路径> [--subject=pro/math/eng/pol] [--source=题源出处]\n"
+                       "示例: /ingest 2024年408统考真题.txt --subject=pro --source=\"2024统考408真题\"", C.YELLOW))
+        return False
+    p = Path(target_file)
+    if not p.exists():
+        print(colorize(f"[!] 找不到文件: {target_file}", C.RED))
+        return False
+    try:
+        from skills import material_ingestion
+    except ImportError:
+        try:
+            from tools.skills import material_ingestion
+        except ImportError:
+            material_ingestion = None
+    if not material_ingestion:
+        print(colorize("[!] material_ingestion 模块未载入", C.RED))
+        return False
+    pipe = material_ingestion.get_material_ingestion_pipeline()
+    print(colorize(f"\n[📥 正在对试题文档【{p.name}】执行智能分块与采分点切片入库...]\n", C.CYAN))
+    res = pipe.ingest_file(p, subject=subject, source_name=source_title or p.stem)
+    if res.get("success"):
+        print(colorize(f"  ✓ {res.get('summary')}", C.GREEN))
+        for card in (res.get("cards") or [])[:10]:
+            title = card.get("title") or card.get("stem", "")[:40]
+            print(f"  • [{card.get('question_type', '题目')}] {title}")
+        saved = res.get("saved_path") or res.get("output_path")
+        if saved:
+            print(colorize(f"  [√ 归档路径]: {saved}", C.GREEN))
+        print()
+        return True
+    print(colorize(f"[!] 切片入库失败: {res.get('msg') or res.get('error') or res}", C.RED))
+    return False
+
+
+def build_homework_menu() -> str:
+    """[P1 修复·交作业复用] 生成「交作业与批改模式」的三种提交方式指引文本。
+
+    与 build_weakness_scan_report 同理：这段逻辑原先只内联在 REPL 的「交作业」分支里，
+    GUI 快捷药丸「交作业」无法复用，只能走 LLM —— 上游波动时点击后长时间无响应，
+    最终报「连接异常」，而同一口令在 CLI 是纯本地秒回。现抽为独立函数，
+    REPL 与 GUI 共用同一实现，保证三端口径一致。
+    """
+    return (
+        "\n[📝 考研私教交作业与批改模式]\n"
+        "请选择交作业方式：\n"
+        "  1. 截图/草稿：先截图 (Alt+A / Win+Shift+S)，然后在此输入 /paste 立即视觉逐步批改与采分点打分\n"
+        "  2. 客观答题卡：输入 /batch 你的答案 [标准答案] 立即批量核对正确率与归因\n"
+        "  3. 推导大题文字：直接输入推导步骤，私教将严格按照采分点扣分与步骤赋分！\n"
+    )
+
+
+def build_weakness_scan_report() -> str:
+    """[P1 修复·查漏复用] 生成「全科薄弱点雷达与到期复测清单」文本。
+
+    原先这段逻辑只内联在 REPL 的「查漏」分支里，导致 GUI 快捷药丸「查漏」
+    无法复用，只能走 LLM（上游异常时恒失败）。现抽为独立函数，
+    REPL 与 GUI 共用同一实现，保证三端口径一致。
+    """
+    lines = ["=== 🔍 考研全科薄弱点雷达与到期复测清单 ==="]
+    for s_k, (d_name, label) in SUBJECT_DIRS.items():
+        radar_file = ROOT / d_name / "_状态" / "薄弱点雷达.md"
+        due_items = error_logger.get_due_reviews(s_k, max_count=3) if error_logger else []
+        due_count = len(due_items)
+        lines.append(f"  • {label}: {due_count} 道到期待复测")
+        if radar_file.exists():
+            r_txt = read_text_safe(radar_file)
+            weakness_lines = []
+            module_lines = []
+            for r_line in r_txt.splitlines():
+                ls = r_line.strip()
+                if not ls.startswith("|"):
+                    continue
+                # 跳过分隔行（|---|:--:|---|）
+                if set(ls) <= set("|-: "):
+                    continue
+                cells = [c.strip() for c in ls.strip("|").split("|")]
+                if len(cells) < 2:
+                    continue
+                head = cells[0]
+                # 跳过各类表头行（已知表头词 + 含冒号的二级表头 + 纯序号列）
+                if head in ("模块名称", "题型模块", "考点描述", "核心句子", "模块",
+                            "能力项", "错因", "题目/概念", "项目", "大类", "科目",
+                            "#", "序号", "编号", "失误类型", "易混点", "点位", "优先级",
+                            "指标", "考点", "专题", "题型"):
+                    continue
+                if head.isdigit():  # 「| 1 | 计算失误 | ... |」错因累计表的数据行
+                    continue
+                body = " ｜ ".join(c for c in cells[1:] if c)
+                if any(p in body for p in ("待首次自测", "待评估", "待做题后", "待首次",
+                                           "首次完成自测", "首次刷题", "首次做")):
+                    continue
+                # 仅当该行带有明确的评级/错因信号时，才认定为真实薄弱项
+                rating = " ".join(cells[1:3])
+                has_rating = any(r in rating.split() for r in ("C", "D")) or rating in ("C", "D")
+                has_signal = any(kw in body for kw in
+                                 ("易错", "薄弱", "混淆", "失误", "偏差", "错因", "不熟", "卡点"))
+                if not (has_rating or has_signal):
+                    continue
+                weakness_lines.append(f"    - ⚠ {head}: {body}")
+            if weakness_lines:
+                for w in weakness_lines[:6]:
+                    lines.append(w)
+            else:
+                lines.append("    （暂无已登记的薄弱项：完成首次自测后，私教将在此沉淀具体卡点）")
+    lines.append("")
+    lines.append("💡 立即复测错题请输入 /review，查看今日任务请输入 /today。")
+    return "\n".join(lines)
+
+
+def print_command_palette():
+    """打印 Claude Code 风格分类指令面板"""
+    print(f"""
+{C.CYAN}╭── 🛠️ 考研私教智能终端 · 指令大盘 (Command Palette) ───────────────────────╮{C.RESET}
+{C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  {C.BOLD}🎓 学科专属私教路由与每日任务:{C.RESET}                                           {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.GREEN}/today{C.RESET}     查看四科今日必做任务清单与完成进度打钩 (或直接输入 /done <词>)   {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.GREEN}/math{C.RESET}      切换数学私教 (或直接输入「数学报到」/「学数学」)                 {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.GREEN}/eng{C.RESET}       切换英语私教 (或直接输入「英语报到」/「学英语」)                 {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.GREEN}/pol{C.RESET}       切换政治私教 (或直接输入「政治报到」/「学政治」)                 {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.GREEN}/pro{C.RESET}       切换专业课私教 (或直接输入「专业课报到」/「学专业课」)           {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  {C.BOLD}🧩 考研专有扩展技能 (Skills):{C.RESET}                                            {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/admission <校> [专业]{C.RESET}研招网与高校官方招考事实与证据链核验 (S/A级权威)    {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/watch [高校]{C.RESET}          跟踪目标高校研究生院最新简章与自命题动态指纹监控雷达      {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/compare <校1> <校2>{C.RESET}   双校招考核心指标横向深度对标 (408/自命题/复试线/保护)     {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/scout <高校> [专业]{C.RESET}目标院校招生简章、大纲、招生人数与知乎/B站口碑侦察   {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/exam [科目]{C.RESET}  错题反向靶向组卷 (阶段自测盲盒试卷，支持导出与评分)       {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/variant <考点>{C.RESET}考研同类真题变式检索与防伪溯源 (优先白名单真题，严禁伪造)   {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/map [科目]{C.RESET}   官方考纲知识点图谱与四维掌握度映射 (大纲/错题薄弱点对齐)  {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/diagnose <文本>{C.RESET}整卷级多题诊断与失分聚类引擎 (章节失分排行与个性化处方)      {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/diff [路径]{C.RESET}    考纲版本异动 Diff 与考点增删看板 (演示样例自动隔离)   {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/ingest <路径>{C.RESET}  试题智能切片入库 (分块切片/采分点提取/白名单归档)     {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/review{C.RESET}        FSRS 错题盲盒重测 (隐去原答案，独立重做，通过后出库)   {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/hint{C.RESET}          苏格拉底微步骤启发 (拒绝全解剧透，分级引导突破口)         {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/done <词>{C.RESET}     快速将今日任务标记为完成并同步回写文件                   {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/batch{C.RESET}         客观题答题卡批量对题 (快速比对选项，统计正确率与错题归因) {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/img <路径>{C.RESET}      上传草稿纸或截图，逐行批改、采分点打分与 LaTeX 题干提取   {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/calc <式子>{C.RESET}     数学高精度验算 (微分方程/二次型/级数/极限/微积分/矩阵)     {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/dissect <句>{C.RESET}    英语长难句搭积木解剖 (主干骨架/从句解构/考点词/润色翻译)   {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/pdf [关键词]{C.RESET}    全文检索四科资料库中的官方教材与历年真题                 {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.YELLOW}/skills{C.RESET}         查看当前已装载的所有技能详细清单与状态                    {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  {C.BOLD}🌐 前端联动与外设协同:{C.RESET}                                                  {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.CYAN}/view{C.RESET}          打开实时可视化网页伴侣 (印刷级 KaTeX 排版与双端同步)        {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.CYAN}/notify{C.RESET}        一键向微信、钉钉、飞书、QQ 群广播今日考研晨报与自测卡片    {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.CYAN}/build{C.RESET}         重新编译并刷新本地与手机自测看板 (或直接输入「更新看板」)  {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  {C.BOLD}⚙️ 终端管理与辅助:{C.RESET}                                                      {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/style [1-4]{C.RESET}     查看或动态切换 4 种私教辅导风格 (严格/秒杀/鼓励/溯源)      {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/doctor{C.RESET}          一键系统健康全链路体检 (环境/依赖/状态/连通性)              {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/fatigue{C.RESET}         查看疲劳度与完成率监控警报                                 {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/relieve{C.RESET}         一键启动智能减负模式 (任务下调 25%，切换为鼓励型)          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/memory [status|prune]{C.RESET}三级分层记忆健康度查看与滚动修剪                {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/rollback{C.RESET}         快速回滚 Plan Mode 上一次快照备份                          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/plan{C.RESET}            个人专属定制化必考方案向导 (时间/考纲/白名单/学情摸底/作息) {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/status{C.RESET}          查看考研总战役大盘态势、倒计时与四科目标矩阵             {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/config{C.RESET}          分类多选管理菜单：配置大模型 API 与机器人 Webhook          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/clear{C.RESET}           清空当前会话上下文                                         {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}    {C.MAGENTA}/exit{C.RESET}            退出私教终端 (落盘记忆与会话钩子)                          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  💡 {C.BOLD}中文原生口令{C.RESET}: 「数学报到」「查漏」「交作业」「更新看板」「打卡」「组卷」「变式」「知识图谱」「整卷诊断」「减负」 {C.CYAN}│{C.RESET}
+{C.CYAN}╰──────────────────────────────────────────────────────────────────────────╯{C.RESET}
+""")
+
+def print_status_summary():
+    """打印考研总战役大盘态势、打卡 Streak 与周日休整关怀提示 (S3-6)"""
+    from datetime import date, timedelta, datetime
+    today_d = date.today()
+    today_s = today_d.strftime("%Y-%m-%d")
+
+    cfg = load_config()
+    plan = cfg.get("study_plan", {})
+
+    # 动态读取初试日期（统一委托 exam_calendar，消除「入学年当年份」的偏移一年缺陷）
+    exam_d, exam_src = exam_calendar.resolve_exam_date(cfg)
+    days_left = (exam_d - today_d).days
+
+    hist = cfg.get("completion_history", {})
+
+    # 计算连续打卡天数 (Streak)
+    streak = 0
+    chk_d = today_d
+    if today_s not in hist:
+        chk_d = today_d - timedelta(days=1)
+    while True:
+        ds = chk_d.strftime("%Y-%m-%d")
+        if ds in hist and (hist[ds].get("rate", 0.0) >= 60.0 or hist[ds].get("completed", 0) > 0):
+            streak += 1
+            chk_d -= timedelta(days=1)
+        else:
+            break
+
+    # 周日休整节律提示 (AGENTS.md 个性化学情与作息调节机制)
+    weekday = today_d.weekday()  # 0=Monday ... 6=Sunday
+    if weekday == 6:
+        rest_msg = f"{C.YELLOW}今日为周日！系统预定晚间 18:00~22:30 为休整放松窗口，适度给大脑减压，严防考前倦怠！{C.RESET}"
+    else:
+        days_to_sun = (6 - weekday) % 7
+        rest_msg = f"距下次周日休整窗口（周日晚 18:00~22:30）还有 {C.BOLD}{days_to_sun}{C.RESET} 天，按部就班高效攻坚！"
+
+    print(colorize(f"\n============================================================", C.CYAN))
+    print(colorize(f"  🏆 考研总战役态势大盘 · 倒计时 {days_left} 天", C.BOLD))
+    # [根因修复·日期硬编码] 显式区分「配置过期」与「靠推算兜底」两种降级状态，
+    # 避免学员看到负数/失真倒计时却无从判断原因（旧实现只是静默给出错误天数）。
+    if days_left < 0:
+        print(colorize(
+            f"  ⚠ 配置中的初试日期 {exam_d.isoformat()} 已过期 {-days_left} 天，倒计时已失效。"
+            f"请用 `ky plan` 重新确认初试日期。", C.YELLOW))
+    elif exam_src != exam_calendar.SOURCE_CONFIG:
+        print(colorize(
+            f"  [i] 配置中无明确初试日期，当前按「{exam_src}」取 {exam_d.isoformat()}"
+            f"（12 月倒数第二个周六）；如需固定请用 `ky plan` 确认。", C.DIM))
+    print(colorize(f"============================================================", C.CYAN))
+    print(f"• 今日日期: {today_s} (初试首日: {exam_d.strftime('%Y-%m-%d')})")
+    print(f"• 连续打卡: {C.GREEN}{streak} 天 (Streak 保持中){C.RESET}")
+    print(f"• 作息节律: {rest_msg}")
+    print("-" * 60)
+
+    agents_root = ROOT / "AGENTS.md"
+    if agents_root.exists():
+        # [P1 修复·大盘院校错显] AGENTS.md 的「目标院校/报考专业」行可能仍是
+        # 初始占位（`目标院校`/`报考专业`）—— 例如学员先跑完向导写入 ky_config.json，
+        # 但根 AGENTS.md 由更早的初始化模板生成/被重置过。此前大盘只读 AGENTS.md，
+        # 于是配置文件里明明写着「天津工业大学」，态势大盘却显示「目标院校」，
+        # 学员以为报考信息丢失。现改为：以 ky_config.json 的 study_plan 为准，
+        # 若配置里是真实值就覆盖占位行；配置也缺失时才回落到 AGENTS.md 原文。
+        _cfg_school = (plan.get("school") or "").strip()
+        _cfg_major = (plan.get("major") or "").strip()
+        _override = {}
+        if _cfg_school and _cfg_school not in ("目标院校", "未指定"):
+            _override["- **目标院校**："] = f"- **目标院校**：`{_cfg_school}`"
+        if _cfg_major and _cfg_major not in ("报考专业", "未指定"):
+            _override["- **报考专业**："] = f"- **报考专业**：`{_cfg_major}`"
+        # [P0 修复] 前缀过滤此前把「四种私教辅导风格」的特点/行为准则行与
+        # 「AI Agent 工具接入矩阵」表格一并打印，态势大盘混入大段无关内容。
+        # 这里维护一个排除清单：这些行属于协议说明，不属于学员基本盘。
+        _status_skip_prefixes = (
+            "- **特点**：", "- **行为准则**：",
+            "| **Google", "| **Cursor", "| **Trae", "| **Cherry",
+            "| **WorkBuddy", "| **VS Code", "| **网页端",
+        )
+        txt = read_text_safe(agents_root)
+        for line in txt.split("\n"):
+            clean_l = line.strip()
+            clean_l = clean_l.replace("（示例模板）", "").replace("(示例模板)", "")
+            if clean_l.startswith(_status_skip_prefixes):
+                continue
+            # 用配置中的真实报考信息覆盖占位行（见上方 _override 说明）
+            for _pre, _repl in _override.items():
+                if clean_l.startswith(_pre):
+                    clean_l = _repl
+                    break
+            if clean_l.startswith(("- **", "| **科目", "| 合计", "| **", "- 数学:", "- 英语:", "- 政治:", "- 专业课:", "- 数学薄弱点:", "- 英语薄弱点:", "- 政治薄弱点:", "- 专业课薄弱点:")):
+                print("  " + clean_l)
+            elif clean_l.startswith(("### 【个性化", "### 一、各科")):
+                print("\n  " + colorize(clean_l, C.BOLD))
+    print(colorize("============================================================\n", C.CYAN))
+
+def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gateway_token: str = ""):
+    cfg = load_config()
+
+    # token 三层优先级：CLI 参数 > 环境变量 > 配置
+    effective_token = (
+        gateway_token
+        or os.environ.get("KY_GATEWAY_TOKEN", "")
+        or cfg.get("gateway_token", "")
+    )
+
+    # 静默启动后台实时 Web 可视化伴侣
+    live_port = start_background_live_server(8088, host=gateway_host) or 8088
+    print_welcome(live_port=live_port)
+
+    # 首次使用引导：个人专属定制化必考方案向导
+    if not cfg.get("onboarding_completed"):
+        print(f"""
+{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮
+│  🎓 欢迎使用考研全科 AI 私人教师中枢！                                 │
+│  检测到您尚未进行个人专属定制化必考方案设计。                          │
+│  💡 仅需 2~3 分钟即可完成时间倒计时、官方考纲、已有资料白名单、        │
+│     当前学情痛点摸底与每日复习黄金作息个性化建档！                     │
+╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
+""")
+        init_plan = input("是否立即启动【个人定制化必考方案设计向导】? (y/n) [y]: ").strip().lower()
+        if init_plan != "n":
+            try:
+                import study_planner
+                study_planner.run_study_plan_wizard(interactive=True)
+                cfg = load_config()
+            except Exception as e:
+                print(f"方案向导提示: {e}")
+        else:
+            print(colorize("💡 提示：您可以随时在终端输入 /plan 或运行 ky plan 重新启动向导。\n", C.DIM))
+
+    if not cfg.get("api_key"):
+        print(colorize("[!] 检测到尚未配置大模型 API Key！", C.YELLOW))
+        init_ask = input("是否立即配置 API Key? (y/n) [y]: ").strip().lower()
+        if init_ask != "n":
+            interactive_config()
+            cfg = load_config()
+
+    curr_subj = cfg.get("active_subject", "math")
+    history = []
+    active_quiz_item = None
+
+    # 初始化自主智能体内核 AgentRunner
+    agent_runner = None
+    if AgentRunner:
+        effective_perm = permission_mode if permission_mode != "ask" else (cfg.get("permission_mode") or "ask")
+        agent_runner = AgentRunner(
+            config=cfg,
+            workspace_root=ROOT,
+            permission_mode=effective_perm,
+            live_callback=append_live_message
+        )
+        agent_runner.set_subject(curr_subj)
+
+    def get_prompt_tag():
+        _, s_name = SUBJECT_DIRS.get(curr_subj, ("01-数学", "数学"))
+        plan = cfg.get("study_plan", {})
+        if curr_subj == "math":
+            target = f"{plan.get('math_target', '110+ 分')} 冲刺"
+        elif curr_subj == "eng":
+            target = f"{plan.get('eng_target', '65+ 分')} 突破"
+        elif curr_subj == "pol":
+            target = f"{plan.get('pol_target', '70+ 分')} 稳拿"
+        elif curr_subj == "pro":
+            target = f"{plan.get('pro_target', '120-130 分')} 拔高"
+        else:
+            target = "冲刺"
+        return f"\n{C.CYAN}╭─{C.RESET} [ {C.BOLD}{s_name}{C.RESET} · {C.YELLOW}{target}{C.RESET} ] {C.DIM}──────────────────────────────────────────{C.RESET}\n{C.CYAN}╰─❯{C.RESET} "
+
+    def print_followup_toolbar():
+        print(f"\n{C.CYAN}╭──────────────────────────────────────────────────────────────────────────────────╮{C.RESET}")
+        print(f"{C.CYAN}│{C.RESET}  {C.BOLD}💡 下一步:{C.RESET} [1] 📐 符号验算  [2] 📌 记错题  [3] 🌐 网页伴侣  [4] 🔄 变式演练  [5] 💡 启发提示 {C.CYAN}│{C.RESET}")
+        print(f"{C.CYAN}╰──────────────────────────────────────────────────────────────────────────────────╯{C.RESET}")
+
+    print(colorize(f"当前已激活：{SUBJECT_DIRS[curr_subj][1]}。直接输入问题/题目，或使用 /img 批改草稿，/calc 验算数学。", C.DIM))
+    if live_port:
+        print(colorize(f"🌐 [实时 LaTeX 网页伴侣已就绪]: http://localhost:{live_port}/live (随时输入 /view 自动打开浏览器对照排版)\n", C.CYAN))
+
+    while True:
+        try:
+            user_input = input(get_prompt_tag()).strip()
+        except (KeyboardInterrupt, EOFError):
+            if agent_runner and hasattr(agent_runner, "hooks"):
+                agent_runner.hooks.trigger_session_end({"active_subject": curr_subj})
+            print("\n再见！保持节奏，一战成硕！🎓")
+            break
+
+        if not user_input:
+            continue
+
+        # ── 数字快捷操作响应 (Codex 风格) ──
+        if user_input == "1":
+            calc_expr = input(colorize("请输入待精确验算的数学式 (如 ode y''+4*y=0, quad [[2,1],[1,2]], limit (sin(x)-x)/x^3 as x->0): ", C.YELLOW)).strip()
+            if calc_expr:
+                user_input = f"/calc {calc_expr}"
+            else:
+                continue
+        elif user_input == "2":
+            last_resp = history[-1]["content"] if history and history[-1]["role"] == "assistant" else "做题记录"
+            last_q = ""
+            for h in reversed(history):
+                if h.get("role") == "user" and not h.get("content", "").startswith("/"):
+                    last_q = h.get("content", "")
+                    break
+            err_type = "需强化复练"
+            for et in ("概念漏洞", "审题偏差", "公式记错", "计算失误", "书写丢分"):
+                if et in last_resp:
+                    err_type = et
+                    break
+            try:
+                res = error_logger.log_error_record(
+                    subject=curr_subj,
+                    title=f"{SUBJECT_DIRS[curr_subj][1]}重点错题复盘",
+                    error_type=err_type,
+                    detail=last_resp[:400] + ("..." if len(last_resp) > 400 else ""),
+                    prescription="已载入 FSRS 盲盒复测队列（间隔由记忆稳定性自适应给出）。",
+                    question=last_q
+                )
+            except Exception as _e:
+                if type(_e).__name__ == "NoteLockedError":
+                    print(colorize(f"\n[!] 错题未归档：{_e}\n", C.YELLOW))
+                    continue
+                raise
+            print(colorize(f"\n[√] {res}\n", C.GREEN))
+            continue
+        elif user_input == "3":
+            user_input = "/view"
+        elif user_input == "4":
+            print(colorize(f"\n[🔄 正在根据上一题考点与易错陷阱为您抽取同类变式真题...]\n", C.CYAN))
+            user_input = "请根据上一题的核心考点与命题陷阱，为我抽取一道难度相当的考研真题同类变式题。要求：只给题干背景与设问，不要直接贴答案，让我先独立作答。"
+        elif user_input == "5":
+            last_q = ""
+            for h in reversed(history):
+                if h.get("role") == "user" and not h.get("content", "").startswith("/"):
+                    last_q = h.get("content", "")
+                    break
+            if not last_q:
+                print(colorize("\n[!] 暂无上一题上下文，请直接输入：/hint <题目内容>\n", C.YELLOW))
+                continue
+            user_input = f"/hint {last_q}"
+
+        # ── 呼出指令大盘 ──
+        if user_input in ("/", "/help", "/h", "help", "？", "?"):
+            print_command_palette()
+            continue
+
+        # ── 核心中文原生口令路由 (兑现 AGENTS.md 顶层中枢协议) ──
+        raw_cmd = user_input.strip()
+        if raw_cmd in ("数学报到", "学数学", "切换数学", "英语报到", "学英语", "切换英语", "政治报到", "学政治", "切换政治", "专业课报到", "学专业课", "切换专业课"):
+            s_map = {
+                "数学报到": "math", "学数学": "math", "切换数学": "math",
+                "英语报到": "eng", "学英语": "eng", "切换英语": "eng",
+                "政治报到": "pol", "学政治": "pol", "切换政治": "pol",
+                "专业课报到": "pro", "学专业课": "pro", "切换专业课": "pro"
+            }
+            curr_subj = s_map[raw_cmd]
+            cfg["active_subject"] = curr_subj
+            save_config(cfg)
+            history = []
+            active_quiz_item = None
+            if agent_runner:
+                agent_runner.set_subject(curr_subj)
+
+            plan = cfg.get("study_plan", {})
+            subj_name = plan.get(f"{curr_subj}_name") or SUBJECT_DIRS[curr_subj][1]
+            hours = plan.get(f"{curr_subj}_hours", 2.0)
+            target = plan.get(f"{curr_subj}_target", "高分冲刺")
+            weak = plan.get(f"{curr_subj}_weakness", "核心考点攻坚")
+
+            print(colorize(f"\n🎓 【{subj_name} · 私教报到就绪】", C.BOLD + C.GREEN))
+            print(f"• 今日规划投入: {C.CYAN}{hours} 小时{C.RESET} ｜ 战役目标: {C.YELLOW}{target}{C.RESET}")
+            print(f"• 核心薄弱防线: 【{C.BOLD}{weak}{C.RESET}】")
+
+            # 优先检查 FSRS 到期错题并派发
+            due_items = error_logger.get_due_reviews(curr_subj, max_count=3) if error_logger else []
+            if due_items:
+                active_quiz_item = due_items[0]
+                print(colorize(f"\n🔔 检测到您有 {len(due_items)} 道 FSRS 到期错题！根据战役 SOP，私教已为您抽取首题启动盲盒复测：\n", C.YELLOW))
+                quiz_card = error_logger.generate_blind_quiz(active_quiz_item)
+                print(quiz_card + "\n")
+                print(colorize("👉 请在草稿纸上推演作答，输入答案即可核对 (输入 cancel 退出复测，输入 /hint 获取微步骤)：\n", C.CYAN))
+            else:
+                # 检查今日任务文件并展示今日前 2 项攻坚重点
+                t_file = ROOT / SUBJECT_DIRS[curr_subj][0] / "_状态" / "今日任务.md"
+                task_lines = []
+                if t_file.exists():
+                    txt = read_text_safe(t_file)
+                    for l in txt.splitlines():
+                        l_s = l.strip()
+                        if re.match(r"^-\s*\[ \]", l_s) or ("|" in l_s and "[ ]" in l_s):
+                            task_lines.append(l_s)
+                if task_lines:
+                    print(colorize(f"\n📋 今日攻坚任务清单（前 2 项）：", C.CYAN))
+                    for tl in task_lines[:2]:
+                        print(f"  {tl}")
+                print(colorize(f"\n💡 私教提示：可直接输入题目或题干提问，输入 /hint 启发破题，或输入 /exam 生成专项自测卷！\n", C.GREEN))
+            continue
+        elif raw_cmd in ("查漏", "查漏补缺"):
+            # [P1 修复·查漏不出内容] 统一委托 build_weakness_scan_report，
+            # 与 GUI 快捷药丸共用同一实现（此前内联逻辑只看前 15 行且关键词不匹配，
+            # 导致四科永远打不出任何薄弱项）。
+            print(colorize("\n" + build_weakness_scan_report() + "\n", C.RESET))
+            continue
+        elif raw_cmd in ("更新看板", "刷新看板"):
+            build_py = ROOT / "05-考研看板" / "build.py"
+            if build_py.exists():
+                print(colorize("\n[正在更新并重新编译自测看板...]", C.CYAN))
+                import subprocess
+                subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"))
+            print()
+            continue
+        elif raw_cmd in ("交作业", "对答案"):
+            # [P1 修复] 改用共享构造函数，GUI 端可复用（原为内联打印，三端不一致）
+            print(colorize(build_homework_menu(), C.CYAN))
+            continue
+        elif raw_cmd.startswith("打卡") or raw_cmd.startswith("完成"):
+            kw = raw_cmd.replace("打卡", "").replace("完成", "").strip()
+            if kw:
+                ok, msg = mark_today_task_done(kw, curr_subj)
+                tag = C.GREEN if ok else C.YELLOW
+                print(colorize(f"\n[{msg}]\n", tag))
+                continue
+        elif raw_cmd in ("组卷", "反向组卷", "生成试卷") or raw_cmd.startswith("组卷 "):
+            sub_target = curr_subj
+            c_parts = raw_cmd.split()
+            if len(c_parts) > 1:
+                for sk, sv in (("math", "数"), ("eng", "英"), ("pol", "政"), ("pro", "专")):
+                    if sk in c_parts[1] or sv in c_parts[1]:
+                        sub_target = sk
+                        break
+            if exam_composer:
+                print(colorize(f"\n[📝 正在基于错题库与高频易错考点为您靶向组卷...]\n", C.CYAN))
+                res = exam_composer.compose_exam_paper(sub_target, count=3, save_file=True)
+                print(res.get("formatted_paper", ""))
+                if res.get("saved_path"):
+                    print(colorize(f"[√ 试卷已归档至]: {res['saved_path']}\n", C.GREEN))
+            else:
+                print(colorize("[!] exam_composer 技能模块未载入", C.RED))
+            continue
+        elif raw_cmd.startswith("变式") or raw_cmd in ("变式题", "找变式"):
+            topic = raw_cmd.replace("变式", "").replace("题", "").replace("找", "").strip()
+            if not topic:
+                topic = "导数中值定理" if curr_subj == "math" else "核心高频考点"
+            if variant_retriever:
+                print(colorize(f"\n[🔍 正在四科白名单题源中检索【{topic}】同类真题变式...]\n", C.CYAN))
+                res = variant_retriever.search_real_variant(subject=curr_subj, keyword=topic)
+                print(variant_retriever.format_variant_output(res))
+            else:
+                print(colorize("[!] variant_retriever 技能模块未载入", C.RED))
+            continue
+        elif raw_cmd in ("知识图谱", "考纲图谱", "知识点图谱") or raw_cmd.startswith("知识图谱 "):
+            sub_target = curr_subj
+            c_parts = raw_cmd.split()
+            if len(c_parts) > 1:
+                for sk, sv in (("math", "数"), ("eng", "英"), ("pol", "政"), ("pro", "专")):
+                    if sk in c_parts[1] or sv in c_parts[1]:
+                        sub_target = sk
+                        break
+            if knowledge_map:
+                print(knowledge_map.format_knowledge_map_table(sub_target))
+            else:
+                print(colorize("[!] knowledge_map 技能模块未载入", C.RED))
+            continue
+        elif raw_cmd in ("整卷诊断", "试卷诊断") or raw_cmd.startswith("整卷诊断 ") or raw_cmd.startswith("试卷诊断 "):
+            text_arg = raw_cmd.replace("整卷诊断", "").replace("试卷诊断", "").strip()
+            if not text_arg:
+                print(colorize("用法: 整卷诊断 <答题卡文本或文件路径>\n示例: 整卷诊断 1-5: A B C D A", C.YELLOW))
+                continue
+            if exam_diagnoser:
+                content = text_arg
+                if Path(text_arg).exists():
+                    content = Path(text_arg).read_text(encoding="utf-8", errors="ignore")
+                res = exam_diagnoser.diagnose_mock_exam(subject=curr_subj, exam_input=content)
+                print(exam_diagnoser.format_diagnosis_report(res))
+            else:
+                print(colorize("[!] exam_diagnoser 技能模块未载入", C.RED))
+            continue
+        elif raw_cmd in ("减负", "启动减负", "减负模式"):
+            try:
+                import study_planner
+                res = study_planner.apply_relief_mode()
+                if res.get("success"):
+                    print(colorize(f"\n[√ {res.get('message')}]\n", C.GREEN))
+                else:
+                    print(colorize(f"\n[!] 启动减负失败: {res.get('message')}\n", C.RED))
+            except Exception as e:
+                print(f"启动减负异常: {e}")
+            continue
+        elif raw_cmd in ("疲劳检查", "防疲劳"):
+            try:
+                import study_planner
+                info = study_planner.check_fatigue_alert()
+                if info.get("alert"):
+                    print(colorize(f"\n[⚠️ 疲劳警报触发] 连续 {info.get('consecutive_low_days')} 天低完成率 (均值 {info.get('avg_rate')}%):", C.YELLOW))
+                    print(info.get("message"))
+                    print(colorize("\n💡 提示：输入 减负 或 /relieve 可立即一键启动减负模式。\n", C.CYAN))
+                else:
+                    print(colorize(f"\n[√ 复习节奏正常] {info.get('message')}\n", C.GREEN))
+            except Exception as e:
+                print(f"检查疲劳异常: {e}")
+            continue
+
+        # ── 智能图片输入检测 (直接输入图片、拖拽路径、文件名匹配、或系统剪贴板自动抓取) ──
+        clean_input = user_input.strip().strip('"').strip("'")
+        img_pattern = r'([a-zA-Z]:[\\/][^\r\n"\'<>|?*]+?\.(?:png|jpg|jpeg|webp|bmp)|\b[^\s"\'<>|?*]+?\.(?:png|jpg|jpeg|webp|bmp))\b'
+        img_match = re.search(img_pattern, user_input, re.IGNORECASE)
+        found_img_path = None
+        extra_question = ""
+
+        if Path(clean_input).exists() and clean_input.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
+            found_img_path = clean_input
+            extra_question = ""
+        elif img_match:
+            candidate = img_match.group(1).strip().strip('"').strip("'")
+            if Path(candidate).exists():
+                found_img_path = candidate
+                extra_question = user_input.replace(img_match.group(0), "").strip()
+            else:
+                # 尝试在常见临时、桌面、下载或上传目录查找同名文件
+                cand_name = Path(candidate).name
+                search_dirs = [
+                    ROOT / "tools" / "scratch" / "uploads",
+                    Path.home() / "Desktop",
+                    Path.home() / "Downloads",
+                    Path(os.environ.get("TEMP", "")) if os.environ.get("TEMP") else None
+                ]
+                for sd in search_dirs:
+                    if sd and (sd / cand_name).exists():
+                        found_img_path = str(sd / cand_name)
+                        extra_question = user_input.replace(img_match.group(0), "").strip()
+                        break
+
+        # 若用户输入中明确带有 [图片: ...]、"图片"、或从微信复制的图片标识，本地文件未命中时自动抓取系统剪贴板
+        if not found_img_path and ("[图片" in user_input or "截图" in user_input):
+            clip_img = grab_clipboard_image()
+            if clip_img:
+                found_img_path = str(clip_img)
+                extra_question = re.sub(r'\[图片[^\]]*\]', '', user_input).strip()
+                print(colorize(f"\n[📸 检测到您粘贴了图片引用，已自动从系统剪贴板抓取最新截图: {Path(found_img_path).name}！]", C.GREEN))
+            else:
+                print(colorize("\n[!] 提示：检测到您输入了图片引用，但在本地未找到对应文件，且当前剪贴板中无截图。", C.YELLOW))
+                print("💡 解决方案：\n  1. 使用微信 (Alt+A) 或系统 (Win+Shift+S) 截图后，在终端直接输入 /paste 即可立即批改！\n  2. 或在网页伴侣 (http://127.0.0.1:8088/live) 中按 Ctrl+V 粘贴图片。\n")
+                continue
+
+        if found_img_path:
+            print(colorize(f"\n[📸 检测到题目/草稿图片: {Path(found_img_path).name}，正在调起考研视觉解题技能...]\n", C.CYAN))
+            reply = vision_solver.solve_image_with_model(found_img_path, extra_question, cfg, stream=True)
+            if reply:
+                append_live_message("user", f"[图片: {Path(found_img_path).name}] {extra_question}")
+                append_live_message("assistant", reply)
+                history.append({"role": "user", "content": f"[图片批改: {Path(found_img_path).name}] {extra_question}"})
+                history.append({"role": "assistant", "content": reply})
+
+                # Codex CLI 风格快捷操作栏
+                print_followup_toolbar()
+            continue
+
+        # ── 斜杠指令与 Skills 分发 ──
+        if user_input.startswith("/"):
+            cmd_parts = user_input.split(maxsplit=1)
+            cmd = cmd_parts[0].lower()
+            arg = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
+
+            # [D2 修复] 只读模式：REPL 写指令先拦一层，避免"只读模式仍能改盘"
+            if ky_io is not None and ky_io.is_read_only_mode():
+                _viol = detect_repl_safe_mode_violation(cmd, arg)
+                if _viol:
+                    print(colorize(
+                        f"\n[✘ 已拒绝] 严格只读模式 (--permission=safe) 下禁止执行: {_viol}\n"
+                        f"    仅放行查询类指令（/status /today /map /pdf /fatigue /doctor /skills）。", C.RED))
+                    continue
+
+            # 注：/exit 与 /quit 统一由下方更靠后的分支处理（保留 hooks.trigger_session_end）
+
+            # ── 技能 1: /skills 查看所有技能 ──
+            if cmd == "/skills":
+                print(colorize("\n=== 🧩 考研专有智能体技能中心 (Skills Registry) ===", C.BOLD))
+                for sk_id, sk in list_skills().items():
+                    print(f"\n  {sk['name']} [{colorize(sk['status'], C.GREEN)}]")
+                    print(f"    - 功能: {sk['desc']}")
+                    print(f"    - 指令: {colorize(sk['command'], C.YELLOW)}")
+                print()
+                continue
+
+            # ── 技能 2: /paste 或 /clip 直接读取系统剪贴板截图 ──
+            elif cmd in ("/paste", "/clip", "/v"):
+                clip_img = grab_clipboard_image()
+                if not clip_img:
+                    print(colorize("\n[!] 当前系统剪贴板中未检测到图片截图！", C.YELLOW))
+                    print("💡 提示：您可以先使用微信截图 (Alt+A)、QQ截图 (Ctrl+Alt+A) 或 Windows截图 (Win+Shift+S) 截取题目后，在此输入 /paste 即可立即批改！\n")
+                    continue
+                extra = arg
+                print(colorize(f"\n[📸 已从系统剪贴板读取到最新题目/草稿截图: {clip_img.name}，正在调起考研视觉解题技能...]\n", C.CYAN))
+                reply = vision_solver.solve_image_with_model(str(clip_img), extra, cfg, stream=True)
+                if reply:
+                    append_live_message("user", f"[剪贴板截图: {clip_img.name}] {extra}")
+                    append_live_message("assistant", reply)
+                    history.append({"role": "user", "content": f"[剪贴板批改: {clip_img.name}] {extra}"})
+                    history.append({"role": "assistant", "content": reply})
+
+                    # Codex CLI 风格快捷操作栏
+                    print_followup_toolbar()
+                continue
+
+            # ── 技能 3: /img 或 /ocr 视觉看图与手写批改 ──
+            elif cmd in ("/img", "/ocr"):
+                img_p = ""
+                extra = ""
+                if not arg:
+                    # 自动尝试剪贴板
+                    clip_img = grab_clipboard_image()
+                    if clip_img:
+                        img_p = str(clip_img)
+                        print(colorize(f"\n[📸 未提供路径，已自动提取剪贴板最新截图: {clip_img.name}]", C.GREEN))
+                    else:
+                        print(colorize("用法: /img <图片路径> [补充要求] 或输入 /paste 自动读取剪贴板截图\n示例: /img C:\\Users\\draft.jpg 请重点检查第3行计算", C.YELLOW))
+                        continue
+                else:
+                    parts = arg.split(maxsplit=1)
+                    img_p = parts[0].strip('"').strip("'")
+                    extra = parts[1] if len(parts) > 1 else ""
+
+                if not Path(img_p).exists():
+                    print(colorize(f"\n[!] 未找到图片: {img_p}\n", C.RED))
+                    continue
+                print(colorize(f"\n[📸 正在调起多模态视觉阅卷技能分析: {Path(img_p).name}...]\n", C.CYAN))
+                reply = vision_solver.solve_image_with_model(img_p, extra, cfg, stream=True)
+                if reply:
+                    append_live_message("user", f"[图片: {Path(img_p).name}] {extra}")
+                    append_live_message("assistant", reply)
+                    history.append({"role": "user", "content": f"[图片批改: {Path(img_p).name}] {extra}"})
+                    history.append({"role": "assistant", "content": reply})
+
+                    # Codex CLI 风格快捷操作栏
+                    print_followup_toolbar()
+                continue
+
+            # ── 技能 3: /calc 或 /verify 数学符号验算 ──
+            elif cmd in ("/calc", "/verify"):
+                if not arg:
+                    print(colorize("用法: /calc <数学式子>\n示例:\n  /calc diff x^3*sin(x)\n  /calc limit (sin(x)-x)/x^3 as x->0\n  /calc int x*exp(x) dx", C.YELLOW))
+                    continue
+                print(colorize(f"\n[📐 正在运行数学符号验算引擎...]\n", C.CYAN))
+                res = math_verifier.run_math_query(arg)
+                print(res + "\n")
+                print_followup_toolbar()
+                continue
+
+            # ── 技能: /review 或 /quiz FSRS 盲盒复测 ──
+            elif cmd in ("/review", "/quiz"):
+                target_subj = curr_subj
+                if arg:
+                    for s_k, s_v in (("math", "数"), ("eng", "英"), ("pol", "政"), ("pro", "专")):
+                        if s_k in arg.lower() or s_v in arg:
+                            target_subj = s_k
+                            break
+                due_items = error_logger.get_due_reviews(target_subj, max_count=5) if error_logger else []
+                if not due_items:
+                    print(colorize(f"\n[🎉 恭喜] {SUBJECT_DIRS[target_subj][1]} 当前没有到期需要 FSRS 复测的错题！掌握度优良！\n", C.GREEN))
+                    continue
+
+                active_quiz_item = due_items[0]
+                quiz_card = error_logger.generate_blind_quiz(active_quiz_item)
+                print(quiz_card + "\n")
+                print(colorize("👉 请直接在下方输入您的推导步骤或最终答案进行核对 (输入 cancel 随时退出复测)：\n", C.CYAN))
+                continue
+
+            # ── 技能: /hint 或 /tishi 苏格拉底微步骤启发 ──
+            elif cmd in ("/hint", "/tishi"):
+                target_q = arg
+                if not target_q:
+                    for h in reversed(history):
+                        if h.get("role") == "user" and not h.get("content", "").startswith("/"):
+                            target_q = h.get("content", "")
+                            break
+                if not target_q:
+                    print(colorize("用法: /hint <题目内容> 或做题卡壳时直接输入 /hint 获取微步骤启发\n示例: /hint 设 f(x) 在 [0, 1] 上连续，证明存在 xi 使得...", C.YELLOW))
+                    continue
+
+                hint_lvl = 1
+                for h in history[-4:]:
+                    c = h.get("content", "")
+                    if "【第 1 级启发性提示】" in c: hint_lvl = 2
+                    if "【第 2 级启发性提示】" in c: hint_lvl = 3
+
+                print(colorize(f"\n[💡 苏格拉底导师正在为您构建 Level {hint_lvl} 微步骤启发 (严守不剧透铁律)...]\n", C.CYAN))
+                hint_prompt = socratic_tutor.build_hint_prompt(target_q, hint_level=hint_lvl) if socratic_tutor else target_q
+                messages = [
+                    {"role": "system", "content": "你是一位深谙苏格拉底式启发教学理念的考研专属私教总教练。"},
+                    {"role": "user", "content": hint_prompt}
+                ]
+                reply = stream_chat(messages, cfg)
+                if reply:
+                    history.append({"role": "user", "content": f"/hint {target_q}"})
+                    history.append({"role": "assistant", "content": f"【第 {hint_lvl} 级启发性提示】\n{reply}"})
+                    print_followup_toolbar()
+                continue
+
+            # ── 技能: /batch 或 /answers 客观题答题卡批量对题 ──
+            elif cmd in ("/batch", "/answers"):
+                if not arg:
+                    print(colorize("用法: /batch <你的选项答案序列> [标准答案序列]\n示例:\n  /batch 1-5: A B C D A; 6-10: C B A D C\n  /batch 我的答案: CADBD 标准答案: CADBC", C.YELLOW))
+                    continue
+                print(colorize(f"\n[📊 正在核对客观题答题卡并统计正答率与错题考点...]\n", C.CYAN))
+                batch_prompt = (
+                    "你是一位考研命题与阅卷总教练。学员输入了一组客观选择题的答题卡选项：\n\n"
+                    f"```text\n{arg}\n```\n\n"
+                    "请按照以下格式进行批量核对与诊断：\n"
+                    "1. 【正误统计】：逐题核对并列出对错清单，计算总正答率与得分；\n"
+                    "2. 【错题聚类与考点定位】：明确指出错题分别考察考纲哪一章节考点；\n"
+                    "3. 【深度精讲指引】：挑出错题中最关键的一道，指出解题突破口并建议学员在草稿纸上复练。"
+                )
+                messages = [
+                    {"role": "system", "content": "你是一位考研阅卷与答题卡批改专家。"},
+                    {"role": "user", "content": batch_prompt}
+                ]
+                reply = stream_chat(messages, cfg)
+                if reply:
+                    history.append({"role": "user", "content": f"/batch {arg}"})
+                    history.append({"role": "assistant", "content": reply})
+                    print_followup_toolbar()
+                continue
+
+            # ── 技能 4: /dissect 英语长难句解剖 ──
+            elif cmd in ("/dissect", "/chai"):
+                if not arg:
+                    print(colorize("用法: /dissect <考研英语长难句>\n示例: /dissect But the human mind can also imagine what it would be like...", C.YELLOW))
+                    continue
+                dissect_prompt = english_dissector.build_dissection_prompt(arg)
+                messages = [
+                    {"role": "system", "content": "你是一位考研英语长难句命题分析与拆解专家。"},
+                    {"role": "user", "content": dissect_prompt}
+                ]
+                print(colorize(f"\n[🧱 正在执行长难句搭积木分层切分...]\n", C.CYAN))
+                reply = stream_chat(messages, cfg)
+                if reply:
+                    history.append({"role": "user", "content": f"/dissect {arg}"})
+                    history.append({"role": "assistant", "content": reply})
+                continue
+
+            # ── 技能 5: /pdf 资料检索 ──
+            elif cmd == "/pdf":
+                if arg:
+                    print(colorize(f"\n[📚 正在四科资料库中检索关键词: {arg}...]\n", C.CYAN))
+                    matches = pdf_extractor.search_text_in_materials(arg)
+                    if matches:
+                        for m in matches[:10]:
+                            print("  " + m)
+                    else:
+                        print("  未检索到相关内容。")
+                else:
+                    print(colorize("\n[📚 四科「参考资料/」文献清单]:", C.CYAN))
+                    mats = pdf_extractor.list_materials()
+                    for s, flist in mats.items():
+                        print(f"  - {s}: {', '.join(flist) if flist else '暂无文件 (可放入教材PDF/真题)'}")
+                print()
+                continue
+
+            # ── 四科路由 ──
+            elif cmd in ("/math", "/shuxue"):
+                curr_subj = "math"
+                cfg["active_subject"] = "math"
+                save_config(cfg)
+                history = []
+                active_quiz_item = None
+                if agent_runner:
+                    agent_runner.set_subject("math")
+                print(colorize(f"\n[已切换至：{SUBJECT_DIRS['math'][1]}] 上下文与状态已重载。\n", C.GREEN))
+                continue
+            elif cmd in ("/eng", "/yingyu"):
+                curr_subj = "eng"
+                cfg["active_subject"] = "eng"
+                save_config(cfg)
+                history = []
+                active_quiz_item = None
+                if agent_runner:
+                    agent_runner.set_subject("eng")
+                print(colorize(f"\n[已切换至：{SUBJECT_DIRS['eng'][1]}] 上下文与状态已重载。\n", C.GREEN))
+                continue
+            elif cmd in ("/pol", "/zhengzhi"):
+                curr_subj = "pol"
+                cfg["active_subject"] = "pol"
+                save_config(cfg)
+                history = []
+                active_quiz_item = None
+                if agent_runner:
+                    agent_runner.set_subject("pol")
+                print(colorize(f"\n[已切换至：{SUBJECT_DIRS['pol'][1]}] 上下文与状态已重载。\n", C.GREEN))
+                continue
+            elif cmd in ("/pro", "/zhuanye"):
+                curr_subj = "pro"
+                cfg["active_subject"] = "pro"
+                save_config(cfg)
+                history = []
+                active_quiz_item = None
+                if agent_runner:
+                    agent_runner.set_subject("pro")
+                print(colorize(f"\n[已切换至：{SUBJECT_DIRS['pro'][1]}] 上下文与状态已重载。\n", C.GREEN))
+                continue
+            # ── 辅导风格动态切换 ──
+            elif cmd == "/style":
+                new_style, changed = manage_coaching_style(arg)
+                if changed:
+                    print(colorize(f"\n[√ 辅导风格切换成功] 当前已激活：{new_style}\n", C.GREEN))
+                else:
+                    cur_s, _ = manage_coaching_style()
+                    print(colorize(f"\n=== 🎯 当前私教辅导风格: {cur_s} ===", C.BOLD))
+                    for k, (name, desc) in COACHING_STYLES.items():
+                        mark = colorize(" [当前激活]", C.GREEN) if name == cur_s else ""
+                        print(f"  [{k}] {name}{mark}\n      {desc}")
+                    print("切换命令示例: /style 1 或 /style 2\n")
+                continue
+            # ── 今日任务打卡 ──
+            elif cmd == "/done":
+                if not arg:
+                    print(colorize("用法: /done <任务关键词>\n示例: /done 导数中值定理", C.YELLOW))
+                    continue
+                ok, msg = mark_today_task_done(arg, curr_subj)
+                tag = C.GREEN if ok else C.YELLOW
+                print(colorize(f"\n[{msg}]\n", tag))
+                continue
+            # ── 系统全链路健康诊断 ──
+            elif cmd == "/doctor":
+                try:
+                    import doctor
+                    doctor.run_doctor()
+                except Exception as e:
+                    print(colorize(f"\n[!] 执行 doctor 异常: {e}\n", C.RED))
+                continue
+            elif cmd == "/clear":
+                history = []
+                print(colorize("\n[已清空当前会话上下文]\n", C.YELLOW))
+                continue
+            elif cmd == "/config":
+                interactive_config()
+                cfg = load_config()
+                if agent_runner and hasattr(agent_runner, "config"):
+                    agent_runner.config.update(cfg)
+                continue
+            elif cmd == "/notify":
+                broadcast_briefing(cfg)
+                continue
+            elif cmd == "/build":
+                print(colorize("\n[正在重新编译移动端看板...]", C.CYAN))
+                build_py = ROOT / "05-考研看板" / "build.py"
+                if build_py.exists():
+                    import subprocess
+                    subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"))
+                print()
+                continue
+            elif cmd in ("/view", "/live"):
+                import webbrowser
+                target_url = f"http://localhost:{live_port or 8088}/live"
+                webbrowser.open(target_url)
+                print(colorize(f"\n[已在默认浏览器中打开实时可视化伴侣: {target_url}]\n", C.GREEN))
+                continue
+            elif cmd in ("/today", "/tasks", "/task"):
+                print_today_tasks_summary()
+                continue
+            elif cmd in ("/exit", "/quit", "exit", "quit"):
+                if agent_runner and hasattr(agent_runner, "hooks"):
+                    agent_runner.hooks.trigger_session_end({"active_subject": curr_subj})
+                print("\n再见！保持节奏，一战成硕！🎓")
+                break
+            elif cmd in ("/plan", "/profile", "/blueprint"):
+                try:
+                    import study_planner
+                    study_planner.run_study_plan_wizard(interactive=True)
+                    cfg = load_config()
+                except Exception as e:
+                    print(f"方案设计提示: {e}")
+                continue
+            elif cmd in ("/subject", "/syllabus"):
+                manage_syllabi_cli(cfg)
+                continue
+            elif cmd in ("/exam", "/compose"):
+                sub_target = curr_subj
+                exam_count = 3
+                if arg:
+                    for part in arg.split():
+                        if part.startswith("--count="):
+                            try: exam_count = int(part.split("=")[1])
+                            except (ValueError, TypeError):
+                                pass
+                        elif part.isdigit():
+                            exam_count = int(part)
+                        else:
+                            for sk, sv in (("math", "数"), ("eng", "英"), ("pol", "政"), ("pro", "专")):
+                                if sk in part.lower() or sv in part:
+                                    sub_target = sk
+                                    break
+                if exam_composer:
+                    print(colorize(f"\n[📝 正在基于错题库与高频考点为【{SUBJECT_DIRS.get(sub_target, ('', sub_target))[1]}】靶向组卷 ({exam_count}题)...]\n", C.CYAN))
+                    res = exam_composer.compose_exam_paper(sub_target, count=exam_count, save_file=True)
+                    print(res.get("formatted_paper", ""))
+                    if res.get("saved_path"):
+                        print(colorize(f"[√ 试卷已归档至]: {res['saved_path']}\n", C.GREEN))
+                else:
+                    print(colorize("[!] exam_composer 技能未载入", C.RED))
+                continue
+            elif cmd in ("/scout", "/yuanxiao", "/school"):
+                parts = arg.strip().split()
+                target_school = parts[0] if parts else ""
+                target_major = parts[1] if len(parts) > 1 else ""
+                if not target_school:
+                    cfg_tmp = load_config()
+                    target_school = cfg_tmp.get("study_plan", {}).get("school", "")
+                    target_major = cfg_tmp.get("study_plan", {}).get("major", "")
+                if not target_school or target_school == "目标院校":
+                    print(colorize("用法: /scout <高校名> [专业名]\n示例: /scout 华中科技大学 计算机\n提示: 也可在 ky_config.json 中配置目标院校后直接输入 /scout", C.YELLOW))
+                    continue
+                if school_scout:
+                    print(colorize(f"\n[🎯 正在对【{target_school}】{target_major} 启动研招官方与知乎/B站/小红书舆情侦察...]\n", C.CYAN))
+                    res = school_scout.scout_school(school=target_school, major=target_major, include_social=True, save_report=True, apply_to_config=False, use_llm=True)
+                    print(res.get("formatted_report", ""))
+                    if res.get("saved_path"):
+                        print(colorize(f"\n[√ 完整研报已归档至]: {res['saved_path']}\n", C.GREEN))
+                else:
+                    print(colorize("[!] school_scout 技能未载入", C.RED))
+                continue
+            elif cmd in ("/admission", "/admit", "/zs"):
+                parts = arg.strip().split()
+                target_school = parts[0] if parts else ""
+                target_major = parts[1] if len(parts) > 1 else ""
+                if not target_school:
+                    cfg_tmp = load_config()
+                    target_school = cfg_tmp.get("study_plan", {}).get("school", "")
+                    target_major = cfg_tmp.get("study_plan", {}).get("major", "")
+                if not target_school or target_school == "目标院校":
+                    print(colorize("用法: /admission <高校名> [专业代码/名]\n示例: /admission 华中科技大学 085404", C.YELLOW))
+                    continue
+                if intelligence:
+                    engine = intelligence.get_intelligence_engine()
+                    print(colorize(f"\n[🏛️ KaoYan Intelligence: 正在调取【{target_school}】研招网与官方站点证据链...]\n", C.CYAN))
+                    res = engine.query(school_query=target_school, major_query=target_major, save_report=True)
+                    print(res.get("markdown_report", ""))
+                    if res.get("saved_path"):
+                        print(colorize(f"\n[√ 考情证据研报已归档至]: {res['saved_path']}\n", C.GREEN))
+                else:
+                    print(colorize("[!] intelligence 引擎模块未载入", C.RED))
+                continue
+            elif cmd in ("/watch", "/jk"):
+                parts = arg.strip().split()
+                if intelligence:
+                    watcher = intelligence.AdmissionWatcher()
+                    if not parts or parts[0] in ("list", "-l"):
+                        watched = watcher.list_watched()
+                        if not watched:
+                            print(colorize("当前暂未监控任何高校招考动态。添加示例: /watch 华中科技大学", C.YELLOW))
+                        else:
+                            print(colorize(f"\n[📡 当前动态监控雷达高校 ({len(watched)} 所)]:", C.CYAN))
+                            for w in watched:
+                                print(f"  • {w['name']} (代码: {w['chsi_code']}) ｜ 最近检查: {w.get('last_check', '未检查')}")
+                            print(colorize("提示: 输入 /watch check 立即比对最新简章变动\n", C.CYAN))
+                    elif parts[0] in ("check", "-c"):
+                        print(colorize("\n[📡 正在轮询监控高校研究生院与研招办最新公告...]\n", C.CYAN))
+                        findings = watcher.check_updates()
+                        for f in findings:
+                            if f.get("status") == "UPDATED":
+                                print(colorize(f"  🔥 [发现新动态] {f['school']}:", C.GREEN))
+                                for t in f.get("alert_titles", []):
+                                    print(f"     - {t}")
+                            elif f.get("status") == "UNCHANGED":
+                                print(colorize(f"  ✓ {f['school']}: 站点正常，暂无新增简章", C.BLUE))
+                            else:
+                                print(colorize(f"  ⚠️ {f['school']}: {f.get('msg', '请求超时')}", C.YELLOW))
+                        print()
+                    elif parts[0] in ("remove", "rm", "-d"):
+                        target = parts[1] if len(parts) > 1 else ""
+                        if watcher.remove_watch(target):
+                            print(colorize(f"[√ 已取消对【{target}】的动态监控]", C.GREEN))
+                        else:
+                            print(colorize(f"[!] 未找到监控目标【{target}】", C.YELLOW))
+                    else:
+                        target = parts[0]
+                        res = watcher.add_watch(target)
+                        if res.get("success"):
+                            print(colorize(f"[√ {res.get('msg')}]: 官方入口 {res.get('url')}", C.GREEN))
+                        else:
+                            print(colorize(f"[!] 添加失败: {res.get('msg')}", C.RED))
+                else:
+                    print(colorize("[!] intelligence 引擎模块未载入", C.RED))
+                continue
+            elif cmd in ("/compare", "/vs", "/pk", "/duibi"):
+                parts = arg.strip().split()
+                if len(parts) < 2:
+                    print(colorize("用法: /compare <高校1> <高校2> [专业关键词]\n示例: /compare 华中科技大学 武汉大学 计算机", C.YELLOW))
+                    continue
+                s1, s2 = parts[0], parts[1]
+                # [根因修复] 未给专业关键词时此前硬编码「计算机」，对 814 / 085400 考生
+                # 产出的是别的专业的对比研报（并会据此落盘一份错误专业的文件）。
+                # 改为回退到考生档案里的报考专业。
+                major_kw = parts[2] if len(parts) > 2 else resolve_major_keyword(cfg)
+                if intelligence:
+                    comparator = intelligence.SchoolComparator()
+                    print(colorize(f"\n[⚔️ KaoYan Intelligence: 正在对标【{s1}】与【{s2}】({major_kw}) 考情画像...]\n", C.CYAN))
+                    res = comparator.compare(school1_query=s1, school2_query=s2, major_keyword=major_kw, save_report=True)
+                    print(res.get("terminal_report", ""))
+                    if res.get("saved_path"):
+                        print(colorize(f"\n[√ 双校横向对比研报已归档至]: {res['saved_path']}\n", C.GREEN))
+                else:
+                    print(colorize("[!] intelligence 引擎模块未载入", C.RED))
+                continue
+            elif cmd in ("/variant", "/bianshi"):
+                topic = arg.strip()
+                if not topic:
+                    topic = "导数中值定理" if curr_subj == "math" else "核心高频考点"
+                if variant_retriever:
+                    print(colorize(f"\n[🔍 正在四科白名单题源中检索【{topic}】同类真题变式...]\n", C.CYAN))
+                    res = variant_retriever.search_real_variant(subject=curr_subj, keyword=topic)
+                    print(variant_retriever.format_variant_output(res))
+                else:
+                    print(colorize("[!] variant_retriever 技能未载入", C.RED))
+                continue
+            elif cmd in ("/map", "/tupu"):
+                sub_target = curr_subj
+                if arg:
+                    for sk, sv in (("math", "数"), ("eng", "英"), ("pol", "政"), ("pro", "专")):
+                        if sk in arg.lower() or sv in arg:
+                            sub_target = sk
+                            break
+                if knowledge_map:
+                    print(knowledge_map.format_knowledge_map_table(sub_target))
+                else:
+                    print(colorize("[!] knowledge_map 技能未载入", C.RED))
+                continue
+            elif cmd in ("/diagnose", "/zhenduan"):
+                if not arg:
+                    print(colorize("用法: /diagnose <答题卡文本或文件路径>\n示例: /diagnose 1-5: A B C D A; 6-10: B C A D B", C.YELLOW))
+                    continue
+                if exam_diagnoser:
+                    content = arg
+                    if Path(arg).exists():
+                        content = Path(arg).read_text(encoding="utf-8", errors="ignore")
+                    res = exam_diagnoser.diagnose_mock_exam(subject=curr_subj, exam_input=content)
+                    print(exam_diagnoser.format_diagnosis_report(res))
+                else:
+                    print(colorize("[!] exam_diagnoser 技能未载入", C.RED))
+                continue
+            elif cmd in ("/diff", "/kaogang", "/dagang"):
+                # [P3 修复·D6] 此前 /diff 未注册，REPL 内不可达（仅 CLI ky diff 可用）
+                run_syllabus_diff(arg)
+                continue
+            elif cmd in ("/ingest", "/slice", "/qiepian"):
+                # [P3 修复·D6] 此前 /ingest 未注册，REPL 内不可达（仅 CLI ky ingest 可用）
+                run_material_ingest(arg)
+                continue
+            elif cmd == "/fatigue":
+                try:
+                    import study_planner
+                    info = study_planner.check_fatigue_alert()
+                    if info.get("alert"):
+                        print(colorize(f"\n[⚠️ 疲劳警报触发] 连续 {info.get('consecutive_low_days')} 天低完成率 (均值 {info.get('avg_rate')}%):", C.YELLOW))
+                        print(info.get("message"))
+                        print(colorize("\n💡 提示：输入 /relieve 可立即一键启动减负模式。\n", C.CYAN))
+                    else:
+                        print(colorize(f"\n[√ 复习节奏正常] {info.get('message')}\n", C.GREEN))
+                except Exception as e:
+                    print(f"检查疲劳异常: {e}")
+                continue
+            elif cmd in ("/relieve", "/jianfu"):
+                try:
+                    import study_planner
+                    res = study_planner.apply_relief_mode()
+                    if res.get("success"):
+                        print(colorize(f"\n[√ {res.get('message')}]\n", C.GREEN))
+                    else:
+                        print(colorize(f"\n[!] 启动减负失败: {res.get('message')}\n", C.RED))
+                except Exception as e:
+                    print(f"启动减负异常: {e}")
+                continue
+            elif cmd in ("/clawbot",):
+                run_wechat_clawbot_install()
+                continue
+            elif cmd in ("/gui", "/ky-gui"):
+                try:
+                    import ky_gui
+                    ky_gui.main()
+                except ImportError:
+                    try:
+                        from tools import ky_gui
+                        ky_gui.main()
+                    except ImportError:
+                        print(colorize("[!] 启动 GUI 失败，请检查是否已安装 PySide6 (pip install PySide6)", C.RED))
+                continue
+            elif cmd in ("/wechat", "/wx"):
+                cmd_wechat_search(arg.split() if arg else [])
+                continue
+            elif cmd in ("/bridge", "/bot", "/webhook"):
+                show_bridge_guide()
+                continue
+            elif cmd in ("/rollback", "/restore"):
+                try:
+                    from tools.agent import PermissionManager
+                    pm = PermissionManager(workspace_root=ROOT)
+                    res = pm.restore_last_checkpoint()
+                    if res.get("success"):
+                        print(colorize(f"\n[√ 快照回滚成功] {res.get('message')}\n", C.GREEN))
+                    else:
+                        print(colorize(f"\n[!] 快照回滚失败: {res.get('message')}\n", C.YELLOW))
+                except Exception as e:
+                    print(f"回滚失败: {e}")
+                continue
+            elif cmd.startswith("/memory"):
+                parts = user_input.strip().split()
+                sub = parts[1].lower() if len(parts) > 1 else "status"
+                try:
+                    from tools.agent import MemoryManager
+                    mem_mgr = MemoryManager(workspace_root=ROOT)
+                    if sub in ("status", "health"):
+                        health = mem_mgr.get_memory_health()
+                        print(colorize("\n=== 🧠 三级分层记忆健康度 ===", C.BOLD))
+                        print(f"总 Tokens: {health['total_tokens']} | 字符数: {health['total_chars']}")
+                        for scope, info in health.get("details", {}).items():
+                            st_color = C.GREEN if info.get('status') == 'ok' else C.YELLOW
+                            print(f"  • [{colorize(info.get('status', 'ok'), st_color)}] {scope}: {info.get('tokens', 0)} tokens ({info.get('chars', 0)} chars)")
+                        print()
+                    elif sub in ("prune", "trim"):
+                        target_scopes = [parts[2]] if len(parts) > 2 else ["session", "decisions"]
+                        any_pruned = False
+                        for target_scope in target_scopes:
+                            res = mem_mgr.prune_memory(scope=target_scope, max_items=50, archive_to_decisions=True)
+                            if res.get("pruned"):
+                                any_pruned = True
+                                print(colorize(f"\n[√ 记忆修剪] 作用域: {target_scope} | 修剪: {res.get('pruned_count')} 条 | 归档: {res.get('archived_count')} 条", C.GREEN))
+                        if not any_pruned:
+                            print(colorize("\n[i] 各层记忆条目未超限，无需修剪。\n", C.CYAN))
+                        else:
+                            print()
+                except Exception as e:
+                    print(f"记忆管理失败: {e}")
+                continue
+            elif cmd == "/status":
+                print_status_summary()
+                continue
+            else:
+                print(colorize(f"未知指令 {cmd}，输入 /skills 查看可用技能，或输入 /math /eng /pol /pro", C.RED))
+                continue
+
+        # ── FSRS 错题盲盒作答判定 ──
+        if active_quiz_item and not user_input.startswith("/"):
+            if user_input.lower() in ("cancel", "/cancel", "退出", "放弃"):
+                active_quiz_item = None
+                print(colorize("\n[已退出当前错题盲盒复测]\n", C.YELLOW))
+                continue
+
+            print(colorize(f"\n[🎯 考研阅卷人正在对您的盲盒复测作答进行智能核验与采分...]\n", C.CYAN))
+            quiz_eval_prompt = (
+                f"你是一位考研全真阅卷专家。学员正在对以下历史错题进行【FSRS 盲盒复测】：\n\n"
+                f"【题目标题】：{active_quiz_item['title']}\n"
+                f"【原题设问与题干】：\n{active_quiz_item['question']}\n\n"
+                f"【学员复测提交的作答】：\n{user_input}\n\n"
+                f"请按真题采分点严格判定：\n"
+                f"1. 核验学员的核心步骤与最终结论是否正确无误？\n"
+                f"2. 若完全正确，请在回答首行明确标出：`【复测通过·已掌握】`，并简明指出亮点与关键得分点；\n"
+                f"3. 若仍有错误或计算失误，请在回答首行明确标出：`【复测未通过·需强化】`，指出具体第几步失误与错因五分类，并给出正解示范。"
+            )
+            messages = [
+                {"role": "system", "content": "你是一位考研真题阅卷与 FSRS 复测主考官。"},
+                {"role": "user", "content": quiz_eval_prompt}
+            ]
+            reply = stream_chat(messages, cfg)
+            if reply:
+                if "【复测通过·已掌握】" in reply or "复测通过" in reply:
+                    ok, msg = error_logger.mark_error_status(
+                        active_quiz_item["subject"],
+                        active_quiz_item["file_name"],
+                        active_quiz_item["title"],
+                        new_status="已掌握"
+                    )
+                    print(colorize(f"\n🎉 [FSRS 系统判定]: {msg} 掌握度已更新，该题已从复测队列出库！\n", C.GREEN))
+                else:
+                    print(colorize("\n⚠️ [FSRS 系统判定]: 复测仍有失误，已重置 FSRS 记忆周期，保持在待测队列！\n", C.YELLOW))
+                history.append({"role": "user", "content": f"[错题复测作答: {active_quiz_item['title']}] {user_input}"})
+                history.append({"role": "assistant", "content": reply})
+                active_quiz_item = None
+                print_followup_toolbar()
+            continue
+
+        # ── LLM 交互 (Agent Loop 驱动) ──
+        append_live_message("user", user_input)
+        print(colorize(f"\n[{SUBJECT_DIRS[curr_subj][1]} 正在思考并规划解答...]\n", C.DIM))
+
+        reply = ""
+        if agent_runner and cfg.get("api_key"):
+            # [D2 修复] 只读模式下 Agent 若触发写工具，抛 PermissionDeniedError；
+            # 此前会直接冒栈终止会话，现降级为可见提示并继续对话。
+            try:
+                reply = agent_runner.run(user_input, interactive=True)
+            except Exception as _agent_err:
+                if _agent_err.__class__.__name__ == "PermissionDeniedError":
+                    print(colorize(f"\n[✘ 已拒绝] {_agent_err}", C.RED))
+                    continue
+                raise
+        else:
+            # 降级传统 stream_chat
+            sys_prompt = build_system_prompt(curr_subj)
+            messages = [{"role": "system", "content": sys_prompt}]
+            for h in history[-6:]:  # 保持最近 6 轮
+                messages.append(h)
+            messages.append({"role": "user", "content": user_input})
+            reply = stream_chat(messages, cfg)
+            if reply:
+                append_live_message("assistant", reply)
+                history.append({"role": "user", "content": user_input})
+                history.append({"role": "assistant", "content": reply})
+
+            # 如果回复中包含 LaTeX，在终端下方自动打印美化版本并提示 /view
+            if latex_beautifier and any(sym in reply for sym in ("\\(", "\\[", "\\int", "\\frac", "\\lim", "\\sum", "$$")):
+                beautified = latex_beautifier.prettify_latex_for_terminal(reply)
+                print(colorize("\n" + "─" * 58, C.DIM))
+                print(colorize(" 📐 【终端数学公式与推导步骤美化视图】", C.BOLD))
+                print(colorize("─" * 58, C.DIM))
+                print(beautified)
+                print(colorize("─" * 58, C.DIM))
+                print(colorize(" 💡 提示: 输入 /view 可在浏览器中对照查看印刷级 KaTeX 排版！\n", C.YELLOW))
+            else:
+                print()
+
+            # Codex CLI 风格快捷操作栏 (Follow-up Toolbar)
+            print_followup_toolbar()
+
+# ════════════════════════════════════════════════════════════════
+# 6. Webhook 网关模式 (`ky serve --port 8088`)
+# ════════════════════════════════════════════════════════════════
+
+def query_llm_reply(user_msg, cfg=None):
+    """网关统一调用私教大模型生成详细讲题回复 (支持 Web 伴侣上下文记忆与防 403 拦截)"""
+    # 动态加载最新配置，避免使用启动时的陈旧配置
+    latest_cfg = load_config()
+    if cfg:
+        latest_cfg.update({k: v for k, v in cfg.items() if v})
+    cfg = latest_cfg
+
+    active_subj = cfg.get("active_subject", "math")
+    if "英语" in user_msg or "/eng" in user_msg: active_subj = "eng"
+    elif "政治" in user_msg or "/pol" in user_msg: active_subj = "pol"
+    elif "专业课" in user_msg or "/pro" in user_msg: active_subj = "pro"
+    elif "数学" in user_msg or "/math" in user_msg: active_subj = "math"
+
+    if user_msg.startswith("/calc") or "验算" in user_msg:
+        try:
+            mv = math_verifier
+            if mv is None:
+                try:
+                    from skills import math_verifier as mv
+                except ImportError:
+                    from tools.skills import math_verifier as mv
+            expr = user_msg.replace("/calc", "").replace("验算", "").strip()
+            if expr and mv:
+                return mv.run_math_query(expr)
+        except Exception:
+            pass
+
+    sys_prompt = build_system_prompt(active_subj)
+    messages = [{"role": "system", "content": sys_prompt}]
+
+    # 挂载 Web 伴侣最近多轮会话上下文 (提取最近 6 轮对话)，确保“选C”等后续选项或追问能精准关联题目
+    import re
+    for m in LIVE_SESSION_MESSAGES[-6:]:
+        c = m.get("content", "")
+        if '<img' in c:
+            c = re.sub(r'<img[^>]*>', '[学员手写草稿图片]', c)
+        if c.strip():
+            messages.append({"role": m.get("role", "user"), "content": c})
+
+    # 避免当前用户消息被重复追加
+    if not messages or messages[-1].get("content") != user_msg:
+        messages.append({"role": "user", "content": user_msg})
+
+    api_key = cfg.get("api_key", "").strip()
+    raw_base_url = cfg.get("base_url", "https://api.deepseek.com/v1")
+    if not api_key or api_key == "YOUR_API_KEY_HERE" or "example.com" in raw_base_url:
+        return f"🎓【考研私教】收到提问: \"{user_msg}\"\n⚠️ 尚未配置大模型 API Key，请在电脑端终端运行 `ky config` 设置密钥后即可畅享网页端与群聊对话讲题！"
+
+    url = normalize_openai_url(raw_base_url, "chat/completions")
+    model = cfg.get("model", "deepseek-chat")
+
+    # 标配浏览器真实 User-Agent 与 Accept 标头，严防云厂商 WAF 将 Python-urllib 拦截为 403 Forbidden
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Kaoyan-Study-Chain/1.0",
+        "Accept": "application/json"
+    }
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": cfg.get("temperature", 0.3),
+        "stream": False
+    }
+
+    try:
+        data_bytes = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
+        # [P1 修复·超时分层层级] 此前内层 urlopen 与调用方（网关客户端/SDK）
+        # 常设同一量级的超时（均 60s），两者会「赛跑」：上游稍慢或请求在
+        # ThreadingHTTPServer 线程队列里排队时，内层还没返回、外层客户端先超时，
+        # 于是同一套正常配置时而成功时而报 “timed out”（抖动型假红）。
+        # 正确做法是内层严格短于外层，让服务端总是能先拿到结果或抛出可读的
+        # 错误文案，再由 HTTP 200 正常回给客户端。此处内层取 55s，
+        # 为外层默认 60s 留出回包余量；可用 KY_LLM_TIMEOUT 覆盖。
+        _inner_timeout = 55.0
+        try:
+            _inner_timeout = float(os.environ.get("KY_LLM_TIMEOUT", "55"))
+        except (TypeError, ValueError):
+            _inner_timeout = 55.0
+        with urllib.request.urlopen(req, timeout=_inner_timeout) as resp:
+            res_json = json.loads(resp.read().decode("utf-8"))
+            return res_json["choices"][0]["message"]["content"]
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="ignore")
+        detail = ""
+        try:
+            err_json = json.loads(err_body)
+            detail = err_json.get("error", {}).get("message") or err_json.get("message") or ""
+        except Exception:
+            detail = err_body[:200]
+        return f"🎓【考研私教解答异常】：模型服务请求失败 (HTTP {e.code}: {e.reason})。\n错误详情: {detail or '服务商拒绝访问，请检查 API Key 余额或权限'}\n建议：请在终端输入 /config 检查模型与密钥配置。"
+    except Exception as e:
+        return f"🎓【考研私教网络连接异常】: {e}"
+
+def create_gateway_handler(token: str = ""):
+    """
+    构造网关 HTTP handler。
+    - token 非空：对所有敏感端点（包括 /api/live 会话内容、/v1/chat/completions 等）强制要求
+      Authorization: Bearer <token> 或 X-KY-Token 头；token 不匹配返回 401。
+    - token 为空：仅放行来自 127.0.0.1 / ::1 的请求，外部 IP 一律 401。
+    - 静态前端展示页面（/、/live、/index.html）放行，供网页伴侣加载 UI 骨架。
+    """
+    from http.server import BaseHTTPRequestHandler
+    effective_token = (token or os.environ.get("KY_GATEWAY_TOKEN", "")).strip()
+    cfg = load_config()
+
+    class GatewayHandler(BaseHTTPRequestHandler):
+        def _is_authorized(self):
+            parsed = urllib.parse.urlparse(self.path)
+            # 仅静态前端 UI 页面免认证
+            if parsed.path in ("/live", "/", "/index.html"):
+                return True
+            if not effective_token:
+                return self.client_address[0] in ("127.0.0.1", "::1", "localhost")
+            auth_h = self.headers.get("Authorization", "")
+            x_tok = self.headers.get("X-KY-Token", "")
+            if x_tok and x_tok == effective_token:
+                return True
+            if auth_h.startswith("Bearer ") and auth_h[7:].strip() == effective_token:
+                return True
+            return False
+
+        def _deny(self):
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("WWW-Authenticate", 'Bearer realm="ky-gateway"')
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(
+                {"error": "Unauthorized",
+                 "hint": "Provide 'Authorization: Bearer <token>' or 'X-KY-Token: <token>' header"},
+                ensure_ascii=False
+            ).encode("utf-8"))
+
+        def do_GET(self):
+            if not self._is_authorized():
+                return self._deny()
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path in ("/live", "/", "/index.html"):
+                live_html_p = ROOT / "docs" / "live.html"
+                if not live_html_p.exists():
+                    live_html_p = ROOT / "05-考研看板" / "docs" / "live.html"
+                if live_html_p.exists():
+                    content = live_html_p.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(content)
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+                    self.wfile.write(b"docs/live.html not found")
+            elif parsed.path == "/v1/models":
+                models_data = {
+                    "object": "list",
+                    "data": [
+                        {"id": "kaoyan-tutor", "object": "model", "owned_by": "kaoyan-chain"},
+                        {"id": "kaoyan-math", "object": "model", "owned_by": "kaoyan-chain"},
+                        {"id": "kaoyan-eng", "object": "model", "owned_by": "kaoyan-chain"},
+                        {"id": "kaoyan-pol", "object": "model", "owned_by": "kaoyan-chain"},
+                        {"id": "kaoyan-pro", "object": "model", "owned_by": "kaoyan-chain"}
+                    ]
+                }
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps(models_data).encode("utf-8"))
+                return
+            elif parsed.path == "/api/live":
+                data = json.dumps({"messages": LIVE_SESSION_MESSAGES}, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def do_POST(self):
+            if not self._is_authorized():
+                return self._deny()
+            cfg = load_config()
+            parsed = urllib.parse.urlparse(self.path)
+            content_length = int(self.headers.get("Content-Length", 0))
+            post_data = self.rfile.read(content_length).decode("utf-8", errors="ignore")
+            
+            # 清空可视化伴侣视图
+            if parsed.path == "/api/clear":
+                LIVE_SESSION_MESSAGES.clear()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(b'{"status":"cleared"}')
+                return
+
+            # 来自 Web 伴侣前端的提问 (支持多模态图片批改与草稿手写上传)
+            if parsed.path == "/api/ask":
+                import base64
+                import time
+                try:
+                    data = json.loads(post_data)
+                    user_msg = data.get("message", "").strip()
+                    img_base64 = data.get("image", "").strip()
+                except Exception:
+                    user_msg = post_data.strip()
+                    img_base64 = ""
+
+                if not user_msg and not img_base64:
+                    self.send_response(400)
+                    self.end_headers()
+                    return
+
+                reply = ""
+                # 1. 若前端上传了图片 (拍照/截图/剪贴板Ctrl+V)
+                if img_base64:
+                    upload_dir = ROOT / "tools" / "scratch" / "uploads"
+                    upload_dir.mkdir(parents=True, exist_ok=True)
+                    img_filename = f"web_upload_{int(time.time()*1000)}.png"
+                    img_path = upload_dir / img_filename
+                    try:
+                        header_sep = img_base64.find(",")
+                        raw_b64 = img_base64[header_sep+1:] if header_sep != -1 else img_base64
+                        decoded_bytes = base64.b64decode(raw_b64, validate=True)
+                        img_path.write_bytes(decoded_bytes)
+                        print(colorize(f"\n[📸 收到 Web 伴侣上传图片: {img_filename}，启动视觉技能阅卷批改...]", C.CYAN))
+                        vs = vision_solver
+                        if vs is None:
+                            try:
+                                from skills import vision_solver as vs
+                            except ImportError:
+                                from tools.skills import vision_solver as vs
+                        prompt_text = user_msg or "请详细批改本题并按步骤给分，指出关键推导与可能的丢分点。"
+                        reply = vs.solve_image_with_model(str(img_path), prompt_text, cfg, stream=False)
+                    except Exception as err:
+                        # [P0 修复] 解码/解析失败直接返回 400，严禁继续拼接 HTML 造成存储型 XSS
+                        self.send_response(400)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.send_header("Access-Control-Allow-Origin", "*")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"reply": f"【图片解析异常】: {err}"}, ensure_ascii=False).encode("utf-8"))
+                        return
+
+                    # 严格转义防范 XSS
+                    safe_msg = html.escape(user_msg) if user_msg else ""
+                    safe_img_src = html.escape(img_base64) if img_base64.startswith("data:image/") else f"data:image/png;base64,{html.escape(raw_b64)}"
+                    user_display = f'<img src="{safe_img_src}" class="bubble-uploaded-img" alt="手写草稿" />' + (f'<div>{safe_msg}</div>' if safe_msg else '')
+                    append_live_message("user", user_display)
+                    append_live_message("assistant", reply)
+                else:
+                    # 2. 纯文字提问，使用 query_llm_reply 进行学科路由、技能验算与反幻觉保障
+                    append_live_message("user", user_msg)
+                    reply = query_llm_reply(user_msg, cfg)
+                    append_live_message("assistant", reply)
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"reply": reply}, ensure_ascii=False).encode("utf-8"))
+                return
+
+            # ── OpenAI 兼容接口 (/v1/chat/completions 供 OpenClaw / WeChat ClawBot 使用) ──
+            if parsed.path in ("/v1/chat/completions", "/chat/completions"):
+                import time
+                # 先初始化 req_data，确保 JSON 解析失败时也不会 NameError
+                req_data = {}
+                try:
+                    req_data = json.loads(post_data) if post_data else {}
+                    msgs = req_data.get("messages", [])
+                    user_msg = msgs[-1]["content"] if msgs else ""
+                except Exception:
+                    user_msg = post_data.strip()
+
+                reply = query_llm_reply(user_msg, cfg)
+                append_live_message("user", f"[微信ClawBot提问]: {user_msg}")
+                append_live_message("assistant", reply)
+
+                completion_data = {
+                    "id": f"chatcmpl-ky-{int(time.time())}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": req_data.get("model", "kaoyan-tutor") if isinstance(req_data, dict) else "kaoyan-tutor",
+                    "choices": [{
+                        "index": 0,
+                        "message": {"role": "assistant", "content": reply},
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {"prompt_tokens": len(user_msg), "completion_tokens": len(reply), "total_tokens": len(user_msg) + len(reply)}
+                }
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps(completion_data, ensure_ascii=False).encode("utf-8"))
+                return
+
+# ── 1. 飞书开放平台 URL 校验握手 (url_verification) ──
+            try:
+                data = json.loads(post_data) if post_data else {}
+            except Exception:
+                data = {}
+
+            if data.get("type") == "url_verification":
+                challenge = data.get("challenge", "")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"challenge": challenge}).encode("utf-8"))
+                print(colorize("\n[✔ 飞书开放平台 Webhook URL 校验握手成功！]", C.GREEN))
+                return
+
+            user_msg = ""
+            session_webhook = None
+            is_feishu_event = False
+
+            # A. 钉钉 incoming (含 sessionWebhook 回调)
+            if "text" in data and isinstance(data["text"], dict) and "content" in data["text"]:
+                user_msg = data["text"]["content"].strip()
+                session_webhook = data.get("sessionWebhook")
+            # B. 飞书 v2 事件 (im.message.receive_v1)
+            elif "event" in data and isinstance(data["event"], dict):
+                is_feishu_event = True
+                ev = data["event"]
+                if "message" in ev and isinstance(ev["message"], dict):
+                    raw_c = ev["message"].get("content", "")
+                    try:
+                        inner = json.loads(raw_c)
+                        user_msg = inner.get("text", "").strip()
+                    except Exception:
+                        user_msg = str(raw_c).strip()
+                    user_msg = re.sub(r"@_user_\d+", "", user_msg).strip()
+                elif "text" in ev:
+                    user_msg = str(ev["text"]).strip()
+            # C. 企业微信
+            elif "Content" in data:
+                user_msg = str(data["Content"]).strip()
+            # D. QQ OneBot 11
+            elif "raw_message" in data:
+                user_msg = str(data["raw_message"]).strip()
+            elif "message" in data and isinstance(data["message"], str):
+                user_msg = str(data["message"]).strip()
+            else:
+                user_msg = post_data.strip()
+
+            if not user_msg:
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"ok")
+                return
+
+            print(colorize(f"\n[🤖 收到群聊机器人呼入提问]: {user_msg}", C.CYAN))
+
+            # ── 场景 1: 钉钉 sessionWebhook 异步回传 (彻底解决 5 秒超时) ──
+            if session_webhook:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b'{"msgtype":"empty"}')
+
+                def dingtalk_bg(msg, s_url):
+                    ans = query_llm_reply(msg, cfg)
+                    append_live_message("user", f"[钉钉群提问]: {msg}")
+                    append_live_message("assistant", ans)
+                    try:
+                        p_data = {
+                            "msgtype": "markdown",
+                            "markdown": {
+                                "title": "考研私教解答",
+                                "text": f"### 🎓 考研私教解答\n\n> **提问**: {msg}\n\n{ans}"
+                            }
+                        }
+                        req = urllib.request.Request(s_url, data=json.dumps(p_data).encode("utf-8"), headers={"Content-Type": "application/json"})
+                        urllib.request.urlopen(req, timeout=10)
+                        print(colorize(f"[✔ 考研私教解答已成功送达钉钉群聊]", C.GREEN))
+                    except Exception as err:
+                        print(colorize(f"[!] 钉钉异步发送失败: {err}", C.RED))
+
+                import threading
+                threading.Thread(target=dingtalk_bg, args=(user_msg, session_webhook), daemon=True).start()
+                return
+
+            # ── 场景 2: 飞书事件订阅 (需 3 秒内返回 200) ──
+            if is_feishu_event:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b'{"code":0}')
+
+                def feishu_bg(msg):
+                    ans = query_llm_reply(msg, cfg)
+                    append_live_message("user", f"[飞书群提问]: {msg}")
+                    append_live_message("assistant", ans)
+                    f_hook = cfg.get("webhooks", {}).get("feishu")
+                    if f_hook:
+                        send_to_feishu(f_hook, f"🎓 考研私教解答\n\n> 提问: {msg}\n\n{ans}")
+                        print(colorize(f"[✔ 考研私教解答已推回飞书群聊]", C.GREEN))
+
+                import threading
+                threading.Thread(target=feishu_bg, args=(user_msg,), daemon=True).start()
+                return
+
+            # ── 场景 3: QQ OneBot 11 与其他 HTTP 同步应答 ──
+            # 说明：QQ OneBot / OpenAI 兼容端点的协议约定就是「HTTP 响应体内携带
+            # 解答正文」（OneBot: {"reply": ...}；OpenAI: choices[0].message）。
+            # 因此这里必须保持同步应答语义，不能像钉钉/飞书那样先回空 ack 再异步推。
+            # 上游 LLM 单次耗时约 12~15 秒属正常推理延迟，调用方（真实 QQ 机器人框架
+            # 自带重试、OpenAI SDK 默认长超时）按各自协议等待即可；
+            # 测试套件里原先的 5 秒客户端超时是「测试夹具设置不当」，已在
+            # test_ky_suite.py 中按真实推理耗时上调（见该处 [P1 修复] 注释），
+            # 不在此处改动线上协议契约。
+            reply = query_llm_reply(user_msg, cfg)
+            append_live_message("user", user_msg)
+            append_live_message("assistant", reply)
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+
+            if "post_type" in data:
+                resp_body = json.dumps({"reply": reply, "at_sender": True}, ensure_ascii=False)
+            else:
+                resp_body = json.dumps({"msgtype": "text", "text": {"content": reply}}, ensure_ascii=False)
+            self.wfile.write(resp_body.encode("utf-8"))
+
+        def log_message(self, format, *args):
+            return  # 静默请求日志
+
+    return GatewayHandler
+
+def start_background_live_server(start_port=8088, host="127.0.0.1"):
+    """
+    在后台静默启动 Web 实时伴侣服务器，自动处理端口占用。
+
+    安全默认值：仅绑定 127.0.0.1，避免局域网白嫖 API 额度；
+    若调用方需要对外（IM 群机器人从其他机器回调），请显式传入 host="0.0.0.0"
+    并配套 KY_GATEWAY_TOKEN。
+    """
+    from http.server import ThreadingHTTPServer
+    import threading
+    effective_token = os.environ.get("KY_GATEWAY_TOKEN", "").strip()
+    handler_class = create_gateway_handler(token=effective_token)
+    bind_host = host
+    for p in range(start_port, start_port + 20):
+        try:
+            httpd = ThreadingHTTPServer((bind_host, p), handler_class)
+            t = threading.Thread(target=httpd.serve_forever, daemon=True)
+            t.start()
+            if bind_host not in ("127.0.0.1", "localhost", "::1"):
+                if effective_token:
+                    print(colorize(f"\n[√] 网关监听于 {bind_host}:{p}，已成功启用 Token 鉴权保护。\n", C.GREEN))
+                else:
+                    print(colorize(
+                        f"\n[!] 网关监听于 {bind_host}:{p}（非本机回环）。"
+                        f"强烈建议设置环境变量 KY_GATEWAY_TOKEN 启用鉴权，"
+                        f"否则 LAN 内任何人都可调用 /v1/chat/completions 或读取会话！\n",
+                        C.RED))
+            return p
+        except OSError:
+            continue
+    return None
+
+def show_bridge_guide():
+    """打印钉钉、飞书、QQ、微信双向对话讲题接入指南"""
+    import socket
+    local_ip = "127.0.0.1"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("223.5.5.5", 80))
+        cand_ip = s.getsockname()[0]
+        s.close()
+        if not cand_ip.startswith(("198.18.", "198.19.", "127.")):
+            local_ip = cand_ip
+    except Exception:
+        pass
+    if local_ip == "127.0.0.1":
+        try:
+            _, _, ips = socket.gethostbyname_ex(socket.gethostname())
+            for ip in ips:
+                if (ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172.")) and not ip.startswith(("198.18.", "198.19.")):
+                    local_ip = ip
+                    break
+        except Exception:
+            pass
+
+    cfg = load_config()
+    print(f"""
+{C.CYAN}╭────────────────────────────────────────────────────────────────────────╮
+│  🤖 考研智能体 · 聊天机器人群聊「双向对话讲题」完整打通指南              │
+╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
+
+{C.BOLD}【核心原理科普：为什么之前“可以连接但无法对话”？】{C.RESET}
+• {C.YELLOW}单向推送 Webhook{C.RESET} (您之前配置的): 相当于大喇叭，电脑只能往群里“推送”晨报，群里的消息大模型听不到。
+• {C.GREEN}双向对话 Webhook{C.RESET} (本网关): 钉钉/飞书/QQ 收到群员提问后，把题目 POST 给考研网关，私教批改完立即在群里回复。
+
+{C.BOLD}【当前网关服务地址】{C.RESET}
+  • 本地/同局域网回调地址: {C.GREEN}http://{local_ip}:8088/webhook{C.RESET}
+  • 外网穿透参考命令: {C.CYAN}cpolar http 8088{C.RESET} 或 {C.CYAN}cloudflared tunnel --url http://localhost:8088{C.RESET}
+
+────────────────────────────────────────────────────────────────────────
+{C.BOLD}📌 0. 微信个人号 (WeChat ClawBot 手机扫码直连，无需公网与穿透):{C.RESET}
+  ① 在终端直接运行命令: {C.CYAN}ky clawbot{C.RESET} (或 {C.CYAN}npx -y @tencent-weixin/openclaw-weixin-cli@latest install{C.RESET})
+  ② 终端将自动输出微信登录二维码，打开手机微信【扫一扫】授权连接
+  ③ 本地考研私教 OpenAI API 地址: {C.GREEN}http://127.0.0.1:8088/v1{C.RESET} (自动挂载全科考纲与解题技能)
+  ④ 在个人微信中给机器人发题目，即可随时随地在手机上享受考研私教 1对1 讲题！
+
+────────────────────────────────────────────────────────────────────────
+{C.BOLD}📌 1. 钉钉群 (DingTalk) 实现双向讲题:{C.RESET}
+  ① 打开钉钉电脑端 ➔ 进入你的考研备考群 ➔ 点击右上角【群设置】➔【智能群助手】
+  ② 找到你创建的自定义机器人 ➔ 点击展开设置
+  ③ 开启【机器人回调】开关 ➔ 在【POST 地址】中填入:
+     {C.GREEN}http://<你的公网IP或穿透域名>/webhook{C.RESET}
+  ④ 保存即可！在群里直接输入: {C.YELLOW}@机器人 学数学：请问罗尔定理的核心条件是什么？{C.RESET}
+     考研私教会自动识别、步骤采分并推回群聊！(已内置异步通道，绝不超时)
+
+────────────────────────────────────────────────────────────────────────
+{C.BOLD}📌 2. 飞书群 (Feishu) 实现双向讲题:{C.RESET}
+  ① 打开【飞书开放平台 (open.feishu.cn)】➔ 创建自建企业应用 ➔ 添加【机器人】能力
+  ② 在【事件与回调】页面，在【请求网址】填入:
+     {C.GREEN}http://<你的公网IP或穿透域名>/webhook{C.RESET}
+     (系统已内置 url_verification 握手，飞书会提示“校验成功”)
+  ③ 添加事件: 【接收消息 (im.message.receive_v1)】
+  ④ 发布应用并在群聊中添加该机器人，在群里 @机器人 即可对话讲题！
+
+────────────────────────────────────────────────────────────────────────
+{C.BOLD}📌 3. QQ 群 (NapCat / OneBot 11 本地模式，无需公网 IP):{C.RESET}
+  ① 在本地启动 NapCat QQ 机器人 (自带 Web 控制台)
+  ② 在网络配置中添加【HTTP 事件上报】，上报地址填: {C.GREEN}http://127.0.0.1:8088/webhook{C.RESET}
+  ③ 在 QQ 群里艾特机器人提问，私教直接本地极速秒回！
+────────────────────────────────────────────────────────────────────────
+""")
+
+def run_server(port=8088, host="127.0.0.1", gateway_token=None):
+    """
+    启动轻量级 HTTP Webhook 接收网关（ThreadingHTTPServer 支持并发请求）。
+    默认仅监听 127.0.0.1；如需对外（IM 群机器人从其他机器回调）请显式传入 host='0.0.0.0'
+    并配套 KY_GATEWAY_TOKEN。
+    token 优先级: 显式传入 gateway_token (CLI --gateway-token) > 环境变量 KY_GATEWAY_TOKEN > ky_config.json
+    """
+    from http.server import ThreadingHTTPServer
+    cfg = load_config()
+
+    print(colorize(f"\n[🚀 考研智能体 Webhook 网关与实时 Web 伴侣正在启动... 监听地址: {host}:{port}]", C.BOLD))
+    print(f"  - 网页实时 LaTeX 伴侣: http://{host}:{port}/live")
+    print(f"  - 钉钉/企业微信回调地址: http://{host}:{port}/webhook")
+    print(f"  - 当前默认学科: {SUBJECT_DIRS[cfg.get('active_subject','math')][1]}")
+    print("  - 支持接收群聊提问并自动回复，按 Ctrl+C 停止服务。\n")
+
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        print(colorize(
+            f"  [!] 已对外暴露 {host}:{port}。强烈建议设置环境变量 KY_GATEWAY_TOKEN 启用鉴权。\n",
+            C.RED))
+
+    effective_token = gateway_token if gateway_token else (
+        os.environ.get("KY_GATEWAY_TOKEN", "") or cfg.get("gateway_token", "")
+    )
+    handler_class = create_gateway_handler(token=effective_token)
+    httpd = ThreadingHTTPServer((host, port), handler_class)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\n网关服务已平稳停止。")
+
+def cmd_wechat_search(cli_args: list):
+    """微信公众号文章检索与爬虫子命令处理函数"""
+    if not cli_args or cli_args[0] in ("-h", "--help"):
+        print("""
+用法：ky wechat <关键词> [选项]
+别名：ky wx
+
+功能：
+  检索微信公众号考研文章与上岸经验贴 (支持搜狗/Bing多源检索与本地沉淀)
+
+参数：
+  <关键词>                     检索关键词 (如 "408计算机考研经验"、"华科计算机复试")
+
+选项：
+  --max=N                      最大检索结果数 (默认 10)
+  --save                       自动沉淀抓取文章到本地 .memory/experiences/ (隐私目录，不入库)
+  --no-fetch                   仅检索标题与链接，不抓取正文
+  --school=<高校名>            联动更新目标高校社媒口碑档案 (school_scout)
+  --source=<auto|sogou|bing|local> 检索数据源 (默认 auto 自动降级)
+
+示例：
+  ky wechat "408计算机考研经验" --max=5 --save
+  ky wx "华科计算机复试" --school=华中科技大学 --save
+""")
+        return
+
+    # [P0 修复] 多词关键词此前只取第一个词：「天津工业大学 电子信息 考研」被截断为
+    # 「天津工业大学」，检索出教师招聘等无关内容。非选项的位置参数应整体拼接为关键词。
+    keyword = " ".join(a for a in cli_args if not a.startswith("-")).strip()
+    max_results = 10
+    save_to_local = False
+    fetch_content = True
+    school_name = ""
+    source = "auto"
+
+    for arg in cli_args[1:]:
+        if not arg.startswith("-"):
+            continue  # 已并入 keyword 的位置参数
+        if arg.startswith("--max="):
+            try:
+                max_results = int(arg.split("=", 1)[1])
+            except ValueError:
+                pass
+        elif arg == "--save":
+            save_to_local = True
+        elif arg == "--no-fetch":
+            fetch_content = False
+        elif arg.startswith("--school="):
+            school_name = arg.split("=", 1)[1].strip()
+        elif arg.startswith("--source="):
+            source = arg.split("=", 1)[1].strip()
+
+    try:
+        from skills.wechat_searcher import denoise_keyword, wechat_search
+    except ImportError:
+        from tools.skills.wechat_searcher import denoise_keyword, wechat_search
+
+    # [根因修复·可观测] 检索入口会剔除专业代码与括号段（否则恒 0 命中）。
+    # 若实际检索词与输入词不同，必须显式告知，避免"我搜的和它搜的不是一回事"。
+    _kw_used = denoise_keyword(keyword)
+    if _kw_used != keyword:
+        print(colorize(
+            f"  [i] 已自动去噪（专业代码/括号会导致检索恒 0 命中）:\n"
+            f"      输入: 「{keyword}」\n"
+            f"      实际: 「{_kw_used}」", C.YELLOW))
+
+    print(colorize(f"\n▶ 正在多源检索微信公众号考研文章: 「{_kw_used}」 (源: {source}) ...", C.BOLD + C.CYAN))
+    res = wechat_search(
+        keyword=keyword,
+        max_results=max_results,
+        fetch_content=fetch_content,
+        save_to_local=save_to_local,
+        school_name=school_name,
+        source=source
+    )
+
+    print("\n" + "=" * 62)
+    print(colorize("  📱 微信公众号考研文章检索报告", C.BOLD))
+    print("=" * 62)
+    print(f"关键词: {res['keyword']}  |  总计发现: {res['total']} 篇  |  已抓取正文: {res['fetched']} 篇\n")
+
+    if not res["results"]:
+        print("  [i] 未检索到相关文章，建议更换关键词或使用 --source=bing / --source=local 重试。")
+        # [P3 修复·D8] 检索源异常时会伪装成「无结果」，此处显式区分，避免误导
+        for _err in res.get("source_errors") or []:
+            print(colorize(f"  [!] 检索源告警（可能是反爬验证或站点改版，不代表关键词无结果）: {_err}", C.YELLOW))
+    else:
+        for idx, it in enumerate(res["results"], 1):
+            st = "✅ 已抓取" if it.get("fetched") else "📋 仅标题"
+            print(f"  [{idx}] {it.get('title')}")
+            # [P3 修复·D8] 统一读取入口下发的 account_display/date_display，三端口径一致
+            print(f"      公众号: {it.get('account_display') or it.get('source_account') or '未识别（平台未公开）'}"
+                  f"  |  日期: {it.get('date_display') or it.get('publish_date') or '未标注日期'}  |  {st}")
+            summary = it.get('summary', '')
+            if summary:
+                print(f"      摘要: {summary[:80]}...")
+            print(f"      链接: {it.get('url')}")
+            print()
+
+    if res.get("saved_paths"):
+        print(colorize(f"  📥 已沉淀 {len(res['saved_paths'])} 篇优质文章至 .memory/experiences/ (本地隐私目录)", C.GREEN))
+        for sp in res["saved_paths"]:
+            print(f"     - {Path(sp).name}")
+    if res.get("scout_linked"):
+        print(colorize(f"  🔗 已成功联动院校侦察引擎 (school_scout) 更新【{school_name}】口碑档案", C.GREEN))
+    print()
+
+
+# ════════════════════════════════════════════════════════════════
+# 7. 主入口
+# ════════════════════════════════════════════════════════════════
+
+def _looks_like_path(token):
+    """[P3 修复·D4] 严格判定字符串是否为「路径形态」，用于 diagnose 区分文件与内联文本。
+
+    仅当满足下列任一条才视为路径（避免把含 "/" 的答题卡文本如「得分 4/10」误判为路径）：
+      ① Windows 盘符绝对路径，如 D:/a/b；
+      ② 不含空白且以已知文档后缀结尾，如 模考.md / paper.json；
+      ③ 不含空白、含路径分隔符且不含中文标点，如 ./04-专业课/答题卡.txt。
+    """
+    t = (token or "").strip()
+    if not t or "\n" in t or len(t) >= 260:
+        return False
+    if re.match(r"^[A-Za-z]:[\\/]", t):
+        return True
+    if any(ch.isspace() for ch in t):
+        return False
+    if re.search(r"\.(md|txt|markdown|json|csv|pdf|docx?|xlsx?)$", t, flags=re.IGNORECASE):
+        return True
+    if ("/" in t or "\\" in t) and not re.search(r"[：；，。！？、【】（）]", t):
+        return True
+    return False
+
+
+def detect_safe_mode_violation(args):
+    """[D2 修复] 只读模式命令级拦截清单。
+
+    返回被拦截的命令描述；只读命令返回 None。
+    设计原则：宁可显式拒绝（并提示如何解除），也不让只读模式产生任何落盘副作用。
+    """
+    if not args:
+        return None
+    cmd = str(args[0]).lstrip("-").lower()
+    rest = [str(x).lower() for x in args[1:]]
+    sub = rest[0] if rest else ""
+
+    # 纯查询命令：放行
+    readonly_ok = {
+        "version", "status", "today", "tasks", "task", "pdf", "fatigue",
+        "doctor", "verify-health", "help", "skills", "map",
+    }
+    if cmd in readonly_ok:
+        # map 默认只渲染图谱，加 --save 才落盘
+        if cmd == "map" and any(r in ("--save", "-s") for r in rest):
+            return "map --save (图谱报告落盘)"
+        return None
+
+    if cmd in ("memory", "--memory"):
+        if sub.startswith("prune") or sub.startswith("clear") or sub.startswith("trim"):
+            return f"memory {sub} (记忆库修剪/清空)"
+        return None  # memory status 为只读
+    if cmd in ("key", "keys"):
+        if sub in ("set", "add", "upsert", "--set"):
+            return "key set (标准答案写库)"
+        return None
+    if cmd in ("rollback", "restore", "--rollback", "--restore"):
+        return "rollback (快照回滚，会覆盖当前文件)"
+    if cmd in ("history", "log"):
+        return None
+    if cmd in ("fetch",):
+        if sub == "watch" and "--check" in rest:
+            return None  # 只读探测
+        return f"fetch {sub} (研招情报抓取与研报落盘)"
+    if cmd == "diff":
+        return "diff (考纲对比报告落盘)"
+    if cmd == "compare":
+        if "--save" in rest or "-s" in rest:
+            return "compare --save (对比研报落盘)"
+        return None  # 无 --save 时仅终端呈现
+    if cmd in ("scout", "watch", "admission"):
+        return f"{cmd} (情报侦察与证据链落盘)"
+    if cmd in ("done", "build", "notify", "ingest", "compose", "exam",
+               "exam-submit", "grade-paper", "variant", "review",
+               "relieve", "plan", "profile", "onboarding", "config",
+               "style", "subject", "clear", "gui", "menu", "watchdog"):
+        return f"{cmd} (含写操作/子进程执行)"
+    if cmd in ("diagnose", "zhenduan"):
+        if "--save" in rest or "-s" in rest:
+            return "diagnose --save (诊断报告落盘)"
+        return None  # 纯文本诊断不落盘
+    # 未知命令交由后续逻辑处理，不在此误拦
+    return None
+
+
+def detect_repl_safe_mode_violation(cmd, arg=""):
+    """[D2 修复] REPL 斜杠指令的只读拦截清单（与 CLI 子命令拦截口径对齐）。"""
+    c = (cmd or "").lower()
+    a = (arg or "").lower()
+    readonly_ok = {"/skills", "/status", "/today", "/tasks", "/task", "/pdf",
+                   "/fatigue", "/doctor", "/map", "/exit", "/quit"}
+    if c in readonly_ok:
+        if c == "/map" and "--save" in a:
+            return "/map --save"
+        return None
+    if c == "/memory":
+        return f"/memory {a}" if a.startswith("prune") else None
+    if c == "/help":
+        return None
+    blocked = {
+        "/diff": "考纲 Diff（报告落盘）",
+        "/ingest": "切片入库（写入索引与知识库）",
+        "/build": "看板编译（写盘 + 子进程）",
+        "/done": "任务打钩（回写今日任务与打卡记录）",
+        "/notify": "消息广播（写盘 + 网络）",
+        "/rollback": "快照回滚（覆盖当前文件）",
+        "/restore": "快照回滚（覆盖当前文件）",
+        "/exam": "反向组卷（试卷文件落盘）",
+        "/compose": "反向组卷（试卷文件落盘）",
+        "/variant": "变式检索（结果落盘）",
+        "/review": "错题盲盒重测（回写错题状态）",
+        "/batch": "答题卡批改（回写错题状态）",
+        "/img": "草稿批改（上传文件落盘）",
+        "/paste": "剪贴板取图（临时文件落盘）",
+        "/clip": "剪贴板取图（临时文件落盘）",
+        "/plan": "方案向导（写档案与配置）",
+        "/profile": "方案向导（写档案与配置）",
+        "/blueprint": "方案向导（写档案与配置）",
+        "/subject": "科目/大纲维护（写配置）",
+        "/syllabus": "科目/大纲维护（写配置）",
+        "/style": "风格切换（写配置）",
+        "/relieve": "减负模式（写配置）",
+        "/config": "配置管理（写配置）",
+        "/compare": "双校对标（研报落盘）",
+        "/scout": "院校侦察（证据落盘）",
+        "/watch": "情报雷达（指纹落盘）",
+        "/admission": "招考核验（证据落盘）",
+        "/gui": "启动图形界面（独立进程写盘）",
+    }
+    return blocked.get(c, f"{c}（含写操作）" if c.startswith("/") and c not in ("/calc", "/hint", "/dissect", "/math", "/eng", "/pol", "/pro", "/view", "/live", "/clear") else None)
+
+
+def main():
+    permission_mode = "ask"
+    gateway_host = "127.0.0.1"
+    gateway_token = ""  # CLI 显式 --gateway-token 覆盖
+    filtered_args = []
+    for a in sys.argv[1:]:
+        if a.startswith("--permission="):
+            permission_mode = a.split("=", 1)[1].strip().lower()
+        elif a.startswith("-p="):
+            permission_mode = a.split("=", 1)[1].strip().lower()
+        elif a.startswith("--host="):
+            gateway_host = a.split("=", 1)[1].strip() or "127.0.0.1"
+        elif a.startswith("--gateway-token="):
+            gateway_token = a.split("=", 1)[1].strip()
+        else:
+            filtered_args.append(a)
+
+    args = filtered_args
+    # [D2 修复] 严格只读模式：闸门在任何命令分发前生效，且写入路径（ky_io）同步置位。
+    if ky_io is not None:
+        ky_io.set_read_only_mode(permission_mode == "safe")
+    if permission_mode == "safe":
+        violation = detect_safe_mode_violation(args)
+        if violation:
+            print(colorize(
+                f"\n[✘ 已拒绝] 当前处于严格只读安全模式 (--permission=safe)，"
+                f"禁止执行写操作命令: {violation}", C.RED))
+            print(colorize(
+                "    只读模式仅允许查询类命令（status/today/map/key list/pdf/fatigue/doctor 等）。\n"
+                "    如需执行写操作，请去掉 --permission=safe 或改用 --permission=auto。", C.YELLOW))
+            sys.exit(3)
+    if args and args[0] in ("diff", "--diff"):
+        args = ["fetch", "diff"] + args[1:]
+    if not args:
+        run_repl(permission_mode=permission_mode, gateway_host=gateway_host, gateway_token=gateway_token)
+    elif args[0] in ("--version", "-v", "version"):
+        print(f"考研学习链专用终端工具 (ky-cli) v2.6.0 · Python {sys.version.split()[0]}")
+        sys.exit(0)
+    elif args[0] in ("view", "--view", "--web", "live"):
+        port = start_background_live_server(8088, host=gateway_host) or 8088
+        import webbrowser
+        webbrowser.open(f"http://localhost:{port}/live")
+        print(f"已在默认浏览器打开实时 LaTeX 伴侣: http://localhost:{port}/live")
+        run_repl(permission_mode=permission_mode, gateway_host=gateway_host, gateway_token=gateway_token)
+    elif args[0] in ("config", "--config"):
+        interactive_config()
+    elif args[0] in ("plan", "--plan", "profile", "--profile", "onboarding"):
+        try:
+            import study_planner
+            study_planner.run_study_plan_wizard(interactive=True)
+        except EOFError:
+            # [P0 修复] 向导共 35 项输入，管道输入行数不足时 EOF 会直接抛栈崩溃；
+            # 且落盘动作在全部问答结束后才执行，中断即意味着已填内容全部丢失。
+            # 这里改为安全中止并明确告知，避免用户误以为档案已更新。
+            print(colorize("\n[!] 输入流提前结束 (EOF)，方案设计向导已安全中止，本次填写未保存。", C.YELLOW))
+            print(colorize("    向导共 35 项输入（含默认回车项），请在交互式终端运行 `ky plan` 完整作答；", C.DIM))
+            print(colorize("    脚本化场景请核对输入行数后重试，或在 `ky subject` 中单项调整。", C.DIM))
+        except Exception as e:
+            print(f"方案设计提示: {e}")
+    elif args[0] in ("today", "--today", "tasks", "--tasks"):
+        as_json = "--json" in args or "-j" in args
+        print_today_tasks_summary(as_json=as_json)
+    elif args[0] in ("done", "--done"):
+        if len(args) < 2:
+            print(colorize("用法: ky done <任务关键词>\n示例: ky done 导数中值定理", C.YELLOW))
+            sys.exit(1)
+        kw = " ".join(args[1:])
+        ok, msg = mark_today_task_done(kw)
+        print(colorize(f"[{msg}]", C.GREEN if ok else C.YELLOW))
+        sys.exit(0 if ok else 1)
+    elif args[0] in ("review", "--review", "quiz", "--quiz"):
+        # [根因修复] 未指定科目时此前硬编码 math，与 REPL 行为不一致：
+        # REPL 跟随当前激活科目，顶层却恒为数学 —— 814 考生执行 ky review 看到的是数学科错题。
+        # 注意：main() 里的 cfg 是分支内局部变量，此处必须用 load_config() 直取。
+        target_subj = load_config().get("active_subject", "math")
+        if len(args) > 1:
+            raw_s = args[1].lower()
+            for s_k, s_v in (("math", "数"), ("eng", "英"), ("pol", "政"), ("pro", "专")):
+                if s_k in raw_s or s_v in raw_s:
+                    target_subj = s_k
+                    break
+        due_items = error_logger.get_due_reviews(target_subj, max_count=5) if error_logger else []
+        if not due_items:
+            print(colorize(f"\n[🎉 恭喜] {SUBJECT_DIRS.get(target_subj, ('', target_subj))[1]} 当前没有到期需要 FSRS 复测的错题！\n", C.GREEN))
+        else:
+            print(colorize(f"\n=== 📚 {SUBJECT_DIRS.get(target_subj, ('', target_subj))[1]} FSRS 待复测错题 ({len(due_items)} 道) ===", C.BOLD))
+            for i, it in enumerate(due_items, 1):
+                print(f"  {i}. [{it.get('date', '')}] {it.get('title', '')} (错因: {it.get('error_type', '未分类')})")
+            print("\n💡 提示：在终端运行 python tools/ky_cli.py 启动交互式私教后，输入 /review 即可进入盲盒重测！\n")
+    elif args[0] in ("style", "--style"):
+        choice = args[1] if len(args) > 1 else None
+        if not choice:
+            cur_s, _ = manage_coaching_style()
+            print(colorize(f"\n=== 🎯 当前激活私教辅导风格 ===", C.BOLD))
+            print(f"  • 当前风格: {C.GREEN}{cur_s}{C.RESET}")
+            print("\n可选风格清单:")
+            for k, (name, desc) in COACHING_STYLES.items():
+                active_mark = f" {C.GREEN}[当前激活]{C.RESET}" if name == cur_s else ""
+                print(f"  [{k}] {name}{active_mark}\n      {desc}")
+            print("\n切换方式: python tools/ky_cli.py style <1/2/3/4>\n")
+        else:
+            new_style, changed = manage_coaching_style(choice)
+            if changed:
+                print(colorize(f"\n[√ 辅导风格切换成功] 当前已激活：{new_style}\n", C.GREEN))
+            else:
+                print(colorize(f"\n[!] 未识别的辅导风格选项: {choice}，请输入 1、2、3、4\n", C.YELLOW))
+                sys.exit(1)
+    elif args[0] in ("doctor", "--doctor", "check", "--check"):
+        try:
+            import doctor
+            ok = doctor.run_doctor()
+            sys.exit(0 if ok else 1)
+        except Exception as e:
+            print(f"体检执行异常: {e}")
+            sys.exit(1)
+    elif args[0] in ("notify", "--notify"):
+        cfg = load_config()
+        custom = " ".join(args[1:]) if len(args) > 1 else None
+        broadcast_briefing(cfg, custom_msg=custom)
+    elif args[0] in ("subject", "--subject", "syllabus", "--syllabus"):
+        cfg = load_config()
+        try:
+            manage_syllabi_cli(cfg)
+        except EOFError:
+            # [P0 修复] 非交互/管道场景下 EOF 不再抛栈崩溃，给出友好引导
+            print(colorize("\n[!] 检测到输入流结束 (EOF)，科目配置菜单已安全退出，未做任何修改。", C.YELLOW))
+            print(colorize("    提示：请在交互式终端运行 `ky subject` 选择菜单项；脚本化场景可直接编辑 ky_config.json。", C.DIM))
+    elif args[0] in ("exam", "--exam", "compose", "--compose"):
+        # [根因修复] 同 review：默认科目改为跟随档案，避免给 814 考生静默出数学卷。
+        target_subj = load_config().get("active_subject", "math")
+        count = 3
+        save_flag = False
+        unknown_flags = []
+        _SUBJ_ALIAS = {
+            "math": "math", "eng": "eng", "pol": "pol", "pro": "pro",
+            "数": "math", "英": "eng", "政": "pol", "专": "pro",
+        }
+        argv = args[1:]
+        for idx, a in enumerate(argv):
+            if a.startswith("--count="):
+                try: count = int(a.split("=")[1])
+                except (ValueError, TypeError):
+                    pass
+            elif a == "--count":
+                if idx + 1 < len(argv):
+                    try: count = int(argv[idx + 1])
+                    except (ValueError, TypeError):
+                        pass
+            elif a.startswith("--subject="):
+                # [根因修复·参数静默忽略] 正式支持 --subject=<科目>：此前该写法并不生效，
+                # 只是恰好因为 "math" 作为独立 argv 命中了科目关键字匹配才"看起来能用"。
+                target_subj = _SUBJ_ALIAS.get(a.split("=", 1)[1].strip().lower(), target_subj)
+            elif a == "--subject":
+                nxt = argv[idx + 1].strip().lower() if idx + 1 < len(argv) else ""
+                target_subj = _SUBJ_ALIAS.get(nxt, target_subj)
+            elif a in ("--save", "-s"):
+                save_flag = True
+            else:
+                matched = False
+                for sk, sv in (("math", "数"), ("eng", "英"), ("pol", "政"), ("pro", "专")):
+                    if sk in a.lower() or sv in a:
+                        target_subj = sk
+                        matched = True
+                        break
+                # [根因修复·参数静默忽略] 未识别的长选项此前被无声吞掉：学员以为
+                # `--whitelist-only` 之类的约束已生效，实则被完全丢弃。现显式告警。
+                if not matched and a.startswith("-"):
+                    unknown_flags.append(a)
+        if unknown_flags:
+            print(colorize(
+                "[!] 已忽略无法识别的参数: " + " ".join(unknown_flags) + "\n"
+                "    ky exam 支持的参数: [math|eng|pol|pro] (或 数/英/政/专) · "
+                "--subject=<科目> · --count=N · --save", C.YELLOW))
+        if exam_composer:
+            res = exam_composer.compose_exam_paper(target_subj, count=count, save_file=save_flag)
+            print(res.get("formatted_paper", ""))
+            if res.get("saved_path"):
+                print(colorize(f"\n[√ 试卷已成功保存至]: {res['saved_path']}\n", C.GREEN))
+        else:
+            print("exam_composer 技能模块未载入")
+    elif args[0] in ("exam-submit", "--exam-submit", "grade-paper", "--grade-paper"):
+        if len(args) < 3:
+            print(colorize("用法: ky exam-submit <试卷文件路径> <作答文本或答案文件>\n示例: ky exam-submit paper_123.json '1. A 2. C 3. B'", C.YELLOW))
+            sys.exit(1)
+        paper_p = args[1]
+        answers = " ".join(args[2:])
+        if Path(answers).exists():
+            answers = Path(answers).read_text(encoding="utf-8", errors="ignore")
+        if exam_composer:
+            res = exam_composer.grade_exam_paper(paper_p, answers)
+            if res.get("report"):
+                print(res["report"])
+            elif res.get("success"):
+                print(colorize(f"\n=== 🎯 自测整卷批改得分: {res.get('score')} / {res.get('total_score')} (正答率 {res.get('accuracy')}%) ===\n", C.BOLD))
+            else:
+                print(colorize(f"[!] 批改失败: {res.get('message', '未识别到有效作答')}", C.RED))
+        else:
+            print("exam_composer 技能模块未载入")
+    elif args[0] in ("key", "--key", "keys", "--keys"):
+        # [P1 修复·答案补录闭环] 白名单真题切片不带答案，判卷只能转复核。
+        # 此前报告让学员「补录标准答案」却无任何命令入口，现提供 ky key。
+        #   ky key list [试卷编号]                 列出试卷及答案登记情况
+        #   ky key set <试卷编号> <题号> <标准答案>   补录/更新单题标准答案
+        if not exam_composer:
+            print(colorize("[!] exam_composer 技能模块未载入", C.RED))
+        else:
+            sub = args[1].lower() if len(args) > 1 else "list"
+            if sub in ("list", "ls", "--list", "l"):
+                pid = args[2].strip() if len(args) > 2 else ""
+                r = exam_composer.list_exam_keys(pid)
+                if not r.get("success"):
+                    print(colorize(f"[!] {r.get('msg')}", C.YELLOW))
+                else:
+                    papers = r.get("papers", [])
+                    if not papers:
+                        print(colorize("暂无已归档试卷密钥。", C.YELLOW))
+                    for p in papers:
+                        if p.get("error"):
+                            print(colorize(f"  ✗ {p['paper_id']}: {p['error']}", C.RED))
+                            continue
+                        mark = "√" if p["answered"] == p["total"] and p["total"] else "!"
+                        color = C.GREEN if mark == "√" else C.YELLOW
+                        print(colorize(
+                            f"  [{mark}] {p['paper_id']}: 答案 {p['answered']}/{p['total']} 题已登记", color))
+                        for it in p["items"]:
+                            flag = "有答案" if it["has_answer"] else "缺答案(将转人工复核)"
+                            print(f"        · 第 {it['id']} 题 {it['title']} — {flag}")
+                    print(colorize(
+                        "\n提示: 补录标准答案 → ky key set <试卷编号> <题号> \"标准答案正文\"\n"
+                        "      支持中文/公式文本，写入后自动重新加密归档 (ENC1)。", C.CYAN))
+            elif sub in ("set", "add", "upsert", "--set"):
+                if len(args) < 5:
+                    print(colorize('用法: ky key set <试卷编号> <题号> "<标准答案正文>"\n'
+                                   '示例: ky key set EXAM-PRO-20260910-161500 1 "答案：B，由傅里叶变换可得..."', C.YELLOW))
+                else:
+                    pid = args[2].strip()
+                    qid = args[3].strip()
+                    ans = " ".join(args[4:]).strip()
+                    r = exam_composer.upsert_answer(pid, qid, ans)
+                    tag = C.GREEN if r.get("success") else C.RED
+                    print(colorize(f"[{'√' if r.get('success') else '!'}] {r.get('msg')}", tag))
+            elif sub in ("--help", "-h", "help"):
+                print(colorize(
+                    "ky key — 试卷答案密钥库管理与标准答案补录\n"
+                    "用法:\n"
+                    "  ky key list [试卷编号]                查看试卷及答案登记情况\n"
+                    "  ky key set <试卷编号> <题号> <答案>     补录/更新单题标准答案\n", C.CYAN))
+            else:
+                print(colorize(f"[!] 未知子命令: {sub}，可用: list | set", C.YELLOW))
+    elif args[0] in ("scout", "--scout"):
+        school_name = ""
+        major_name = ""
+        include_social = True
+        save_flag = False
+        apply_flag = False
+
+        pos_args = []
+        for a in args[1:]:
+            if a in ("--no-social", "-ns"):
+                include_social = False
+            elif a in ("--save", "-s"):
+                save_flag = True
+            elif a in ("--apply", "-a"):
+                apply_flag = True
+            elif not a.startswith("-"):
+                pos_args.append(a)
+
+        if pos_args:
+            school_name = pos_args[0]
+            if len(pos_args) > 1:
+                major_name = pos_args[1]
+        else:
+            cfg = load_config()
+            school_name = cfg.get("study_plan", {}).get("school", "")
+            major_name = cfg.get("study_plan", {}).get("major", "")
+
+        if "--help" in args or "-h" in args or (not school_name or school_name == "目标院校"):
+            print(colorize("用法: ky scout <高校名> [专业名] [--no-social] [--save] [--apply]\n示例: ky scout 华中科技大学 计算机 --save\n说明: 定向侦察目标院校研究生院官网招生简章、自命题大纲、拟招人数，并聚合知乎/B站/小红书口碑与避坑指南。", C.YELLOW))
+            sys.exit(0 if ("--help" in args or "-h" in args) else 1)
+
+        if school_scout:
+            print(colorize(f"\n[🎯 正在启动考研目标院校与社媒情报侦察: 【{school_name}】{major_name}]", C.CYAN))
+            print("  • 官方研招检索: 研招网 (yz.chsi.com.cn) + 高校研究生院官网 (.edu.cn)")
+            if include_social:
+                print("  • 社交舆情聚合: 知乎就读体验 + 哔哩哔哩备考贴 + 小红书避坑与压分")
+            print("  • 正在提取核心指标与生成情报研报...\n")
+
+            res = school_scout.scout_school(
+                school=school_name,
+                major=major_name,
+                include_social=include_social,
+                save_report=save_flag,
+                apply_to_config=apply_flag,
+                use_llm=True
+            )
+            print(res.get("formatted_report", ""))
+
+            if res.get("saved_path"):
+                print(colorize(f"\n[√ 情报研报已成功落盘至]: {res['saved_path']}", C.GREEN))
+            if res.get("applied"):
+                print(colorize(f"[√ 目标高校与专业已一键同步至 ky_config.json]", C.GREEN))
+            print()
+        else:
+            print("school_scout 技能模块未载入")
+    elif args[0] in ("admission", "--admission", "admit"):
+        school_name = ""
+        major_name = ""
+        year = (intelligence.current_exam_year() if intelligence and hasattr(intelligence, "current_exam_year") else (time.localtime().tm_year + 1))
+        save_flag = False
+        pos_args = []
+        for a in args[1:]:
+            if a in ("--save", "-s"):
+                save_flag = True
+            elif a.startswith("--year="):
+                try:
+                    year = int(a.split("=")[1])
+                except Exception:
+                    pass
+            elif not a.startswith("-"):
+                pos_args.append(a)
+
+        if pos_args:
+            school_name = pos_args[0]
+            if len(pos_args) > 1:
+                major_name = pos_args[1]
+        else:
+            cfg = load_config()
+            school_name = cfg.get("study_plan", {}).get("school", "")
+            major_name = cfg.get("study_plan", {}).get("major", "")
+
+        if "--help" in args or "-h" in args or (not school_name or school_name == "目标院校"):
+            print(colorize("用法: ky admission <高校名> [专业代码/名] [--year=2027] [--save]\n示例: ky admission 华中科技大学 085404 --save\n说明: 基于教育部研招网 (S级) 与高校官方站点 (A级) 权威提取初试科目、院系所、招生人数与证据链。", C.YELLOW))
+            sys.exit(0 if ("--help" in args or "-h" in args) else 1)
+
+        if intelligence:
+            print(colorize(f"\n[🏛️ KaoYan Intelligence: 正在调取【{school_name}】{major_name} 研招网与官方站点证据链...]\n", C.CYAN))
+            engine = intelligence.get_intelligence_engine()
+            res = engine.query(school_query=school_name, major_query=major_name, exam_year=year, save_report=save_flag)
+            print(res.get("markdown_report", ""))
+            if res.get("saved_path"):
+                print(colorize(f"\n[√ 考情证据研报已归档至]: {res['saved_path']}\n", C.GREEN))
+        else:
+            print(colorize("[!] intelligence 考情引擎模块未载入", C.RED))
+    elif args[0] in ("watch", "--watch"):
+        if intelligence:
+            watcher = intelligence.AdmissionWatcher()
+            sub = args[1] if len(args) > 1 else ""
+            if sub in ("--help", "-h"):
+                print(colorize("用法: ky watch [高校名] [--check] [--list] [--remove <高校名>]\n示例:\n  ky watch 华中科技大学       # 添加华科至监控雷达\n  ky watch --check           # 立即检查所有监控高校最新简章动态\n  ky watch --list            # 查看已监控高校清单", C.YELLOW))
+                sys.exit(0)
+            elif sub in ("--check", "-c", "check"):
+                print(colorize("\n[📡 正在轮询监控高校研究生院与研招办最新简章公告...]\n", C.CYAN))
+                findings = watcher.check_updates()
+                for f in findings:
+                    if f.get("status") == "UPDATED":
+                        print(colorize(f"  🔥 [发现新动态] {f['school']}:", C.GREEN))
+                        for t in f.get("alert_titles", []):
+                            print(f"     - {t}")
+                    elif f.get("status") == "UNCHANGED":
+                        print(colorize(f"  ✓ {f['school']}: 站点指纹正常，暂无新增简章", C.BLUE))
+                    else:
+                        print(colorize(f"  ⚠️ {f['school']}: {f.get('msg', '请求超时')}", C.YELLOW))
+                print()
+            elif sub in ("--list", "-l", "list") or not sub:
+                watched = watcher.list_watched()
+                if not watched:
+                    print(colorize("当前暂未配置监控高校。添加监控示例: ky watch 华中科技大学", C.YELLOW))
+                else:
+                    print(colorize(f"\n[📡 当前动态监控高校雷达 ({len(watched)} 所)]:", C.CYAN))
+                    for w in watched:
+                        print(f"  • {w['name']} (代码: {w['chsi_code']}) ｜ 最近检查: {w.get('last_check', '未检查')}")
+                    print(colorize("\n提示: 运行 ky watch --check 立即比对最新简章变动", C.CYAN))
+            elif sub in ("--remove", "--rm", "-d", "remove"):
+                target = args[2] if len(args) > 2 else ""
+                if watcher.remove_watch(target):
+                    print(colorize(f"[√ 已取消对【{target}】的动态监控]", C.GREEN))
+                else:
+                    print(colorize(f"[!] 未找到监控目标【{target}】", C.YELLOW))
+            else:
+                # [P2 修复·参数健壮性] 未知的 --xxx 参数此前会被当成「高校名」直接加入监控，
+                # 报「未能识别高校【--add】」这类误导信息（用户以为参数写错，其实是参数不存在）。
+                # 现明确区分：以 - 开头 → 视为未知参数并给出正确用法提示。
+                if sub.startswith("-"):
+                    print(colorize(
+                        f"[!] 未知参数: {sub}\n"
+                        f"    支持: ky watch <高校名> | --check | --list | --remove <高校名> | --help",
+                        C.YELLOW))
+                else:
+                    target = sub
+                    res = watcher.add_watch(target)
+                    if res.get("success"):
+                        print(colorize(f"[√ {res.get('msg')}]: 官方入口 {res.get('url')}", C.GREEN))
+                    else:
+                        print(colorize(f"[!] 添加失败: {res.get('msg')}", C.RED))
+        else:
+            print(colorize("[!] intelligence 考情引擎模块未载入", C.RED))
+    elif args[0] in ("fetch", "--fetch"):
+        sub = args[1].lower() if len(args) > 1 else ""
+        if sub in ("--help", "-h", ""):
+            print(colorize("""
+考研招考情报与大纲变动抓取中枢 (ky fetch)
+用法：
+  ky fetch info <高校名/代码> [专业] [--year=2027] [--save]
+      权威调取研招网与高校官方站点招生计划、考试科目与招考证据链
+  ky fetch diff [--school=高校] [--major=专业] [--old=旧考纲] [--new=新考纲] [--year1=2026] [--year2=2027] [--save]
+      生成大纲考点版本变化对比研报 (逐级比对新增/删减/调整考点，输出突破处方)
+  ky fetch watch [--check|--list|add|remove]
+      检查或管理目标高校研究生院招生简章与自命题大纲指纹动态
+示例：
+  ky fetch info 华中科技大学 085404 --save
+  ky fetch diff --school 华中科技大学 --major 计算机 --save
+  ky fetch watch --check
+""", C.YELLOW))
+            sys.exit(0)
+        elif sub in ("info", "admission"):
+            f_args = args[2:]
+            pos_args = []
+            save_flag = False
+            year = 2027
+            for a in f_args:
+                if a.startswith("--year="):
+                    try: year = int(a.split("=")[1])
+                    except (ValueError, TypeError):
+                        pass
+                elif a in ("--save", "-s"):
+                    save_flag = True
+                elif not a.startswith("-"):
+                    pos_args.append(a)
+
+            school_name = pos_args[0] if pos_args else ""
+            major_name = pos_args[1] if len(pos_args) > 1 else ""
+            if not school_name:
+                cfg = load_config()
+                school_name = cfg.get("study_plan", {}).get("school", "")
+                major_name = cfg.get("study_plan", {}).get("major", "")
+
+            if intelligence and school_name and school_name != "目标院校":
+                print(colorize(f"\n[🏛️ KaoYan Intelligence: 正在调取【{school_name}】{major_name} 研招网与官方站点证据链...]\n", C.CYAN))
+                engine = intelligence.get_intelligence_engine()
+                res = engine.query(school_query=school_name, major_query=major_name, exam_year=year, save_report=save_flag)
+                print(res.get("markdown_report", ""))
+                if res.get("saved_path"):
+                    print(colorize(f"\n[√ 考情证据研报已归档至]: {res['saved_path']}\n", C.GREEN))
+            else:
+                print(colorize("[!] 请提供高校名称: ky fetch info <高校名> [专业] 或在 ky_config.json 中配置目标院校", C.YELLOW))
+        elif sub in ("diff", "--diff"):
+            school = "目标院校"
+            major = "专业课"
+            old_path = None
+            new_path = None
+            try:
+                from intelligence.models import current_exam_year as _cey
+                y2 = _cey()
+            except Exception:
+                y2 = 2027
+            y1 = y2 - 1
+            save_flag = False
+            pos_args = []
+            for a in args[2:]:
+                if a.startswith("--school="):
+                    school = a.split("=", 1)[1].strip()
+                elif a.startswith("--major="):
+                    major = a.split("=", 1)[1].strip()
+                elif a.startswith("--old="):
+                    old_path = a.split("=", 1)[1].strip()
+                elif a.startswith("--new="):
+                    new_path = a.split("=", 1)[1].strip()
+                elif a.startswith("--year1="):
+                    try: y1 = int(a.split("=", 1)[1].strip())
+                    except (ValueError, TypeError):
+                        pass
+                elif a.startswith("--year2="):
+                    try: y2 = int(a.split("=", 1)[1].strip())
+                    except (ValueError, TypeError):
+                        pass
+                elif a in ("--save", "-s"):
+                    save_flag = True
+                elif not a.startswith("-"):
+                    pos_args.append(a)
+
+            if pos_args:
+                if len(pos_args) >= 1 and school == "目标院校":
+                    school = pos_args[0]
+                if len(pos_args) >= 2 and major == "专业课":
+                    major = pos_args[1]
+
+            cfg = load_config()
+            if school in ("", "目标院校") and cfg.get("study_plan", {}).get("school"):
+                school = cfg.get("study_plan", {}).get("school")
+            if major in ("", "专业课") and cfg.get("study_plan", {}).get("major"):
+                major = cfg.get("study_plan", {}).get("major")
+
+            if intelligence:
+                diff_gen = intelligence.get_syllabus_diff_generator()
+                demo_mode = False  # [P2 修复] 演示样例标记，落盘时强制隔离目录
+                print(colorize(f"\n[📊 KaoYan Intelligence: 正在比对【{school}】{major} 大纲考点版本异动 ({y1} vs {y2})...]\n", C.CYAN))
+
+                if old_path and new_path and Path(old_path).exists() and Path(new_path).exists():
+                    res = diff_gen.compare_files(old_file=Path(old_path), new_file=Path(new_path), school=school, major=major, year_old=y1, year_new=y2)
+                else:
+                    import syllabus_manager as sm
+                    base_text = sm.CS408_SYLLABUS if isinstance(sm.CS408_SYLLABUS, str) else sm.CS408_SYLLABUS.get("content", "")
+                    if old_path and Path(old_path).exists():
+                        base_text = Path(old_path).read_text(encoding="utf-8", errors="ignore")
+                    elif (ROOT / "04-专业课" / "考试大纲.md").exists():
+                        base_text = (ROOT / "04-专业课" / "考试大纲.md").read_text(encoding="utf-8", errors="ignore")
+
+                    candidate_new = None
+                    pro_ref = ROOT / "04-专业课" / "参考资料"
+                    if not new_path and pro_ref.exists():
+                        for pat in ("*2027*大纲*", "*2027*考纲*", "*新*大纲*", "*新*考纲*", "*大纲*.md", "*大纲*.txt"):
+                            cands = [f for f in pro_ref.glob(pat) if f.is_file()]
+                            if cands:
+                                candidate_new = cands[0]
+                                break
+
+                    new_text = base_text
+                    if new_path and Path(new_path).exists():
+                        new_text = Path(new_path).read_text(encoding="utf-8", errors="ignore")
+                    elif candidate_new and candidate_new.exists():
+                        try:
+                            rel_p = str(candidate_new.relative_to(ROOT))
+                        except Exception:
+                            rel_p = str(candidate_new)
+                        print(colorize(f"\n[💡 考纲自动关联] 检测到参考资料库候选新考纲文件: {rel_p}", C.GREEN))
+                        new_text = candidate_new.read_text(encoding="utf-8", errors="ignore")
+                    else:
+                        # 未提供真实新考纲时仅运行内置演示样例：必须醒目标注，严禁作为备考依据
+                        try:
+                            from intelligence.models import current_exam_year as _cey
+                            demo_year = _cey()
+                        except Exception:
+                            demo_year = y2
+                        print(colorize(
+                            "\n[⚠️ 演示模式] 未提供真实新考纲文件 (可用 --new=<路径> 指定)。\n"
+                            f"以下对比使用内置演示样例变动，并非官方大纲，结果仅用于了解 Diff 功能，"
+                            f"严禁作为备考依据！", C.RED))
+                        new_text = base_text.replace("- **理解**：图的遍历", "- **掌握**：图的遍历（新增拓扑排序与关键路径步骤考查）")
+                        new_text += f"\n\n### 4. {demo_year}新增考纲知识点（演示样例·非官方）\n- **掌握**：红黑树的插入与平衡旋转调整；B+树在索引文件中的应用；\n- **了解**：外部排序的多路平衡归并。\n"
+                        demo_mode = True
+
+                    res = diff_gen.compare_texts(old_text=base_text, new_text=new_text, school=school, major=major, year_old=y1, year_new=y2)
+                    res["is_demo"] = demo_mode  # [P2 修复] 演示产物隔离
+
+                m = res["metrics"]
+                print(colorize(f"=== 考纲变动全景看板 · {school} ({y1} vs {y2}) ===", C.BOLD))
+                print(f"  • 变动等级: {colorize(m['stability_grade'], C.GREEN if m['volatility_percentage'] < 10 else C.YELLOW)} (波动率: {m['volatility_percentage']}%)")
+                print(f"  • 考点统计: 基准 {m['total_old']} 项 ➔ 最新 {m['total_new']} 项 ({m['total_new'] - m['total_old']:+d})")
+                print(f"  • 🚨 新增考点: {colorize(str(m['added_count']) + ' 处 (当年高危必考点)', C.RED)}")
+                print(f"  • 🍃 剔除考点: {colorize(str(m['removed_count']) + ' 处 (已彻底移出考纲，减负止损)', C.GREEN)}")
+                print(f"  • ⚠️ 考查微调: {colorize(str(m['modified_count']) + ' 处 (掌握等级升降级调整)', C.YELLOW)}")
+                print(f"  • 🔒 稳定考点: {m['unchanged_count']} 处\n")
+
+                if m['added_count'] > 0:
+                    print(colorize("【🚨 新增考点清单】", C.RED))
+                    for d in res['diff_items']:
+                        if d.change_type == "ADDED":
+                            p = d.point_new
+                            print(f"  + [{p.module} / {p.chapter}] [{p.requirement}] {p.text}")
+                    print()
+
+                if m['removed_count'] > 0:
+                    print(colorize("【🍃 删减考点清单】", C.GREEN))
+                    for d in res['diff_items']:
+                        if d.change_type == "REMOVED":
+                            p = d.point_old
+                            print(f"  - [{p.module} / {p.chapter}] {p.text}")
+                    print()
+
+                if m['modified_count'] > 0:
+                    print(colorize("【⚠️ 考查要求微调清单】", C.YELLOW))
+                    for d in res['diff_items']:
+                        if d.change_type == "MODIFIED":
+                            p = d.point_new or d.point_old
+                            print(f"  ~ {d.detail} ｜ 考点: {p.text}")
+                    print()
+
+                saved_p = diff_gen.save_diff_report(res)
+                print(colorize(f"[√ 考纲异动深度研报已生成并归档至]: {saved_p}\n", C.GREEN))
+            else:
+                print(colorize("[!] intelligence 模块未载入", C.RED))
+        elif sub in ("watch", "--watch"):
+            w_args = args[2:]
+            if intelligence:
+                watcher = intelligence.AdmissionWatcher()
+                w_sub = w_args[0] if len(w_args) > 0 else ""
+                if w_sub in ("--check", "-c", "check"):
+                    print(colorize("\n[📡 正在轮询监控高校研究生院与研招办最新简章公告...]\n", C.CYAN))
+                    findings = watcher.check_updates()
+                    for f in findings:
+                        if f.get("status") == "UPDATED":
+                            print(colorize(f"  🔥 [发现新动态] {f['school']}:", C.GREEN))
+                            for t in f.get("alert_titles", []):
+                                print(f"     - {t}")
+                        elif f.get("status") == "UNCHANGED":
+                            print(colorize(f"  ✓ {f['school']}: 站点指纹正常，暂无新增简章", C.BLUE))
+                        else:
+                            print(colorize(f"  ⚠️ {f['school']}: {f.get('msg', '请求超时')}", C.YELLOW))
+                    print()
+                elif w_sub in ("--list", "-l", "list") or not w_sub:
+                    watched = watcher.list_watched()
+                    if not watched:
+                        print(colorize("当前暂未配置监控高校。添加监控示例: ky fetch watch 华中科技大学", C.YELLOW))
+                    else:
+                        print(colorize(f"\n[📡 当前动态监控高校雷达 ({len(watched)} 所)]:", C.CYAN))
+                        for w in watched:
+                            print(f"  • {w['name']} (代码: {w['chsi_code']}) ｜ 最近检查: {w.get('last_check', '未检查')}")
+                        print(colorize("\n提示: 运行 ky fetch watch --check 立即比对最新简章变动", C.CYAN))
+                elif w_sub in ("--remove", "--rm", "-d", "remove"):
+                    target = w_args[1] if len(w_args) > 1 else ""
+                    if watcher.remove_watch(target):
+                        print(colorize(f"[√ 已取消对【{target}】的动态监控]", C.GREEN))
+                    else:
+                        print(colorize(f"[!] 未找到监控目标【{target}】", C.YELLOW))
+                else:
+                    target = w_sub
+                    res = watcher.add_watch(target)
+                    if res.get("success"):
+                        print(colorize(f"[√ {res.get('msg')}]: 官方入口 {res.get('url')}", C.GREEN))
+                    else:
+                        print(colorize(f"[!] 添加失败: {res.get('msg')}", C.RED))
+            else:
+                print(colorize("[!] intelligence 考情引擎模块未载入", C.RED))
+        else:
+            print(colorize(f"未知 fetch 子命令: {sub}，运行 ky fetch --help 查看用法。", C.YELLOW))
+    elif args[0] in ("ingest", "--ingest"):
+        if len(args) < 2 or "--help" in args or "-h" in args:
+            print(colorize("""
+考研试题与备考资料智能切片入库管道 (ky ingest)
+用法：
+  ky ingest <试题文件路径.md/.txt/.pdf> [--subject=pro/math/eng/pol] [--source=题源出处]
+示例：
+  ky ingest 2024年408统考真题.txt --subject=pro --source="2024统考408真题"
+  ky ingest 历年数学二中值定理题集.md --subject=math --source="数二历年证明题精选"
+说明：
+  自动分块切片单题，识别题型 (选择/填空/大题)，提取步骤采分点并格式化为标准白名单题目卡片，
+  自动归档入对应科目的 参考资料/ 目录。
+""", C.YELLOW))
+            sys.exit(0 if ("--help" in args or "-h" in args) else 1)
+
+        target_file = None
+        target_subject = "pro"
+        source_title = ""
+        for a in args[1:]:
+            if a.startswith("--subject=") or a.startswith("-s="):
+                target_subject = a.split("=", 1)[1].strip()
+            elif a.startswith("--source="):
+                source_title = a.split("=", 1)[1].strip()
+            elif not a.startswith("-"):
+                if target_file is None:
+                    target_file = a
+
+        if not target_file:
+            print(colorize("[!] 请提供待切片入库的试题文件路径", C.RED))
+            sys.exit(1)
+
+        p = Path(target_file)
+        if not p.exists():
+            print(colorize(f"[!] 找不到文件: {target_file}", C.RED))
+            sys.exit(1)
+
+        if material_ingestion:
+            pipe = material_ingestion.get_material_ingestion_pipeline()
+            print(colorize(f"\n[📥 正在对试题文档【{p.name}】执行智能分块与采分点切片入库...]\n", C.CYAN))
+            res = pipe.ingest_file(p, subject=target_subject, source_name=source_title or p.stem)
+            if res.get("success"):
+                print(colorize(f"  ✓ {res.get('summary')}", C.GREEN))
+                print(colorize(f"  • 白名单题目卡片集已生成至: {res.get('target_path')}\n", C.BOLD))
+            else:
+                print(colorize(f"  [!] 切片入库未完成: {res.get('msg')}\n", C.YELLOW))
+        else:
+            print(colorize("[!] material_ingestion 模块未载入", C.RED))
+    elif args[0] in ("compare", "--compare", "vs", "--vs"):
+        pos_args = []
+        save_flag = False
+        for a in args[1:]:
+            if a in ("--save", "-s"):
+                save_flag = True
+            elif not a.startswith("-"):
+                pos_args.append(a)
+
+        if "--help" in args or "-h" in args:
+            print(colorize("用法: ky compare [高校1] [高校2] [专业关键词] [--save]\n"
+                           "示例: ky compare 华中科技大学 武汉大学 --save\n"
+                           "      省略高校时自动取档案报考院校/备选院校: ky compare --save\n"
+                           "说明: 深度横向对标两所高校的办学层次、自划线、初试科目差异 (408/自命题)、复试线与一志愿保护机制。\n"
+                           "      专业关键词可省略，默认取 ky_config.json 中的报考专业。", C.YELLOW))
+            sys.exit(0)
+
+        # [P3 修复·D5] 无参/单参不再直接报错退出：优先取显式参数，缺项回退考生档案
+        # （第一所 = 报考院校，第二所 = 备选院校），与帮助文案口径一致；
+        # 档案也缺时给出可直接照抄的命令示例，而不是只打印用法。
+        prof_s1, prof_s2 = resolve_profile_schools()
+        if len(pos_args) >= 2:
+            s1, s2 = pos_args[0], pos_args[1]
+        elif len(pos_args) == 1:
+            s1 = pos_args[0]
+            s2 = prof_s2
+            if s2:
+                print(colorize(f"[i] 未指定第二所高校，自动采用档案备选院校: {s2}", C.CYAN))
+        else:
+            s1, s2 = prof_s1, prof_s2
+            if s1 and s2:
+                print(colorize(f"[i] 未指定对标高校，自动采用档案报考院校/备选院校: {s1} vs {s2}", C.CYAN))
+        if not s1 or not s2:
+            missing = "第一所高校（档案报考院校为空）" if not s1 else "第二所高校（档案备选院校为空）"
+            print(colorize(f"[!] 双校对标缺少{missing}，请显式指定：\n"
+                           f"      用法: ky compare <高校1> <高校2> [专业关键词] [--save]\n"
+                           f"      示例: ky compare 天津工业大学 长沙理工大学 --save", C.YELLOW))
+            sys.exit(1)
+        # [根因修复·默认值硬编码] 未给专业关键词时此前硬编码 "计算机"（同类缺陷
+        # 此前只修了 REPL 的 /compare 分支，顶层 ky compare 被漏掉），现统一走解析函数。
+        major_kw = pos_args[2] if len(pos_args) > 2 else resolve_major_keyword()
+
+        if intelligence:
+            print(colorize(f"\n[⚔️ KaoYan Intelligence: 正在对标【{s1}】与【{s2}】({major_kw}) 招考指标与复试保护...]\n", C.CYAN))
+            comparator = intelligence.SchoolComparator()
+            res = comparator.compare(school1_query=s1, school2_query=s2, major_keyword=major_kw, save_report=save_flag)
+            print(res.get("terminal_report", ""))
+            if res.get("saved_path"):
+                print(colorize(f"\n[√ 双校横向对比研报已归档至]: {res['saved_path']}\n", C.GREEN))
+        else:
+            print(colorize("[!] intelligence 考情引擎模块未载入", C.RED))
+    elif args[0] in ("mount", "scan", "--mount", "--scan"):
+        try:
+            from skills import material_scanner
+        except Exception:
+            from tools.skills import material_scanner
+        print(colorize("\n[🔍 正在智能扫描本地四科 参考资料/ 目录与考研资料库...]\n", C.CYAN))
+        mount_res = material_scanner.scan_and_mount_materials()
+        if mount_res.get("success"):
+            print(colorize(f"✔ 资料挂载完成！共扫描到 {mount_res['total_files']} 份本地参考资料与历年真题：", C.GREEN))
+            for k, flist in mount_res["details"].items():
+                label = {"math": "数学", "eng": "英语", "pol": "政治", "pro": "专业课"}.get(k, k)
+                if flist:
+                    print(f"  • 【{label}】: {len(flist)} 份实体资料 -> {', '.join(flist)}")
+                else:
+                    print(f"  • 【{label}】: 暂无本地资料 (私教遵循官方考纲出题)")
+            if mount_res.get("school_watch"):
+                print(colorize(f"\n[📡 研招联动]: {mount_res['school_watch']}", C.CYAN))
+            print(colorize("\n🎉 参考资料白名单与目标院校雷达已同步写回 ky_config.json 与 AGENTS.md！\n", C.GREEN))
+        else:
+            print(colorize(f"[!] 资料挂载失败: {mount_res.get('msg')}", C.RED))
+    elif args[0] in ("variant", "--variant"):
+        if len(args) < 2:
+            print(colorize("用法: ky variant <考点关键词或原题干> [--subject=math/eng/pol/pro]\n示例: ky variant 傅里叶变换 --subject=pro", C.YELLOW))
+            sys.exit(1)
+        # [P0 修复] 新增 --subject 参数：此前变式检索固定使用会话科目(active_subject)，
+        # 输入「ky variant 傅里叶变换」会被归到数学二并生成生硬拼接的自拟题。
+        v_subj = None
+        v_words = []
+        for a in args[1:]:
+            if a.startswith("--subject="):
+                v_subj = a.split("=", 1)[1].strip().lower()
+            else:
+                v_words.append(a)
+        topic = " ".join(v_words)
+        cfg = load_config()
+        active_subj = cfg.get("active_subject", "math")
+        v_subj = v_subj if v_subj in SUBJECT_DIRS else active_subj
+        if v_subj != active_subj:
+            print(colorize(f"[i] 变式检索科目: {SUBJECT_DIRS[v_subj][1]} (会话科目为 {SUBJECT_DIRS[active_subj][1]}，可用 --subject 调整)", C.CYAN))
+        if variant_retriever:
+            res = variant_retriever.search_real_variant(subject=v_subj, keyword=topic)
+            print(variant_retriever.format_variant_output(res))
+        else:
+            print("variant_retriever 技能模块未载入")
+    elif args[0] in ("map", "--map", "knowledge", "--knowledge"):
+        # [根因修复] 同 review：默认科目改为跟随档案。
+        # 注意：main() 里的 cfg 是分支内局部变量，此处必须用 load_config() 直取。
+        target_subj = load_config().get("active_subject", "math")
+        as_json = "--json" in args or "-j" in args
+        for a in args[1:]:
+            if a in ("--json", "-j"):
+                continue
+            for sk, sv in (("math", "数"), ("eng", "英"), ("pol", "政"), ("pro", "专")):
+                if sk in a.lower() or sv in a:
+                    target_subj = sk
+                    break
+        if knowledge_map:
+            if as_json:
+                data = knowledge_map.build_knowledge_map(target_subj)
+                print(json.dumps(data, ensure_ascii=False, indent=2))
+            else:
+                print(knowledge_map.format_knowledge_map_table(target_subj))
+        else:
+            print("knowledge_map 技能模块未载入")
+    elif args[0] in ("diagnose", "--diagnose"):
+        if len(args) < 2:
+            print(colorize("用法: ky diagnose <模考答题卡文本或文件路径> [--subject=math/eng/pol/pro]\n示例: ky diagnose 模考记录.txt 或 ky diagnose '1-5: A B C D A'", C.YELLOW))
+            sys.exit(1)
+        d_subj = None
+        d_words = []
+        d_explicit_text = None
+        d_explicit_file = None
+        for a in args[1:]:
+            if a.startswith("--subject="):
+                d_subj = a.split("=", 1)[1].strip().lower()
+            elif a.startswith("--text="):
+                d_explicit_text = a.split("=", 1)[1]
+            elif a.startswith("--file="):
+                d_explicit_file = a.split("=", 1)[1].strip()
+            else:
+                d_words.append(a)
+        raw_target = " ".join(d_words)
+        content = raw_target
+        is_file = False
+        target_file = None
+
+        # [P3 修复·D4] 内联答题卡文本此前被整串当路径（文本里含 "/"（如「得分 4/10」）
+        # 或 "：" 就会触发「找不到答题卡文件」），与帮助文案「支持答题卡文本或文件路径」不符。
+        # 现改为：显式参数优先 -> 真实存在的文件 -> 严格路径形态才判定为路径，否则一律按内联文本处理。
+        if d_explicit_file:
+            p = Path(d_explicit_file)
+            if not p.is_file():
+                print(colorize(f"[!] 找不到答题卡文件: {d_explicit_file}", C.RED))
+                sys.exit(1)
+            is_file, target_file = True, p
+        elif d_explicit_text is not None:
+            content = d_explicit_text
+        elif "\n" not in raw_target and len(raw_target) < 260:
+            try:
+                p = Path(raw_target)
+                if p.is_file():
+                    is_file = True
+                    target_file = p
+            except (OSError, ValueError):
+                pass
+
+        if is_file and target_file:
+            content = target_file.read_text(encoding="utf-8", errors="ignore")
+        elif (d_explicit_file is None and d_explicit_text is None and _looks_like_path(raw_target)):
+            print(colorize(f"[!] 找不到答题卡文件: {raw_target}", C.RED))
+            sys.exit(1)
+        if not str(content).strip():
+            print(colorize("[!] 答题卡内容不能为空", C.RED))
+            sys.exit(1)
+        # [P0 修复] 从试卷路径反查科目目录，避免「04-专业课的试卷」被按会话科目(数学)诊断；
+        # 也可用 --subject 显式指定，路径推断优先级低于显式参数。
+        if not d_subj and is_file and target_file:
+            p_str = str(target_file)
+            for s_k, (s_folder, _) in SUBJECT_DIRS.items():
+                if s_folder in p_str:
+                    d_subj = s_k
+                    break
+        cfg = load_config()
+        active_subj = cfg.get("active_subject", "math")
+        d_subj = d_subj if d_subj in SUBJECT_DIRS else active_subj
+        if d_subj != active_subj:
+            print(colorize(f"[i] 已按试卷归属科目诊断: {SUBJECT_DIRS[d_subj][1]} (会话科目为 {SUBJECT_DIRS[active_subj][1]})", C.CYAN))
+        if exam_diagnoser:
+            res = exam_diagnoser.diagnose_mock_exam(subject=d_subj, exam_input=content)
+            print(exam_diagnoser.format_diagnosis_report(res))
+        else:
+            print("exam_diagnoser 技能模块未载入")
+    elif args[0] in ("fatigue", "--fatigue"):
+        try:
+            import study_planner
+            info = study_planner.check_fatigue_alert()
+            if info.get("alert"):
+                print(colorize(f"\n[⚠️ 疲劳警报触发] 连续 {info.get('consecutive_low_days')} 天低完成率 (均值 {info.get('avg_rate')}%):", C.YELLOW))
+                print(info.get("message"))
+                print(colorize("\n💡 提示：输入 ky relieve 可立即一键启动减负模式。\n", C.CYAN))
+            else:
+                print(colorize(f"\n[√ 复习节奏正常] {info.get('message')}\n", C.GREEN))
+        except Exception as e:
+            print(f"检查疲劳异常: {e}")
+    elif args[0] in ("relieve", "--relieve"):
+        try:
+            import study_planner
+            res = study_planner.apply_relief_mode()
+            if res.get("success"):
+                print(colorize(f"\n[√ 减负模式已成功启动]", C.GREEN))
+                print(f"  • 每日复习总时间: {res.get('old_hours')}h ➔ {C.BOLD}{res.get('new_hours')}h{C.RESET}")
+                print(f"  • 辅导风格切换为: {C.GREEN}{res.get('style')}{C.RESET}")
+                print(f"  • 说明: {res.get('message')}\n")
+            else:
+                print(colorize(f"[!] 启动减负失败: {res.get('message')}", C.RED))
+        except Exception as e:
+            print(f"启动减负异常: {e}")
+    elif args[0] in ("clawbot", "--clawbot"):
+        run_wechat_clawbot_install()
+    elif args[0] in ("gui", "--gui"):
+        if any(h in args for h in ("-h", "--help")):
+            print("""
+用法：ky gui [选项]
+
+启动考研学习链桌面可视化图形界面 (基于 PySide6)。
+
+选项：
+  -h, --help       显示此帮助信息并退出
+""")
+            return
+        try:
+            import ky_gui
+            ky_gui.main()
+        except ImportError:
+            try:
+                from tools import ky_gui
+                ky_gui.main()
+            except ImportError:
+                print(colorize("[!] 启动 GUI 失败，请检查是否已安装 PySide6 (pip install PySide6)", C.RED))
+                sys.exit(1)
+    elif args[0] in ("wechat", "--wechat", "wx", "--wx"):
+        if "--clawbot" in args:
+            run_wechat_clawbot_install()
+        else:
+            cmd_wechat_search(args[1:])
+    elif args[0] in ("bridge", "--bridge", "tunnel", "--tunnel"):
+        show_bridge_guide()
+    elif args[0] in ("serve", "--serve"):
+        port = 8088
+        if len(args) > 1 and args[1].isdigit():
+            port = int(args[1])
+        # serve 接受附加参数 --host=0.0.0.0
+        if len(args) > 1 and args[-1].startswith("--host="):
+            gateway_host = args[-1].split("=", 1)[1].strip() or gateway_host
+        # 显式传递 CLI 解析出的 gateway_token（此前被丢弃，导致 --gateway-token 不生效）
+        run_server(port=port, host=gateway_host, gateway_token=gateway_token)
+    elif args[0] in ("status", "--status"):
+        print_status_summary()
+    elif args[0] in ("memory", "--memory"):
+        sub = args[1].lower() if len(args) > 1 else "status"
+        try:
+            from tools.agent import MemoryManager
+            mem_mgr = MemoryManager(workspace_root=ROOT)
+            if sub in ("status", "health", "check"):
+                health = mem_mgr.get_memory_health()
+                print(colorize("\n=== 🧠 三级分层记忆健康度诊断 ===", C.BOLD))
+                print(f"总容量消耗: {health['total_tokens']} tokens ({health['total_chars']} 字符)")
+                print("-" * 55)
+                print(f"{'记忆层级':<12} {'文件路径':<20} {'字符数':<8} {'Tokens':<8} {'健康状态'}")
+                print("-" * 55)
+                for scope, info in health.get("details", {}).items():
+                    st = info.get("status", "良好")
+                    st_code = info.get("status_code", "ok")
+                    st_color = C.GREEN if (st_code == "ok" or st in ("ok", "良好")) else (C.YELLOW if ("偏大" in st or "需修剪" in st or st_code == "warning") else C.RED)
+                    raw_p = info.get("path", "")
+                    if raw_p:
+                        try:
+                            p_rel = str(Path(raw_p).relative_to(ROOT))
+                        except ValueError:
+                            try:
+                                p_rel = "~/" + str(Path(raw_p).relative_to(Path.home())).replace("\\", "/")
+                            except Exception:
+                                p_rel = str(raw_p)
+                    else:
+                        p_rel = "-"
+                    print(f"{scope:<12} {p_rel:<20} {info.get('chars', 0):<8} {info.get('tokens', 0):<8} {colorize(st, st_color)}")
+                print("-" * 55)
+                print("💡 提示：若某一记忆层膨胀过大，可运行 ky memory prune 进行滚动修剪与决策归档。\n")
+            elif sub in ("prune", "trim", "clean"):
+                target_scopes = [args[2]] if len(args) > 2 else ["session", "decisions"]
+                any_pruned = False
+                for target_scope in target_scopes:
+                    res = mem_mgr.prune_memory(scope=target_scope, max_items=50, archive_to_decisions=True)
+                    if res.get("pruned"):
+                        any_pruned = True
+                        print(colorize(f"\n[√ 记忆修剪完成] 作用域: {target_scope}", C.GREEN))
+                        print(f"  • 修剪条目: {res.get('pruned_count')} 条")
+                        print(f"  • 归档至决策库: {res.get('archived_count')} 条")
+                        print(f"  • 剩余条目: {res.get('remaining_count')} 条")
+                if not any_pruned:
+                    print(colorize(f"\n[i] 各层记忆条目未超限，无需修剪。\n", C.CYAN))
+                else:
+                    print()
+            else:
+                print(colorize(f"未知 memory 子命令: {sub}，支持 status / prune", C.YELLOW))
+        except Exception as e:
+            print(f"记忆管理执行失败: {e}")
+    elif args[0] in ("rollback", "--rollback", "restore", "--restore"):
+        try:
+            from tools.agent import PermissionManager
+            pm = PermissionManager(workspace_root=ROOT)
+            res = pm.restore_last_checkpoint()
+            if res.get("success"):
+                print(colorize(f"\n[√ 快照回滚成功] {res.get('message')}\n", C.GREEN))
+            else:
+                print(colorize(f"\n[!] 快照回滚失败: {res.get('message')}\n", C.YELLOW))
+        except Exception as e:
+            print(f"回滚执行失败: {e}")
+    elif args[0] in ("build", "--build"):
+        build_py = ROOT / "05-考研看板" / "build.py"
+        if build_py.exists():
+            import subprocess
+            result = subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"))
+            if result.returncode != 0:
+                print(colorize("[!] 看板构建失败", C.RED))
+                sys.exit(result.returncode or 1)
+        else:
+            print(colorize("[!] 未找到看板构建脚本", C.RED))
+            sys.exit(1)
+    elif args[0] in ("menu", "--menu", "tui", "--tui"):
+        try:
+            import tui_navigator
+        except ImportError:
+            from tools import tui_navigator
+        tui_args = args[1:]
+        if "--list" in tui_args or "-l" in tui_args:
+            print(tui_navigator.render_header())
+            print(tui_navigator.render_menu())
+        elif any(a.startswith("--action=") for a in tui_args):
+            act = [a.split("=")[1] for a in tui_args if a.startswith("--action=")][0]
+            tui_navigator.execute_action(act, interactive=False)
+        elif tui_args and not tui_args[0].startswith("-"):
+            tui_navigator.execute_action(tui_args[0], interactive=False)
+        else:
+            tui_navigator.run_tui_loop()
+    elif args[0] in ("calc", "--calc", "verify", "--verify"):
+        if len(args) < 2 or "--help" in args or "-h" in args:
+            print(colorize("""
+考研数学符号高精度验算引擎 (ky calc / verify)
+用法：
+  ky calc <数学表达式>
+示例：
+  ky calc "limit (ln(1+x)-x)/x^2 as x->0"
+  ky calc "diff x^3 * sin(x)"
+  ky calc "int x * exp(x) dx"
+  ky calc "ode y'' + 4*y = 0"
+  ky calc "det [[1,2],[3,4]]"
+说明：
+  基于 SymPy 高精度符号计算库，杜绝大模型计算幻觉，提供 100% 精确的推导验算与 LaTeX 渲染。
+""", C.YELLOW))
+            sys.exit(0 if ("--help" in args or "-h" in args) else 1)
+        expr = " ".join(args[1:])
+        mv = math_verifier
+        if not mv:
+            try:
+                from skills import math_verifier as mv
+            except Exception:
+                try:
+                    from tools.skills import math_verifier as mv
+                except Exception:
+                    mv = None
+        if mv:
+            print(colorize("\n[📐 正在运行数学符号验算引擎...]\n", C.CYAN))
+            res = mv.run_math_query(expr)
+            print(res + "\n")
+        else:
+            print("math_verifier 技能模块未载入")
+    elif args[0] in ("help", "--help", "-h"):
+        print(f"""
+考研学习链专用终端工具 (ky-cli)
+用法：
+  python tools/ky_cli.py                       启动交互式 Agent 私教终端 (默认 --permission=ask)
+  python tools/ky_cli.py --permission=plan    计划模式 (写操作前出具变更计划卡片并创建快照备份)
+  python tools/ky_cli.py --permission=auto    全自动沙箱模式 (免交互确认)
+  python tools/ky_cli.py --permission=safe    严格只读安全模式 (禁止文件写入与执行)
+  python tools/ky_cli.py --host=0.0.0.0        网关对外暴露（需配合 KY_GATEWAY_TOKEN）
+  python tools/ky_cli.py --gateway-token=xxx   显式传入网关 token
+
+子命令：
+  gui                                         启动 GUI 可视化操作端 (基于 PySide6)
+  wechat <关键词> [--max=N] [--save]          多源检索微信公众号考研文章与经验沉淀 (别名: wx)
+  menu [action] / tui                         启动终端交互中枢导航器 (TUI) 或执行指定动作
+  status                                      查看考研总战役大盘态势、倒计时、打卡天数与作息节律
+  memory [status|prune]                       三级分层记忆健康度诊断与滚动修剪归档
+  rollback                                    快速回滚 Plan Mode 写入前备份的最近一次文件快照
+  today [--json]                              查看今日四科任务清单；加 --json 输出结构化数据
+  done <关键词>                               快速将包含关键词的今日任务标记为完成并回写状态
+  review [math|eng|pol|pro]                   查看 FSRS 待复测错题列表
+  calc <表达式>                               基于 SymPy 高精度数学符号验算 (极限/导数/积分/ODE/矩阵，别名: verify)
+  diff [选项]                                 新旧考纲版本变化与动荡率对比研报 (等同于 ky fetch diff)
+  style [1/2/3/4]                             查看或动态切换 4 种私教辅导风格
+  doctor                                      一键系统健康诊断 (Python环境/依赖/状态/连通性)
+  plan                                        启动个人专属定制化必考方案向导
+  fetch [info|diff|watch]                     考研招考情报与考纲变动抓取中枢 (研招网/官网/考纲Diff/监控雷达)
+  ingest <试题文件路径> [--subject=pro/math]    外部真题/试卷智能切片入库管道 (题型识别/采分点提取/白名单归档)
+  admission <高校名> [专业] [--year=2027] [--save] 精准调取研招网与高校官方招考指标与证据链
+  watch [高校名] [--check] [--list] [--remove]        高校研究生院最新简章与自命题动态指纹监控雷达
+  compare <校1> <校2> [专业] [--save]          双校招考关键指标横向深度对标 (408/自命题/复试线/保护)
+  scout <高校名> [专业名] [--save] [--apply]  定向侦察目标高校招生简章、考试大纲、报录比与知乎/B站口碑
+  exam [科目] [--count=N] [--save]            基于错题库与核心考点反向靶向组卷
+  exam-submit <试卷路径> <作答文本>           自动判卷并输出正答率、采分点与错题归因
+  variant <考点关键词>                        四科白名单同类真题变式检索与防幻觉溯源
+  map [科目] [--json]                         官方考试大纲知识点图谱与掌握度映射
+  diagnose <答题卡文本或文件>                 整卷级多题诊断引擎 (章节失分排行与薄弱处方)
+  fatigue                                     检查疲劳度与完成率监控警报
+  relieve                                     一键启动智能减负模式 (任务下调 25%，切换为鼓励型)
+  notify [内容]                               一键推送今日任务/晨报到微信、QQ、钉钉、飞书群
+  build                                       一键重新编译并刷新本地与移动端看板
+  subject                                     选择考研科目(数一/二/三/396、英一/二)并加载考纲
+  config                                      配置大模型 API Key、视觉模型与机器人 Webhook
+  serve [port]                                启动 Webhook 网关与实时 Web 伴侣
+  clawbot                                     启动微信个人号 ClawBot 扫码连接器
+  bridge                                      查看各平台双向讲题网关接入指南
+""")
+    else:
+        print(f"未知参数: {args[0]}，运行 python tools/ky_cli.py --help 查看帮助。")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

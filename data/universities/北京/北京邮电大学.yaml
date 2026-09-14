@@ -1,0 +1,28 @@
+chsi_code: '10013'
+name: 北京邮电大学
+aliases:
+- 北邮
+- BUPT
+- 两电一邮
+level:
+- '211'
+- 双一流
+region: 北京
+province: 北京
+official_domain: https://www.bupt.edu.cn
+graduate_domain: https://yzb.bupt.edu.cn
+admission_domain: https://yzb.bupt.edu.cn
+departments:
+  计算机:
+    college_name: 计算机学院 (国家示范性软件学院)
+    college_domain: https://scs.bupt.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405
+  信息与通信:
+    college_name: 信息与通信工程学院
+    college_domain: https://sice.bupt.edu.cn
+    default_majors:
+    - 081000
+    - 085401

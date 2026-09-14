@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b101d" />
+      <stop offset="50%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#090d16" />
+    </linearGradient>
+    <linearGradient id="loopNode1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#31101e" />
+      <stop offset="100%" stop-color="#1f0913" />
+    </linearGradient>
+    <linearGradient id="loopNode2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1833" />
+      <stop offset="100%" stop-color="#130e22" />
+    </linearGradient>
+    <linearGradient id="loopNode3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0c2536" />
+      <stop offset="100%" stop-color="#071724" />
+    </linearGradient>
+    <linearGradient id="loopNode4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a1f0a" />
+      <stop offset="100%" stop-color="#1c1305" />
+    </linearGradient>
+    <linearGradient id="loopNode5" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b2e23" />
+      <stop offset="100%" stop-color="#061c15" />
+    </linearGradient>
+    <filter id="loopShadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <style>
+    .m-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 800; fill: #f8fafc; font-size: 26px; }
+    .m-sub { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; fill: #94a3b8; font-size: 13.5px; }
+    .step-idx { font-family: "JetBrains Mono", Consolas, monospace; font-weight: 800; font-size: 11px; }
+    .step-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 700; font-size: 14.5px; }
+    .step-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-size: 11px; fill: #94a3b8; line-height: 1.4; }
+  </style>
+
+  <!-- 背景 -->
+  <rect width="960" height="480" rx="20" fill="url(#bgGrad3)" stroke="#1e293b" stroke-width="1.5" />
+  <path d="M 0 75 L 960 75 M 0 175 L 960 175 M 0 275 L 960 275 M 0 375 L 960 375" stroke="#334155" stroke-opacity="0.12" stroke-width="1" />
+  <path d="M 190 0 L 190 480 M 380 0 L 380 480 M 570 0 L 570 480 M 760 0 L 760 480" stroke="#334155" stroke-opacity="0.12" stroke-width="1" />
+
+  <!-- 头部主标题 -->
+  <g transform="translate(480, 42)" text-anchor="middle">
+    <text class="m-title" y="0">数字化错题生命周期与艾宾浩斯盲盒复测闭环</text>
+    <text class="m-sub" y="24">告别“只抄错题不重做”的假勤奋 · 抹去答案独立盲盒再战 · 错题掌握状态自闭环流转</text>
+  </g>
+
+  <!-- ══════════════ 5 大闭环阶段卡片 ══════════════ -->
+
+  <!-- 阶段 1: 采分批改与错因定性 -->
+  <g transform="translate(30, 95)" filter="url(#loopShadow)">
+    <rect width="168" height="265" rx="14" fill="url(#loopNode1)" stroke="#f43f5e" stroke-width="1.5" stroke-opacity="0.8" />
+    <rect x="14" y="14" width="46" height="20" rx="10" fill="#881337" />
+    <text class="step-idx" x="37" y="28" text-anchor="middle" fill="#fda4af">STEP 1</text>
+    <text class="step-title" x="14" y="58" fill="#ffe4e6">采分批改定性</text>
+    <text class="step-desc" x="14" y="80">• 试卷截图/手写草稿</text>
+    <text class="step-desc" x="14" y="98">• 标出步骤采分点</text>
+    <text class="step-desc" x="14" y="116">• 锁定错因五分类:</text>
+    <g transform="translate(14, 130)">
+      <rect width="140" height="74" rx="6" fill="#14060c" stroke="#4c0519" stroke-width="1" />
+      <text x="8" y="18" fill="#fda4af" font-size="10">① 概念漏洞  ② 审题偏差</text>
+      <text x="8" y="36" fill="#fda4af" font-size="10">③ 公式记错  ④ 计算失误</text>
+      <text x="8" y="54" fill="#fda4af" font-size="10">⑤ 步骤丢分 (量化统计)</text>
+    </g>
+    <text class="step-desc" x="14" y="235" fill="#fb7185">拒绝对粗心泛泛而谈</text>
+    <text class="step-desc" x="14" y="250" fill="#9f1239">倒逼学员反思本质失分</text>
+  </g>
+
+  <!-- 连接箭头 1 -> 2 -->
+  <path d="M 204 227 L 218 227" stroke="#fb7185" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- 阶段 2: 结构化沉淀入库 -->
+  <g transform="translate(220, 95)" filter="url(#loopShadow)">
+    <rect width="168" height="265" rx="14" fill="url(#loopNode2)" stroke="#a855f7" stroke-width="1.5" stroke-opacity="0.8" />
+    <rect x="14" y="14" width="46" height="20" rx="10" fill="#581c87" />
+    <text class="step-idx" x="37" y="28" text-anchor="middle" fill="#d8b4fe">STEP 2</text>
+    <text class="step-title" x="14" y="58" fill="#f3e8ff">结构化沉淀</text>
+    <text class="step-desc" x="14" y="80">• 终端快捷键 [2] 触发</text>
+    <text class="step-desc" x="14" y="98">• 提取完整题目原设问</text>
+    <text class="step-desc" x="14" y="116">• 记录错误卡点与处方</text>
+    <g transform="translate(14, 130)">
+      <rect width="140" height="74" rx="6" fill="#0d091a" stroke="#3b0764" stroke-width="1" />
+      <text x="8" y="18" fill="#d8b4fe" font-size="10">📁 错题本/错题记录.md</text>
+      <text x="8" y="36" fill="#c084fc" font-size="9.5">- 题干设问 (LaTeX还原)</text>
+      <text x="8" y="54" fill="#c084fc" font-size="9.5">- 状态: [待复测]</text>
+    </g>
+    <text class="step-desc" x="14" y="235" fill="#c084fc">零碎片无纸化归档</text>
+    <text class="step-desc" x="14" y="250" fill="#7e22ce">随时随地静态编译上云</text>
+  </g>
+
+  <!-- 连接箭头 2 -> 3 -->
+  <path d="M 394 227 L 408 227" stroke="#c084fc" stroke-width="2" />
+
+  <!-- 阶段 3: 艾宾浩斯周期排期 -->
+  <g transform="translate(410, 95)" filter="url(#loopShadow)">
+    <rect width="168" height="265" rx="14" fill="url(#loopNode3)" stroke="#0284c7" stroke-width="1.5" stroke-opacity="0.8" />
+    <rect x="14" y="14" width="46" height="20" rx="10" fill="#0c4a6e" />
+    <text class="step-idx" x="37" y="28" text-anchor="middle" fill="#7dd3fc">STEP 3</text>
+    <text class="step-title" x="14" y="58" fill="#e0f2fe">艾宾浩斯排期</text>
+    <text class="step-desc" x="14" y="80">• 遗忘衰减曲线动态计算</text>
+    <text class="step-desc" x="14" y="98">• 1天 / 3天 / 7天 / 15天</text>
+    <text class="step-desc" x="14" y="116">• 到期未掌握题目置顶</text>
+    <g transform="translate(14, 130)">
+      <rect width="140" height="74" rx="6" fill="#041624" stroke="#075985" stroke-width="1" />
+      <text x="8" y="20" fill="#38bdf8" font-size="10.5" font-weight="700">⏳ 记忆复习阶梯:</text>
+      <text x="8" y="38" fill="#7dd3fc" font-size="9.5">第 1 天: 查缺初检</text>
+      <text x="8" y="56" fill="#7dd3fc" font-size="9.5">第 3 天/7 天: 抗遗忘巩固</text>
+    </g>
+    <text class="step-desc" x="14" y="235" fill="#38bdf8">科学抗击大脑遗忘</text>
+    <text class="step-desc" x="14" y="250" fill="#0369a1">精准掌握记忆黄金窗口</text>
+  </g>
+
+  <!-- 连接箭头 3 -> 4 -->
+  <path d="M 584 227 L 598 227" stroke="#38bdf8" stroke-width="2" />
+
+  <!-- 阶段 4: 盲盒考核独立重做 -->
+  <g transform="translate(600, 95)" filter="url(#loopShadow)">
+    <rect width="168" height="265" rx="14" fill="url(#loopNode4)" stroke="#eab308" stroke-width="1.5" stroke-opacity="0.8" />
+    <rect x="14" y="14" width="46" height="20" rx="10" fill="#713f12" />
+    <text class="step-idx" x="37" y="28" text-anchor="middle" fill="#fde047">STEP 4</text>
+    <text class="step-title" x="14" y="58" fill="#fef9c3">盲盒试题重测</text>
+    <text class="step-desc" x="14" y="80">• 输入 /review 或 /quiz</text>
+    <text class="step-desc" x="14" y="98">• 抹去原解答与所有提示</text>
+    <text class="step-desc" x="14" y="116">• 只给题干与错因预警</text>
+    <g transform="translate(14, 130)">
+      <rect width="140" height="74" rx="6" fill="#181003" stroke="#854d0e" stroke-width="1" />
+      <text x="8" y="18" fill="#fef08a" font-size="10">🎯 全真盲盒试卷卡</text>
+      <text x="8" y="36" fill="#facc15" font-size="9.5">- 隐藏所有历史推导</text>
+      <text x="8" y="54" fill="#facc15" font-size="9.5">- 强迫草稿纸独立重演</text>
+    </g>
+    <text class="step-desc" x="14" y="235" fill="#facc15">杜绝“看答案假懂”</text>
+    <text class="step-desc" x="14" y="250" fill="#a16207">只有做对才算真掌握</text>
+  </g>
+
+  <!-- 连接箭头 4 -> 5 -->
+  <path d="M 774 227 L 788 227" stroke="#facc15" stroke-width="2" />
+
+  <!-- 阶段 5: 闭环回写与出库 -->
+  <g transform="translate(790, 95)" filter="url(#loopShadow)">
+    <rect width="140" height="265" rx="14" fill="url(#loopNode5)" stroke="#10b981" stroke-width="1.5" stroke-opacity="0.8" />
+    <rect x="14" y="14" width="46" height="20" rx="10" fill="#064e3b" />
+    <text class="step-idx" x="37" y="28" text-anchor="middle" fill="#6ee7b7">STEP 5</text>
+    <text class="step-title" x="14" y="58" fill="#d1fae5">状态闭环回写</text>
+    <text class="step-desc" x="14" y="80">• 私教全真采分评判</text>
+    <text class="step-desc" x="14" y="98">• 答对: [√ 已掌握]</text>
+    <text class="step-desc" x="14" y="116">• 自动出库雷达降分</text>
+    <g transform="translate(10, 130)">
+      <rect width="120" height="74" rx="6" fill="#031610" stroke="#047857" stroke-width="1" />
+      <text x="8" y="22" fill="#6ee7b7" font-size="10" font-weight="700">🎉 闭环终验通过</text>
+      <text x="8" y="42" fill="#34d399" font-size="9.5">若仍失误 ➔ 重置</text>
+      <text x="8" y="58" fill="#34d399" font-size="9.5">艾宾浩斯周期重新测</text>
+    </g>
+    <text class="step-desc" x="14" y="235" fill="#34d399">彻底清零薄弱点</text>
+    <text class="step-desc" x="14" y="250" fill="#047857">稳拿必考基本盘</text>
+  </g>
+
+  <!-- 底部回流闭环连线 (若仍失误回流到 Step 3) -->
+  <path d="M 860 365 L 860 405 L 494 405 L 494 365" fill="none" stroke="#f43f5e" stroke-width="1.6" stroke-dasharray="5 5" />
+  <g transform="translate(680, 420)">
+    <rect x="-105" y="-12" width="210" height="24" rx="12" fill="#1e1b2e" stroke="#ef4444" stroke-width="1" />
+    <text text-anchor="middle" y="4" fill="#fca5a5" font-size="10.5" font-family="sans-serif">⚠️ 复测仍有失误 ➔ 自动重置 1/3/7 天队列重练</text>
+  </g>
+</svg>

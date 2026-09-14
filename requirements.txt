@@ -1,0 +1,42 @@
+# 考研学习链 (Kaoyan AI Study Chain) · 依赖说明清单
+#
+# 【核心运行模式】：
+# 考研学习链设计遵循 Local-first 原则，核心 REPL 交互、协议路由器、状态管理与大模型通信
+# 完全基于 Python 3.10+ 标准库构建，零第三方依赖即可直接运行！
+#
+# 若需启用以下考研专有高级技能，可通过 pip 安装对应增强依赖：
+
+# ── 1. 数学符号高精度验算技能 (math_verifier) ──
+# 支持高阶导数、不定积分、微分方程通解、二次型正定性矩阵顺序主子式验算
+sympy>=1.12
+
+# ── 2. 历年真题与参考资料 PDF 抽取技能 (pdf_extractor) ──
+# 支持从本地真题扫描件/教材 PDF 抽取指定页码并切分题号 (cryptography 用于 AES 权限位解密)
+pypdf>=3.17.0
+cryptography>=41.0.0
+
+# ── 3. 视觉解题与拍照批改增强技能 (vision_solver) ──
+# 支持剪贴板截图处理、草稿图尺寸优化与 Base64 编码
+Pillow>=10.0.0
+
+# ── 4. 本地离线 OCR 文本识别技能 (可选) ──
+# 支持在无视觉大模型时通过本地 ONNX 引擎离线抽取图片中的中英文手写与公式
+rapidocr-onnxruntime>=1.3.0
+
+# ── 5. 招考情报与高校注册表解析技能 (intelligence/registry) ──
+# 支持高校考研专业目录 YAML 解析与多源证据比对
+PyYAML>=6.0
+# ── 6. 桌面视觉交互与管理界面 (GUI) ──
+# 基于 Qt/PySide6 构建全科备考看板、可视化做题与真题库切片检索
+PySide6>=6.6.0
+
+# ── 7. Rust 原生性能加速拓展 (可选构建依赖) ──
+# 用于从源码编译 ky_rust_ext 原生动态库
+maturin>=1.0.0
+
+# ── 8. 考研状态管理与算法调度 ──
+# fsrs 必须 >= 5.0：本项目使用 Scheduler API
+#   （Scheduler.review_card / Card.to_dict）。4.x 及更早版本的 fsrs.FSRS、
+#   Scheduler.repeat、Card.reps/scheduled_days 均已移除，写 >=1.0.0 会装上不兼容版本。
+fsrs>=5.0.0
+filelock>=3.12.0

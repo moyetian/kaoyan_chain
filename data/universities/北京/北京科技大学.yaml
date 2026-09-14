@@ -1,0 +1,21 @@
+chsi_code: '10008'
+name: 北京科技大学
+aliases:
+- 北科
+- 北科大
+- USTB
+level:
+- '211'
+- 双一流
+region: 北京
+province: 北京
+official_domain: https://www.ustb.edu.cn
+graduate_domain: https://yzxc.ustb.edu.cn
+admission_domain: https://yzxc.ustb.edu.cn
+departments:
+  计算机:
+    college_name: 计算机与通信工程学院
+    college_domain: https://scce.ustb.edu.cn
+    default_majors:
+    - 081200
+    - 085404

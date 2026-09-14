@@ -1,0 +1,21 @@
+chsi_code: '10336'
+name: 杭州电子科技大学
+aliases:
+- 杭电
+- HDU
+level:
+- 省属重点
+- IT名校
+region: 浙江杭州
+province: 浙江
+official_domain: https://www.hdu.edu.cn
+graduate_domain: http://grs.hdu.edu.cn
+admission_domain: http://grs.hdu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机学院
+    college_domain: http://computer.hdu.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

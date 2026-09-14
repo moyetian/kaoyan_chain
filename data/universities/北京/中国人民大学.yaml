@@ -1,0 +1,34 @@
+chsi_code: '10002'
+name: 中国人民大学
+aliases:
+- 人大
+- RUC
+- Renmin University of China
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 北京
+province: 北京
+official_domain: https://www.ruc.edu.cn
+graduate_domain: https://pgs.ruc.edu.cn
+admission_domain: https://pgs.ruc.edu.cn
+departments:
+  经济:
+    college_name: 经济学院
+    college_domain: http://econ.ruc.edu.cn
+    default_majors:
+    - '020100'
+    - '020200'
+  金融:
+    college_name: 财政金融学院
+    college_domain: http://cj.ruc.edu.cn
+    default_majors:
+    - '025100'
+  信息:
+    college_name: 信息学院 / 高瓴人工智能学院
+    college_domain: http://info.ruc.edu.cn
+    default_majors:
+    - 081200
+    - 085400

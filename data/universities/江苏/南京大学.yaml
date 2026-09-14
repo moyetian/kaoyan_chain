@@ -1,0 +1,25 @@
+chsi_code: '10284'
+name: 南京大学
+aliases:
+- 南大
+- NJU
+- C9联盟
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+- C9联盟
+region: 江苏南京
+province: 江苏
+official_domain: https://www.nju.edu.cn
+graduate_domain: https://grawww.nju.edu.cn
+admission_domain: https://grawww.nju.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学与技术系 / 人工智能学院
+    college_domain: https://cs.nju.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

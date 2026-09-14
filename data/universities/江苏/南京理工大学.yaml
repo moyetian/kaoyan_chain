@@ -1,0 +1,20 @@
+chsi_code: '10288'
+name: 南京理工大学
+aliases:
+- 南理工
+- NUST
+level:
+- '211'
+- 双一流
+region: 江苏南京
+province: 江苏
+official_domain: https://www.njust.edu.cn
+graduate_domain: https://gs.njust.edu.cn
+admission_domain: https://gs.njust.edu.cn/zsgz
+departments:
+  计算机:
+    college_name: 计算机科学与工程学院
+    college_domain: https://cs.njust.edu.cn
+    default_majors:
+    - 081200
+    - 085404

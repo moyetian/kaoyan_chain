@@ -1,0 +1,32 @@
+chsi_code: '10001'
+name: 北京大学
+aliases:
+- 北大
+- PKU
+- Peking University
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+- C9联盟
+region: 北京
+province: 北京
+official_domain: https://www.pku.edu.cn
+graduate_domain: https://admission.pku.edu.cn
+admission_domain: https://admission.pku.edu.cn
+departments:
+  计算机:
+    college_name: 计算机学院 / 软件与微电子学院
+    college_domain: https://cs.pku.edu.cn
+    default_majors:
+    - 081200
+    - 085400
+    - 085404
+    - 085405
+  医学:
+    college_name: 北京大学医学部
+    college_domain: https://yjsy.bjmu.edu.cn
+    default_majors:
+    - '100200'
+    - '105100'

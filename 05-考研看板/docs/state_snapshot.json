@@ -1,0 +1,3338 @@
+{
+  "meta": {
+    "snapshot_version": "ky-snapshot/1.0",
+    "generated_at": "2026-09-14 18:27:41",
+    "opt_in": true,
+    "subjects_count": 4,
+    "memo_cards": 8,
+    "weak_cards": 17,
+    "metrics_count": 7,
+    "parse_warnings": [],
+    "sections_status": [
+      {
+        "subject": "math",
+        "kw": null,
+        "status": "ok",
+        "path": "_状态/今日任务.md",
+        "tab": "today"
+      },
+      {
+        "subject": "math",
+        "kw": "公式默写卡",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "memo"
+      },
+      {
+        "subject": "math",
+        "kw": "复发错误",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "memo"
+      },
+      {
+        "subject": "math",
+        "kw": "模块掌握度雷达",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "weak"
+      },
+      {
+        "subject": "math",
+        "kw": "索引表",
+        "status": "ok",
+        "path": "错题本/_索引.md",
+        "tab": "weak"
+      },
+      {
+        "subject": "math",
+        "kw": "错因五分类",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "stat"
+      },
+      {
+        "subject": "math",
+        "kw": "计算失误",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "stat"
+      },
+      {
+        "subject": "eng",
+        "kw": null,
+        "status": "ok",
+        "path": "_状态/今日任务.md",
+        "tab": "today"
+      },
+      {
+        "subject": "eng",
+        "kw": "长难句",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "memo"
+      },
+      {
+        "subject": "eng",
+        "kw": "题型能力评估",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "weak"
+      },
+      {
+        "subject": "eng",
+        "kw": "题型能力评估",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "stat"
+      },
+      {
+        "subject": "eng",
+        "kw": "错因累计",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "stat"
+      },
+      {
+        "subject": "pol",
+        "kw": null,
+        "status": "ok",
+        "path": "_状态/今日任务.md",
+        "tab": "today"
+      },
+      {
+        "subject": "pol",
+        "kw": "马原",
+        "status": "ok",
+        "path": "_状态/核心速记_帽子词与历史节点.md",
+        "tab": "memo"
+      },
+      {
+        "subject": "pol",
+        "kw": "毛中特",
+        "status": "ok",
+        "path": "_状态/核心速记_帽子词与历史节点.md",
+        "tab": "memo"
+      },
+      {
+        "subject": "pol",
+        "kw": "新思想",
+        "status": "ok",
+        "path": "_状态/核心速记_帽子词与历史节点.md",
+        "tab": "memo"
+      },
+      {
+        "subject": "pol",
+        "kw": "史纲",
+        "status": "ok",
+        "path": "_状态/核心速记_帽子词与历史节点.md",
+        "tab": "memo"
+      },
+      {
+        "subject": "pol",
+        "kw": "复发易混点",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "memo"
+      },
+      {
+        "subject": "pol",
+        "kw": "模块雷达",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "weak"
+      },
+      {
+        "subject": "pol",
+        "kw": "分析题能力",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "weak"
+      },
+      {
+        "subject": "pol",
+        "kw": "下周优先级",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "weak"
+      },
+      {
+        "subject": "pol",
+        "kw": "总体指标",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "stat"
+      },
+      {
+        "subject": "pol",
+        "kw": "七类错因",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "stat"
+      },
+      {
+        "subject": "pro",
+        "kw": null,
+        "status": "ok",
+        "path": "_状态/今日任务.md",
+        "tab": "today"
+      },
+      {
+        "subject": "pro",
+        "kw": "核心概念",
+        "status": "ok",
+        "path": "02_核心公式与考点速查模板.md",
+        "tab": "memo"
+      },
+      {
+        "subject": "pro",
+        "kw": "章节掌握度",
+        "status": "ok",
+        "path": "学情档案.md",
+        "tab": "weak"
+      },
+      {
+        "subject": "pro",
+        "kw": "掌握度",
+        "status": "ok",
+        "path": "学情档案.md",
+        "tab": "weak"
+      },
+      {
+        "subject": "pro",
+        "kw": "错题重做队列",
+        "status": "ok",
+        "path": "学情档案.md",
+        "tab": "weak"
+      },
+      {
+        "subject": "pro",
+        "kw": "错因",
+        "status": "ok",
+        "path": "学情档案.md",
+        "tab": "stat"
+      }
+    ],
+    "sanitized": true
+  },
+  "data": {
+    "memo": [
+      {
+        "id": "math-memo-0",
+        "subj": "数学",
+        "key": "math",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "title": "公式默写卡",
+        "cards": [
+          {
+            "f": "x -> 0 时，sin",
+            "b": []
+          },
+          {
+            "f": "d/dx",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "math-memo-1",
+        "subj": "数学",
+        "key": "math",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "title": "复发错误",
+        "cards": [
+          {
+            "f": "首次完成自测后私教将在此归纳易错点",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "eng-memo-2",
+        "subj": "英语",
+        "key": "eng",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>",
+        "color": "#e11d48",
+        "dark": "#fb7185",
+        "title": "长难句",
+        "cards": [
+          {
+            "f": "While it is easy to ignore...",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "pol-memo-3",
+        "subj": "政治",
+        "key": "pol",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "title": "史纲",
+        "cards": [
+          {
+            "f": "示例：开天辟地的大事变",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "pol-memo-4",
+        "subj": "政治",
+        "key": "pol",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "title": "复发易混点",
+        "cards": [
+          {
+            "f": "待做题后归纳",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "pro-memo-5",
+        "subj": "专业课",
+        "key": "pro",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>",
+        "color": "#059669",
+        "dark": "#34d399",
+        "title": "核心概念",
+        "cards": [
+          {
+            "f": "示例考点 1",
+            "b": []
+          },
+          {
+            "f": "示例考点 2",
+            "b": []
+          }
+        ]
+      }
+    ],
+    "weak": [
+      {
+        "id": "math-weak-0",
+        "subj": "数学",
+        "key": "math",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "title": "模块掌握度雷达",
+        "cards": [
+          {
+            "f": "考纲核心模块",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "math-weak-1",
+        "subj": "数学",
+        "key": "math",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "title": "索引表",
+        "cards": [
+          {
+            "f": "计算失误",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "eng-weak-2",
+        "subj": "英语",
+        "key": "eng",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>",
+        "color": "#e11d48",
+        "dark": "#fb7185",
+        "title": "题型能力评估",
+        "cards": [
+          {
+            "f": "细节定位",
+            "b": []
+          },
+          {
+            "f": "主干切分",
+            "b": []
+          },
+          {
+            "f": "词义推断",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "pol-weak-3",
+        "subj": "政治",
+        "key": "pol",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "title": "模块雷达",
+        "cards": [
+          {
+            "f": "马原/毛中特/史纲/思法",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "pol-weak-4",
+        "subj": "政治",
+        "key": "pol",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "title": "分析题能力",
+        "cards": [
+          {
+            "f": "原理结合材料",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "pol-weak-5",
+        "subj": "政治",
+        "key": "pol",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "title": "下周优先级",
+        "cards": [
+          {
+            "f": "建立首轮选择题得分盘",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "pro-weak-6",
+        "subj": "专业课",
+        "key": "pro",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>",
+        "color": "#059669",
+        "dark": "#34d399",
+        "title": "章节掌握度",
+        "cards": [
+          {
+            "f": "绪论与基本概念",
+            "b": []
+          },
+          {
+            "f": "核心基础理论 (上)",
+            "b": []
+          },
+          {
+            "f": "核心基础理论 (下)",
+            "b": []
+          },
+          {
+            "f": "综合应用与设计",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "pro-weak-7",
+        "subj": "专业课",
+        "key": "pro",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>",
+        "color": "#059669",
+        "dark": "#34d399",
+        "title": "掌握度",
+        "cards": [
+          {
+            "f": "绪论与基本概念",
+            "b": []
+          },
+          {
+            "f": "核心基础理论 (上)",
+            "b": []
+          },
+          {
+            "f": "核心基础理论 (下)",
+            "b": []
+          },
+          {
+            "f": "综合应用与设计",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "pro-weak-8",
+        "subj": "专业课",
+        "key": "pro",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>",
+        "color": "#059669",
+        "dark": "#34d399",
+        "title": "错题重做队列",
+        "cards": [
+          {
+            "f": "暂无待重做错题 (做错题目自动纳入)",
+            "b": []
+          }
+        ]
+      }
+    ],
+    "metrics": [
+      {
+        "subj": "数学",
+        "key": "math",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>",
+        "items": [
+          {
+            "label": "计算失误",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "概念漏洞",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "公式记错",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "审题偏差",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "书写丢分",
+            "text": "0",
+            "count": 0.0
+          }
+        ]
+      },
+      {
+        "subj": "数学",
+        "key": "math",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>",
+        "items": [
+          {
+            "label": "符号漏负",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "分数通分",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "复合求导",
+            "text": "0",
+            "count": 0.0
+          }
+        ]
+      },
+      {
+        "subj": "英语",
+        "key": "eng",
+        "color": "#e11d48",
+        "dark": "#fb7185",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>",
+        "items": [
+          {
+            "label": "细节定位",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "主干切分",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "词义推断",
+            "text": "0",
+            "count": 0.0
+          }
+        ]
+      },
+      {
+        "subj": "英语",
+        "key": "eng",
+        "color": "#e11d48",
+        "dark": "#fb7185",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>",
+        "items": [
+          {
+            "label": "定位偏差",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "偷换概念",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "无中生有",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "答非所问",
+            "text": "0",
+            "count": 0.0
+          }
+        ]
+      },
+      {
+        "subj": "政治",
+        "key": "pol",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
+        "items": [
+          {
+            "label": "选择题得分盘",
+            "text": "0",
+            "count": 0.0
+          }
+        ]
+      },
+      {
+        "subj": "政治",
+        "key": "pol",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
+        "items": [
+          {
+            "label": "漏选",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "错选",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "偷换概念",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "绝对化",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "审题偏差",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "答非所问",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "时政脱节",
+            "text": "0",
+            "count": 0.0
+          }
+        ]
+      },
+      {
+        "subj": "专业课",
+        "key": "pro",
+        "color": "#059669",
+        "dark": "#34d399",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>",
+        "items": [
+          {
+            "label": "概念漏洞",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "审题偏差",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "公式记错",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "计算失误",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "书写丢分",
+            "text": "0",
+            "count": 0.0
+          }
+        ]
+      }
+    ],
+    "subjects": [
+      {
+        "key": "math",
+        "name": "数学",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "notes": 0,
+        "ok": true
+      },
+      {
+        "key": "eng",
+        "name": "英语",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>",
+        "color": "#e11d48",
+        "dark": "#fb7185",
+        "notes": 0,
+        "ok": true
+      },
+      {
+        "key": "pol",
+        "name": "政治",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
+        "color": "#d97706",
+        "dark": "#fbbf24",
+        "notes": null,
+        "ok": true
+      },
+      {
+        "key": "pro",
+        "name": "专业课",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>",
+        "color": "#059669",
+        "dark": "#34d399",
+        "notes": 0,
+        "ok": true
+      }
+    ],
+    "plan": {
+      "day": 85,
+      "total": 181
+    },
+    "maps": {
+      "math": {
+        "subject": "math",
+        "subject_name": "数学",
+        "total_points": 52,
+        "total_topics": 52,
+        "grade_counts": {
+          "A": 0,
+          "B": 0,
+          "C": 0,
+          "D": 0,
+          "U": 52
+        },
+        "mastery_rate": 0.0,
+        "assessed_count": 0,
+        "unassessed_count": 52,
+        "assessed_rate": 0.0,
+        "syllabus_warning": null,
+        "syllabus_placeholder": false,
+        "chapters": [
+          {
+            "title": "一、高等数学 (约 78%，116分)",
+            "points": []
+          },
+          {
+            "title": "1. 函数、极限、连续",
+            "points": [
+              {
+                "name": "极限的性质与四则运算法则",
+                "req_type": "掌握",
+                "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "两个重要极限",
+                "req_type": "掌握",
+                "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "无穷小量的比较与等价无穷小代换",
+                "req_type": "掌握",
+                "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "连续函数的零点定理与介值定理",
+                "req_type": "掌握",
+                "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "极限的概念、无穷小与无穷大的定义、函数间断点的类型（第一类与第二类）。",
+                "req_type": "理解",
+                "full_desc": "极限的概念、无穷小与无穷大的定义、函数间断点的类型（第一类与第二类）。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "2. 一元函数微分学",
+            "points": [
+              {
+                "name": "导数的定义与几何意义",
+                "req_type": "掌握",
+                "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "求导公式与求导法则",
+                "req_type": "掌握",
+                "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "复合函数与隐函数求导",
+                "req_type": "掌握",
+                "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "参数方程确定的函数一阶与二阶求导",
+                "req_type": "掌握",
+                "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "罗尔定理",
+                "req_type": "熟练应用",
+                "full_desc": "罗尔定理、拉格朗日中值定理、柯西中值定理与泰勒展开定理；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "拉格朗日中值定理",
+                "req_type": "熟练应用",
+                "full_desc": "罗尔定理、拉格朗日中值定理、柯西中值定理与泰勒展开定理；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "柯西中值定理与泰勒展开定理",
+                "req_type": "熟练应用",
+                "full_desc": "罗尔定理、拉格朗日中值定理、柯西中值定理与泰勒展开定理；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "洛必达法则求极限",
+                "req_type": "应用能力",
+                "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "函数的单调性",
+                "req_type": "应用能力",
+                "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "极值与最值",
+                "req_type": "应用能力",
+                "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "曲线凹凸性与拐点",
+                "req_type": "应用能力",
+                "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "渐近线方程",
+                "req_type": "应用能力",
+                "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "曲率与曲率圆",
+                "req_type": "应用能力",
+                "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "方程根的存在性与不等式证明。",
+                "req_type": "应用能力",
+                "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "3. 一元函数积分学",
+            "points": [
+              {
+                "name": "不定积分公式表",
+                "req_type": "掌握",
+                "full_desc": "不定积分公式表、换元积分法与分部积分法、有理函数积分；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "换元积分法与分部积分法",
+                "req_type": "掌握",
+                "full_desc": "不定积分公式表、换元积分法与分部积分法、有理函数积分；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "有理函数积分",
+                "req_type": "掌握",
+                "full_desc": "不定积分公式表、换元积分法与分部积分法、有理函数积分；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "定积分的概念",
+                "req_type": "掌握",
+                "full_desc": "定积分的概念、性质与微积分基本公式；变上限积分函数的性质与导数；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "性质与微积分基本公式",
+                "req_type": "掌握",
+                "full_desc": "定积分的概念、性质与微积分基本公式；变上限积分函数的性质与导数；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "变上限积分函数的性质与导数",
+                "req_type": "掌握",
+                "full_desc": "定积分的概念、性质与微积分基本公式；变上限积分函数的性质与导数；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "反常积分的敛散性判别与计算",
+                "req_type": "掌握",
+                "full_desc": "反常积分的敛散性判别与计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "定积分几何应用（平面面积、旋转体体积、曲线弧长）及物理应用（变力做功、水压力、质心引力）。",
+                "req_type": "熟练应用",
+                "full_desc": "定积分几何应用（平面面积、旋转体体积、曲线弧长）及物理应用（变力做功、水压力、质心引力）。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "4. 多元函数微分学 (二元为主)",
+            "points": [
+              {
+                "name": "二元函数的极限",
+                "req_type": "掌握",
+                "full_desc": "二元函数的极限、连续、偏导数与全微分的概念及其相互关系；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "连续",
+                "req_type": "掌握",
+                "full_desc": "二元函数的极限、连续、偏导数与全微分的概念及其相互关系；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "偏导数与全微分的概念及其相互关系",
+                "req_type": "掌握",
+                "full_desc": "二元函数的极限、连续、偏导数与全微分的概念及其相互关系；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "多元复合函数的高阶偏导数计算",
+                "req_type": "掌握",
+                "full_desc": "多元复合函数的高阶偏导数计算、隐函数求导法则；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "隐函数求导法则",
+                "req_type": "掌握",
+                "full_desc": "多元复合函数的高阶偏导数计算、隐函数求导法则；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "二元函数无条件极值、拉格朗日乘数法（条件极值）与闭区域上的最值。",
+                "req_type": "掌握",
+                "full_desc": "二元函数无条件极值、拉格朗日乘数法（条件极值）与闭区域上的最值。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "5. 多元函数积分学 (仅考二重积分)",
+            "points": [
+              {
+                "name": "二重积分的概念与性质",
+                "req_type": "掌握",
+                "full_desc": "二重积分的概念与性质；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "利用直角坐标和极坐标计算二重积分",
+                "req_type": "熟练计算",
+                "full_desc": "利用直角坐标和极坐标计算二重积分；利用对称性与奇偶性化简计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "利用对称性与奇偶性化简计算",
+                "req_type": "熟练计算",
+                "full_desc": "利用直角坐标和极坐标计算二重积分；利用对称性与奇偶性化简计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "6. 常微分方程",
+            "points": [
+              {
+                "name": "变量可分离方程",
+                "req_type": "掌握",
+                "full_desc": "变量可分离方程、齐次微分方程、一阶线性微分方程；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "齐次微分方程",
+                "req_type": "掌握",
+                "full_desc": "变量可分离方程、齐次微分方程、一阶线性微分方程；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "一阶线性微分方程",
+                "req_type": "掌握",
+                "full_desc": "变量可分离方程、齐次微分方程、一阶线性微分方程；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "可降阶的高阶微分方程 ($y''=f(x)$, $y''=f(x,y')$, $y''=f(y,y')$)",
+                "req_type": "掌握",
+                "full_desc": "可降阶的高阶微分方程 ($y''=f(x)$, $y''=f(x,y')$, $y''=f(y,y')$)；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "二阶常系数齐次与非齐次线性微分方程的求解。",
+                "req_type": "掌握",
+                "full_desc": "二阶常系数齐次与非齐次线性微分方程的求解。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "二、线性代数 (约 22%，34分)",
+            "points": []
+          },
+          {
+            "title": "1. 行列式与矩阵",
+            "points": [
+              {
+                "name": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
+                "req_type": "掌握",
+                "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "2. 向量与线性方程组",
+            "points": [
+              {
+                "name": "向量组的线性表出",
+                "req_type": "掌握",
+                "full_desc": "向量组的线性表出、线性相关与线性无关的判定；向量组的极大线性无关组；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "线性相关与线性无关的判定",
+                "req_type": "掌握",
+                "full_desc": "向量组的线性表出、线性相关与线性无关的判定；向量组的极大线性无关组；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "向量组的极大线性无关组",
+                "req_type": "掌握",
+                "full_desc": "向量组的线性表出、线性相关与线性无关的判定；向量组的极大线性无关组；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "齐次线性方程组的基础解系与通解",
+                "req_type": "熟练求解",
+                "full_desc": "齐次线性方程组的基础解系与通解、非齐次线性方程组的通解结构。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "非齐次线性方程组的通解结构。",
+                "req_type": "熟练求解",
+                "full_desc": "齐次线性方程组的基础解系与通解、非齐次线性方程组的通解结构。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "3. 特征值、特征向量与二次型",
+            "points": [
+              {
+                "name": "方阵的特征多项式",
+                "req_type": "掌握",
+                "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "特征值与特征向量的求解",
+                "req_type": "掌握",
+                "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "相似矩阵的性质",
+                "req_type": "掌握",
+                "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "方阵相似对角化的充要条件与正交相似对角化",
+                "req_type": "掌握",
+                "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "二次型化标准型（配方法与正交变换法）、正定二次型与正定矩阵判定。",
+                "req_type": "掌握",
+                "full_desc": "二次型化标准型（配方法与正交变换法）、正定二次型与正定矩阵判定。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          }
+        ],
+        "modules": {
+          "一、高等数学 (约 78%，116分)": [],
+          "1. 函数、极限、连续": [
+            {
+              "name": "极限的性质与四则运算法则",
+              "req_type": "掌握",
+              "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "两个重要极限",
+              "req_type": "掌握",
+              "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "无穷小量的比较与等价无穷小代换",
+              "req_type": "掌握",
+              "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "连续函数的零点定理与介值定理",
+              "req_type": "掌握",
+              "full_desc": "极限的性质与四则运算法则、两个重要极限、无穷小量的比较与等价无穷小代换、连续函数的零点定理与介值定理；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "极限的概念、无穷小与无穷大的定义、函数间断点的类型（第一类与第二类）。",
+              "req_type": "理解",
+              "full_desc": "极限的概念、无穷小与无穷大的定义、函数间断点的类型（第一类与第二类）。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "2. 一元函数微分学": [
+            {
+              "name": "导数的定义与几何意义",
+              "req_type": "掌握",
+              "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "求导公式与求导法则",
+              "req_type": "掌握",
+              "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "复合函数与隐函数求导",
+              "req_type": "掌握",
+              "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "参数方程确定的函数一阶与二阶求导",
+              "req_type": "掌握",
+              "full_desc": "导数的定义与几何意义、求导公式与求导法则、复合函数与隐函数求导、参数方程确定的函数一阶与二阶求导；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "罗尔定理",
+              "req_type": "熟练应用",
+              "full_desc": "罗尔定理、拉格朗日中值定理、柯西中值定理与泰勒展开定理；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "拉格朗日中值定理",
+              "req_type": "熟练应用",
+              "full_desc": "罗尔定理、拉格朗日中值定理、柯西中值定理与泰勒展开定理；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "柯西中值定理与泰勒展开定理",
+              "req_type": "熟练应用",
+              "full_desc": "罗尔定理、拉格朗日中值定理、柯西中值定理与泰勒展开定理；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "洛必达法则求极限",
+              "req_type": "应用能力",
+              "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "函数的单调性",
+              "req_type": "应用能力",
+              "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "极值与最值",
+              "req_type": "应用能力",
+              "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "曲线凹凸性与拐点",
+              "req_type": "应用能力",
+              "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "渐近线方程",
+              "req_type": "应用能力",
+              "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "曲率与曲率圆",
+              "req_type": "应用能力",
+              "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "方程根的存在性与不等式证明。",
+              "req_type": "应用能力",
+              "full_desc": "洛必达法则求极限、函数的单调性、极值与最值、曲线凹凸性与拐点、渐近线方程、曲率与曲率圆、方程根的存在性与不等式证明。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "3. 一元函数积分学": [
+            {
+              "name": "不定积分公式表",
+              "req_type": "掌握",
+              "full_desc": "不定积分公式表、换元积分法与分部积分法、有理函数积分；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "换元积分法与分部积分法",
+              "req_type": "掌握",
+              "full_desc": "不定积分公式表、换元积分法与分部积分法、有理函数积分；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "有理函数积分",
+              "req_type": "掌握",
+              "full_desc": "不定积分公式表、换元积分法与分部积分法、有理函数积分；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "定积分的概念",
+              "req_type": "掌握",
+              "full_desc": "定积分的概念、性质与微积分基本公式；变上限积分函数的性质与导数；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "性质与微积分基本公式",
+              "req_type": "掌握",
+              "full_desc": "定积分的概念、性质与微积分基本公式；变上限积分函数的性质与导数；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "变上限积分函数的性质与导数",
+              "req_type": "掌握",
+              "full_desc": "定积分的概念、性质与微积分基本公式；变上限积分函数的性质与导数；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "反常积分的敛散性判别与计算",
+              "req_type": "掌握",
+              "full_desc": "反常积分的敛散性判别与计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "定积分几何应用（平面面积、旋转体体积、曲线弧长）及物理应用（变力做功、水压力、质心引力）。",
+              "req_type": "熟练应用",
+              "full_desc": "定积分几何应用（平面面积、旋转体体积、曲线弧长）及物理应用（变力做功、水压力、质心引力）。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "4. 多元函数微分学 (二元为主)": [
+            {
+              "name": "二元函数的极限",
+              "req_type": "掌握",
+              "full_desc": "二元函数的极限、连续、偏导数与全微分的概念及其相互关系；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "连续",
+              "req_type": "掌握",
+              "full_desc": "二元函数的极限、连续、偏导数与全微分的概念及其相互关系；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "偏导数与全微分的概念及其相互关系",
+              "req_type": "掌握",
+              "full_desc": "二元函数的极限、连续、偏导数与全微分的概念及其相互关系；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "多元复合函数的高阶偏导数计算",
+              "req_type": "掌握",
+              "full_desc": "多元复合函数的高阶偏导数计算、隐函数求导法则；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "隐函数求导法则",
+              "req_type": "掌握",
+              "full_desc": "多元复合函数的高阶偏导数计算、隐函数求导法则；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "二元函数无条件极值、拉格朗日乘数法（条件极值）与闭区域上的最值。",
+              "req_type": "掌握",
+              "full_desc": "二元函数无条件极值、拉格朗日乘数法（条件极值）与闭区域上的最值。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "5. 多元函数积分学 (仅考二重积分)": [
+            {
+              "name": "二重积分的概念与性质",
+              "req_type": "掌握",
+              "full_desc": "二重积分的概念与性质；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "利用直角坐标和极坐标计算二重积分",
+              "req_type": "熟练计算",
+              "full_desc": "利用直角坐标和极坐标计算二重积分；利用对称性与奇偶性化简计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "利用对称性与奇偶性化简计算",
+              "req_type": "熟练计算",
+              "full_desc": "利用直角坐标和极坐标计算二重积分；利用对称性与奇偶性化简计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "6. 常微分方程": [
+            {
+              "name": "变量可分离方程",
+              "req_type": "掌握",
+              "full_desc": "变量可分离方程、齐次微分方程、一阶线性微分方程；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "齐次微分方程",
+              "req_type": "掌握",
+              "full_desc": "变量可分离方程、齐次微分方程、一阶线性微分方程；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "一阶线性微分方程",
+              "req_type": "掌握",
+              "full_desc": "变量可分离方程、齐次微分方程、一阶线性微分方程；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "可降阶的高阶微分方程 ($y''=f(x)$, $y''=f(x,y')$, $y''=f(y,y')$)",
+              "req_type": "掌握",
+              "full_desc": "可降阶的高阶微分方程 ($y''=f(x)$, $y''=f(x,y')$, $y''=f(y,y')$)；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "二阶常系数齐次与非齐次线性微分方程的求解。",
+              "req_type": "掌握",
+              "full_desc": "二阶常系数齐次与非齐次线性微分方程的求解。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "二、线性代数 (约 22%，34分)": [],
+          "1. 行列式与矩阵": [
+            {
+              "name": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
+              "req_type": "掌握",
+              "full_desc": "行列式的计算（化上三角法、按行展开、递推法）、矩阵的乘法、伴随矩阵性质、初等行变换与矩阵的秩、可逆矩阵的性质与逆矩阵求法。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "2. 向量与线性方程组": [
+            {
+              "name": "向量组的线性表出",
+              "req_type": "掌握",
+              "full_desc": "向量组的线性表出、线性相关与线性无关的判定；向量组的极大线性无关组；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "线性相关与线性无关的判定",
+              "req_type": "掌握",
+              "full_desc": "向量组的线性表出、线性相关与线性无关的判定；向量组的极大线性无关组；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "向量组的极大线性无关组",
+              "req_type": "掌握",
+              "full_desc": "向量组的线性表出、线性相关与线性无关的判定；向量组的极大线性无关组；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "齐次线性方程组的基础解系与通解",
+              "req_type": "熟练求解",
+              "full_desc": "齐次线性方程组的基础解系与通解、非齐次线性方程组的通解结构。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "非齐次线性方程组的通解结构。",
+              "req_type": "熟练求解",
+              "full_desc": "齐次线性方程组的基础解系与通解、非齐次线性方程组的通解结构。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "3. 特征值、特征向量与二次型": [
+            {
+              "name": "方阵的特征多项式",
+              "req_type": "掌握",
+              "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "特征值与特征向量的求解",
+              "req_type": "掌握",
+              "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "相似矩阵的性质",
+              "req_type": "掌握",
+              "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "方阵相似对角化的充要条件与正交相似对角化",
+              "req_type": "掌握",
+              "full_desc": "方阵的特征多项式、特征值与特征向量的求解；相似矩阵的性质；方阵相似对角化的充要条件与正交相似对角化；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "二次型化标准型（配方法与正交变换法）、正定二次型与正定矩阵判定。",
+              "req_type": "掌握",
+              "full_desc": "二次型化标准型（配方法与正交变换法）、正定二次型与正定矩阵判定。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ]
+        }
+      },
+      "eng": {
+        "subject": "eng",
+        "subject_name": "英语",
+        "total_points": 6,
+        "total_topics": 6,
+        "grade_counts": {
+          "A": 0,
+          "B": 0,
+          "C": 0,
+          "D": 0,
+          "U": 6
+        },
+        "mastery_rate": 0.0,
+        "assessed_count": 0,
+        "unassessed_count": 6,
+        "assessed_rate": 0.0,
+        "syllabus_warning": null,
+        "syllabus_placeholder": false,
+        "chapters": [
+          {
+            "title": "一、试卷题型与分值结构",
+            "points": [
+              {
+                "name": "第一部分：英语知识运用",
+                "req_type": "掌握",
+                "full_desc": "完形填空 (Cloze) / 20 题，每题 0.5 分，共 **10 分** / 词汇辨析、上下文指代关系、逻辑衔接词",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "第二部分：阅读理解 Part A",
+                "req_type": "掌握",
+                "full_desc": "传统阅读 (4 篇题材涉及经济/社会/生活文章) / 20 题，每题 2 分，共 **40 分** / 细节定位、因果对应、作者态度判定",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "第二部分：阅读理解 Part B",
+                "req_type": "掌握",
+                "full_desc": "新题型 (2 选 1) / 5 题，每题 2 分，共 **10 分** / **多项对应 (Matching)、小标题对应 (Heading)**，侧重信息快速检索",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "第三部分：英译汉 (Translation)",
+                "req_type": "掌握",
+                "full_desc": "短文段落翻译 / 1 篇，约 150 词，共 **15 分** / **整段连续英译汉**，要求表达通顺、符合现代汉语习惯",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "第四部分：写作 Part A",
+                "req_type": "掌握",
+                "full_desc": "应用文短文写作 (小作文) / 1 篇，约 100 词，共 **10 分** / 各类书信（求职/感谢/邀请/道歉/建议）、告示、备忘录",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "第四部分：写作 Part B",
+                "req_type": "掌握",
+                "full_desc": "议论文图表写作 (大作文) / 1 篇，约 150 词，共 **15 分** / **图表/柱状图/饼图/折线图作文**（描述数据趋势 -> 分析成因 -> 总结预测）",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "二、大纲核心语言技能要求",
+            "points": []
+          }
+        ],
+        "modules": {
+          "一、试卷题型与分值结构": [
+            {
+              "name": "第一部分：英语知识运用",
+              "req_type": "掌握",
+              "full_desc": "完形填空 (Cloze) / 20 题，每题 0.5 分，共 **10 分** / 词汇辨析、上下文指代关系、逻辑衔接词",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "第二部分：阅读理解 Part A",
+              "req_type": "掌握",
+              "full_desc": "传统阅读 (4 篇题材涉及经济/社会/生活文章) / 20 题，每题 2 分，共 **40 分** / 细节定位、因果对应、作者态度判定",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "第二部分：阅读理解 Part B",
+              "req_type": "掌握",
+              "full_desc": "新题型 (2 选 1) / 5 题，每题 2 分，共 **10 分** / **多项对应 (Matching)、小标题对应 (Heading)**，侧重信息快速检索",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "第三部分：英译汉 (Translation)",
+              "req_type": "掌握",
+              "full_desc": "短文段落翻译 / 1 篇，约 150 词，共 **15 分** / **整段连续英译汉**，要求表达通顺、符合现代汉语习惯",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "第四部分：写作 Part A",
+              "req_type": "掌握",
+              "full_desc": "应用文短文写作 (小作文) / 1 篇，约 100 词，共 **10 分** / 各类书信（求职/感谢/邀请/道歉/建议）、告示、备忘录",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "第四部分：写作 Part B",
+              "req_type": "掌握",
+              "full_desc": "议论文图表写作 (大作文) / 1 篇，约 150 词，共 **15 分** / **图表/柱状图/饼图/折线图作文**（描述数据趋势 -> 分析成因 -> 总结预测）",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "二、大纲核心语言技能要求": []
+        }
+      },
+      "pol": {
+        "subject": "pol",
+        "subject_name": "思想政治理论",
+        "total_points": 28,
+        "total_topics": 28,
+        "grade_counts": {
+          "A": 0,
+          "B": 0,
+          "C": 0,
+          "D": 0,
+          "U": 28
+        },
+        "mastery_rate": 0.0,
+        "assessed_count": 0,
+        "unassessed_count": 28,
+        "assessed_rate": 0.0,
+        "syllabus_warning": null,
+        "syllabus_placeholder": false,
+        "chapters": [
+          {
+            "title": "一、试卷题型与分值分布 (满分 100 分)",
+            "points": [
+              {
+                "name": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)",
+                "req_type": "单项选择题",
+                "full_desc": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)",
+                "req_type": "多项选择题",
+                "full_desc": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)",
+                "req_type": "分析题 (大题)",
+                "full_desc": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "二、五大核心模块考纲与考查重点",
+            "points": []
+          },
+          {
+            "title": "1. 马克思主义基本原理 (约 24 分，大题第 34 题)",
+            "points": [
+              {
+                "name": "物质与意识的辩证关系",
+                "req_type": "唯物论",
+                "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "世界的物质统一性",
+                "req_type": "唯物论",
+                "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "主观能动性与客观规律性的统一",
+                "req_type": "唯物论",
+                "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）",
+                "req_type": "辩证法 (重中之重)",
+                "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "实践与认识的辩证关系",
+                "req_type": "认识论",
+                "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "认识的两次飞跃",
+                "req_type": "认识论",
+                "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "真理的绝对性与相对性",
+                "req_type": "认识论",
+                "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "真理与价值",
+                "req_type": "认识论",
+                "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "社会存在与社会意识",
+                "req_type": "唯物史观",
+                "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "生产力与生产关系",
+                "req_type": "唯物史观",
+                "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "经济基础与上层建筑",
+                "req_type": "唯物史观",
+                "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "人民群众是历史的创造者",
+                "req_type": "唯物史观",
+                "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "劳动二重性",
+                "req_type": "资本主义与科学社会主义",
+                "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "商品二因素",
+                "req_type": "资本主义与科学社会主义",
+                "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "价值规律",
+                "req_type": "资本主义与科学社会主义",
+                "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "剩余价值理论",
+                "req_type": "资本主义与科学社会主义",
+                "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "资本主义基本矛盾与经济危机。",
+                "req_type": "资本主义与科学社会主义",
+                "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "2. 毛泽东思想和中国特色社会主义理论体系概论 + 习近平新时代中国特色社会主义思想 (约 30 分，大题第 35 题)",
+            "points": [
+              {
+                "name": "习近平新时代中国特色社会主义思想的核心要义",
+                "req_type": "核心重点",
+                "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "“十四个坚持”",
+                "req_type": "核心重点",
+                "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "“十个明确”",
+                "req_type": "核心重点",
+                "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "“十三个方面成就”",
+                "req_type": "核心重点",
+                "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "新发展理念",
+                "req_type": "核心重点",
+                "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "高质量发展",
+                "req_type": "核心重点",
+                "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "中国式现代化",
+                "req_type": "核心重点",
+                "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "全过程人民民主。",
+                "req_type": "核心重点",
+                "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "3. 中国近现代史纲要 (约 14 分，大题第 36 题)",
+            "points": []
+          },
+          {
+            "title": "4. 思想道德与法治 (约 16 分，大题第 37 题)",
+            "points": []
+          },
+          {
+            "title": "5. 形势与政策以及当代世界经济与政治 (约 16 分，大题第 38 题)",
+            "points": []
+          }
+        ],
+        "modules": {
+          "一、试卷题型与分值分布 (满分 100 分)": [
+            {
+              "name": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)",
+              "req_type": "单项选择题",
+              "full_desc": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)",
+              "req_type": "多项选择题",
+              "full_desc": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)",
+              "req_type": "分析题 (大题)",
+              "full_desc": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "二、五大核心模块考纲与考查重点": [],
+          "1. 马克思主义基本原理 (约 24 分，大题第 34 题)": [
+            {
+              "name": "物质与意识的辩证关系",
+              "req_type": "唯物论",
+              "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "世界的物质统一性",
+              "req_type": "唯物论",
+              "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "主观能动性与客观规律性的统一",
+              "req_type": "唯物论",
+              "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）",
+              "req_type": "辩证法 (重中之重)",
+              "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "实践与认识的辩证关系",
+              "req_type": "认识论",
+              "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "认识的两次飞跃",
+              "req_type": "认识论",
+              "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "真理的绝对性与相对性",
+              "req_type": "认识论",
+              "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "真理与价值",
+              "req_type": "认识论",
+              "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "社会存在与社会意识",
+              "req_type": "唯物史观",
+              "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "生产力与生产关系",
+              "req_type": "唯物史观",
+              "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "经济基础与上层建筑",
+              "req_type": "唯物史观",
+              "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "人民群众是历史的创造者",
+              "req_type": "唯物史观",
+              "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "劳动二重性",
+              "req_type": "资本主义与科学社会主义",
+              "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "商品二因素",
+              "req_type": "资本主义与科学社会主义",
+              "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "价值规律",
+              "req_type": "资本主义与科学社会主义",
+              "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "剩余价值理论",
+              "req_type": "资本主义与科学社会主义",
+              "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "资本主义基本矛盾与经济危机。",
+              "req_type": "资本主义与科学社会主义",
+              "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "2. 毛泽东思想和中国特色社会主义理论体系概论 + 习近平新时代中国特色社会主义思想 (约 30 分，大题第 35 题)": [
+            {
+              "name": "习近平新时代中国特色社会主义思想的核心要义",
+              "req_type": "核心重点",
+              "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "“十四个坚持”",
+              "req_type": "核心重点",
+              "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "“十个明确”",
+              "req_type": "核心重点",
+              "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "“十三个方面成就”",
+              "req_type": "核心重点",
+              "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "新发展理念",
+              "req_type": "核心重点",
+              "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "高质量发展",
+              "req_type": "核心重点",
+              "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "中国式现代化",
+              "req_type": "核心重点",
+              "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "全过程人民民主。",
+              "req_type": "核心重点",
+              "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "3. 中国近现代史纲要 (约 14 分，大题第 36 题)": [],
+          "4. 思想道德与法治 (约 16 分，大题第 37 题)": [],
+          "5. 形势与政策以及当代世界经济与政治 (约 16 分，大题第 38 题)": []
+        }
+      },
+      "pro": {
+        "subject": "pro",
+        "subject_name": "专业课",
+        "total_points": 56,
+        "total_topics": 56,
+        "grade_counts": {
+          "A": 0,
+          "B": 0,
+          "C": 0,
+          "D": 0,
+          "U": 56
+        },
+        "mastery_rate": 0.0,
+        "assessed_count": 0,
+        "unassessed_count": 56,
+        "assessed_rate": 0.0,
+        "syllabus_warning": null,
+        "syllabus_placeholder": false,
+        "chapters": [
+          {
+            "title": "一、考试的总体要求",
+            "points": []
+          },
+          {
+            "title": "二、考试的内容及比例",
+            "points": []
+          },
+          {
+            "title": "1. 绪论（5 ~ 15%）",
+            "points": [
+              {
+                "name": "模拟通信系统和数字通信系统的模型",
+                "req_type": "了解",
+                "full_desc": "模拟通信系统和数字通信系统的模型；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "信息量",
+                "req_type": "理解",
+                "full_desc": "信息量、平均信息量的概念，并熟练掌握其计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "平均信息量的概念，并熟练掌握其计算",
+                "req_type": "理解",
+                "full_desc": "信息量、平均信息量的概念，并熟练掌握其计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "有效性和可靠性的概念，并要求计算传码率",
+                "req_type": "理解",
+                "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "传信率",
+                "req_type": "理解",
+                "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "系统频带利用率",
+                "req_type": "理解",
+                "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "误码率和误信率。",
+                "req_type": "理解",
+                "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "2. 确知信号分析（5 ~ 10%）",
+            "points": [
+              {
+                "name": "信号与系统的基本分析方法",
+                "req_type": "理解",
+                "full_desc": "信号与系统的基本分析方法；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "能量谱密度和功率谱密度的概念，卷积的定义和性质",
+                "req_type": "了解",
+                "full_desc": "能量谱密度和功率谱密度的概念，卷积的定义和性质；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "相关函数的计算。",
+                "req_type": "掌握",
+                "full_desc": "相关函数的计算。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "3. 随机信号分析（5 ~ 15%）",
+            "points": [
+              {
+                "name": "随机过程",
+                "req_type": "了解",
+                "full_desc": "随机过程、平稳随机过程、高斯过程的定义；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "平稳随机过程",
+                "req_type": "了解",
+                "full_desc": "随机过程、平稳随机过程、高斯过程的定义；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "高斯过程的定义",
+                "req_type": "了解",
+                "full_desc": "随机过程、平稳随机过程、高斯过程的定义；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "随机信号的均值",
+                "req_type": "掌握",
+                "full_desc": "随机信号的均值、方差、协方差以及相关函数的计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "方差",
+                "req_type": "掌握",
+                "full_desc": "随机信号的均值、方差、协方差以及相关函数的计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "协方差以及相关函数的计算",
+                "req_type": "掌握",
+                "full_desc": "随机信号的均值、方差、协方差以及相关函数的计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "平稳随机过程的各态历经性，灵活运用平稳随机过程自相关函数的性质",
+                "req_type": "理解",
+                "full_desc": "平稳随机过程的各态历经性，灵活运用平稳随机过程自相关函数的性质；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "随机过程通过线性系统的各种参数的计算。",
+                "req_type": "掌握",
+                "full_desc": "随机过程通过线性系统的各种参数的计算。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "4. 信道（5 ~ 10%）",
+            "points": [
+              {
+                "name": "信道的定义及其数学模型，掌握无失真传输信道模型",
+                "req_type": "了解",
+                "full_desc": "信道的定义及其数学模型，掌握无失真传输信道模型；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "恒参信道",
+                "req_type": "了解",
+                "full_desc": "恒参信道、随参信道对信号传输的影响；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "随参信道对信号传输的影响",
+                "req_type": "了解",
+                "full_desc": "恒参信道、随参信道对信号传输的影响；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "信道容量的计算。",
+                "req_type": "掌握",
+                "full_desc": "信道容量的计算。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "5. 模拟调制系统（5 ~ 15%）",
+            "points": [
+              {
+                "name": "调制的概念和调制的分类",
+                "req_type": "了解",
+                "full_desc": "调制的概念和调制的分类；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "幅度调制与解调的原理，掌握系统的抗噪声性能计算",
+                "req_type": "掌握",
+                "full_desc": "幅度调制与解调的原理，掌握系统的抗噪声性能计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "调频波和调相波的调制与解调原理，掌握调频波的各种参数",
+                "req_type": "理解",
+                "full_desc": "调频波和调相波的调制与解调原理，掌握调频波的各种参数、系统的抗噪声性能、带宽和功率的计算。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "系统的抗噪声性能",
+                "req_type": "理解",
+                "full_desc": "调频波和调相波的调制与解调原理，掌握调频波的各种参数、系统的抗噪声性能、带宽和功率的计算。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "带宽和功率的计算。",
+                "req_type": "理解",
+                "full_desc": "调频波和调相波的调制与解调原理，掌握调频波的各种参数、系统的抗噪声性能、带宽和功率的计算。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "6. 模拟信号数字化（10 ~ 30%）",
+            "points": [
+              {
+                "name": "模拟信号数字化传输的原理及实现方法",
+                "req_type": "理解",
+                "full_desc": "模拟信号数字化传输的原理及实现方法；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "PCM 编码",
+                "req_type": "掌握",
+                "full_desc": "PCM 编码、译码的方法及带宽、传输速率的计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "译码的方法及带宽",
+                "req_type": "掌握",
+                "full_desc": "PCM 编码、译码的方法及带宽、传输速率的计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "传输速率的计算",
+                "req_type": "掌握",
+                "full_desc": "PCM 编码、译码的方法及带宽、传输速率的计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "增量调制的基本原理。",
+                "req_type": "掌握",
+                "full_desc": "增量调制的基本原理。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "7. 数字信号的基带传输系统（10 ~ 15%）",
+            "points": [
+              {
+                "name": "数字基带信号的传输波形和码型",
+                "req_type": "掌握",
+                "full_desc": "数字基带信号的传输波形和码型；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "基带信号的频谱特性",
+                "req_type": "了解",
+                "full_desc": "基带信号的频谱特性；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "系统无码间串扰的基带传输特性",
+                "req_type": "灵活运用",
+                "full_desc": "系统无码间串扰的基带传输特性；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "数字基带传输系统带宽的计算",
+                "req_type": "掌握",
+                "full_desc": "数字基带传输系统带宽的计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "眼图",
+                "req_type": "了解",
+                "full_desc": "眼图、均衡和部分响应技术。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "均衡和部分响应技术。",
+                "req_type": "了解",
+                "full_desc": "眼图、均衡和部分响应技术。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "8. 数字调制系统（10 ~ 30%）",
+            "points": [
+              {
+                "name": "ASK",
+                "req_type": "掌握",
+                "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "FSK",
+                "req_type": "掌握",
+                "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "PSK",
+                "req_type": "掌握",
+                "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "DPSK 信号的调制与解调的原理",
+                "req_type": "掌握",
+                "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "方框图及其各点波形，并比较上述调制的性能",
+                "req_type": "掌握",
+                "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "多进制数字调制的原理",
+                "req_type": "掌握",
+                "full_desc": "多进制数字调制的原理；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "现代数字调制技术。",
+                "req_type": "了解",
+                "full_desc": "现代数字调制技术。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "9. 数字信号的最佳接收（10 ~ 15%）",
+            "points": [
+              {
+                "name": "数字信号的最佳接收原理及三个最佳接收准则",
+                "req_type": "了解",
+                "full_desc": "数字信号的最佳接收原理及三个最佳接收准则；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "匹配滤波器的设计与计算。",
+                "req_type": "掌握",
+                "full_desc": "匹配滤波器的设计与计算。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "10. 信道复用和多址技术（5 ~ 10%）",
+            "points": [
+              {
+                "name": "频分复用",
+                "req_type": "掌握",
+                "full_desc": "频分复用、时分复用的基本原理；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "时分复用的基本原理",
+                "req_type": "掌握",
+                "full_desc": "频分复用、时分复用的基本原理；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "码分复用。",
+                "req_type": "了解",
+                "full_desc": "码分复用。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "11. 同步原理（5 ~ 15%）",
+            "points": [
+              {
+                "name": "常用同步的分类",
+                "req_type": "了解",
+                "full_desc": "常用同步的分类；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "载波同步和位同步的基本原理和实现方法。",
+                "req_type": "理解并掌握",
+                "full_desc": "载波同步和位同步的基本原理和实现方法。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "12. 差错控制编码（10 ~ 30%）",
+            "points": [
+              {
+                "name": "纠错编码的基本原理和基本概念",
+                "req_type": "理解",
+                "full_desc": "纠错编码的基本原理和基本概念；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "线性分组码和循环码的编译码原理及监督矩阵",
+                "req_type": "掌握",
+                "full_desc": "线性分组码和循环码的编译码原理及监督矩阵、生成矩阵等的计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "生成矩阵等的计算",
+                "req_type": "掌握",
+                "full_desc": "线性分组码和循环码的编译码原理及监督矩阵、生成矩阵等的计算；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "卷积码的基本概念。",
+                "req_type": "了解",
+                "full_desc": "卷积码的基本概念。",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "三、试题类型及比例",
+            "points": []
+          },
+          {
+            "title": "四、考试形式及时间",
+            "points": []
+          },
+          {
+            "title": "五、主要参考教材",
+            "points": []
+          }
+        ],
+        "modules": {
+          "一、考试的总体要求": [],
+          "二、考试的内容及比例": [],
+          "1. 绪论（5 ~ 15%）": [
+            {
+              "name": "模拟通信系统和数字通信系统的模型",
+              "req_type": "了解",
+              "full_desc": "模拟通信系统和数字通信系统的模型；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "信息量",
+              "req_type": "理解",
+              "full_desc": "信息量、平均信息量的概念，并熟练掌握其计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "平均信息量的概念，并熟练掌握其计算",
+              "req_type": "理解",
+              "full_desc": "信息量、平均信息量的概念，并熟练掌握其计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "有效性和可靠性的概念，并要求计算传码率",
+              "req_type": "理解",
+              "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "传信率",
+              "req_type": "理解",
+              "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "系统频带利用率",
+              "req_type": "理解",
+              "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "误码率和误信率。",
+              "req_type": "理解",
+              "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "2. 确知信号分析（5 ~ 10%）": [
+            {
+              "name": "信号与系统的基本分析方法",
+              "req_type": "理解",
+              "full_desc": "信号与系统的基本分析方法；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "能量谱密度和功率谱密度的概念，卷积的定义和性质",
+              "req_type": "了解",
+              "full_desc": "能量谱密度和功率谱密度的概念，卷积的定义和性质；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "相关函数的计算。",
+              "req_type": "掌握",
+              "full_desc": "相关函数的计算。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "3. 随机信号分析（5 ~ 15%）": [
+            {
+              "name": "随机过程",
+              "req_type": "了解",
+              "full_desc": "随机过程、平稳随机过程、高斯过程的定义；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "平稳随机过程",
+              "req_type": "了解",
+              "full_desc": "随机过程、平稳随机过程、高斯过程的定义；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "高斯过程的定义",
+              "req_type": "了解",
+              "full_desc": "随机过程、平稳随机过程、高斯过程的定义；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "随机信号的均值",
+              "req_type": "掌握",
+              "full_desc": "随机信号的均值、方差、协方差以及相关函数的计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "方差",
+              "req_type": "掌握",
+              "full_desc": "随机信号的均值、方差、协方差以及相关函数的计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "协方差以及相关函数的计算",
+              "req_type": "掌握",
+              "full_desc": "随机信号的均值、方差、协方差以及相关函数的计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "平稳随机过程的各态历经性，灵活运用平稳随机过程自相关函数的性质",
+              "req_type": "理解",
+              "full_desc": "平稳随机过程的各态历经性，灵活运用平稳随机过程自相关函数的性质；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "随机过程通过线性系统的各种参数的计算。",
+              "req_type": "掌握",
+              "full_desc": "随机过程通过线性系统的各种参数的计算。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "4. 信道（5 ~ 10%）": [
+            {
+              "name": "信道的定义及其数学模型，掌握无失真传输信道模型",
+              "req_type": "了解",
+              "full_desc": "信道的定义及其数学模型，掌握无失真传输信道模型；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "恒参信道",
+              "req_type": "了解",
+              "full_desc": "恒参信道、随参信道对信号传输的影响；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "随参信道对信号传输的影响",
+              "req_type": "了解",
+              "full_desc": "恒参信道、随参信道对信号传输的影响；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "信道容量的计算。",
+              "req_type": "掌握",
+              "full_desc": "信道容量的计算。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "5. 模拟调制系统（5 ~ 15%）": [
+            {
+              "name": "调制的概念和调制的分类",
+              "req_type": "了解",
+              "full_desc": "调制的概念和调制的分类；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "幅度调制与解调的原理，掌握系统的抗噪声性能计算",
+              "req_type": "掌握",
+              "full_desc": "幅度调制与解调的原理，掌握系统的抗噪声性能计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "调频波和调相波的调制与解调原理，掌握调频波的各种参数",
+              "req_type": "理解",
+              "full_desc": "调频波和调相波的调制与解调原理，掌握调频波的各种参数、系统的抗噪声性能、带宽和功率的计算。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "系统的抗噪声性能",
+              "req_type": "理解",
+              "full_desc": "调频波和调相波的调制与解调原理，掌握调频波的各种参数、系统的抗噪声性能、带宽和功率的计算。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "带宽和功率的计算。",
+              "req_type": "理解",
+              "full_desc": "调频波和调相波的调制与解调原理，掌握调频波的各种参数、系统的抗噪声性能、带宽和功率的计算。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "6. 模拟信号数字化（10 ~ 30%）": [
+            {
+              "name": "模拟信号数字化传输的原理及实现方法",
+              "req_type": "理解",
+              "full_desc": "模拟信号数字化传输的原理及实现方法；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "PCM 编码",
+              "req_type": "掌握",
+              "full_desc": "PCM 编码、译码的方法及带宽、传输速率的计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "译码的方法及带宽",
+              "req_type": "掌握",
+              "full_desc": "PCM 编码、译码的方法及带宽、传输速率的计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "传输速率的计算",
+              "req_type": "掌握",
+              "full_desc": "PCM 编码、译码的方法及带宽、传输速率的计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "增量调制的基本原理。",
+              "req_type": "掌握",
+              "full_desc": "增量调制的基本原理。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "7. 数字信号的基带传输系统（10 ~ 15%）": [
+            {
+              "name": "数字基带信号的传输波形和码型",
+              "req_type": "掌握",
+              "full_desc": "数字基带信号的传输波形和码型；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "基带信号的频谱特性",
+              "req_type": "了解",
+              "full_desc": "基带信号的频谱特性；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "系统无码间串扰的基带传输特性",
+              "req_type": "灵活运用",
+              "full_desc": "系统无码间串扰的基带传输特性；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "数字基带传输系统带宽的计算",
+              "req_type": "掌握",
+              "full_desc": "数字基带传输系统带宽的计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "眼图",
+              "req_type": "了解",
+              "full_desc": "眼图、均衡和部分响应技术。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "均衡和部分响应技术。",
+              "req_type": "了解",
+              "full_desc": "眼图、均衡和部分响应技术。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "8. 数字调制系统（10 ~ 30%）": [
+            {
+              "name": "ASK",
+              "req_type": "掌握",
+              "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "FSK",
+              "req_type": "掌握",
+              "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "PSK",
+              "req_type": "掌握",
+              "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "DPSK 信号的调制与解调的原理",
+              "req_type": "掌握",
+              "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "方框图及其各点波形，并比较上述调制的性能",
+              "req_type": "掌握",
+              "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "多进制数字调制的原理",
+              "req_type": "掌握",
+              "full_desc": "多进制数字调制的原理；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "现代数字调制技术。",
+              "req_type": "了解",
+              "full_desc": "现代数字调制技术。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "9. 数字信号的最佳接收（10 ~ 15%）": [
+            {
+              "name": "数字信号的最佳接收原理及三个最佳接收准则",
+              "req_type": "了解",
+              "full_desc": "数字信号的最佳接收原理及三个最佳接收准则；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "匹配滤波器的设计与计算。",
+              "req_type": "掌握",
+              "full_desc": "匹配滤波器的设计与计算。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "10. 信道复用和多址技术（5 ~ 10%）": [
+            {
+              "name": "频分复用",
+              "req_type": "掌握",
+              "full_desc": "频分复用、时分复用的基本原理；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "时分复用的基本原理",
+              "req_type": "掌握",
+              "full_desc": "频分复用、时分复用的基本原理；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "码分复用。",
+              "req_type": "了解",
+              "full_desc": "码分复用。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "11. 同步原理（5 ~ 15%）": [
+            {
+              "name": "常用同步的分类",
+              "req_type": "了解",
+              "full_desc": "常用同步的分类；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "载波同步和位同步的基本原理和实现方法。",
+              "req_type": "理解并掌握",
+              "full_desc": "载波同步和位同步的基本原理和实现方法。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "12. 差错控制编码（10 ~ 30%）": [
+            {
+              "name": "纠错编码的基本原理和基本概念",
+              "req_type": "理解",
+              "full_desc": "纠错编码的基本原理和基本概念；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "线性分组码和循环码的编译码原理及监督矩阵",
+              "req_type": "掌握",
+              "full_desc": "线性分组码和循环码的编译码原理及监督矩阵、生成矩阵等的计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "生成矩阵等的计算",
+              "req_type": "掌握",
+              "full_desc": "线性分组码和循环码的编译码原理及监督矩阵、生成矩阵等的计算；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "卷积码的基本概念。",
+              "req_type": "了解",
+              "full_desc": "卷积码的基本概念。",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            }
+          ],
+          "三、试题类型及比例": [],
+          "四、考试形式及时间": [],
+          "五、主要参考教材": []
+        }
+      }
+    },
+    "trend": []
+  }
+}

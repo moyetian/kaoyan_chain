@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080b14" />
+      <stop offset="50%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#0a0e1a" />
+    </linearGradient>
+    <linearGradient id="schoolAGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="vsGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#dc2626" />
+      <stop offset="100%" stop-color="#991b1b" />
+    </linearGradient>
+    <filter id="shadow2" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <style>
+    .t-main2 { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 800; fill: #f8fafc; font-size: 24px; }
+    .t-sub2 { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; fill: #94a3b8; font-size: 13px; }
+    .sch-name { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 800; font-size: 17px; }
+    .dim-label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 700; font-size: 12px; fill: #cbd5e1; }
+    .val-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-size: 11.5px; fill: #94a3b8; }
+    .val-emp { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 700; font-size: 11.5px; }
+  </style>
+
+  <rect width="960" height="560" rx="16" fill="url(#bg2)" stroke="#1e293b" stroke-width="1.5" />
+
+  <!-- 顶部标题 -->
+  <g transform="translate(480, 40)" text-anchor="middle">
+    <text class="t-main2" y="0">ky compare · 考研双校招考横向深度对标矩阵</text>
+    <text class="t-sub2" y="24">初试统考 408 vs 自命题差异 · 国家 A 区/B 区与自划线 · 历年复试线走向 · 一志愿保护与避坑研判</text>
+  </g>
+
+  <!-- ══════════════ 核心对标大盘 ══════════════ -->
+  <g transform="translate(40, 80)">
+    <!-- 顶栏：两校头部与 VS 徽标 -->
+    <g transform="translate(0, 0)">
+      <!-- 高校 A 头部 -->
+      <rect x="0" y="0" width="370" height="56" rx="8" fill="#172554" stroke="#2563eb" stroke-width="1.2" />
+      <text x="20" y="26" class="sch-name" fill="#60a5fa">【高校 A】华中科技大学</text>
+      <text x="20" y="44" font-size="11" fill="#93c5fd">院校代码: 10487 ｜ 985 / 211 / 自划线 ｜ 湖北武汉</text>
+
+      <!-- VS 中枢徽章 -->
+      <g transform="translate(415, 6)">
+        <rect width="50" height="44" rx="8" fill="url(#vsGrad)" filter="url(#shadow2)" />
+        <text x="25" y="28" text-anchor="middle" fill="#fff" font-family="sans-serif" font-weight="900" font-size="16">VS</text>
+      </g>
+
+      <!-- 高校 B 头部 -->
+      <rect x="510" y="0" width="370" height="56" rx="8" fill="#1e1b4b" stroke="#7c3aed" stroke-width="1.2" />
+      <text x="530" y="26" class="sch-name" fill="#a78bfa">【高校 B】东莞理工 / 河南科大</text>
+      <text x="530" y="44" font-size="11" fill="#c4b5fd">院校代码: 11845 / 10464 ｜ 省属重点 / 国家A区线</text>
+    </g>
+
+    <!-- 6 大对标维度行 -->
+    <!-- 行 1: 办学层次与自划线 -->
+    <g transform="translate(0, 68)">
+      <rect width="880" height="48" rx="6" fill="#0f172a" stroke="#1e293b" stroke-width="1" />
+      <rect x="375" y="10" width="130" height="28" rx="4" fill="#1e293b" />
+      <text x="440" y="28" text-anchor="middle" class="dim-label">办学层次 &amp; 分区</text>
+      
+      <text x="20" y="24" class="val-emp" fill="#38bdf8">34所自主划线 · 985/211/双一流A类</text>
+      <text x="20" y="39" class="val-text">执行学校单独划定的初试复试单科与总分线</text>
+
+      <text x="530" y="24" class="val-emp" fill="#c084fc">省属重点公办高校 · 国家一区线 (A区)</text>
+      <text x="530" y="39" class="val-text">执行教育部统考国家线，过线即享复试与调剂资格</text>
+    </g>
+
+    <!-- 行 2: 初试专业课 -->
+    <g transform="translate(0, 124)">
+      <rect width="880" height="48" rx="6" fill="#09101f" stroke="#1e293b" stroke-width="1" />
+      <rect x="375" y="10" width="130" height="28" rx="4" fill="#1e293b" />
+      <text x="440" y="28" text-anchor="middle" class="dim-label">初试科目特征</text>
+      
+      <text x="20" y="24" class="val-emp" fill="#10b981">全国统考 408 计算机学科专业基础</text>
+      <text x="20" y="39" class="val-text">全国统考，题库高度公开透明，复习通用性极高</text>
+
+      <text x="530" y="24" class="val-emp" fill="#f59e0b">院校自命题 (801/812) 或部分 408</text>
+      <text x="530" y="39" class="val-text">题型多为本校命制，历年真题不公开，需学长学姐回忆</text>
+    </g>
+
+    <!-- 行 3: 复试线走势 -->
+    <g transform="translate(0, 180)">
+      <rect width="880" height="48" rx="6" fill="#0f172a" stroke="#1e293b" stroke-width="1" />
+      <rect x="375" y="10" width="130" height="28" rx="4" fill="#1e293b" />
+      <text x="440" y="28" text-anchor="middle" class="dim-label">历年复试线走势</text>
+      
+      <text x="20" y="24" class="val-emp" fill="#f43f5e">高位厮杀：330~355 分 (学硕/专硕)</text>
+      <text x="20" y="39" class="val-text">单科线卡死 50~55 分，初试高分密集扎堆</text>
+
+      <text x="530" y="24" class="val-emp" fill="#34d399">稳妥托底：通常贴国家线 (265~275 分)</text>
+      <text x="530" y="39" class="val-text">300+ 即享绝对高位优势，最大死穴为严防单科不过线</text>
+    </g>
+
+    <!-- 行 4: 一志愿保护机制 -->
+    <g transform="translate(0, 236)">
+      <rect width="880" height="48" rx="6" fill="#09101f" stroke="#1e293b" stroke-width="1" />
+      <rect x="375" y="10" width="130" height="28" rx="4" fill="#1e293b" />
+      <text x="440" y="28" text-anchor="middle" class="dim-label">一志愿保护机制</text>
+      
+      <text x="20" y="24" class="val-emp" fill="#facc15">🌟 业内公认高度保护一志愿！</text>
+      <text x="20" y="39" class="val-text">一志愿名单公示前不接收校外调剂，复试极其公平</text>
+
+      <text x="530" y="24" class="val-emp" fill="#fb923c">需核查调剂细则 ＆ 排查压分恶名</text>
+      <text x="530" y="39" class="val-text">优秀双非上线全收；极少数学院需排查留名额给调剂</text>
+    </g>
+
+    <!-- 行 5: 核心避坑警示 -->
+    <g transform="translate(0, 292)">
+      <rect width="880" height="48" rx="6" fill="#0f172a" stroke="#1e293b" stroke-width="1" />
+      <rect x="375" y="10" width="130" height="28" rx="4" fill="#1e293b" />
+      <text x="440" y="28" text-anchor="middle" class="dim-label">核心避坑红黑榜</text>
+      
+      <text x="20" y="24" class="val-emp" fill="#f87171">⚠️ 复试机试要求极高，不可初试后躺平</text>
+      <text x="20" y="39" class="val-text">极重编程动手实力与算法考核，选导师需提前打听</text>
+
+      <text x="530" y="24" class="val-emp" fill="#f87171">⚠️ 警惕 9 月初考纲突改统考 408</text>
+      <text x="530" y="39" class="val-text">自命题若突然改考 408 极易崩盘；死守英语数学单科线</text>
+    </g>
+  </g>
+
+  <!-- ══════════════ 底部：私教量化择校与提分处方卡 ══════════════ -->
+  <g transform="translate(40, 435)">
+    <rect width="880" height="95" rx="10" fill="#0b1329" stroke="#3b82f6" stroke-width="1.2" filter="url(#shadow2)" />
+    <g transform="translate(20, 16)">
+      <rect width="180" height="22" rx="4" fill="#1d4ed8" />
+      <text x="90" y="15" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">🎯 私教量化择校处方 (Gap Analysis)</text>
+      
+      <text x="0" y="44" fill="#e2e8f0" font-size="12" font-weight="600">联动学员 370+ 目标分：</text>
+      <text x="135" y="44" fill="#94a3b8" font-size="11.5">冲刺【华科】具备 15~25 分复试安全缓冲垫，数学(110+)与 408(120+)合计需稳拿 230+ 分基本盘；</text>
+      <text x="0" y="65" fill="#94a3b8" font-size="11.5">报考【东莞理工/河南科大】初试总分处于碾压级优势（超出复试线 70~100 分），战略核心在于【严守单科线】＋【真题回忆卷还原】！</text>
+    </g>
+  </g>
+</svg>

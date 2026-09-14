@@ -1,0 +1,29 @@
+chsi_code: '10058'
+name: 天津工业大学
+aliases:
+- Tiangong University
+- TGU
+- 天工大
+level:
+- 省属重点公办高校
+- 硕士研究生培养单位
+- 国家一区线高校
+region: 天津
+province: 天津
+official_domain: https://www.tiangong.edu.cn
+graduate_domain: https://yjsb.tiangong.edu.cn
+admission_domain: https://yjsb.tiangong.edu.cn
+departments:
+  电子信息:
+    college_name: 电子与信息工程学院 / 生命科学学院
+    college_domain: https://dxxy.tiangong.edu.cn
+    default_majors:
+    - 085400
+    - 085401
+    - 085402
+    - 085409
+  医学:
+    college_name: 生命科学学院 / 医学部相关院系
+    college_domain: https://smkx.tiangong.edu.cn
+    default_majors:
+    - 085400

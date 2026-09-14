@@ -1,0 +1,22 @@
+chsi_code: '10004'
+name: 北京交通大学
+aliases:
+- 北交
+- 北交大
+- BJTU
+level:
+- '211'
+- 双一流
+region: 北京
+province: 北京
+official_domain: https://www.bjtu.edu.cn
+graduate_domain: https://gs.bjtu.edu.cn
+admission_domain: https://gs.bjtu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机与信息技术学院
+    college_domain: https://cs.bjtu.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

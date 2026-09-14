@@ -1,0 +1,23 @@
+chsi_code: '10536'
+name: 长沙理工大学
+aliases:
+- Changsha University of Science & Technology
+- CSUST
+- 长沙理工
+level:
+- 省属重点公办高校
+- 硕士研究生培养单位
+- 国家一区线高校
+region: 湖南长沙
+province: 湖南
+official_domain: https://www.csust.edu.cn
+graduate_domain: https://yjsy.csust.edu.cn
+admission_domain: https://yjsy.csust.edu.cn
+departments:
+  电子信息:
+    college_name: 电气与信息工程学院 / 计算机与通信工程学院
+    college_domain: https://dqxy.csust.edu.cn
+    default_majors:
+    - 085400
+    - 085402
+    - 085404

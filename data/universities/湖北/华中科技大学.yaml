@@ -1,0 +1,25 @@
+chsi_code: '10487'
+name: 华中科技大学
+aliases:
+- 华科
+- 华科大
+- HUST
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 湖北武汉
+province: 湖北
+official_domain: https://www.hust.edu.cn
+graduate_domain: http://gszs.hust.edu.cn
+admission_domain: http://gszs.hust.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学与技术学院
+    college_domain: http://cs.hust.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405
+    - 085412

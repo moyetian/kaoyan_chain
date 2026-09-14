@@ -1,0 +1,24 @@
+chsi_code: '10183'
+name: 吉林大学
+aliases:
+- 吉大
+- JLU
+- Jilin University
+level:
+- '985'
+- '211'
+- 双一流A类
+- 自划线
+region: 吉林长春
+province: 吉林
+official_domain: https://www.jlu.edu.cn
+graduate_domain: https://yjsy.jlu.edu.cn
+admission_domain: https://yjsy.jlu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机科学与技术学院 / 软件学院
+    college_domain: https://ccst.jlu.edu.cn
+    default_majors:
+    - 081200
+    - 085404
+    - 085405

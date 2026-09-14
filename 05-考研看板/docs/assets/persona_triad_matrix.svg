@@ -1,0 +1,168 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090d16" />
+      <stop offset="50%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#0a0f1d" />
+    </linearGradient>
+    <linearGradient id="cardProGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#18152e" />
+      <stop offset="100%" stop-color="#120f24" />
+    </linearGradient>
+    <linearGradient id="cardMidGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0c2328" />
+      <stop offset="100%" stop-color="#0a1a20" />
+    </linearGradient>
+    <linearGradient id="cardBaseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#261b0f" />
+      <stop offset="100%" stop-color="#1c130a" />
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000" flood-opacity="0.5" />
+    </filter>
+  </defs>
+
+  <style>
+    .header-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 800; fill: #f8fafc; font-size: 26px; }
+    .header-sub { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; fill: #94a3b8; font-size: 13.5px; }
+    .card-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 800; font-size: 17px; }
+    .target-badge { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 700; font-size: 11px; }
+    .sec-label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-weight: 700; font-size: 12px; }
+    .body-txt { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-size: 11.5px; line-height: 1.5; }
+    .pill-txt { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; font-size: 10.5px; font-weight: 600; }
+  </style>
+
+  <!-- 总体背景 -->
+  <rect width="960" height="520" rx="20" fill="url(#bgGrad)" stroke="#1e293b" stroke-width="1.5" />
+  <path d="M 0 80 L 960 80 M 0 170 L 960 170 M 0 260 L 960 260 M 0 350 L 960 350 M 0 440 L 960 440" stroke="#334155" stroke-opacity="0.12" stroke-width="1" />
+  <path d="M 160 0 L 160 520 M 320 0 L 320 520 M 480 0 L 480 520 M 640 0 L 640 520 M 800 0 L 800 520" stroke="#334155" stroke-opacity="0.12" stroke-width="1" />
+
+  <!-- 顶部主标题 -->
+  <g transform="translate(480, 44)" text-anchor="middle">
+    <text class="header-title" y="0">考研全科差异化学情与重度提分矩阵</text>
+    <text class="header-sub" y="24">量体裁衣 · 学霸冲刺 130+ 极值 · 中等生爆破计算失误 · 弱底生微步骤无痛建立信心</text>
+  </g>
+
+  <!-- ══════════════ 卡片 1: 学霸 (冲刺 390~420+) ══════════════ -->
+  <g transform="translate(35, 92)" filter="url(#shadow)">
+    <rect width="280" height="395" rx="16" fill="url(#cardProGrad)" stroke="#6366f1" stroke-width="1.6" stroke-opacity="0.75" />
+    
+    <!-- 标头 -->
+    <rect x="18" y="18" width="8" height="22" rx="3" fill="#818cf8" />
+    <text class="card-title" x="34" y="34" fill="#e0e7ff">学霸 · 极值突破</text>
+    <rect x="186" y="18" width="76" height="22" rx="11" fill="#312e81" stroke="#4f46e5" stroke-width="1" />
+    <text class="target-badge" x="224" y="33" text-anchor="middle" fill="#c7d2fe">390~420+ 分</text>
+    <line x1="18" y1="52" x2="262" y2="52" stroke="#312e81" stroke-width="1" />
+
+    <!-- 痛点防线 -->
+    <text class="sec-label" x="18" y="74" fill="#a5b4fc">⚡ 核心攻坚难点</text>
+    <text class="body-txt" x="18" y="94" fill="#94a3b8">• 厌恶 AI 泛聊与微积分算力幻觉</text>
+    <text class="body-txt" x="18" y="114" fill="#94a3b8">• 复杂常微分方程 (ODE) 严格验算</text>
+    <text class="body-txt" x="18" y="134" fill="#94a3b8">• 二次型正定性与特征多项式因式分解</text>
+    <text class="body-txt" x="18" y="154" fill="#94a3b8">• 一题多解与巧妙构造法的等价性</text>
+
+    <!-- 专属武器库 -->
+    <text class="sec-label" x="18" y="188" fill="#818cf8">🛠️ 专有赋能技能</text>
+    
+    <g transform="translate(18, 202)">
+      <rect width="244" height="28" rx="6" fill="#1e1b4b" stroke="#4338ca" stroke-width="1" />
+      <text class="pill-txt" x="10" y="18" fill="#c7d2fe">📐 math_verifier: ODE/二次型/级数求和</text>
+    </g>
+    <g transform="translate(18, 236)">
+      <rect width="244" height="28" rx="6" fill="#1e1b4b" stroke="#4338ca" stroke-width="1" />
+      <text class="pill-txt" x="10" y="18" fill="#c7d2fe">🔄 快捷键 [4]: 举一反三变式盲盒抽测</text>
+    </g>
+    <g transform="translate(18, 270)">
+      <rect width="244" height="28" rx="6" fill="#1e1b4b" stroke="#4338ca" stroke-width="1" />
+      <text class="pill-txt" x="10" y="18" fill="#c7d2fe">🌐 KaTeX 伴侣: 印刷级排版双屏秒对</text>
+    </g>
+
+    <!-- 提分战果 -->
+    <text class="sec-label" x="18" y="326" fill="#38bdf8">🎯 预期提分闭环</text>
+    <rect x="18" y="338" width="244" height="42" rx="8" fill="#0f172a" stroke="#1e293b" stroke-width="1" />
+    <text class="body-txt" x="28" y="356" fill="#38bdf8" font-weight="700">稳拿 135+ 数学/408 核心大题满分盘</text>
+    <text class="body-txt" x="28" y="372" fill="#64748b">消除边界丢分与步骤失误，确保压轴优势</text>
+  </g>
+
+  <!-- ══════════════ 卡片 2: 中等生 (突破 340~370) ══════════════ -->
+  <g transform="translate(340, 92)" filter="url(#shadow)">
+    <rect width="280" height="395" rx="16" fill="url(#cardMidGrad)" stroke="#06b6d4" stroke-width="1.6" stroke-opacity="0.85" />
+    
+    <!-- 标头 -->
+    <rect x="18" y="18" width="8" height="22" rx="3" fill="#22d3ee" />
+    <text class="card-title" x="34" y="34" fill="#cffafe">中等生 · 破局跃迁</text>
+    <rect x="186" y="18" width="76" height="22" rx="11" fill="#164e63" stroke="#0891b2" stroke-width="1" />
+    <text class="target-badge" x="224" y="33" text-anchor="middle" fill="#a5f3fc">340~370+ 分</text>
+    <line x1="18" y1="52" x2="262" y2="52" stroke="#164e63" stroke-width="1" />
+
+    <!-- 痛点防线 -->
+    <text class="sec-label" x="18" y="74" fill="#67e8f9">⚡ 核心攻坚难点</text>
+    <text class="body-txt" x="18" y="94" fill="#94a3b8">• 会做但算不对，每卷扣 15~20 计算分</text>
+    <text class="body-txt" x="18" y="114" fill="#94a3b8">• 错题“收集容易、从不重练”陷入假勤奋</text>
+    <text class="body-txt" x="18" y="134" fill="#94a3b8">• 换个题型马甲就发懵，缺少变式思维</text>
+    <text class="body-txt" x="18" y="154" fill="#94a3b8">• 客观题刷题量大，单题录入低效耗时</text>
+
+    <!-- 专属武器库 -->
+    <text class="sec-label" x="18" y="188" fill="#22d3ee">🛠️ 专有赋能技能</text>
+    
+    <g transform="translate(18, 202)">
+      <rect width="244" height="28" rx="6" fill="#083344" stroke="#0e7490" stroke-width="1" />
+      <text class="pill-txt" x="10" y="18" fill="#a5f3fc">🎯 /review: 艾宾浩斯盲盒隐答案重练</text>
+    </g>
+    <g transform="translate(18, 236)">
+      <rect width="244" height="28" rx="6" fill="#083344" stroke="#0e7490" stroke-width="1" />
+      <text class="pill-txt" x="10" y="18" fill="#a5f3fc">📌 错因五分类: 计算/审题/概念精准归因</text>
+    </g>
+    <g transform="translate(18, 270)">
+      <rect width="244" height="28" rx="6" fill="#083344" stroke="#0e7490" stroke-width="1" />
+      <text class="pill-txt" x="10" y="18" fill="#a5f3fc">📊 /batch: 答题卡批量对题与错点聚类</text>
+    </g>
+
+    <!-- 提分战果 -->
+    <text class="sec-label" x="18" y="326" fill="#34d399">🎯 预期提分闭环</text>
+    <rect x="18" y="338" width="244" height="42" rx="8" fill="#0f172a" stroke="#1e293b" stroke-width="1" />
+    <text class="body-txt" x="28" y="356" fill="#34d399" font-weight="700">实现 +30~45 分关键跃迁，跨过一志愿线</text>
+    <text class="body-txt" x="28" y="372" fill="#64748b">挽回所有非智力失误，错题实现 100% 动态清零</text>
+  </g>
+
+  <!-- ══════════════ 卡片 3: 薄弱生 (保过线/逆袭提分) ══════════════ -->
+  <g transform="translate(645, 92)" filter="url(#shadow)">
+    <rect width="280" height="395" rx="16" fill="url(#cardBaseGrad)" stroke="#f59e0b" stroke-width="1.6" stroke-opacity="0.8" />
+    
+    <!-- 标头 -->
+    <rect x="18" y="18" width="8" height="22" rx="3" fill="#fbbf24" />
+    <text class="card-title" x="34" y="34" fill="#fef3c7">薄弱生 · 基础筑基</text>
+    <rect x="186" y="18" width="76" height="22" rx="11" fill="#78350f" stroke="#b45309" stroke-width="1" />
+    <text class="target-badge" x="224" y="33" text-anchor="middle" fill="#fde68a">保过线/稳及格</text>
+    <line x1="18" y1="52" x2="262" y2="52" stroke="#78350f" stroke-width="1" />
+
+    <!-- 痛点防线 -->
+    <text class="sec-label" x="18" y="74" fill="#fcd34d">⚡ 核心攻坚难点</text>
+    <text class="body-txt" x="18" y="94" fill="#94a3b8">• 综合大题第一步完全不知从何下笔</text>
+    <text class="body-txt" x="18" y="114" fill="#94a3b8">• 直接看大段解析吃快餐，自己依然不会</text>
+    <text class="body-txt" x="18" y="134" fill="#94a3b8">• 英语长难句词汇少、语法乱，恐惧阅读</text>
+    <text class="body-txt" x="18" y="154" fill="#94a3b8">• 不会敲 LaTeX，手写草稿潦草输入难</text>
+
+    <!-- 专属武器库 -->
+    <text class="sec-label" x="18" y="188" fill="#fbbf24">🛠️ 专有赋能技能</text>
+    
+    <g transform="translate(18, 202)">
+      <rect width="244" height="28" rx="6" fill="#451a03" stroke="#92400e" stroke-width="1" />
+      <text class="pill-txt" x="10" y="18" fill="#fde68a">💡 /hint: 苏格拉底三级微步骤启发</text>
+    </g>
+    <g transform="translate(18, 236)">
+      <rect width="244" height="28" rx="6" fill="#451a03" stroke="#92400e" stroke-width="1" />
+      <text class="pill-txt" x="10" y="18" fill="#fde68a">🧱 /dissect: 英语长难句五步搭积木拆解</text>
+    </g>
+    <g transform="translate(18, 270)">
+      <rect width="244" height="28" rx="6" fill="#451a03" stroke="#92400e" stroke-width="1" />
+      <text class="pill-txt" x="10" y="18" fill="#fde68a">📸 /paste + 微信Bot: 草稿拍照极简直达</text>
+    </g>
+
+    <!-- 提分战果 -->
+    <text class="sec-label" x="18" y="326" fill="#f59e0b">🎯 预期提分闭环</text>
+    <rect x="18" y="338" width="244" height="42" rx="8" fill="#0f172a" stroke="#1e293b" stroke-width="1" />
+    <text class="body-txt" x="28" y="356" fill="#f59e0b" font-weight="700">稳拿 80% 必考基础盘，彻底消灭单科线危机</text>
+    <text class="body-txt" x="28" y="372" fill="#64748b">用微步骤引导替代答案暴击，重塑解题信心</text>
+  </g>
+</svg>

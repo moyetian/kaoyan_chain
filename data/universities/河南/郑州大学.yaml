@@ -1,0 +1,20 @@
+chsi_code: '10459'
+name: 郑州大学
+aliases:
+- 郑大
+- ZZU
+level:
+- '211'
+- 双一流B类
+region: 河南郑州
+province: 河南
+official_domain: https://www.zzu.edu.cn
+graduate_domain: http://gs.zzu.edu.cn
+admission_domain: http://gs.zzu.edu.cn
+departments:
+  计算机:
+    college_name: 计算机与人工智能学院
+    college_domain: http://www5.zzu.edu.cn/ci
+    default_majors:
+    - 081200
+    - 085404

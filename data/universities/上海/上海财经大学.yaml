@@ -1,0 +1,20 @@
+chsi_code: '10280'
+name: 上海财经大学
+aliases:
+- 上财
+- SUFE
+level:
+- '211'
+- 双一流
+region: 上海
+province: 上海
+official_domain: https://www.sufe.edu.cn
+graduate_domain: https://gs.sufe.edu.cn
+admission_domain: https://gs.sufe.edu.cn
+departments:
+  金融与经管:
+    college_name: 金融学院 / 经济学院
+    college_domain: https://fin.sufe.edu.cn
+    default_majors:
+    - '020204'
+    - '025100'
