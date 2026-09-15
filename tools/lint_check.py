@@ -24,6 +24,9 @@ import argparse
 import ast
 import re
 import sys
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -100,7 +103,7 @@ def check_file(path: Path, base: Path) -> List[Tuple[str, int, str]]:
             if node.type is None:
                 issues.append(("ERROR", node.lineno, "裸 except: 会吞掉 KeyboardInterrupt/SystemExit"))
             elif node.body and all(isinstance(s, ast.Pass) for s in node.body):
-                issues.append(("WARN", node.lineno, f"except {ast.unparse(node.type)}: pass —— 静默吞异常"))
+                issues.append(("WARN", node.lineno, f"except {ast.unparse(node.type)}: pass —— 静默吞异常（仅提醒，不卡门禁）"))
 
     # 4. 可变默认参数
     for node in ast.walk(tree):

@@ -244,7 +244,7 @@ class MaterialIngestionPipeline:
             "目录" in raw_stem and re.search(r"\d+\s*$", raw_stem.strip())
         ):
             return QuestionChunk(
-                num=num, q_type="essay", stem="", options=[], answer="",
+                number=num, q_type="essay", stem="", options=[], answer="",
                 analysis="", rubric=[], points=[], score=0, source=source
             )
 

@@ -12,6 +12,7 @@ Level 5 = Dangerous (删除与破坏性操作)
 
 import sys
 import json
+from pathlib import Path
 from typing import Dict, Any, Tuple
 
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）

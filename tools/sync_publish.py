@@ -144,6 +144,7 @@ def python_mirror():
     copied = 0
 
     def walk(src_dir, rel):
+        nonlocal copied
         for entry in os.scandir(src_dir):
             rel_parts = rel + [entry.name]
             if entry.is_dir(follow_symlinks=False):

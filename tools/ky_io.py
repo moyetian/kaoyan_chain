@@ -292,7 +292,7 @@ def read_text_fallback(path: PathLike, encodings=("utf-8-sig", "utf-8", "gbk")) 
     （「成功入库 N 道题」但内容残缺）。此处宁可显式失败，也不静默丢数据。
     """
     p = Path(path)
-    last_err: Exception = None
+    last_err: Optional[Exception] = None
     for enc in encodings:
         try:
             return p.read_text(encoding=enc)

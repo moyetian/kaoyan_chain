@@ -12,6 +12,7 @@ import json
 import html
 import datetime
 import pathlib
+from pathlib import Path
 import sys
 
 # ════════════════════════════════════════════════════════════
@@ -63,13 +64,21 @@ def _resolve_exam_day1(cfg: dict) -> datetime.date:
 
 
 def _resolve_plan_start(cfg: dict, exam_day1: datetime.date) -> datetime.date:
-    """解析备考起跑日：配置 start_date → 最早打卡记录 → 距初试 180 天。"""
+    """解析备考起跑日：配置 start_date → 最早打卡记录 → 距初试 180 天。
+
+    [审查 R-03 修复] 打卡记录须具备足够样本量（≥3 天）或足够时间跨度（最早记录
+    早于一周前）才被采信。否则「今天刚打了第一次卡」会把起跑日钉死在今天，
+    使备考进度条从 47% 视觉归零到 1%，此时应回退到「距初试 180 天」锚点。
+    """
     plan = cfg.get("study_plan") if isinstance(cfg.get("study_plan"), dict) else {}
     raw = plan.get("start_date") or cfg.get("start_date")
     if not raw:
         hist = cfg.get("completion_history") or {}
         if isinstance(hist, dict) and hist:
-            raw = min(hist.keys())
+            earliest = str(min(hist.keys(), key=str))
+            week_ago = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+            if len(hist) >= 3 or earliest <= week_ago:
+                raw = earliest
     if raw:
         try:
             return datetime.datetime.strptime(str(raw).strip()[:10], "%Y-%m-%d").date()

@@ -92,6 +92,7 @@ def run_new_feature_tests():
             WeChatArticleFetcher,
             WeChatSearchEngine,
             SearchResult,
+            WeChatArticleItem,
             search_wechat_experiences,
         )
 
@@ -150,7 +151,7 @@ def run_new_feature_tests():
             engine = WeChatSearchEngine()
             fallback_results = engine.search_local_cache("计算机", 3)
             runner.assert_true(len(fallback_results) > 0, "WeChatSearchEngine: 本地降级搜索命中备用经验库数据")
-            runner.assert_true(isinstance(fallback_results[0], SearchResult) or isinstance(fallback_results[0], WeChatArticleItem), "WeChatSearchEngine: 搜索结果类型正确")
+            runner.assert_true(isinstance(fallback_results[0], (SearchResult, WeChatArticleItem)), "WeChatSearchEngine: 搜索结果类型正确")
         finally:
             dummy_file.unlink(missing_ok=True)
 

@@ -1502,6 +1502,11 @@ D. 无度为2的结点
 
             runner.assert_true("ingest_exam_material" in tr_diff.tools, "Material Ingest 21-9：ToolRegistry 成功注册 ingest_exam_material 专属工具")
 
+            # A test case for TOC page to prevent regression of P0-1 (TypeError on num=num)
+            toc_text = "目  录\n第一章 函数、极限、连续 ................. 1\n第二章 导数与微分 ....................... 12"
+            toc_chunks = pipe.chunk_text(toc_text, default_source="TOC Test")
+            runner.assert_true(len(toc_chunks) > 0, "Material Ingest 21-10：成功解析含目录页的真题而不抛出异常")
+
             # =========================================================================
             # 22. 社媒经验降噪过滤与分省高校注册表 (Sprint 6 - 8 项验证)
             # =========================================================================
@@ -1696,6 +1701,16 @@ D. 无度为2的结点
             runner.assert_true(
                 updater_res.returncode == 0 and "已跳过 Git 提交与推送" in updater_res.stdout,
                 "发布安全：update_dashboard --local 真实执行且明确跳过推送",
+            )
+
+            # Test sync_publish.py --force to prevent regression of P0-2
+            sync_res = subprocess.run(
+                [sys.executable, str(ROOT / "tools" / "sync_publish.py"), "--force"],
+                cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+            )
+            runner.assert_true(
+                sync_res.returncode == 0 and "files copied" in sync_res.stdout,
+                "发布安全：sync_publish.py --force 强制执行成功且不崩溃",
             )
         except Exception as e:
             runner.assert_true(False, f"CLI 进程级 smoke tests 异常: {e}")
