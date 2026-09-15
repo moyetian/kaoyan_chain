@@ -35,7 +35,11 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install -e .
+        # dev extras 提供 pytest / pytest-timeout / pytest-socket：
+        # pyproject 的 [tool.pytest.ini_options] 配置了 timeout，缺 pytest-timeout
+        # 会报 "Unknown config option: timeout"，并被 filterwarnings=["error"]
+        # 升级为 INTERNALERROR（本地装了插件故不复现）
+        pip install -e ".[dev]"
 
     - name: Run Ky Doctor Self-Check
       run: |
