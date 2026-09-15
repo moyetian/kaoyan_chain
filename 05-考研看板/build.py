@@ -681,6 +681,8 @@ def build_radar_html(root_path: pathlib.Path) -> str:
     if not exp_dir.exists():
         exp_dir = root_path / "docs" / "experiences"
     exp_files = sorted(list(exp_dir.glob("*.md")), key=lambda p: (0 if target_school and target_school in p.name else 1, -p.stat().st_mtime)) if exp_dir.exists() else []
+    # [审查修复] 脱敏模式（默认开启）：隐私目录中的院校名与本地路径不得写入公开看板
+    sanitize = _snapshot_opt_in()
     if exp_files:
         exp_html.append("<div style='font-size:12px;color:var(--mut);margin-bottom:8px'>聚合知乎、B站、小红书实名学长学姐真实就读体验与避坑指南 (AI 置信度降噪清洗)：</div>")
         for ef in exp_files[:4]:
@@ -691,6 +693,12 @@ def build_radar_html(root_path: pathlib.Path) -> str:
             pos_matches = re.findall(r"-\s*✅\s*\*\*([^\*]+)\*\*", txt)
             risk_matches = re.findall(r"-\s*⚠️\s*\*\*([^\*]+)\*\*", txt)
 
+            if sanitize:
+                token = ef.stem.split("_")[0]  # 文件名形如「目标院校_目标专业.md」
+                clean_title = "目标院校 · 目标专业 社媒经验档案"
+                pos_matches = [x.replace(token, "目标院校") for x in pos_matches]
+                risk_matches = [x.replace(token, "目标院校") for x in risk_matches]
+
             exp_html.append("<div class='radar-card'>")
             exp_html.append(f"<div class='radar-card-h'><span>{html.escape(clean_title)}</span><span class='radar-badge tag'>AI置信清洗</span></div>")
             if pos_matches:
@@ -698,6 +706,8 @@ def build_radar_html(root_path: pathlib.Path) -> str:
             if risk_matches:
                 exp_html.append("<div style='font-size:12px;margin:4px 0;color:var(--bad);'><b>避坑防线:</b> " + html.escape(" · ".join(risk_matches[:3])) + "</div>")
             rel_exp = f".memory/experiences/{ef.name}" if ".memory" in str(ef) else f"docs/experiences/{ef.name}"
+            if sanitize:
+                rel_exp = ".memory/experiences/（本地隐私目录，不随看板公开）"
             exp_html.append(f"<div style='font-size:11.5px;color:var(--mut);margin-top:6px;'>详细经验条目与社媒直通车已归档至 <code>{html.escape(rel_exp)}</code></div>")
             exp_html.append("</div>")
     else:

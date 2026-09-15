@@ -1,7 +1,7 @@
 {
   "meta": {
     "snapshot_version": "ky-snapshot/1.0",
-    "generated_at": "2026-09-14 18:27:41",
+    "generated_at": "2026-09-15 12:27:34",
     "opt_in": true,
     "subjects_count": 4,
     "memo_cards": 8,
@@ -729,13 +729,13 @@
       }
     ],
     "plan": {
-      "day": 85,
+      "day": 86,
       "total": 181
     },
     "maps": {
       "math": {
         "subject": "math",
-        "subject_name": "数学",
+        "subject_name": "数学二 (302)",
         "total_points": 52,
         "total_topics": 52,
         "grade_counts": {
@@ -1663,7 +1663,7 @@
       },
       "eng": {
         "subject": "eng",
-        "subject_name": "英语",
+        "subject_name": "英语二 (204)",
         "total_points": 6,
         "total_topics": 6,
         "grade_counts": {
@@ -2306,86 +2306,111 @@
       },
       "pro": {
         "subject": "pro",
-        "subject_name": "专业课",
-        "total_points": 56,
-        "total_topics": 56,
+        "subject_name": "408 计算机学科专业基础",
+        "total_points": 35,
+        "total_topics": 35,
         "grade_counts": {
           "A": 0,
           "B": 0,
           "C": 0,
           "D": 0,
-          "U": 56
+          "U": 35
         },
         "mastery_rate": 0.0,
         "assessed_count": 0,
-        "unassessed_count": 56,
+        "unassessed_count": 35,
         "assessed_rate": 0.0,
         "syllabus_warning": null,
         "syllabus_placeholder": false,
         "chapters": [
           {
-            "title": "一、考试的总体要求",
+            "title": "一、试卷结构与分值",
+            "points": [
+              {
+                "name": "40 题，每题 2 分，共 **80 分**",
+                "req_type": "单项选择题",
+                "full_desc": "40 题，每题 2 分，共 **80 分**",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "7 题，共 **70 分** (数据结构 2 题、计组 2 题、操作系统 2 题、计网 1 题)",
+                "req_type": "综合应用题 (大题)",
+                "full_desc": "7 题，共 **70 分** (数据结构 2 题、计组 2 题、操作系统 2 题、计网 1 题)",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              }
+            ]
+          },
+          {
+            "title": "二、四大模块核心考纲",
             "points": []
           },
           {
-            "title": "二、考试的内容及比例",
-            "points": []
-          },
-          {
-            "title": "1. 绪论（5 ~ 15%）",
+            "title": "1. 数据结构 (45 分)",
             "points": [
               {
-                "name": "模拟通信系统和数字通信系统的模型",
-                "req_type": "了解",
-                "full_desc": "模拟通信系统和数字通信系统的模型；",
+                "name": "顺序表与链表（单链表、循环链表、双链表）的插入/删除操作与算法实现",
+                "req_type": "线性表",
+                "full_desc": "顺序表与链表（单链表、循环链表、双链表）的插入/删除操作与算法实现；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "信息量",
-                "req_type": "理解",
-                "full_desc": "信息量、平均信息量的概念，并熟练掌握其计算；",
+                "name": "栈的入栈出栈顺序推导",
+                "req_type": "栈、队列与数组",
+                "full_desc": "栈的入栈出栈顺序推导、循环队列队空队满条件、特殊矩阵压缩存储；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "平均信息量的概念，并熟练掌握其计算",
-                "req_type": "理解",
-                "full_desc": "信息量、平均信息量的概念，并熟练掌握其计算；",
+                "name": "循环队列队空队满条件",
+                "req_type": "栈、队列与数组",
+                "full_desc": "栈的入栈出栈顺序推导、循环队列队空队满条件、特殊矩阵压缩存储；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "有效性和可靠性的概念，并要求计算传码率",
-                "req_type": "理解",
-                "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
+                "name": "特殊矩阵压缩存储",
+                "req_type": "栈、队列与数组",
+                "full_desc": "栈的入栈出栈顺序推导、循环队列队空队满条件、特殊矩阵压缩存储；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "传信率",
-                "req_type": "理解",
-                "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
+                "name": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础",
+                "req_type": "树与二叉树",
+                "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "系统频带利用率",
-                "req_type": "理解",
-                "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
+                "name": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)",
+                "req_type": "图",
+                "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "误码率和误信率。",
-                "req_type": "理解",
-                "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
+                "name": "顺序查找、折半查找、B/B+树基础、散列表(Hash)及其冲突处理",
+                "req_type": "查找",
+                "full_desc": "顺序查找、折半查找、B/B+树基础、散列表(Hash)及其冲突处理；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
+                "req_type": "内部排序",
+                "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
@@ -2393,28 +2418,92 @@
             ]
           },
           {
-            "title": "2. 确知信号分析（5 ~ 10%）",
+            "title": "2. 计算机组成原理 (45 分)",
             "points": [
               {
-                "name": "信号与系统的基本分析方法",
-                "req_type": "理解",
-                "full_desc": "信号与系统的基本分析方法；",
+                "name": "性能指标（CPI、MIPS、时钟周期、吞吐量）",
+                "req_type": "计算机系统概述",
+                "full_desc": "性能指标（CPI、MIPS、时钟周期、吞吐量）；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "能量谱密度和功率谱密度的概念，卷积的定义和性质",
-                "req_type": "了解",
-                "full_desc": "能量谱密度和功率谱密度的概念，卷积的定义和性质；",
+                "name": "原码",
+                "req_type": "数据的表示与运算",
+                "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "相关函数的计算。",
-                "req_type": "掌握",
-                "full_desc": "相关函数的计算。",
+                "name": "反码",
+                "req_type": "数据的表示与运算",
+                "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "补码",
+                "req_type": "数据的表示与运算",
+                "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "移码转换",
+                "req_type": "数据的表示与运算",
+                "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "定点数与浮点数表示（IEEE 754 标准）",
+                "req_type": "数据的表示与运算",
+                "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "加减乘除运算与溢出判断",
+                "req_type": "数据的表示与运算",
+                "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "SRAM/DRAM 原理、主存与 CPU 连线（位扩展/字扩展）、Cache 映射与替换策略（直接/全相联/组相联）、Cache-主存命中率与平均访问时间、虚拟存储器(页式/段式/段页式与TLB)",
+                "req_type": "存储系统",
+                "full_desc": "SRAM/DRAM 原理、主存与 CPU 连线（位扩展/字扩展）、Cache 映射与替换策略（直接/全相联/组相联）、Cache-主存命中率与平均访问时间、虚拟存储器(页式/段式/段页式与TLB)；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "寻址方式（立即/直接/间接/寄存器/基址/变址寻址）、CISC 与 RISC 概念",
+                "req_type": "指令系统",
+                "full_desc": "寻址方式（立即/直接/间接/寄存器/基址/变址寻址）、CISC 与 RISC 概念；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）",
+                "req_type": "中央处理器 (CPU)",
+                "full_desc": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "总线仲裁、I/O 控制方式（程序查询、中断、DMA 方式）。",
+                "req_type": "总线与 I/O 系统",
+                "full_desc": "总线仲裁、I/O 控制方式（程序查询、中断、DMA 方式）。",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
@@ -2422,68 +2511,76 @@
             ]
           },
           {
-            "title": "3. 随机信号分析（5 ~ 15%）",
+            "title": "3. 操作系统 (35 分)",
             "points": [
               {
-                "name": "随机过程",
-                "req_type": "了解",
-                "full_desc": "随机过程、平稳随机过程、高斯过程的定义；",
+                "name": "进程状态转换",
+                "req_type": "进程与线程",
+                "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "平稳随机过程",
-                "req_type": "了解",
-                "full_desc": "随机过程、平稳随机过程、高斯过程的定义；",
+                "name": "PCB",
+                "req_type": "进程与线程",
+                "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "高斯过程的定义",
-                "req_type": "了解",
-                "full_desc": "随机过程、平稳随机过程、高斯过程的定义；",
+                "name": "进程通信",
+                "req_type": "进程与线程",
+                "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "随机信号的均值",
-                "req_type": "掌握",
-                "full_desc": "随机信号的均值、方差、协方差以及相关函数的计算；",
+                "name": "线程实现方式",
+                "req_type": "进程与线程",
+                "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "方差",
-                "req_type": "掌握",
-                "full_desc": "随机信号的均值、方差、协方差以及相关函数的计算；",
+                "name": "调度算法（FCFS、SJF、RR、优先级）、死锁预防/避免（银行家算法）/检测与解除",
+                "req_type": "CPU 调度与死锁",
+                "full_desc": "调度算法（FCFS、SJF、RR、优先级）、死锁预防/避免（银行家算法）/检测与解除；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "协方差以及相关函数的计算",
-                "req_type": "掌握",
-                "full_desc": "随机信号的均值、方差、协方差以及相关函数的计算；",
+                "name": "临界区概念、信号量机制(P/V 操作经典模型：生产者消费者、哲学家进餐、读写者问题)",
+                "req_type": "进程同步与互斥",
+                "full_desc": "临界区概念、信号量机制(P/V 操作经典模型：生产者消费者、哲学家进餐、读写者问题)；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "平稳随机过程的各态历经性，灵活运用平稳随机过程自相关函数的性质",
-                "req_type": "理解",
-                "full_desc": "平稳随机过程的各态历经性，灵活运用平稳随机过程自相关函数的性质；",
+                "name": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集",
+                "req_type": "内存管理",
+                "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "随机过程通过线性系统的各种参数的计算。",
-                "req_type": "掌握",
-                "full_desc": "随机过程通过线性系统的各种参数的计算。",
+                "name": "文件逻辑结构与物理结构（连续/链接/索引分配）、目录结构与 FAT/索引节点、文件共享与保护",
+                "req_type": "文件系统",
+                "full_desc": "文件逻辑结构与物理结构（连续/链接/索引分配）、目录结构与 FAT/索引节点、文件共享与保护；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
+                "req_type": "I/O 设备管理",
+                "full_desc": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
@@ -2491,848 +2588,354 @@
             ]
           },
           {
-            "title": "4. 信道（5 ~ 10%）",
+            "title": "4. 计算机网络 (25 分)",
             "points": [
               {
-                "name": "信道的定义及其数学模型，掌握无失真传输信道模型",
-                "req_type": "了解",
-                "full_desc": "信道的定义及其数学模型，掌握无失真传输信道模型；",
+                "name": "奈氏准则与香农定理、信道复用技术（FDM、TDM、WDM、CDMA）",
+                "req_type": "物理层",
+                "full_desc": "奈氏准则与香农定理、信道复用技术（FDM、TDM、WDM、CDMA）；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "恒参信道",
-                "req_type": "了解",
-                "full_desc": "恒参信道、随参信道对信号传输的影响；",
+                "name": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习",
+                "req_type": "数据链路层",
+                "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "随参信道对信号传输的影响",
-                "req_type": "了解",
-                "full_desc": "恒参信道、随参信道对信号传输的影响；",
+                "name": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程",
+                "req_type": "网络层",
+                "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               },
               {
-                "name": "信道容量的计算。",
-                "req_type": "掌握",
-                "full_desc": "信道容量的计算。",
+                "name": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)",
+                "req_type": "传输层",
+                "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
+                "grade": "U",
+                "error_count": 0,
+                "active_error_count": 0
+              },
+              {
+                "name": "DNS 域名解析过程、FTP、电子邮件(SMTP/POP3/IMAP)、万维网(HTTP 协议与状态码)。",
+                "req_type": "应用层",
+                "full_desc": "DNS 域名解析过程、FTP、电子邮件(SMTP/POP3/IMAP)、万维网(HTTP 协议与状态码)。",
                 "grade": "U",
                 "error_count": 0,
                 "active_error_count": 0
               }
             ]
-          },
-          {
-            "title": "5. 模拟调制系统（5 ~ 15%）",
-            "points": [
-              {
-                "name": "调制的概念和调制的分类",
-                "req_type": "了解",
-                "full_desc": "调制的概念和调制的分类；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "幅度调制与解调的原理，掌握系统的抗噪声性能计算",
-                "req_type": "掌握",
-                "full_desc": "幅度调制与解调的原理，掌握系统的抗噪声性能计算；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "调频波和调相波的调制与解调原理，掌握调频波的各种参数",
-                "req_type": "理解",
-                "full_desc": "调频波和调相波的调制与解调原理，掌握调频波的各种参数、系统的抗噪声性能、带宽和功率的计算。",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "系统的抗噪声性能",
-                "req_type": "理解",
-                "full_desc": "调频波和调相波的调制与解调原理，掌握调频波的各种参数、系统的抗噪声性能、带宽和功率的计算。",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "带宽和功率的计算。",
-                "req_type": "理解",
-                "full_desc": "调频波和调相波的调制与解调原理，掌握调频波的各种参数、系统的抗噪声性能、带宽和功率的计算。",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              }
-            ]
-          },
-          {
-            "title": "6. 模拟信号数字化（10 ~ 30%）",
-            "points": [
-              {
-                "name": "模拟信号数字化传输的原理及实现方法",
-                "req_type": "理解",
-                "full_desc": "模拟信号数字化传输的原理及实现方法；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "PCM 编码",
-                "req_type": "掌握",
-                "full_desc": "PCM 编码、译码的方法及带宽、传输速率的计算；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "译码的方法及带宽",
-                "req_type": "掌握",
-                "full_desc": "PCM 编码、译码的方法及带宽、传输速率的计算；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "传输速率的计算",
-                "req_type": "掌握",
-                "full_desc": "PCM 编码、译码的方法及带宽、传输速率的计算；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "增量调制的基本原理。",
-                "req_type": "掌握",
-                "full_desc": "增量调制的基本原理。",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              }
-            ]
-          },
-          {
-            "title": "7. 数字信号的基带传输系统（10 ~ 15%）",
-            "points": [
-              {
-                "name": "数字基带信号的传输波形和码型",
-                "req_type": "掌握",
-                "full_desc": "数字基带信号的传输波形和码型；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "基带信号的频谱特性",
-                "req_type": "了解",
-                "full_desc": "基带信号的频谱特性；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "系统无码间串扰的基带传输特性",
-                "req_type": "灵活运用",
-                "full_desc": "系统无码间串扰的基带传输特性；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "数字基带传输系统带宽的计算",
-                "req_type": "掌握",
-                "full_desc": "数字基带传输系统带宽的计算；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "眼图",
-                "req_type": "了解",
-                "full_desc": "眼图、均衡和部分响应技术。",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "均衡和部分响应技术。",
-                "req_type": "了解",
-                "full_desc": "眼图、均衡和部分响应技术。",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              }
-            ]
-          },
-          {
-            "title": "8. 数字调制系统（10 ~ 30%）",
-            "points": [
-              {
-                "name": "ASK",
-                "req_type": "掌握",
-                "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "FSK",
-                "req_type": "掌握",
-                "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "PSK",
-                "req_type": "掌握",
-                "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "DPSK 信号的调制与解调的原理",
-                "req_type": "掌握",
-                "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "方框图及其各点波形，并比较上述调制的性能",
-                "req_type": "掌握",
-                "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "多进制数字调制的原理",
-                "req_type": "掌握",
-                "full_desc": "多进制数字调制的原理；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "现代数字调制技术。",
-                "req_type": "了解",
-                "full_desc": "现代数字调制技术。",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              }
-            ]
-          },
-          {
-            "title": "9. 数字信号的最佳接收（10 ~ 15%）",
-            "points": [
-              {
-                "name": "数字信号的最佳接收原理及三个最佳接收准则",
-                "req_type": "了解",
-                "full_desc": "数字信号的最佳接收原理及三个最佳接收准则；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "匹配滤波器的设计与计算。",
-                "req_type": "掌握",
-                "full_desc": "匹配滤波器的设计与计算。",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              }
-            ]
-          },
-          {
-            "title": "10. 信道复用和多址技术（5 ~ 10%）",
-            "points": [
-              {
-                "name": "频分复用",
-                "req_type": "掌握",
-                "full_desc": "频分复用、时分复用的基本原理；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "时分复用的基本原理",
-                "req_type": "掌握",
-                "full_desc": "频分复用、时分复用的基本原理；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "码分复用。",
-                "req_type": "了解",
-                "full_desc": "码分复用。",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              }
-            ]
-          },
-          {
-            "title": "11. 同步原理（5 ~ 15%）",
-            "points": [
-              {
-                "name": "常用同步的分类",
-                "req_type": "了解",
-                "full_desc": "常用同步的分类；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "载波同步和位同步的基本原理和实现方法。",
-                "req_type": "理解并掌握",
-                "full_desc": "载波同步和位同步的基本原理和实现方法。",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              }
-            ]
-          },
-          {
-            "title": "12. 差错控制编码（10 ~ 30%）",
-            "points": [
-              {
-                "name": "纠错编码的基本原理和基本概念",
-                "req_type": "理解",
-                "full_desc": "纠错编码的基本原理和基本概念；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "线性分组码和循环码的编译码原理及监督矩阵",
-                "req_type": "掌握",
-                "full_desc": "线性分组码和循环码的编译码原理及监督矩阵、生成矩阵等的计算；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "生成矩阵等的计算",
-                "req_type": "掌握",
-                "full_desc": "线性分组码和循环码的编译码原理及监督矩阵、生成矩阵等的计算；",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              },
-              {
-                "name": "卷积码的基本概念。",
-                "req_type": "了解",
-                "full_desc": "卷积码的基本概念。",
-                "grade": "U",
-                "error_count": 0,
-                "active_error_count": 0
-              }
-            ]
-          },
-          {
-            "title": "三、试题类型及比例",
-            "points": []
-          },
-          {
-            "title": "四、考试形式及时间",
-            "points": []
-          },
-          {
-            "title": "五、主要参考教材",
-            "points": []
           }
         ],
         "modules": {
-          "一、考试的总体要求": [],
-          "二、考试的内容及比例": [],
-          "1. 绪论（5 ~ 15%）": [
+          "一、试卷结构与分值": [
             {
-              "name": "模拟通信系统和数字通信系统的模型",
-              "req_type": "了解",
-              "full_desc": "模拟通信系统和数字通信系统的模型；",
+              "name": "40 题，每题 2 分，共 **80 分**",
+              "req_type": "单项选择题",
+              "full_desc": "40 题，每题 2 分，共 **80 分**",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "信息量",
-              "req_type": "理解",
-              "full_desc": "信息量、平均信息量的概念，并熟练掌握其计算；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "平均信息量的概念，并熟练掌握其计算",
-              "req_type": "理解",
-              "full_desc": "信息量、平均信息量的概念，并熟练掌握其计算；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "有效性和可靠性的概念，并要求计算传码率",
-              "req_type": "理解",
-              "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "传信率",
-              "req_type": "理解",
-              "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "系统频带利用率",
-              "req_type": "理解",
-              "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "误码率和误信率。",
-              "req_type": "理解",
-              "full_desc": "有效性和可靠性的概念，并要求计算传码率、传信率、系统频带利用率、误码率和误信率。",
+              "name": "7 题，共 **70 分** (数据结构 2 题、计组 2 题、操作系统 2 题、计网 1 题)",
+              "req_type": "综合应用题 (大题)",
+              "full_desc": "7 题，共 **70 分** (数据结构 2 题、计组 2 题、操作系统 2 题、计网 1 题)",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
           ],
-          "2. 确知信号分析（5 ~ 10%）": [
+          "二、四大模块核心考纲": [],
+          "1. 数据结构 (45 分)": [
             {
-              "name": "信号与系统的基本分析方法",
-              "req_type": "理解",
-              "full_desc": "信号与系统的基本分析方法；",
+              "name": "顺序表与链表（单链表、循环链表、双链表）的插入/删除操作与算法实现",
+              "req_type": "线性表",
+              "full_desc": "顺序表与链表（单链表、循环链表、双链表）的插入/删除操作与算法实现；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "能量谱密度和功率谱密度的概念，卷积的定义和性质",
-              "req_type": "了解",
-              "full_desc": "能量谱密度和功率谱密度的概念，卷积的定义和性质；",
+              "name": "栈的入栈出栈顺序推导",
+              "req_type": "栈、队列与数组",
+              "full_desc": "栈的入栈出栈顺序推导、循环队列队空队满条件、特殊矩阵压缩存储；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "相关函数的计算。",
-              "req_type": "掌握",
-              "full_desc": "相关函数的计算。",
+              "name": "循环队列队空队满条件",
+              "req_type": "栈、队列与数组",
+              "full_desc": "栈的入栈出栈顺序推导、循环队列队空队满条件、特殊矩阵压缩存储；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "特殊矩阵压缩存储",
+              "req_type": "栈、队列与数组",
+              "full_desc": "栈的入栈出栈顺序推导、循环队列队空队满条件、特殊矩阵压缩存储；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础",
+              "req_type": "树与二叉树",
+              "full_desc": "二叉树性质与遍历（前中后序递归与非递归、层序遍历）、线索二叉树、哈夫曼树与哈夫曼编码、二叉排序树、平衡二叉树(AVL)、红黑树基础；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)",
+              "req_type": "图",
+              "full_desc": "图的存储（邻接矩阵、邻接表）、图的遍历（DFS、BFS）、最小生成树（Prim与Kruskal）、最短路径（Dijkstra与Floyd）、拓扑排序与关键路径(AOV/AOE)；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "顺序查找、折半查找、B/B+树基础、散列表(Hash)及其冲突处理",
+              "req_type": "查找",
+              "full_desc": "顺序查找、折半查找、B/B+树基础、散列表(Hash)及其冲突处理；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
+              "req_type": "内部排序",
+              "full_desc": "插入排序、希尔排序、冒泡排序、快速排序(重点划分算法)、简单选择排序、堆排序(大根堆/小根堆构建与调整)、二路归并排序、基数排序及其时空复杂度综合对比。",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
           ],
-          "3. 随机信号分析（5 ~ 15%）": [
+          "2. 计算机组成原理 (45 分)": [
             {
-              "name": "随机过程",
-              "req_type": "了解",
-              "full_desc": "随机过程、平稳随机过程、高斯过程的定义；",
+              "name": "性能指标（CPI、MIPS、时钟周期、吞吐量）",
+              "req_type": "计算机系统概述",
+              "full_desc": "性能指标（CPI、MIPS、时钟周期、吞吐量）；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "平稳随机过程",
-              "req_type": "了解",
-              "full_desc": "随机过程、平稳随机过程、高斯过程的定义；",
+              "name": "原码",
+              "req_type": "数据的表示与运算",
+              "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "高斯过程的定义",
-              "req_type": "了解",
-              "full_desc": "随机过程、平稳随机过程、高斯过程的定义；",
+              "name": "反码",
+              "req_type": "数据的表示与运算",
+              "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "随机信号的均值",
-              "req_type": "掌握",
-              "full_desc": "随机信号的均值、方差、协方差以及相关函数的计算；",
+              "name": "补码",
+              "req_type": "数据的表示与运算",
+              "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "方差",
-              "req_type": "掌握",
-              "full_desc": "随机信号的均值、方差、协方差以及相关函数的计算；",
+              "name": "移码转换",
+              "req_type": "数据的表示与运算",
+              "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "协方差以及相关函数的计算",
-              "req_type": "掌握",
-              "full_desc": "随机信号的均值、方差、协方差以及相关函数的计算；",
+              "name": "定点数与浮点数表示（IEEE 754 标准）",
+              "req_type": "数据的表示与运算",
+              "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "平稳随机过程的各态历经性，灵活运用平稳随机过程自相关函数的性质",
-              "req_type": "理解",
-              "full_desc": "平稳随机过程的各态历经性，灵活运用平稳随机过程自相关函数的性质；",
+              "name": "加减乘除运算与溢出判断",
+              "req_type": "数据的表示与运算",
+              "full_desc": "原码、反码、补码、移码转换；定点数与浮点数表示（IEEE 754 标准）；加减乘除运算与溢出判断；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "随机过程通过线性系统的各种参数的计算。",
-              "req_type": "掌握",
-              "full_desc": "随机过程通过线性系统的各种参数的计算。",
+              "name": "SRAM/DRAM 原理、主存与 CPU 连线（位扩展/字扩展）、Cache 映射与替换策略（直接/全相联/组相联）、Cache-主存命中率与平均访问时间、虚拟存储器(页式/段式/段页式与TLB)",
+              "req_type": "存储系统",
+              "full_desc": "SRAM/DRAM 原理、主存与 CPU 连线（位扩展/字扩展）、Cache 映射与替换策略（直接/全相联/组相联）、Cache-主存命中率与平均访问时间、虚拟存储器(页式/段式/段页式与TLB)；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "寻址方式（立即/直接/间接/寄存器/基址/变址寻址）、CISC 与 RISC 概念",
+              "req_type": "指令系统",
+              "full_desc": "寻址方式（立即/直接/间接/寄存器/基址/变址寻址）、CISC 与 RISC 概念；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）",
+              "req_type": "中央处理器 (CPU)",
+              "full_desc": "CPU 内部结构、指令周期、硬布线与微程序控制器、流水线技术（吞吐率、加速比、流水线冲突及解决）；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "总线仲裁、I/O 控制方式（程序查询、中断、DMA 方式）。",
+              "req_type": "总线与 I/O 系统",
+              "full_desc": "总线仲裁、I/O 控制方式（程序查询、中断、DMA 方式）。",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
           ],
-          "4. 信道（5 ~ 10%）": [
+          "3. 操作系统 (35 分)": [
             {
-              "name": "信道的定义及其数学模型，掌握无失真传输信道模型",
-              "req_type": "了解",
-              "full_desc": "信道的定义及其数学模型，掌握无失真传输信道模型；",
+              "name": "进程状态转换",
+              "req_type": "进程与线程",
+              "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "恒参信道",
-              "req_type": "了解",
-              "full_desc": "恒参信道、随参信道对信号传输的影响；",
+              "name": "PCB",
+              "req_type": "进程与线程",
+              "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "随参信道对信号传输的影响",
-              "req_type": "了解",
-              "full_desc": "恒参信道、随参信道对信号传输的影响；",
+              "name": "进程通信",
+              "req_type": "进程与线程",
+              "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "信道容量的计算。",
-              "req_type": "掌握",
-              "full_desc": "信道容量的计算。",
+              "name": "线程实现方式",
+              "req_type": "进程与线程",
+              "full_desc": "进程状态转换、PCB、进程通信、线程实现方式；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "调度算法（FCFS、SJF、RR、优先级）、死锁预防/避免（银行家算法）/检测与解除",
+              "req_type": "CPU 调度与死锁",
+              "full_desc": "调度算法（FCFS、SJF、RR、优先级）、死锁预防/避免（银行家算法）/检测与解除；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "临界区概念、信号量机制(P/V 操作经典模型：生产者消费者、哲学家进餐、读写者问题)",
+              "req_type": "进程同步与互斥",
+              "full_desc": "临界区概念、信号量机制(P/V 操作经典模型：生产者消费者、哲学家进餐、读写者问题)；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集",
+              "req_type": "内存管理",
+              "full_desc": "连续分配、基本分页与分段管理、虚拟内存技术、请求分页页面置换算法（FIFO、LRU、OPT、CLOCK）、抖动与工作集；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "文件逻辑结构与物理结构（连续/链接/索引分配）、目录结构与 FAT/索引节点、文件共享与保护",
+              "req_type": "文件系统",
+              "full_desc": "文件逻辑结构与物理结构（连续/链接/索引分配）、目录结构与 FAT/索引节点、文件共享与保护；",
+              "grade": "U",
+              "error_count": 0,
+              "active_error_count": 0
+            },
+            {
+              "name": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
+              "req_type": "I/O 设备管理",
+              "full_desc": "I/O 软件层次、SPOOLing 技术、磁盘调度算法（FCFS、SSTF、SCAN、CSCAN）。",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
           ],
-          "5. 模拟调制系统（5 ~ 15%）": [
+          "4. 计算机网络 (25 分)": [
             {
-              "name": "调制的概念和调制的分类",
-              "req_type": "了解",
-              "full_desc": "调制的概念和调制的分类；",
+              "name": "奈氏准则与香农定理、信道复用技术（FDM、TDM、WDM、CDMA）",
+              "req_type": "物理层",
+              "full_desc": "奈氏准则与香农定理、信道复用技术（FDM、TDM、WDM、CDMA）；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "幅度调制与解调的原理，掌握系统的抗噪声性能计算",
-              "req_type": "掌握",
-              "full_desc": "幅度调制与解调的原理，掌握系统的抗噪声性能计算；",
+              "name": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习",
+              "req_type": "数据链路层",
+              "full_desc": "差错控制（CRC）、流量控制与可靠传输（滑动窗口、停止等待、GBN、SR）、介质访问控制（CSMA/CD、CSMA/CA）、以太网与交换机自学习；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "调频波和调相波的调制与解调原理，掌握调频波的各种参数",
-              "req_type": "理解",
-              "full_desc": "调频波和调相波的调制与解调原理，掌握调频波的各种参数、系统的抗噪声性能、带宽和功率的计算。",
+              "name": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程",
+              "req_type": "网络层",
+              "full_desc": "IPv4 地址分类与 CIDR、子网划分、NAT、路由选择协议（RIP、OSPF、BGP）、IP 数据报分片、ARP 与 ICMP、IPv6、路由器转发流程；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "系统的抗噪声性能",
-              "req_type": "理解",
-              "full_desc": "调频波和调相波的调制与解调原理，掌握调频波的各种参数、系统的抗噪声性能、带宽和功率的计算。",
+              "name": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)",
+              "req_type": "传输层",
+              "full_desc": "UDP 数据报、TCP 报文段、TCP 三次握手与四次挥手、TCP 可靠传输、流量控制(滑动窗口)与拥塞控制(慢开始、拥塞避免、快重传、快恢复)；",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             },
             {
-              "name": "带宽和功率的计算。",
-              "req_type": "理解",
-              "full_desc": "调频波和调相波的调制与解调原理，掌握调频波的各种参数、系统的抗噪声性能、带宽和功率的计算。",
+              "name": "DNS 域名解析过程、FTP、电子邮件(SMTP/POP3/IMAP)、万维网(HTTP 协议与状态码)。",
+              "req_type": "应用层",
+              "full_desc": "DNS 域名解析过程、FTP、电子邮件(SMTP/POP3/IMAP)、万维网(HTTP 协议与状态码)。",
               "grade": "U",
               "error_count": 0,
               "active_error_count": 0
             }
-          ],
-          "6. 模拟信号数字化（10 ~ 30%）": [
-            {
-              "name": "模拟信号数字化传输的原理及实现方法",
-              "req_type": "理解",
-              "full_desc": "模拟信号数字化传输的原理及实现方法；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "PCM 编码",
-              "req_type": "掌握",
-              "full_desc": "PCM 编码、译码的方法及带宽、传输速率的计算；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "译码的方法及带宽",
-              "req_type": "掌握",
-              "full_desc": "PCM 编码、译码的方法及带宽、传输速率的计算；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "传输速率的计算",
-              "req_type": "掌握",
-              "full_desc": "PCM 编码、译码的方法及带宽、传输速率的计算；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "增量调制的基本原理。",
-              "req_type": "掌握",
-              "full_desc": "增量调制的基本原理。",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            }
-          ],
-          "7. 数字信号的基带传输系统（10 ~ 15%）": [
-            {
-              "name": "数字基带信号的传输波形和码型",
-              "req_type": "掌握",
-              "full_desc": "数字基带信号的传输波形和码型；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "基带信号的频谱特性",
-              "req_type": "了解",
-              "full_desc": "基带信号的频谱特性；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "系统无码间串扰的基带传输特性",
-              "req_type": "灵活运用",
-              "full_desc": "系统无码间串扰的基带传输特性；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "数字基带传输系统带宽的计算",
-              "req_type": "掌握",
-              "full_desc": "数字基带传输系统带宽的计算；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "眼图",
-              "req_type": "了解",
-              "full_desc": "眼图、均衡和部分响应技术。",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "均衡和部分响应技术。",
-              "req_type": "了解",
-              "full_desc": "眼图、均衡和部分响应技术。",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            }
-          ],
-          "8. 数字调制系统（10 ~ 30%）": [
-            {
-              "name": "ASK",
-              "req_type": "掌握",
-              "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "FSK",
-              "req_type": "掌握",
-              "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "PSK",
-              "req_type": "掌握",
-              "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "DPSK 信号的调制与解调的原理",
-              "req_type": "掌握",
-              "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "方框图及其各点波形，并比较上述调制的性能",
-              "req_type": "掌握",
-              "full_desc": "ASK、FSK、PSK、DPSK 信号的调制与解调的原理、方框图及其各点波形，并比较上述调制的性能；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "多进制数字调制的原理",
-              "req_type": "掌握",
-              "full_desc": "多进制数字调制的原理；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "现代数字调制技术。",
-              "req_type": "了解",
-              "full_desc": "现代数字调制技术。",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            }
-          ],
-          "9. 数字信号的最佳接收（10 ~ 15%）": [
-            {
-              "name": "数字信号的最佳接收原理及三个最佳接收准则",
-              "req_type": "了解",
-              "full_desc": "数字信号的最佳接收原理及三个最佳接收准则；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "匹配滤波器的设计与计算。",
-              "req_type": "掌握",
-              "full_desc": "匹配滤波器的设计与计算。",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            }
-          ],
-          "10. 信道复用和多址技术（5 ~ 10%）": [
-            {
-              "name": "频分复用",
-              "req_type": "掌握",
-              "full_desc": "频分复用、时分复用的基本原理；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "时分复用的基本原理",
-              "req_type": "掌握",
-              "full_desc": "频分复用、时分复用的基本原理；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "码分复用。",
-              "req_type": "了解",
-              "full_desc": "码分复用。",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            }
-          ],
-          "11. 同步原理（5 ~ 15%）": [
-            {
-              "name": "常用同步的分类",
-              "req_type": "了解",
-              "full_desc": "常用同步的分类；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "载波同步和位同步的基本原理和实现方法。",
-              "req_type": "理解并掌握",
-              "full_desc": "载波同步和位同步的基本原理和实现方法。",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            }
-          ],
-          "12. 差错控制编码（10 ~ 30%）": [
-            {
-              "name": "纠错编码的基本原理和基本概念",
-              "req_type": "理解",
-              "full_desc": "纠错编码的基本原理和基本概念；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "线性分组码和循环码的编译码原理及监督矩阵",
-              "req_type": "掌握",
-              "full_desc": "线性分组码和循环码的编译码原理及监督矩阵、生成矩阵等的计算；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "生成矩阵等的计算",
-              "req_type": "掌握",
-              "full_desc": "线性分组码和循环码的编译码原理及监督矩阵、生成矩阵等的计算；",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            },
-            {
-              "name": "卷积码的基本概念。",
-              "req_type": "了解",
-              "full_desc": "卷积码的基本概念。",
-              "grade": "U",
-              "error_count": 0,
-              "active_error_count": 0
-            }
-          ],
-          "三、试题类型及比例": [],
-          "四、考试形式及时间": [],
-          "五、主要参考教材": []
+          ]
         }
       }
     },
-    "trend": []
+    "trend": [
+      {
+        "date": "2026-09-15",
+        "short_date": "09-15",
+        "rate": 0.0,
+        "total": 12,
+        "completed": 0
+      }
+    ]
   }
 }
