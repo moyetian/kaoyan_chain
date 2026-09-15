@@ -82,7 +82,9 @@ exclude = [
 [tool.hatch.build.targets.wheel.force-include]
 "AGENTS.md" = "tools/protocol/AGENTS.md"
 "GEMINI.md" = "tools/protocol/GEMINI.md"
-"00_考研全科总战役规划.md" = "tools/protocol/00_考研全科总战役规划.md"
+# 真实总战役规划由 ky plan 本地生成且已移出版本库（见 .gitignore 隐私规则），
+# 故 wheel 内改用随仓库发布的脱敏模板，保证安装模式下协议文件不缺失。
+"00_考研全科总战役规划.example.md" = "tools/protocol/00_考研全科总战役规划.md"
 
 [tool.hatch.build]
 artifacts = ["*.md", "pyproject.toml"]
