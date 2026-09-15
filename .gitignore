@@ -46,6 +46,11 @@ README优化方案*.md
 # 隐私防泄露铁律 (Privacy Guardrails)
 # 真实个人学情状态、做题记录、作业与错题保留在本地，不上传云端
 # ==========================================
+
+# 真实总战役规划：由 ky plan 本地生成，含个人科目组合与分数目标。
+# 仓库仅保留脱敏模板 00_考研全科总战役规划.example.md
+/00_考研全科总战役规划.md
+
 **/_状态/*.md
 !**/_状态/*.template.md
 !**/_状态/*.example.md
@@ -162,6 +167,7 @@ simulation_report.md
 # 内部审查/调研文档（含本机路径，不随仓库公开）
 FSRS重构审查与修正报告.md
 kaoyan_chain_github_调研.md
+CODE_REVIEW_*.md
 .sim_*.txt
 .sim_review_*.txt
 simulation_cli.json

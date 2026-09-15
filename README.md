@@ -13,8 +13,8 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
-  <img src="https://img.shields.io/badge/Release-v2.7.0-blue?style=flat-square&logo=github&logoColor=white" alt="Release v2.6.0" />
-  <img src="https://img.shields.io/badge/Tests-399%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
+  <img src="https://img.shields.io/badge/Release-v2.7.0-blue?style=flat-square&logo=github&logoColor=white" alt="Release v2.7.0" />
+  <img src="https://img.shields.io/badge/Tests-401%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 401 Passed" />
   <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-6366f1?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
   <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
   <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
@@ -111,6 +111,11 @@ ky
 > - 📟 **终端全景中枢**：输入 `ky menu`，启动 TUI v2.5 极客控制台，键鼠双控、零多余依赖！
 > - 💬 **流式对话私教**：输入 `ky`，即刻开启多轮推演与真题采分点打分！
 
+> \[!TIP\]
+> **装完先自检**：执行 `python tools/doctor.py`，一次性核对 Python 版本、可选依赖、四科协议、
+> `ky_config.json`、API 连通性与 Git 隐私隔离是否就绪；如需验证功能完整性，
+> 再跑 `python tools/test_ky_suite.py`（269 项断言，约 1 分钟）。
+
 ---
 
 ## 🌟 核心功能全景亮点
@@ -198,7 +203,11 @@ ky
 ├── 操作手册.md                  # 学员实操通关手册（日常使用主文档）
 ├── CONTRIBUTING.md              # 开发者与贡献指南（含完整架构树）
 ├── GEMINI.md                    # Gemini / Antigravity 适配入口
-├── 00_考研全科总战役规划.md      # 总战役规划（由 ky plan 依据你的配置生成）
+├── pyproject.toml               # 打包元数据（Python ≥3.10，当前版本 2.7.0）
+├── requirements.txt             # 可选增强依赖清单（核心功能零依赖）
+├── ky.bat / 更新看板.bat        # Windows 一键启动器与看板刷新器
+├── 00_考研全科总战役规划.md      # 总战役规划（由 ky plan 依据你的配置生成，仅本地）
+├── 00_考研全科总战役规划.example.md  # 脱敏示例规划（随仓库公开的模板）
 │
 ├── 01-数学/  02-英语/  03-思想政治理论/  04-专业课/
 │   ├── AGENTS.md                # 该科目的专属私教协议
@@ -241,6 +250,10 @@ ky
 
 > 说明：`test_ky_suite.py` / `test_new_features.py` / `simulate_workflow.py` /
 > `build_svg_assets.py` 属开发工具，已在 `pyproject.toml` 中排除，不会随 wheel 分发。
+>
+> 仓库中所有 `*.example.md` / `*.template.md` 均为**脱敏模板**；与之同名的真实文件
+> （如 `00_考研全科总战役规划.md`、各科 `_状态/` 与 `错题本/` 下的学情数据）
+> 由本地 `ky plan` 与日常使用生成，已被 `.gitignore` 排除，**不会上云**。
 
 ---
 
@@ -279,6 +292,12 @@ ky
 11. **提交 PR 前请自测**
  运行 `python tools/test_ky_suite.py` 与 `python tools/test_new_features.py`，
  确认无失败后再提交。更多排查思路见 [SETUP.md](SETUP.md) 与 [操作手册.md](操作手册.md) 第 7 章「常见突发场景速查」。
+12. **仓库内的看板产物是脱敏示例**
+ `docs/index.html` 与 `docs/state_snapshot.json` 是**脱敏后的示例快照**（院校、专业等字段为占位符），
+ 仅用于展示看板效果；你在本地执行 `ky build` 生成的真实看板默认只落盘本地，不会被提交。
+13. **Fork 与二次分发**
+ 若 Fork、镜像或二次分发本项目，请保留 [MIT License](LICENSE) 与作者署名，
+ 并**不要移除 `.gitignore` 中的隐私规则**，否则可能导致个人学情数据被误传。
 
 ---
 
@@ -306,14 +325,18 @@ ky
 本项目包含覆盖全链路功能、权限沙箱、研招情报、Rust加速与真实 CLI 进程级 smoke test 的自动化回归套件：
 
 ```bash
-# 运行全套自动化质量回归测试 (25 组全链路回归测试，共 267 项断言)
+# 运行全套自动化质量回归测试 (25 组全链路回归测试，共 269 项断言)
 python tools/test_ky_suite.py
 
 # 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、开放题判分等，共 125 项断言)
 python tools/test_new_features.py
+
+# pytest 单元与进程层测试（CLI 入口、并发与原子性压测，共 7 项）
+python -m pytest -q
 ```
 
-- **测试保障**：主套件 25 组测试集 **267 项断言** + 新功能专项 **125 项断言** + pytest 单元/进程层 **7 项**，全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
+- **测试保障**：主套件 25 组测试集 **269 项断言** + 新功能专项 **125 项断言** + pytest 单元/进程层 **7 项**（合计 **401 项**），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
+- **门禁脚本**：`python tools/lint_check.py`（零依赖静态检查，只卡 ERROR 级问题）、`python tools/check_dashboard.py`（看板产物守卫）已接入 CI；
 - **CI 流水线**：内置 GitHub Actions 多平台 (Linux/Windows) 与多 Python 版本自动化测试保障；
 - **开发者文档**：如需参与贡献或了解完整项目架构树，请参阅 [🛠️ 开发者与贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。
 
