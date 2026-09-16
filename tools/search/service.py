@@ -165,7 +165,6 @@ class SearchService:
             except Exception as exc:              # pragma: no cover - 实现内部错误
                 failed.append((provider.name, f"未预期异常: {exc}"))
                 continue
-            self._cache_put(provider, q, raw)
 
             # [防「200 但内容是垃圾」] 逐条过相关性守门；全部不相关时按失败处理。
             # 实测 Bing 对裸 urllib 请求会返回 200 + 完全无关的内容（软性反爬），
@@ -182,6 +181,8 @@ class SearchService:
                     _LOG.info("provider %s 丢弃 %d 条无关结果", provider.name, dropped)
                 raw = relevant
 
+            # 只缓存**守门通过**的结果：把反爬垃圾写进缓存会被后续请求原样重放
+            self._cache_put(provider, q, raw)
             used.append(provider.name)
             collected.extend(self._annotate(raw))
 
