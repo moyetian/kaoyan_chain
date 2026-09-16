@@ -405,7 +405,15 @@ def build_system_prompt(active_subj="math"):
         "当学员提交了题目答案、推导草稿或输入“交作业”时：\n"
         "1. 严格按照考研阅卷人标准分步骤批改：在推导每个关键步骤明确标注采分点（如 [+2分]、[-1分]）；\n"
         "2. 若有失误，坚决指出错因五分类（概念漏洞/审题偏差/公式记错/计算失误/书写丢分），并给出针对性改进处方；\n"
-        "3. 督促学员记录错因并纳入 FSRS 复测队列！"
+        "3. 【强制归档·必须调用工具】批改完成后，只要存在未通过/失分题目，"
+        "你必须**立即调用 log_mistake 工具**逐题写入错题本"
+        "（subject 取当前科目代码，title 用题目关键词，mistake_type 取错因五分类之一，"
+        "detail 写关键漏洞，question 写题干）。**不要只口头提醒学员去记录**——"
+        "口头提醒不会写入任何文件，复测队列将永远为空。\n"
+        "4. 【禁止虚假陈述】若 log_mistake 返回 PermissionDenied（非交互环境权限受限），"
+        "你必须如实告知学员「错题**未能**归档，请改用 --permission=auto 重跑或手动记录」，"
+        "严禁声称“已归档”“已排入复测队列”。\n"
+        "5. 只有当工具确实返回成功信息时，才可以说该错题已纳入 FSRS 复测队列。"
     )
 
     return "\n\n".join(sys_parts)
@@ -413,6 +421,110 @@ def build_system_prompt(active_subj="math"):
 # ════════════════════════════════════════════════════════════════
 # 2. LLM 多模型 API 交互引擎 (零依赖流式输出)
 # ════════════════════════════════════════════════════════════════
+
+def _count_error_records(subject: str) -> int:
+    """当前科目错题库中的记录条数（用于确定性校验"错题是否真的落库"）。"""
+    try:
+        return len(error_logger.scan_error_records(subject)) if error_logger else -1
+    except Exception:
+        return -1
+
+
+#: 判分存在"失分/未通过"的文本信号
+_MISTAKE_FAIL_MARKERS = ("扣分", "未通过", "失分", "不规范", "错误", "待复核", "不达标", "需重新加固")
+#: 判分确实发生过的文本信号
+_MISTAKE_GRADE_MARKERS = ("采分点", "错因", "得分")
+
+
+def _warn_if_mistake_not_archived(user_input: str, reply: str, subject: str, before_count: int) -> None:
+    """[缺陷修复·错题归档无兜底] 批改失分却未落库时，给出确定性告警。
+
+    背景：错题入库的唯一入口是 Agent 自主调用 `log_mistake` 工具。当模型漏调
+    （实测 --permission=auto 下 2/2 次漏调）或工具被权限层拒绝时，错题会**静默丢失**：
+    学员拿到了"逐行赋分 + 错因处方"，却永远等不到 FSRS 复测；此前还会出现
+    "我已手动为你归档"这类与实际状态不符的表述。
+    此处不依赖模型自觉，直接比对错题条数：只在本轮确有失分判定、且条数未增加时告警。
+    """
+    if before_count < 0 or error_logger is None or not reply:
+        return
+    looks_grading = ("交作业" in (user_input or "")) or any(k in reply for k in _MISTAKE_GRADE_MARKERS)
+    has_failure = any(k in reply for k in _MISTAKE_FAIL_MARKERS)
+    if not (looks_grading and has_failure):
+        return
+    after = _count_error_records(subject)
+    if after > before_count:
+        return
+    print(colorize(
+        "\n[!] 提醒：本轮批改显示存在失分/未通过项，但错题**未能写入错题本**，"
+        "FSRS 复测队列未发生变更。\n"
+        "    原因通常是批改由对话模型完成、未调用归档工具（非交互或权限受限时尤甚）。\n"
+        "    补救路径：① 组卷走确定性判分链路（会强制归档）："
+        f"`ky exam {subject} --count 3 --save` 然后 `ky exam-submit <试卷> <作答>`；\n"
+        "              ② 或在交互终端用 `ky --permission=auto` 重发「交作业」。\n", C.YELLOW))
+
+
+def build_demo_syllabus_text(base_text: str, year_label: str) -> str:
+    """构造「演示样例」的新增考纲文本（仅在用户未提供真实新考纲时使用）。
+
+    [缺陷修复·演示样例跨科] 旧实现把「红黑树插入与平衡旋转 / B+树在索引文件中的应用 /
+    外部排序的多路平衡归并」这类 **408 计算机考点**写死在演示的新旧文本里，
+    并对数学大纲做 `replace("- **理解**：图的遍历", ...)`。后果有两点：
+      1) 任何科目跑演示模式都会看到计算机内容 —— 812 信号与系统考生执行 `ky diff`
+         会看到「B+树在索引文件中的应用」；政治考生同理；
+      2) 对非 408 科目，那句 replace 命中不了任何行，演示变动可能恒为 0 处。
+    现改为**从本科目现行考纲里抽取真实考点**来模拟"权重上调"与"新增"，
+    演示内容天然与所选科目一致，也不再需要维护一张跨科硬编码表。
+    """
+    lines = (base_text or "").splitlines()
+    # 抽取"考点条目"：以 "- " 开头且有一定长度，排除提示/引用/分隔类行
+    bullets = []
+    for ln in lines:
+        s = ln.strip()
+        if not s.startswith("- ") or len(s) < 12:
+            continue
+        if s.startswith("- **温馨提示") or s.startswith("- **说明") or s.startswith("- 提示"):
+            continue
+        # 排除"卷面结构/分值/参考书"这类非考点行，避免演示样例抽出「40 题，每题 2 分」当作考点
+        if re.search(r"每题|满分|分值|题型分布|试卷结构|考试形式|参考书|共\s*\*\*\d", s):
+            continue
+        bullets.append(s)
+    if not bullets:
+        return base_text
+
+    def _core(b: str) -> str:
+        c = b[2:].strip()
+        # 去掉已有的「**掌握**：」这类等级前缀，避免拼成「- **掌握**：**掌握**：…」
+        c = re.sub(r"^\*\*[^*]{1,12}\*\*\s*[：:]\s*", "", c)
+        # 去掉「(要求：掌握)」这类尾巴
+        c = re.sub(r"\s*[（(]\s*要求\s*[：:][^）)]*[）)]\s*$", "", c).strip()
+        # 去掉行内括号补充说明（如「第一章：…（连续与离散、线性时不变系统性质）」）
+        c = re.sub(r"[（(][^）)]*[）)]", "", c)
+        # 差分引擎按「、/，/；」切分考点，演示条目只保留首个语义片段，
+        # 避免一条考点被切成多段碎片、令演示波动率虚高（实测可达 77.8%「重大重构」）。
+        c = re.split(r"[、，,；;]", c)[0].strip().rstrip("：:。.").strip()
+        return c or b[2:].strip()
+
+    # 优先挑"干净"考点：不含顿号/括号的条目。差分引擎按「、」切分考点，
+    # 若条目内嵌括号与顿号（如「第三章：傅里叶变换与频域分析（…、抽样定理）」），
+    # 会被切成多段碎片，令演示波动率虚高（实测可达 77.8%「重大重构」）。
+    clean = [b for b in bullets if "、" not in _core(b) and "（" not in _core(b)]
+    pool = clean or bullets
+
+    new_text = base_text
+    # 1) 取 1 条模拟"考查权重上调"（改动幅度刻意做小：演示只用于说明功能，
+    #    不宜产出「重大重构 77.8%」这种吓人的结论，故仅 1 处微调 + 2 处新增）
+    for b in pool[:1]:
+        new_text = new_text.replace(
+            b, f"- **掌握**：{_core(b)}（{year_label}考查权重上调 · 演示样例）")
+    # 2) 取 1 条模拟"新增考点"
+    #    改动刻意做小：演示只用于说明 Diff 功能。自命题科目的考纲骨架往往只有 6 条左右，
+    #    若一次塞入 3 条以上新增，波动率会算出「重大重构 50%+」这种吓人的结论。
+    picks = pool[1:2] or pool[:1]
+    added = "\n".join(
+        f"- **掌握**：{_core(p)}（{year_label}新增 · 演示样例）" for p in picks)
+    new_text += f"\n\n### {year_label}新增考纲知识点（演示样例·非官方）\n{added}\n"
+    return new_text
+
 
 def normalize_openai_url(base_url: str, endpoint: str = "chat/completions") -> str:
     """智能规范化 OpenAI 兼容接口地址 (自动补齐 /v1 容错)"""
@@ -960,6 +1072,16 @@ def manage_syllabi_cli(cfg):
     except ImportError:
         import syllabus_manager
 
+    def _persist_subject(**kv):
+        """[缺陷修复·双写不一致] 切换科目此前只改了「考试大纲.md」与各科 AGENTS.md，
+        却**没有**回写 ky_config.json 的 study_plan.*_key / *_name。
+        实测：切入数学一后考纲已变成数学一，而 ky_config 的 math_key 仍是 math2，
+        随后 today / exam / map / 看板 全按 math2 行事，与考纲互相矛盾且无任何提示。
+        此处统一落盘，保证「真相源」与考纲文件始终一致。"""
+        sp = cfg.setdefault("study_plan", {})
+        sp.update({k: v for k, v in kv.items() if v})
+        save_config(cfg)
+
     math_agents = ROOT / "01-数学" / "AGENTS.md"
     eng_agents = ROOT / "02-英语" / "AGENTS.md"
     pro_agents = ROOT / "04-专业课" / "AGENTS.md"
@@ -1002,6 +1124,7 @@ def manage_syllabi_cli(cfg):
         txt = read_text_safe(math_agents)
         txt = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{math_info['name']}`", txt)
         atomic_write_text(math_agents, txt)
+        _persist_subject(math_key=m_key, math_name=math_info["name"])
         print(colorize(f"\n[√] 已切换为 {math_info['name']}！已将官方大纲与超纲红线写入 01-数学/考试大纲.md", C.GREEN))
     elif c == "2":
         print("\n  --- 📖 请选择您的英语考试科目 ---")
@@ -1014,6 +1137,7 @@ def manage_syllabi_cli(cfg):
         txt = read_text_safe(eng_agents)
         txt = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{eng_info['name']}`", txt)
         atomic_write_text(eng_agents, txt)
+        _persist_subject(eng_key=e_key, eng_name=eng_info["name"])
         print(colorize(f"\n[√] 已切换为 {eng_info['name']}！已将官方大纲写入 02-英语/考试大纲.md", C.GREEN))
     elif c == "3":
         print("\n  --- 💻 请选择您的专业课方案 ---")
@@ -1059,6 +1183,7 @@ def manage_syllabi_cli(cfg):
         txt = read_text_safe(pro_agents)
         txt = re.sub(r"- \*\*专业课科目代码与名称\*\*：.*", f"- **专业课科目代码与名称**：`{pro_title}`", txt)
         atomic_write_text(pro_agents, txt)
+        _persist_subject(pro_type=("408" if p_sel == "1" else "custom"), pro_name=pro_title)
         print(colorize(f"\n[√] 专业课已更新为: {pro_title}！", C.GREEN))
     elif c == "4":
         import subprocess
@@ -1641,8 +1766,7 @@ def run_syllabus_diff(arg: str = "") -> bool:
                 "\n[⚠️ 演示模式] 未提供真实新考纲文件 (可用 --new=<路径> 指定)。\n"
                 f"以下对比使用内置演示样例变动，并非官方大纲，结果仅用于了解 Diff 功能，"
                 f"严禁作为备考依据！", C.RED))
-            new_text = base_text.replace("- **理解**：图的遍历", "- **掌握**：图的遍历（新增拓扑排序与关键路径步骤考查）")
-            new_text += f"\n\n### 4. {y2}新增考纲知识点（演示样例·非官方）\n- **掌握**：红黑树的插入与平衡旋转调整；B+树在索引文件中的应用；\n- **了解**：外部排序的多路平衡归并。\n"
+            new_text = build_demo_syllabus_text(base_text, y2)
             demo_mode = True
 
     res = diff_gen.compare_texts(old_text=base_text, new_text=new_text,
@@ -2915,6 +3039,10 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
         print(colorize(f"\n[{SUBJECT_DIRS[curr_subj][1]} 正在思考并规划解答...]\n", C.DIM))
 
         reply = ""
+        # [缺陷修复·错题归档无兜底] 记录本轮开始前的错题条数，用于事后确定性校验
+        # 「批改判定失分，但错题是否真的落库」。写入依赖 Agent 自觉调用 log_mistake，
+        # 实测 auto 模式 2/2 次漏调 → 错题静默丢失、FSRS 队列永远为空。
+        _err_count_before = _count_error_records(curr_subj)
         if agent_runner and cfg.get("api_key"):
             # [D2 修复] 只读模式下 Agent 若触发写工具，抛 PermissionDeniedError；
             # 此前会直接冒栈终止会话，现降级为可见提示并继续对话。
@@ -2952,6 +3080,10 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
 
             # Codex CLI 风格快捷操作栏 (Follow-up Toolbar)
             print_followup_toolbar()
+
+        # [缺陷修复·错题归档无兜底] 本轮结束后做确定性校验：批改显示失分却未落库时
+        # 必须显式告警，不能像此前那样让学员以为已排入复测队列。
+        _warn_if_mistake_not_archived(user_input, reply or "", curr_subj, _err_count_before)
 
 # ════════════════════════════════════════════════════════════════
 # 6. Webhook 网关模式 (`ky serve --port 8088`)
@@ -4304,8 +4436,7 @@ def main():
                             "\n[⚠️ 演示模式] 未提供真实新考纲文件 (可用 --new=<路径> 指定)。\n"
                             f"以下对比使用内置演示样例变动，并非官方大纲，结果仅用于了解 Diff 功能，"
                             f"严禁作为备考依据！", C.RED))
-                        new_text = base_text.replace("- **理解**：图的遍历", "- **掌握**：图的遍历（新增拓扑排序与关键路径步骤考查）")
-                        new_text += f"\n\n### 4. {demo_year}新增考纲知识点（演示样例·非官方）\n- **掌握**：红黑树的插入与平衡旋转调整；B+树在索引文件中的应用；\n- **了解**：外部排序的多路平衡归并。\n"
+                        new_text = build_demo_syllabus_text(base_text, demo_year)
                         demo_mode = True
 
                     res = diff_gen.compare_texts(old_text=base_text, new_text=new_text, school=school, major=major, year_old=y1, year_new=y2)
@@ -4841,6 +4972,7 @@ def main():
   scout <高校名> [专业名] [--save] [--apply]  定向侦察目标高校招生简章、考试大纲、报录比与知乎/B站口碑
   exam [科目] [--count=N] [--save]            基于错题库与核心考点反向靶向组卷
   exam-submit <试卷路径> <作答文本>           自动判卷并输出正答率、采分点与错题归因
+  key [list|set] <试卷编号> [题号] ["标准答案"]  管理自测卷的加密标准答案（判卷自动采分依赖它）
   variant <考点关键词>                        四科白名单同类真题变式检索与防幻觉溯源
   map [科目] [--json]                         官方考试大纲知识点图谱与掌握度映射
   diagnose <答题卡文本或文件>                 整卷级多题诊断引擎 (章节失分排行与薄弱处方)

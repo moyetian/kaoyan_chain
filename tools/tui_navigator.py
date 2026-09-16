@@ -553,7 +553,9 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
             # 默认考点必须从本科目真实考纲中推荐，严禁硬编码他科考点（如 408 的「二叉树」）
             default_kw = variant_retriever.suggest_keyword(sub)
             prompt = f"请输入需要寻找变式题的考点关键词 [默认 {default_kw or '考纲首个考点'}]: "
-            kw = input(prompt).strip() if interactive else ""
+            # [缺陷修复·入参通道] 非交互模式下此前恒取空串，导致 --keyword 完全失效、
+            # 只能落到 default_kw（并与 action 4/5 已有的 --new/--file 通道不一致）。
+            kw = input(prompt).strip() if interactive else str(extra.get("keyword", "")).strip()
             if not kw:
                 kw = default_kw
             res = variant_retriever.search_real_variant(subject=sub, keyword=kw, limit=3)

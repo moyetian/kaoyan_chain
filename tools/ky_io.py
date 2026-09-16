@@ -164,8 +164,10 @@ def _align_to_umask(path: Path, mode: int = 0o666) -> None:
         return
     try:
         os.chmod(path, mode & ~_current_umask())
-    except OSError:
-        pass
+    except OSError as e:
+        # 权限对齐是尽力而为：失败不影响写入内容，但留痕以便排查权限异常
+        import logging
+        logging.getLogger(__name__).debug("chmod 权限对齐失败（已忽略）: %s -> %s", path, e)
 
 
 def atomic_write_text(path: PathLike, text: str, *, encoding: str = "utf-8",
@@ -206,8 +208,11 @@ def atomic_write_text(path: PathLike, text: str, *, encoding: str = "utf-8",
         try:
             if target.exists() and target.read_text(encoding=encoding) == text:
                 return target
-        except Exception:
-            pass
+        except Exception as e:
+            # 读旧内容只为「内容未变则跳过写入」的优化；读失败只说明无法短路，
+            # 照常落盘即可，但需留痕以免掩盖真实的编码/权限问题
+            import logging
+            logging.getLogger(__name__).debug("写前内容比对失败（照常写入）: %s -> %s", target, e)
 
         fd = None
         tmp_path = None
@@ -231,13 +236,16 @@ def atomic_write_text(path: PathLike, text: str, *, encoding: str = "utf-8",
             if fd is not None:
                 try:
                     os.close(fd)
-                except OSError:
-                    pass
+                except OSError as e:
+                    import logging
+                    logging.getLogger(__name__).debug("关闭临时文件句柄失败（进程退出时会回收）: %s", e)
             if tmp_path is not None:
                 try:
                     tmp_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
+                except OSError as e:
+                    # 清理失败只会留下一个 .tmp 残留，目标文件内容不受影响
+                    import logging
+                    logging.getLogger(__name__).debug("清理临时文件失败: %s -> %s", tmp_path, e)
 
     return target
 

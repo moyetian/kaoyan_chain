@@ -69,6 +69,9 @@ class MaterialIngestionPipeline:
 
     def __init__(self, workspace_root: Optional[Path] = None):
         self.workspace_root = Path(workspace_root) if workspace_root else ROOT
+        # [缺陷修复·虚假认证] 默认**不**认定来源为官方。只有调用方显式置 True
+        # （即学员能证明该材料确为官方/统考原题）时，题目卡才会盖 VERIFIED 戳。
+        self.source_is_official = False
 
     def _resolve_subject_dir(self, subject: str) -> Path:
         """映射科目至工作区目录"""
@@ -83,18 +86,136 @@ class MaterialIngestionPipeline:
         """
         从原文本中智能分块切片出题目 (支持 Rust 加速与纯 Python 自动降级)
         """
+        # [缺陷修复·表格型真题] 真题转录/题库常以 Markdown 表格承载
+        # （`| 题号 | 题目 | 答案 | 考点 |`）。逐题正则分块器不认表格结构：
+        # 实测一份含 10 选择 + 10 填空 + 4 计算的真实真题，被切成
+        # 「选择 0 / 填空 13 / 大题 5」，且"试题原题"取到的是被拼起来的**考点列碎片**。
+        # 处置：先剔除表格行再交给常规分块器（表格交由下面的专用抽取器处理），
+        # 从源头杜绝碎片，避免事后用启发式去猜哪些是垃圾。
+        raw_text = raw_text or ""
+        text_for_regex = "\n".join(
+            ln for ln in raw_text.splitlines() if not self._TABLE_ROW.match(ln))
+        if len(text_for_regex.strip()) < 40:      # 整篇几乎都是表格时退回原文
+            text_for_regex = raw_text
+
         if getattr(self, "_force_python", False) or not _HAS_RUST_EXT:
-            chunks = self._chunk_text_python(raw_text, default_source)
+            chunks = self._chunk_text_python(text_for_regex, default_source)
         else:
             try:
-                rust_chunks = _rust.chunk_text(raw_text, default_source)
+                rust_chunks = _rust.chunk_text(text_for_regex, default_source)
                 if rust_chunks:
                     chunks = [self._rust_to_chunk(rc) for rc in rust_chunks]
                 else:
-                    chunks = self._chunk_text_python(raw_text, default_source)
+                    chunks = self._chunk_text_python(text_for_regex, default_source)
             except Exception:
-                chunks = self._chunk_text_python(raw_text, default_source)
-        return self._reclassify_by_sections(chunks, raw_text)
+                chunks = self._chunk_text_python(text_for_regex, default_source)
+        table_chunks = self._extract_table_chunks(raw_text, default_source)
+        chunks = self._merge_table_chunks(chunks, table_chunks)
+        chunks = self._reclassify_by_sections(chunks, raw_text)
+
+        # [缺陷修复·碎片清洗] 当本篇确为"表格型题库"（表格里成规模地承载了 Q&A）时，
+        # 选择题/填空题必然自带「答案」列；因此**无答案的非大题分块**只可能是
+        # 表格打散后的碎片，或被压扁记录的考点清单（如
+        # `1. 频谱系数　2. 傅里叶变换　3. 连续时间复信号的奇分量…`），
+        # 它们既不能自动判分、题干也不成立，统一剔除以免污染题库。
+        # 非表格文档不受影响（走原逻辑），避免误删正常的无答案题。
+        if len(table_chunks) >= 3:
+            chunks = [c for c in chunks
+                      if c.q_type == "essay" or (c.answer or "").strip()]
+            for idx, c in enumerate(chunks, 1):
+                c.number = idx
+        return chunks
+
+    # ── Markdown 表格型题库抽取 ───────────────────────────────────────────
+    _TABLE_ROW = re.compile(r"^\s*\|(.+)\|\s*$")
+
+    def _merge_table_chunks(self, chunks, table_chunks):
+        """并入按表格列精确抽取的题目，并统一重新编号 + 按题干去重。
+
+        调用前，raw_text 中的表格行已从常规分块器的输入中剔除，
+        因此此处无需再用启发式判断"哪些是表格碎片"。
+        """
+        if not table_chunks:
+            return chunks
+
+        kept = list(chunks)
+        seen = {re.sub(r"\s+", "", (c.stem or ""))[:30] for c in kept}
+        for tc in table_chunks:
+            key = re.sub(r"\s+", "", tc.stem or "")[:30]
+            if key in seen:
+                continue
+            seen.add(key)
+            kept.append(tc)
+        for idx, c in enumerate(kept, 1):
+            c.number = idx
+        return kept
+
+    def _extract_table_chunks(self, raw_text: str, default_source: str) -> List[QuestionChunk]:
+        """从 Markdown 表格行中抽取题目。
+
+        识别条件：表格表头同时含「题目」列，并含「答案」或「考点」列（顺序不限）。
+        题型判定：答案形如单个字母（A/B/C/D）→ choice；否则 → blank。
+        """
+        lines = (raw_text or "").splitlines()
+        out: List[QuestionChunk] = []
+        i, n = 0, len(lines)
+        while i < n:
+            row = self._TABLE_ROW.match(lines[i])
+            if not row:
+                i += 1
+                continue
+            header_cells = [c.strip() for c in row.group(1).split("|")]
+            # 表头必须含「题目」；且需有答案或考点列
+            def _find(keys):
+                for idx, c in enumerate(header_cells):
+                    if any(k in c for k in keys):
+                        return idx
+                return -1
+
+            col_stem = _find(("题目", "题干", "试题", "设问"))
+            col_ans = _find(("答案", "参考答案"))
+            col_point = _find(("考点", "知识点", "考查"))
+            col_no = _find(("题号", "#", "编号"))
+            if col_stem < 0 or (col_ans < 0 and col_point < 0):
+                i += 1
+                continue
+            # 跳过表头下的分隔行 |---|---|
+            j = i + 1
+            if j < n and re.match(r"^\s*\|[\s:\-|]+\|\s*$", lines[j]):
+                j += 1
+            while j < n:
+                r2 = self._TABLE_ROW.match(lines[j])
+                if not r2:
+                    break
+                cells = [c.strip() for c in r2.group(1).split("|")]
+                if len(cells) <= max(col_stem, col_ans, col_point, col_no):
+                    j += 1
+                    continue
+                stem = re.sub(r"\*\*|`", "", cells[col_stem]).strip()
+                if not stem or len(stem) < 4:
+                    j += 1
+                    continue
+                ans = re.sub(r"\*\*|`", "", cells[col_ans]).strip() if col_ans >= 0 else ""
+                point = cells[col_point].strip() if col_point >= 0 else ""
+                no_txt = cells[col_no].strip() if col_no >= 0 else ""
+                # 答案形如「B」「B 线性时变」「B. 线性时变」→ 选择题；其余按填空处理
+                q_type = "choice" if re.match(r"^[A-Da-d]\s*($|[、.,，。：:\-]|\s)", ans) else "blank"
+                try:
+                    num = int(re.sub(r"\D", "", no_txt) or 0)
+                except Exception:
+                    num = 0
+                out.append(QuestionChunk(
+                    number=num or (len(out) + 1),
+                    q_type=q_type,
+                    score=2 if q_type == "choice" else 5,
+                    stem=stem,
+                    answer=ans,
+                    points=[p for p in re.split(r"[、,，/]", point) if p][:4],
+                    source=default_source,
+                ))
+                j += 1
+            i = j
+        return out
 
     # 修正版大题分段词表：覆盖「综合计算题」「计算分析题」「算法设计题」等组合写法
     _SEC_LINE_PATTERN = re.compile(
@@ -361,9 +482,16 @@ class MaterialIngestionPipeline:
         """
         type_names = {"choice": "单项选择题", "blank": "填空题", "essay": "综合应用与解答题"}
         t_name = type_names.get(chunk.q_type, "综合题")
-        # 根据题源特征诚实标记认证状态，杜绝非官方试卷伪造 VERIFIED
-        src_lower = (chunk.source or "").lower()
-        if any(kw in src_lower for kw in ("统考", "真题", "大纲", "官方", "教育部")):
+        # [缺陷修复·虚假认证] 旧实现仅凭**文件名**是否含「真题/统考/大纲/官方/教育部」
+        # 就盖上 `[VERIFIED 官方考纲真题/统考原题]`。实测一份名为「…真题逐题转录」的
+        # **回忆版**（文件自述"手写答案是考生自己标的，不是官方答案"）被判为 VERIFIED，
+        # 而其内容恰是被误解析的表格碎片 —— 对未核验材料授予权威认证，
+        # 与本项目「防幻觉」目标直接冲突。
+        # 现改为：默认一律「待核验」；仅当调用方显式声明来源为官方时才认证；
+        # 且文件名含"回忆/转录/整理/笔记/手抄"等特征时强制降级。
+        _src = chunk.source or ""
+        _looks_transcribed = any(kw in _src for kw in ("回忆", "转录", "整理", "笔记", "手抄"))
+        if getattr(self, "source_is_official", False) and not _looks_transcribed:
             auth_status = "✅ `[VERIFIED 官方考纲真题/统考原题]`"
         else:
             auth_status = "📥 `[USER_IMPORTED 外部自导入试题 · 待核验]`"
@@ -449,7 +577,12 @@ class MaterialIngestionPipeline:
 
         card_mds = []
         card_mds.append(f"# 📚 考研白名单题库切片集 · {source_name}\n")
-        card_mds.append(f"> **入库时间**: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}` | **试题总量**: `{len(chunks)} 道` | **认证状态**: `[白名单已收录]`\n")
+        # [缺陷修复·措辞过强] 此前标题栏一律宣称「认证状态: [白名单已收录]」，
+        # 容易被读成"已核验的权威题源"。实际含义只是"文件已放进本地参考资料目录"。
+        # 改为如实描述，并把逐题核验状态交由每题卡片的【白名单认证】字段呈现。
+        card_mds.append(
+            f"> **入库时间**: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}` | "
+            f"**试题总量**: `{len(chunks)} 道` | **收录状态**: `[已入本地资料库 · 逐题核验状态见下]`\n")
         card_mds.append("---\n")
 
         for c in chunks:

@@ -242,15 +242,31 @@ class UniversityRegistry:
         if q_lower in self._alias_map:
             return self._entities[self._alias_map[q_lower]]
 
-        # 4. 前缀或包含匹配 (如 "华中科技" 包含在 "华中科技大学" 中)
-        for name, code in self._name_map.items():
-            if q_lower in name or name in q_lower:
-                return self._entities[code]
+        # 4. 名称包含匹配（双向，按"最长校名优先"择优）
+        #    - 查询是校名子串：简称输入，如 "华中科技" ⊂ "华中科技大学"
+        #    - 校名是查询子串：自然语言输入，如 "我想考华中科技大学"
+        #    [缺陷修复·确定性] 旧实现遍历 dict 返回首个命中，结果依赖字典顺序，
+        #    且未按长度择优；现改为收集全部命中后取最长校名（最具体者胜出）。
+        name_hits = [code for name, code in self._name_map.items()
+                     if q_lower in name or name in q_lower]
+        if name_hits:
+            name_hits.sort(key=lambda c: -len(self._entities[c].name or ""))
+            return self._entities[name_hits[0]]
 
-        # 5. 别名模糊匹配
+        # 5. 别名匹配（[P0 修复] 必须前缀对齐，严禁裸子串）
+        #    旧实现用 `alias in q_lower` 做裸子串判断，导致
+        #    「华北理工大学」因含子串「北理工」被解析成「北京理工大学」(10007)，
+        #    于是双校对标把学员的备选院校静默替换成另一所层次完全不同的高校
+        #    （10058 vs 10007、双非 vs 985）。中文无词边界，故以"前缀对齐"为准。
+        alias_hits = []
         for alias, code in self._alias_map.items():
-            if len(alias) >= 2 and (alias in q_lower or q_lower in alias):
-                return self._entities[code]
+            if len(alias) < 2:
+                continue
+            if q_lower.startswith(alias) or alias.startswith(q_lower):
+                alias_hits.append((len(alias), code))
+        if alias_hits:
+            alias_hits.sort(key=lambda t: -t[0])   # 最长别名优先，保证确定性
+            return self._entities[alias_hits[0][1]]
 
         # 6. 启发式通用高校实体合成 (Universal Heuristic Entity Synthesizer)
         # 支持全国任意非热门双非院校、地方工科/师范/财经本科高校

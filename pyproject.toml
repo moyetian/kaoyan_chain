@@ -34,8 +34,9 @@ classifiers = [
 ]
 dependencies = [
     "PyYAML>=6.0",
-    # 必须 >= 5.0：代码使用 Scheduler API；4.x 及更早的 fsrs.FSRS 已移除
-    "fsrs>=5.0.0",
+    # 必须 >= 5.0 且 < 7：代码使用 Scheduler API；4.x 及更早的 fsrs.FSRS 已移除；
+    # 7.x 属未验证的大版本区间（曾破坏 Scheduler API），放开前需先跑通 FSRS 用例
+    "fsrs>=5.0.0,<7",
     "filelock>=3.12.0"
 ]
 

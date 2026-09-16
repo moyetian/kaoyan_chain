@@ -374,8 +374,11 @@ class WeChatSearchEngine(_AccountNameResolver):
             if time_m:
                 try:
                     pub_date = datetime.fromtimestamp(int(time_m.group(1))).strftime("%Y-%m-%d")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # 时间戳非法只丢失发布日期这一条元数据，不影响正文入库
+                    import logging
+                    logging.getLogger(__name__).debug(
+                        "列表页发布时间解析失败（保留空日期）: %s -> %s", time_m.group(1), exc)
 
             if title and raw_url:
                 items.append(WeChatArticleItem(
@@ -441,8 +444,11 @@ class WeChatArticleFetcher(_AccountNameResolver):
             url = item.url.strip()
             try:
                 url = urllib.parse.quote(url, safe=":/?#[]@!$&'()*+,;=-_.~%=")
-            except Exception:
-                pass
+            except Exception as exc:
+                # 转义失败则沿用原始 URL 继续请求，留痕便于区分「URL 本身异常」
+                import logging
+                logging.getLogger(__name__).debug(
+                    "URL 转义失败（沿用原始 URL）: %s -> %s", url, exc)
 
             req = urllib.request.Request(url, headers={
                 "User-Agent": USER_AGENT,
@@ -485,8 +491,11 @@ class WeChatArticleFetcher(_AccountNameResolver):
             try:
                 ts = int(time_m.group(1))
                 item.publish_date = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
-            except Exception:
-                pass
+            except Exception as exc:
+                # 时间戳非法只丢失发布日期；留痕以便排查时间戳格式变化
+                import logging
+                logging.getLogger(__name__).debug(
+                    "详情页发布时间解析失败（保留空日期）: %s -> %s", time_m.group(1), exc)
         elif not item.publish_date:
             date_m = re.search(r'(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})', html_text)
             if date_m:

@@ -617,6 +617,40 @@ def run_tests():
     solve_res = mv_test.run_math_query("solve x^2 - 5*x + 6 = 0")
     runner.assert_true("2" in solve_res and "3" in solve_res, "数学高阶验算：代数方程与极值驻点求解准确")
 
+    # 2b. [G-1 回归] 未安装 sympy 时的纯 Python 降级引擎
+    # 阴性测试：把 HAS_SYMPY 强制置 False，验证降级路径**真的算出了结果**，
+    # 而不是像修复前那样无论问什么都只回一段"建议安装 sympy"的静态提示。
+    # 注意：降级结果里也会提到"未安装 sympy"，故必须用静态提示独有的前缀来区分。
+    _STATIC_HINT_MARK = "【提示】当前环境未安装"
+    _sympy_backup = mv_test.HAS_SYMPY
+    try:
+        mv_test.HAS_SYMPY = False
+        deg_diff = mv_test.run_math_query("diff x^3")
+        runner.assert_true(
+            "降级引擎" in deg_diff and "3x^2" in deg_diff.replace(" ", "")
+            and _STATIC_HINT_MARK not in deg_diff,
+            "数学降级引擎：无 sympy 时 diff x^3 真实算出 3x^2（而非仅回安装提示）")
+
+        deg_int = mv_test.run_math_query("int x^2 dx")
+        runner.assert_true(
+            "(1/3)x^3" in deg_int.replace(" ", ""),
+            "数学降级引擎：无 sympy 时 int x^2 dx 真实算出 (1/3)x^3 + C")
+
+        # 覆盖不到的命令必须**诚实回落**到静态提示，不得假装算出了结果
+        deg_limit = mv_test.run_math_query("limit sin(x)/x as x->0")
+        runner.assert_true(
+            _STATIC_HINT_MARK in deg_limit and "降级引擎" not in deg_limit,
+            "数学降级引擎：覆盖不到的 limit 命令诚实回落安装提示，不伪造结果")
+
+        deg_defint = mv_test.run_math_query("int x^2 dx from 0 to 1")
+        runner.assert_true(
+            _STATIC_HINT_MARK in deg_defint and "降级引擎" not in deg_defint,
+            "数学降级引擎：定积分不在降级覆盖范围，诚实回落安装提示")
+    finally:
+        mv_test.HAS_SYMPY = _sympy_backup
+    runner.assert_true(mv_test.HAS_SYMPY is _sympy_backup,
+                       "数学降级引擎：测试后 HAS_SYMPY 状态已还原（无测试污染）")
+
     # 3. 检验 socratic_tutor 三级脚手架生成
     hint_q = "证明设 f(x) 在 [0,1] 连续，存在 xi 满足积分中值公式"
     p_lvl1 = st_test.build_hint_prompt(hint_q, hint_level=1)
@@ -1263,6 +1297,39 @@ def run_tests():
             runner.assert_true("知乎" in report_md and "哔哩哔哩" in report_md and "小红书" in report_md, "School Scout 18-9：情报卡片完整覆盖知乎/B站/小红书三大社媒板块")
 
             # 验证 ToolRegistry 中 scout_school 工具注册与调用
+            # [缺陷修复·院校解析漂移] 回归：别名匹配原用裸子串，
+            # 使「华北理工大学」（含子串「北理工」）被解析成「北京理工大学」(10007)，
+            # 双校对标因此凭空把学员的备选院校替换成一所层次完全不同的 985。
+            try:
+                from intelligence.registry import resolve_university as _res_univ
+            except ImportError:
+                from tools.intelligence.registry import resolve_university as _res_univ
+
+            def _res_name(_q):
+                _ent = _res_univ(_q)
+                return getattr(_ent, "name", None)
+
+            runner.assert_true(_res_name("华北理工大学") == "华北理工大学",
+                               "Registry 18-9a：华北理工大学不得被解析为北京理工大学（裸子串误匹配回归）")
+            runner.assert_true(_res_name("北理工") == "北京理工大学",
+                               "Registry 18-9b：别名「北理工」仍应正确解析为北京理工大学")
+            runner.assert_true(_res_name("华科") == "华中科技大学",
+                               "Registry 18-9c：精确别名「华科」解析正确")
+
+            # [缺陷修复·读操作被当成写操作拦截] manage_memory 曾用静态 level，
+            # 导致 action='read' 在非交互 ask 模式下也被当成写操作直接拒绝，
+            # Agent 连会话记忆都读不到。现按 action 动态定级，须同时满足正反两侧。
+            from agent.tools_impl import ToolRegistry as _TR, PermissionManager as _PM, Sandbox as _SB
+            _pm_ask = _PM(workspace_root=test_sandbox_dir, mode="ask")
+            _tr_ask = _TR(sandbox=_SB(workspace_root=test_sandbox_dir), permissions=_pm_ask)
+            _mr = _tr_ask.execute_tool("manage_memory", {"action": "read", "scope": "session"}, interactive=False)
+            runner.assert_true(not _mr.startswith("PermissionDenied"),
+                               "Permission 18-9d：manage_memory(action='read') 在非交互 ask 模式应放行（读操作误判回归）")
+            _mw = _tr_ask.execute_tool("manage_memory",
+                                       {"action": "write", "scope": "session", "content": "x"}, interactive=False)
+            runner.assert_true(_mw.startswith("PermissionDenied"),
+                               "Permission 18-9e：manage_memory(action='write') 在非交互 ask 模式仍应被拦截（写防线未破）")
+
             from agent.tools_impl import ToolRegistry, PermissionManager, Sandbox
             pm_test = PermissionManager(workspace_root=test_sandbox_dir, mode="auto")
             pm_test.force_allow_all = True
@@ -1506,6 +1573,57 @@ D. 无度为2的结点
             toc_text = "目  录\n第一章 函数、极限、连续 ................. 1\n第二章 导数与微分 ....................... 12"
             toc_chunks = pipe.chunk_text(toc_text, default_source="TOC Test")
             runner.assert_true(len(toc_chunks) > 0, "Material Ingest 21-10：成功解析含目录页的真题而不抛出异常")
+
+            # [缺陷修复·表格型真题] 回归：以 Markdown 表格承载的 Q&A 必须被正确抽取，
+            # 不得把"考点列"拼成题干，也不得把压扁的考点清单当成题目。
+            # 修复前实测：一份含 10 选择 + 10 填空 + 4 计算的真实真题 → 「选择 0 / 填空 13 / 大题 5」。
+            table_exam = (
+                "## 选择题（2 题）\n\n"
+                "| # | 题目 | 答案 | 考点 |\n|---|---|---|---|\n"
+                "| 1 | 连续周期信号 f(t) 的频谱 F(jω) 的特点是 | **D 离散、非周期** | 周期信号频谱特点 |\n"
+                "| 2 | 已知 F(z)=z/(z−2)，则原函数 f(n) 为 | **D 无法确定** | 未给 ROC 的陷阱 |\n\n"
+                "## 填空题（1 题）\n\n"
+                "| # | 题目 | 答案 | 考点 |\n|---|---|---|---|\n"
+                "| 1 | aⁿu(n) 的 z 变换为 | **z/(z−a)** | 常用 z 变换对 |\n"
+            )
+            t_chunks = pipe.chunk_text(table_exam, default_source="南医807真题回忆版转录")
+            t_choice = [c for c in t_chunks if c.q_type == "choice"]
+            t_blank = [c for c in t_chunks if c.q_type == "blank"]
+            runner.assert_true(len(t_choice) == 2,
+                               f"Material Ingest 21-11：表格型真题的选择题被正确识别（期望 2，实得 {len(t_choice)}）")
+            runner.assert_true(len(t_blank) == 1,
+                               f"Material Ingest 21-12：表格型真题的填空题被正确识别（期望 1，实得 {len(t_blank)}）")
+            runner.assert_true(all("|" not in c.stem and "考点" not in c.stem for c in t_chunks),
+                               "Material Ingest 21-13：题干不含表格分隔符/考点列碎片")
+            runner.assert_true(any(c.answer and "z/(z−a)" in c.answer for c in t_blank),
+                               "Material Ingest 21-14：表格填空题正确带回标准答案")
+
+            # [缺陷修复·虚假认证] 回忆版/转录版即使文件名含"真题"也不得盖 VERIFIED
+            card_t = pipe.format_question_card(t_choice[0], subject="pro")
+            runner.assert_true("USER_IMPORTED" in card_t and "VERIFIED" not in card_t,
+                               "Material Ingest 21-15：转录/回忆版材料默认标注待核验，不伪造 VERIFIED 认证")
+
+            # [缺陷修复·演示样例跨科] `ky diff` 演示模式的"新增考点"必须取自**本科目**考纲，
+            # 不得写死 408 计算机考点（旧实现给 812 信号与系统考生演示「B+树在索引文件中的应用」）。
+            try:
+                _demo_fn = ky_cli.build_demo_syllabus_text
+            except AttributeError:
+                _demo_fn = None
+            if _demo_fn:
+                _sig_outline = (
+                    "# 04-专业课 · 【812 信号与系统】官方考试大纲\n\n"
+                    "## 核心考查章节与重点要求：\n"
+                    "- 第一章：信号与系统的基本概念（连续与离散、线性时不变系统性质） (要求：掌握)\n"
+                    "- 第二章：连续时间系统的时域分析（卷积积分、微分方程解法） (要求：掌握)\n"
+                    "- 第三章：傅里叶变换与频域分析（抽样定理） (要求：掌握)\n"
+                )
+                _demo_txt = _demo_fn(_sig_outline, "2027")
+                runner.assert_true(
+                    "傅里叶变换" in _demo_txt and "演示样例" in _demo_txt,
+                    "Syllabus Diff 21-16：演示样例按本科目考纲生成（含本科目考点）")
+                runner.assert_true(
+                    not any(k in _demo_txt for k in ("红黑树", "B+树", "外部排序")),
+                    "Syllabus Diff 21-17：演示样例不含 408 等跨科目考点")
 
             # =========================================================================
             # 22. 社媒经验降噪过滤与分省高校注册表 (Sprint 6 - 8 项验证)

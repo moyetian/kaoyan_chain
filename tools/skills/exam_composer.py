@@ -490,11 +490,24 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
         f"",
         f"> **试卷编号**：`{paper_id}` ｜ **生成日期**：`{today_str}` ｜ **题量**：`{len(selected_items)} 题`",
         f"> **试卷属性**： FSRS 盲盒复测 + 薄弱点针对性抽题（隐去原答案与历史错误）",
+    ]
+    # [缺陷修复·题源诚实标注] 当本地「参考资料/」未命中该考点真题时，组卷会退化为
+    # 考纲自拟占位题（`is_synthetic=True`）。此前这类题以「XX核心必考大纲自测题」的
+    # 名义直接混在真卷里，学员无法分辨"这是真题"还是"私教凑数的模板句"，
+    # 而同一产品内的 ky variant 却明确标注 `[⚠️ 私教自拟变式]` —— 标准不一致。
+    _synthetic_count = sum(1 for _it in selected_items if _it.get("is_synthetic"))
+    if _synthetic_count:
+        _real_count = len(selected_items) - _synthetic_count
+        lines.append(
+            f"> ⚠️ **题源声明**：本卷 {len(selected_items)} 题中，**{_synthetic_count} 题为【私教自拟占位题】**"
+            f"（本地「参考资料/」未命中该考点真题，仅有考纲级设问框架，**不是真实试题**）；"
+            f"真实题源题 {_real_count} 题。请把真题资料放入对应科目「参考资料/」后重新组卷。")
+    lines.extend([
         f"> **作答要求**：请在各题【学员作答区】下方独立书写推导或最终结论，拒绝查阅笔记！",
         f"",
         f"---",
         f"",
-    ]
+    ])
 
     answer_keys = []
 
@@ -506,6 +519,11 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
 
         lines.append(f"### 📝 第 {i} 题：{t_title}")
         lines.append(f"- **考查属性**：`{err_type}` ｜ FSRS 档位: `stage={stage}`")
+        if item.get("is_synthetic"):
+            # 逐题标注，确保学员不会把占位题当成真题来做（与 ky variant 的标注口径一致）
+            lines.append(
+                "- **题源属性**：⚠️ `[私教自拟占位题]` —— 本地「参考资料/」未命中该考点真题，"
+                "本题只有考纲级设问框架，**不是真实试题**，不可据此判断真实应试水平。")
         lines.append(f"- **题目设问与题干**：")
         lines.append(f"```text\n{q_text.strip()}\n```")
         lines.append(f"")
@@ -764,6 +782,10 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
     updated_records = []
     need_review_titles = []
     total_score = 0.0
+    # [缺陷修复·口径不一致] 「待人工复核」的题目（无标准答案 / 开放题 / 答案未命中）
+    # 在单题明细里明确写着「本次不计分」，却仍以 0 分计入总分与分母，
+    # 使通过率被无谓拉低并触发"未通过"评价。现单独累计其满分，事后从分母中剔除。
+    excluded_full = 0.0
     # [P1 修复·分值不等权] 此前全卷一律按「每题 10 分」计分（len(keys)*10），
     # 若题目自带 score 字段（真题卷常见 2/5/15 分不等），总分与通过率都会被算错。
     # 现优先读取每题的 score/points/分值，缺失才回落到 10 分。
@@ -900,6 +922,8 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
         total_score += item_score
         if match_level == 1:
             need_review_titles.append(f"第 {q_id} 题 {title}")
+            # 未判分题：不计入分母，也不参与复测状态回写（它不是"答错"）
+            excluded_full += item_full
 
         status_str = "【合格 · 通过出库】" if is_passed else ("【待复核】" if match_level == 1 else "【需重新加固】")
         report_lines.append(f"• 第 {q_id} 题 [{title}]: {status_str} 得分: {item_score}/{item_full_disp}")
@@ -907,35 +931,69 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
         report_lines.append(f"  - 判定依据: {judge_basis}")
 
         # 闭环状态回写：更新错题本中的 FSRS 复测状态
-        if auto_advance and error_logger and file_name:
+        # 未判分题（match_level==1）不参与回写：它不是"答错"，而是"没有可判分的标准答案"。
+        # [缺陷修复·无源文件题漏归档] 此前该分支额外要求 `file_name` 非空，
+        # 而来自「考纲自拟」的占位题没有源文件 → 判负后被整段跳过、永不入队。
+        # 现拆开：file_name 仅用于"更新既有记录"，"新建记录"不依赖它。
+        if auto_advance and error_logger and match_level != 1:
             try:
-                new_status = "已掌握" if (is_passed and curr_stage >= 2) else "待复测"
-                ok, ret_msg = error_logger.mark_error_status(
-                    subject=k.get("subject", subject),
-                    file_name=file_name,
-                    title=title,
-                    new_status=new_status,
-                    passed=is_passed
-                )
-                if ok:
+                _archived = False
+                if file_name:
+                    new_status = "已掌握" if (is_passed and curr_stage >= 2) else "待复测"
+                    ok, ret_msg = error_logger.mark_error_status(
+                        subject=k.get("subject", subject),
+                        file_name=file_name,
+                        title=title,
+                        new_status=new_status,
+                        passed=is_passed
+                    )
+                    if ok:
+                        _archived = True
+                        report_lines.append(f"  - 状态回写: {ret_msg}")
+                    elif is_passed:
+                        report_lines.append(f"  - 状态回写跳过: {ret_msg}")
+                # [缺陷修复·FSRS 闭环断裂] 此前只做"更新**既有**错题记录"。
+                # 而记录通常根本还没被创建（其创建依赖 Agent 在对话中自觉调用
+                # log_mistake），于是回写静默跳过 → 题目永不进入 FSRS 复测队列，
+                # 但汇总行仍宣称"已重置回第一复测周期"——声称的状态变更从未发生。
+                # 现改为：未通过且未找到既有记录时，由判卷链路**确定性新建**一条。
+                if not _archived and not is_passed:
+                    record_msg = error_logger.log_error_record(
+                        subject=k.get("subject", subject),
+                        title=title,
+                        error_type=k.get("error_type", "概念漏洞"),
+                        detail=(judge_basis or "") + "\n（判卷未通过，由自测卷链路自动归档）",
+                        prescription="复测订正：先复现采分点步骤，再独立重做一遍。",
+                        question="",
+                    )
+                    _archived = True
+                    report_lines.append(f"  - 状态回写: 已新建错题记录并排入 FSRS 复测队列（{record_msg}）")
+                if _archived:
                     updated_records.append(title)
-                    report_lines.append(f"  - 状态回写: 错题记录已自动流转至 stage={curr_stage + 1 if is_passed else 0} ({new_status})")
-                else:
-                    report_lines.append(f"  - 状态回写跳过: {ret_msg}")
             except Exception as e:
                 report_lines.append(f"  - 状态回写提示: {e}")
 
         report_lines.append("")
 
-    pass_rate = round(total_score / max_score * 100, 1) if max_score > 0 else 0
+    # 分母只统计"真正被自动判分"的题；待复核题不计分（与单题明细口径一致）
+    graded_max = max_score - excluded_full
+    pass_rate = round(total_score / graded_max * 100, 1) if graded_max > 0 else 0
     total_disp = int(total_score) if float(total_score) == int(total_score) else total_score
-    max_disp = int(max_score) if float(max_score) == int(max_score) else max_score
+    max_disp = int(graded_max) if float(graded_max) == int(graded_max) else graded_max
     report_lines.append(f"------------------------------------------------------------")
     report_lines.append(f"总得分: {total_disp} / {max_disp} ｜ 总体通过率: {pass_rate}%")
-    if pass_rate >= 80:
+    if not graded_max:
+        # 全卷没有可自动判分的题目：绝不出具通过/不通过结论
+        report_lines.append("ℹ️ 评价: 本轮没有可自动判分的题目（全部待人工复核），未生成通过率结论，"
+                            "也未改动任何复测周期。")
+    elif pass_rate >= 80:
         report_lines.append(f"🎉 评价: 掌握优良！ FSRS 记忆防线稳固，部分错题已顺利毕业！")
-    else:
+    elif updated_records:
+        # [缺陷修复·禁止假陈述] 只有真的把题目写进复测队列，才谈得上"已重置复测周期"
         report_lines.append(f"⚠️ 评价: 仍有薄弱盲区未突破，未通过题目已重置回第一复测周期。")
+    else:
+        report_lines.append(f"⚠️ 评价: 仍有薄弱盲区未突破；但本轮**未能回写复测状态**"
+                            f"（错题本写入被拒绝或记录缺失），复测队列未变更，请检查权限后重试。")
     if need_review_titles:
         report_lines.append(
             f"🔍 【待人工复核 {len(need_review_titles)} 题】: {'；'.join(need_review_titles)}")

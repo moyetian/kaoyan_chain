@@ -35,8 +35,11 @@ PySide6>=6.6.0
 maturin>=1.0.0
 
 # ── 8. 考研状态管理与算法调度 ──
-# fsrs 必须 >= 5.0：本项目使用 Scheduler API
-#   （Scheduler.review_card / Card.to_dict）。4.x 及更早版本的 fsrs.FSRS、
-#   Scheduler.repeat、Card.reps/scheduled_days 均已移除，写 >=1.0.0 会装上不兼容版本。
-fsrs>=5.0.0
+# fsrs 必须 >= 5.0 且 < 7：
+#   下界——本项目使用 Scheduler API（Scheduler.review_card / Card.to_dict）。
+#   4.x 及更早版本的 fsrs.FSRS、Scheduler.repeat、Card.reps/scheduled_days 均已移除，
+#   写 >=1.0.0 会装上不兼容版本。
+#   上界——fsrs 大版本曾破坏 Scheduler API（7.x 属未验证区间）。放开上限前，
+#   请先本地跑通 fsrs_scheduler 相关用例（tools/test_ky_suite.py 的 FSRS 段）。
+fsrs>=5.0.0,<7
 filelock>=3.12.0

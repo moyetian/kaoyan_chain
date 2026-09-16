@@ -65,7 +65,8 @@ except ImportError:
         intelligence = None
 
 class ToolDefinition:
-    def __init__(self, name: str, desc: str, params_schema: Dict[str, Any], func: Callable, level: int):
+    # level 可为 int，也可为 Callable[[dict], int]（按 action 动态定级）
+    def __init__(self, name: str, desc: str, params_schema: Dict[str, Any], func: Callable, level):
         self.name = name
         self.desc = desc
         self.params_schema = params_schema
@@ -90,7 +91,7 @@ class ToolRegistry:
         self.tools: Dict[str, ToolDefinition] = {}
         self._register_all_tools()
 
-    def register(self, name: str, desc: str, params_schema: Dict[str, Any], level: int):
+    def register(self, name: str, desc: str, params_schema: Dict[str, Any], level):
         def decorator(func: Callable):
             self.tools[name] = ToolDefinition(name, desc, params_schema, func, level)
             return func
@@ -106,7 +107,18 @@ class ToolRegistry:
             return f"Error: 未知工具 [{name}]"
 
         # 1. 权限审批检查
-        allowed, reason = self.permissions.check_permission(name, tool_def.level, args, interactive=interactive)
+        # [缺陷修复·读操作被当写操作拦截] level 现支持「可调用」形式：
+        # 同一个工具的不同 action 风险并不相同（如 manage_memory 的 read 是零风险
+        # 只读，write/append 才是写操作）。旧实现只支持静态 level，于是
+        # manage_memory(action='read') 在非交互环境被当成写操作直接拒绝，
+        # Agent 连会话记忆都读不到。
+        level = tool_def.level
+        if callable(level):
+            try:
+                level = level(args)
+            except Exception:
+                level = PermissionLevel.SAFE_EDIT   # 判定失败则保守按写操作处理
+        allowed, reason = self.permissions.check_permission(name, level, args, interactive=interactive)
         if not allowed:
             return f"PermissionDenied: 操作被拦截 ({reason})"
 
@@ -924,7 +936,11 @@ class ToolRegistry:
                 },
                 "required": ["action", "scope"]
             },
-            level=PermissionLevel.SAFE_EDIT
+            # [缺陷修复] 按 action 动态定级：read 为只读（任何模式自动放行），
+            # write/append 仍为写操作（受 --permission 约束）。
+            level=lambda a: (PermissionLevel.READ_ONLY
+                             if str(a.get("action", "")).lower().strip() == "read"
+                             else PermissionLevel.SAFE_EDIT)
         )
         def manage_memory(action: str, scope: str, content: str = "") -> str:
             if not self.memory_manager:

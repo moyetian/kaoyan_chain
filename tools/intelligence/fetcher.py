@@ -77,8 +77,12 @@ class HTTPFetcher:
                     if resp_headers.get("Content-Encoding") == "gzip":
                         try:
                             raw_data = gzip.decompress(raw_data)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            # 解压失败则退回原始字节，由 _decode_content 按编码嗅探兜底；
+                            # 留痕用于区分「压缩体损坏」与「服务器其实没压缩」两种故障
+                            import logging
+                            logging.getLogger(__name__).debug(
+                                "gzip 解压失败，改用原始字节: %s -> %s", url, exc)
 
                     # 智能编码解析
                     content = self._decode_content(raw_data, resp_headers)
@@ -160,7 +164,9 @@ class HTTPFetcher:
         try:
             return data.decode("utf-8")
         except UnicodeDecodeError:
-            pass
+            # 预期内的回落：继续尝试 GB18030 / GBK（留痕便于排查乱码来源）
+            import logging
+            logging.getLogger(__name__).debug("UTF-8 解码失败，回落到 GB18030/GBK 分支")
 
         # 尝试 GB18030 / GBK
         try:

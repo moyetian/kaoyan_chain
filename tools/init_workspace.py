@@ -17,17 +17,32 @@ except ImportError:  # pragma: no cover
     from tools.ky_io import atomic_write_text  # noqa: E402
 
 # Windows 控制台编码重配置
+# [一致性对齐] 与 ky_cli / doctor / lint_check / tui_navigator 的既有写法保持一致，
+# 统一带 errors="replace"：即便遇到目标编码无法表示的字符也降级输出，
+# 而不是抛 UnicodeEncodeError 中断整个向导。
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     try:
-        sys.stdout.reconfigure(encoding="utf-8")
-        sys.stderr.reconfigure(encoding="utf-8")
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# [缺陷修复·导入被劫持] 此前只把 `ROOT/tools` 放进 sys.path，仓库根**不在**其中。
+# 以脚本方式运行（py tools/init_workspace.py）时 sys.path[0] 是脚本目录而非仓库根，
+# 于是 `from tools import syllabus_manager` 里的 `tools` 会解析到 site-packages 下
+# 同名的第三方命名空间包，报
+#   ImportError: cannot import name 'syllabus_manager' from 'tools' (unknown location) / No module named 'tools.intelligence'
+# 直接后果：引导填报的「考纲自动更新」与「监控列表重置」静默失败，
+# 自命题考生的 04-专业课/考试大纲.md 停留在仓库自带的 408 大纲。
+# 与 ky_cli.py 的既有做法保持一致：仓库根与 tools 目录都要入 path。
+tools_dir = Path(__file__).resolve().parent
+for _p in (str(tools_dir), str(ROOT)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 # 引入考纲管理模块
-sys.path.insert(0, str(ROOT / "tools"))
 try:
     import syllabus_manager
 except ImportError:
@@ -291,6 +306,51 @@ def build_dashboard():
     else:
         print("  [!] 未找到 05-考研看板/build.py，跳过编译。")
 
+def ensure_syllabi_written(plan):
+    """确定性写入选考科目官方考纲，并读回校验专业课考纲与所选科目是否一致。
+
+    [缺陷修复·考纲静默不落盘] 引导填报成功路径此前**完全依赖** study_planner
+    内部那一次 apply_syllabus_selection；该调用一旦失败（历史上因 `from tools import`
+    被 site-packages 同名包劫持而报 ImportError，仅打印一条黄色告警就继续），
+    各科「考试大纲.md」会静默保持仓库默认值 —— 自命题考生因此拿到 408 计算机大纲，
+    后续 map / variant / exam / 看板雷达全部按错误考纲出题。
+    现在由引导流程自己再写一次并读回校验，不再依赖任何内部实现细节。
+    """
+    if not plan:
+        return
+    if syllabus_manager is None:
+        print("  [!] 考纲模块不可用，官方考纲未写入，请检查 tools/syllabus_manager.py")
+        return
+
+    pro_name = plan.get("pro_name") or "专业课"
+    try:
+        syllabus_manager.apply_syllabus_selection(
+            math_key=plan.get("math_key", "math2"),
+            eng_key=plan.get("eng_key", "eng2"),
+            pro_type=plan.get("pro_type", "custom"),
+            pro_name=pro_name,
+            school=plan.get("school", "目标院校"),
+            major=plan.get("major", "报考专业"),
+            auto_write=True,
+        )
+    except Exception as e:
+        print(f"  [!] 考纲写入失败: {e}")
+        return
+
+    # 读回校验：专业课考纲标题必须体现所选科目（自命题场景最关键的一致性检查）
+    try:
+        pro_outline = ROOT / "04-专业课" / "考试大纲.md"
+        head = pro_outline.read_text(encoding="utf-8", errors="ignore").splitlines()[0]
+        token = str(pro_name).strip().split()[0] if str(pro_name).strip() else ""
+        if token and token in head:
+            print(f"  [√] 考纲校验通过：04-专业课/考试大纲.md -> {head}")
+        else:
+            print(f"  [!] 考纲校验异常：专业课考纲标题为「{head}」，"
+                  f"与所选科目「{pro_name}」不一致，请检查。")
+    except Exception as e:
+        print(f"  [!] 考纲校验失败: {e}")
+
+
 def main():
     print_banner()
     interactive = True
@@ -301,6 +361,7 @@ def main():
     ensure_material_folders()
     
     # 步骤 3 & 4: 启动 7 维度个人定制化必考方案向导 (时间/考纲/资料白名单/学情摸底/时间预算/作息)
+    plan = None
     try:
         import study_planner
         plan = study_planner.run_study_plan_wizard(interactive=interactive)
@@ -308,6 +369,12 @@ def main():
         print(f"  [!] 方案设计提示: {e}，使用默认配置。")
         math_key, eng_key, pro_type, pro_name = choose_exam_subjects_and_syllabi(interactive=interactive)
         configure_profile(interactive=interactive, math_key=math_key, eng_key=eng_key, pro_type=pro_type, pro_name=pro_name)
+    else:
+        # [缺陷修复·考纲必须落盘] 向导成功时此前**完全依赖**其内部调用写考纲；
+        # 一旦那一步失败（历史上因 `from tools import` 被 site-packages 劫持而静默
+        # 失败），各科「考试大纲.md」就保持仓库默认值 —— 自命题考生因此拿到 408 大纲。
+        # 这里改为在引导流程内确定性地再写一次并**读回校验**，绝不依赖内部实现。
+        ensure_syllabi_written(plan)
 
     if interactive:
         ask_bot = input("\n  是否需要现在配置微信/QQ/钉钉/飞书等群机器人推送? (y/n) [n]: ").strip().lower()
@@ -339,4 +406,15 @@ def main():
     print("=" * 68 + "\n")
 
 if __name__ == "__main__":
-    main()
+    # [缺陷修复·EOF 抛栈] 输入行数不足（管道/重定向场景）时，向导内部会抛未捕获的
+    # EOFError 并打印完整堆栈，用户看到的是崩溃而非可理解的提示；
+    # 而项目内其它入口（ky plan / ky subject / ky config）都已优雅处理同类情况。
+    try:
+        main()
+    except EOFError:
+        print("\n[!] 输入流提前结束 (EOF)，配置向导已安全中止；本次未完成填写的项目不会被写入。")
+        print("    提示：本向导需要交互式终端；脚本化场景请核对输入行数后重试。")
+        sys.exit(0)
+    except KeyboardInterrupt:
+        print("\n[!] 已取消初始化。")
+        sys.exit(130)

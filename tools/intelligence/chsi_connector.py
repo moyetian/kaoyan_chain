@@ -306,7 +306,9 @@ class CHSIConnector:
             ev_sub = build_evidence(
                 field_name=f"初试科目组合 ({code} {info['name']})",
                 value=info["common_subjects"],
-                unit="门",
+                # [缺陷修复] 此前 unit="门"：「门」是课程计数单位，而本项 value 是
+                # 一份科目清单，渲染后会输出「…专业自命题或统考 门」这种悬空字符。
+                unit="",
                 exam_year=target_year,
                 source_type="offline_baseline",
                 source_name="【离线基准·未联网核验】全国硕士研究生统考科目标准模板",

@@ -752,9 +752,19 @@ def _sanitize_public_data(data: dict) -> dict:
         g2["items"] = [{k: v for k, v in it.items() if k in ("label", "text", "pct", "count", "target", "dir")} for it in g.get("items", [])]
         safe_metrics.append(g2)
     safe_subjects = [{k: s.get(k) for k in ("key", "name", "icon", "color", "dark", "notes", "ok")} for s in data.get("subjects", [])]
+    # [G-3 体积治理] maps.<subj>.modules 是 chapters 的**纯投影**
+    # （见 skills/knowledge_map.py: {c["title"]: c["points"] for c in chapters}），
+    # 而前端只读 chapters（HTML 模板中的 m.chapters），从不读 modules。
+    # 发布产物里再带一份派生副本会让 4 个科目各冗余约 9KB——实测占脱敏快照 40%。
+    # 此处剥离该字段（不丢信息：可由同 payload 内的 chapters 完全重建）。
+    safe_maps = {}
+    for sk, m in (data.get("maps") or {}).items():
+        if isinstance(m, dict) and "modules" in m:
+            m = {k: v for k, v in m.items() if k != "modules"}
+        safe_maps[sk] = m
     return {"memo": safe_memo, "weak": safe_weak, "metrics": safe_metrics,
             "subjects": safe_subjects, "plan": data.get("plan", {}),
-            "maps": data.get("maps", {}), "trend": data.get("trend", [])}
+            "maps": safe_maps, "trend": data.get("trend", [])}
 
 
 def build():
@@ -950,6 +960,20 @@ HTML = r"""<!doctype html>
 <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme:light)">
 <meta name="theme-color" content="#090d16" media="(prefers-color-scheme:dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="color-scheme" content="light dark">
+<script>
+/* [UX 升级 · 消除首屏主题闪烁 FOUC]
+   旧实现把主题恢复放在页面末尾、且在所有 CDN <script src> 之后，
+   浏览器必然先用默认（或系统）配色绘制一帧再跳变。
+   主题必须在**首次绘制之前**确定，故前置到 <head> 内、任何外链之前。
+   注：此处刻意不依赖任何外部脚本，纯同步执行。 */
+(function(){
+  try{
+    var t=localStorage.getItem('kytheme');
+    if(t==='dark'||t==='light'){document.documentElement.setAttribute('data-t',t);}
+  }catch(e){}
+})();
+</script>
 <title>考研学习看板 · 倒计时 {{DDAY1}} 天</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <style>
@@ -962,6 +986,22 @@ HTML = r"""<!doctype html>
   --radius:16px;
   --sh:0 4px 12px rgba(139, 92, 246, 0.06),0 1px 3px rgba(0,0,0,.04);
   --sh2:0 8px 24px rgba(139, 92, 246, 0.12),0 2px 6px rgba(0,0,0,.03);
+  color-scheme:light dark;
+
+  /* ── 动效 Token ──────────────────────────────────────────────────
+     依据：单次微动效时长应控制在 200~350ms（克制原则），
+     并统一缓动曲线。改造前散落 8 种时长（.15/.18/.2/.22/.3/.48/.9/1s），
+     既有"点一下等半秒"的拖沓，也有同一页面快慢不一的不一致。 */
+  --dur-fast:180ms;
+  --dur-base:240ms;
+  --dur-slow:320ms;
+  --ease-std:cubic-bezier(.2,.8,.2,1);
+  --ease-emph:cubic-bezier(.3,1.4,.5,1);
+
+  /* ── 焦点环 Token ────────────────────────────────────────────────
+     键盘用户必须能看见焦点落在哪里（此前全站 :focus 样式为 0 处）。 */
+  --focus-ring:#6d28d9;
+  --focus-w:2px;
 }
 @media(prefers-color-scheme:dark){:root:not([data-t=light]){
   --bg:#090d16; --surf:#111827; --surf2:#1e293b; --surf3:#334155; --fg:#f8fafc; --mut:#94a3b8;
@@ -971,6 +1011,8 @@ HTML = r"""<!doctype html>
   --acc-grad: linear-gradient(135deg, #c4b5fd, #a78bfa);
   --sh:0 1px 3px rgba(0,0,0,.3);
   --sh2:0 8px 24px rgba(0,0,0,.4);
+  --focus-ring:#c4b5fd;
+  color-scheme:dark;
 }}
 :root[data-t=dark]{
   --bg:#090d16; --surf:#111827; --surf2:#1e293b; --surf3:#334155; --fg:#f8fafc; --mut:#94a3b8;
@@ -980,6 +1022,8 @@ HTML = r"""<!doctype html>
   --acc-grad: linear-gradient(135deg, #c4b5fd, #a78bfa);
   --sh:0 1px 3px rgba(0,0,0,.3);
   --sh2:0 8px 24px rgba(0,0,0,.4);
+  --focus-ring:#c4b5fd;
+  color-scheme:dark;
 }
 :root[data-t=light]{
   --bg:#f8fafc; --surf:#ffffff; --surf2:#f1f5f9; --surf3:#e2e8f0; --fg:#0f172a; --mut:#64748b;
@@ -989,6 +1033,46 @@ HTML = r"""<!doctype html>
   --acc-grad: linear-gradient(135deg, #a78bfa, #8b5cf6);
   --sh:0 4px 12px rgba(139, 92, 246, 0.06),0 1px 3px rgba(0,0,0,.04);
   --sh2:0 8px 24px rgba(139, 92, 246, 0.12),0 2px 6px rgba(0,0,0,.03);
+  --focus-ring:#6d28d9;
+  color-scheme:light;
+}
+
+/* ── 键盘焦点可见性（全站统一焦点环） ──────────────────────────────
+   改造前全站 :focus/:focus-visible 样式为 0 处，键盘用户只能依赖浏览器
+   默认焦点环；而 .card/.chip/遮罩单元格等是 div/span/td 且不可聚焦，
+   键盘完全无法操作。此处统一焦点样式，并只对键盘交互展示（:focus-visible），
+   鼠标点击不出现焦点环，避免视觉噪音。 */
+:focus-visible{
+  outline:var(--focus-w) solid var(--focus-ring);
+  outline-offset:2px;
+  border-radius:6px;
+}
+/* 跳到主内容：键盘用户的第一个 Tab 落点（默认视觉隐藏，聚焦时显现） */
+.skip-link{
+  position:absolute;left:8px;top:-48px;z-index:99;
+  padding:8px 14px;border-radius:0 0 10px 10px;
+  background:var(--acc);color:#fff;font-size:13px;font-weight:600;text-decoration:none;
+  transition:top var(--dur-fast) var(--ease-std);
+}
+.skip-link:focus{top:0;}
+/* 仅供屏幕阅读器播报（视觉不可见但不使用 display:none，否则读屏也读不到） */
+.sr-only{
+  position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;
+}
+
+/* ── 减少动态效果偏好（无障碍必需项） ──────────────────────────────
+   改造前 CSS 中 prefers-reduced-motion 为 0 处，只有彩带在 JS 里做了判断：
+   开启系统"减少动态效果"后，翻卡 3D 旋转(.48s)、页签淡入、进度条增长(1s)、
+   遮罩模糊过渡仍然照跑，对前庭敏感用户不友好。
+   此处统一把动效压到近乎瞬时（保留 0.01ms 而非 0，以便依赖 transitionend 的逻辑仍能触发）。 */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:0.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:0.01ms !important;
+    scroll-behavior:auto !important;
+  }
 }
 
 /* ── Responsive Layout ── */
@@ -1029,14 +1113,14 @@ HTML = r"""<!doctype html>
 }
 
 /* Primary buttons and progress bar gradients */
-.pfill{height:100%;border-radius:99px;background:var(--acc-grad);transition:width 1s cubic-bezier(.2,.8,.2,1)}
+.pfill{height:100%;border-radius:99px;background:var(--acc-grad);transition:width var(--dur-slow) var(--ease-std)}
 .tbtn.on{background:var(--acc-grad);color:#fff;border-color:transparent;font-weight:700}
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{overscroll-behavior-y:none}
 body{margin:0;background:var(--bg);color:var(--fg);
  font:14.5px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
- -webkit-font-smoothing:antialiased;padding-bottom:calc(76px + env(safe-area-inset-bottom));transition:background .2s,color .2s}
+ -webkit-font-smoothing:antialiased;padding-bottom:calc(76px + env(safe-area-inset-bottom));transition:background var(--dur-base) var(--ease-std),color var(--dur-base) var(--ease-std)}
 .wrap{max-width:820px;margin:0 auto;padding:0 18px}
 
 /* ── 顶部 ── */
@@ -1048,7 +1132,7 @@ header{padding:22px 0 6px}
 .hl .big{font-size:56px;font-weight:850;letter-spacing:-.04em;font-variant-numeric:tabular-nums;color:var(--fg)}
 .hl .big i{font-size:20px;font-weight:600;color:var(--mut);font-style:normal;margin-left:4px}
 .hr2{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
-.tbtn-theme{background:var(--surf2);border:1px solid var(--line);border-radius:99px;padding:6px 12px;font-size:12px;color:var(--fg);cursor:pointer;display:flex;align-items:center;gap:5px;box-shadow:var(--sh);transition:.15s}
+.tbtn-theme{background:var(--surf2);border:1px solid var(--line);border-radius:99px;padding:6px 12px;font-size:12px;color:var(--fg);cursor:pointer;display:flex;align-items:center;gap:5px;box-shadow:var(--sh);transition:var(--dur-fast)}
 .tbtn-theme:hover{background:var(--surf)}
 .hr-info{font-size:11.5px;color:var(--mut);text-align:right;line-height:1.6}
 .hr-info b{color:var(--fg);font-weight:700}
@@ -1056,7 +1140,6 @@ header{padding:22px 0 6px}
 .plan{margin:14px 0 4px}
 .plan .pt{display:flex;justify-content:space-between;font-size:11px;color:var(--mut);margin-bottom:6px;font-weight:600}
 .ptrack{height:7px;background:var(--surf2);border-radius:99px;overflow:hidden;border:1px solid var(--line)}
-.pfill{height:100%;border-radius:99px;background:var(--acc-grad);transition:width 1s cubic-bezier(.2,.8,.2,1)}
 
 /* ── 学科小卡 ── */
 /* 列宽必须用 minmax(0,1fr) 而非 1fr：1fr 的自动下限是 min-content，
@@ -1064,7 +1147,7 @@ header{padding:22px 0 6px}
    手机端出现横向滚动、卡片被裁切）。 */
 .subs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0 8px}
 .sub{min-width:0;background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);padding:12px 10px;
- text-align:center;box-shadow:var(--sh);transition:transform .18s,box-shadow .18s}
+ text-align:center;box-shadow:var(--sh);transition:transform var(--dur-fast),box-shadow var(--dur-fast)}
 .sub:hover{transform:translateY(-1px);box-shadow:var(--sh2)}
 .sub .si{font-size:16px;font-weight:800;color:var(--c);line-height:1.2}
 .sub .sn{font-size:11.5px;color:var(--mut);margin-top:4px;font-weight:600}
@@ -1078,18 +1161,16 @@ header{padding:22px 0 6px}
 :root[data-t=dark] .sub .si{color:var(--cd)}
 
 /* ── 页签 ── */
-.pane{display:none;animation:fade .22s ease-out}
+/* [UX 升级] 动效时长统一走 Token（200~350ms 区间），并显式声明焦点行为 */
+.pane{display:none;animation:fade var(--dur-base) var(--ease-std)}
 .pane.on{display:block}
+.pane:focus{outline:none}
 @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 
-.bar{position:fixed;left:0;right:0;bottom:0;z-index:40;
- background:color-mix(in srgb,var(--surf) 90%,transparent);
- backdrop-filter:saturate(180%) blur(24px);-webkit-backdrop-filter:saturate(180%) blur(24px);
- border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -4px 16px rgba(0,0,0,.03)}
 .bar button{flex:1;background:none;border:0;color:var(--mut);font:inherit;font-size:11.5px;
- padding:9px 4px 10px;cursor:pointer;line-height:1.3;transition:color .15s}
+ padding:9px 4px 10px;cursor:pointer;line-height:1.3;transition:color var(--dur-fast) var(--ease-std)}
 .bar button i{display:block;font-style:normal;font-size:18px;margin-bottom:2px;
- transition:transform .2s cubic-bezier(.3,1.4,.5,1)}
+ transition:transform var(--dur-base) var(--ease-emph)}
 .bar button.on{color:var(--acc);font-weight:700}
 .bar button.on i{transform:translateY(-2px) scale(1.1)}
 
@@ -1119,14 +1200,14 @@ th{background:var(--surf2);font-weight:700;color:var(--fg);white-space:nowrap}
 tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)}
 
 /* ── 遮罩自测效果 ── */
-.mask-active td:nth-child(n+2):not(:last-child){filter:blur(6px);user-select:none;cursor:pointer;transition:filter .2s ease;background:color-mix(in srgb,var(--acc-sub) 30%,transparent)}
+.mask-active td:nth-child(n+2):not(:last-child){filter:blur(6px);user-select:none;cursor:pointer;transition:filter var(--dur-base) var(--ease-std);background:color-mix(in srgb,var(--acc-sub) 30%,transparent)}
 .mask-active td:nth-child(n+2):not(:last-child).revealed{filter:none;background:transparent}
 
 .empty{text-align:center;color:var(--mut);padding:56px 20px;font-size:13.5px}
 .empty .ei{font-size:36px;margin-bottom:10px;opacity:.6}
 .extra{margin:18px 0 8px}
 .extra summary{cursor:pointer;font-size:12.5px;color:var(--mut);padding:10px 14px;
- background:var(--surf);border:1px solid var(--line);border-radius:12px;list-style:none;transition:background .15s}
+ background:var(--surf);border:1px solid var(--line);border-radius:12px;list-style:none;transition:background var(--dur-fast)}
 .extra summary:hover{background:var(--surf2)}
 .extra summary::-webkit-details-marker{display:none}
 .extra[open] summary{border-radius:12px 12px 0 0;border-bottom:0}
@@ -1137,7 +1218,7 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .decks::-webkit-scrollbar{display:none}
 .chip{flex:0 0 auto;background:var(--surf);border:1px solid var(--line);border-radius:99px;
  padding:7px 14px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px;
- white-space:nowrap;transition:.15s;box-shadow:var(--sh)}
+ white-space:nowrap;transition:var(--dur-fast);box-shadow:var(--sh)}
 .chip:hover{border-color:var(--acc)}
 .chip .dot{width:6px;height:6px;border-radius:99px;background:var(--c)}
 .chip .n{color:var(--mut);font-size:10.5px;font-variant-numeric:tabular-nums;background:var(--surf2);padding:1px 6px;border-radius:99px}
@@ -1148,7 +1229,7 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 /* ── 翻卡 ── */
 .stage{perspective:1400px;margin:8px 0 14px}
 .card{position:relative;width:100%;min-height:50vh;transform-style:preserve-3d;
- transition:transform .48s cubic-bezier(.2,.8,.2,1);cursor:pointer}
+ transition:transform var(--dur-slow) var(--ease-std);cursor:pointer}
 .card.flip{transform:rotateY(180deg)}
 .face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;
  background:var(--surf);border:1px solid var(--line);border-radius:20px;box-shadow:var(--sh2);
@@ -1156,7 +1237,7 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .face.back{transform:rotateY(180deg)}
 .f-top{display:flex;align-items:center;gap:8px;padding:14px 18px 0;font-size:11.5px;color:var(--mut)}
 .f-top .tag{background:var(--acc);color:#fff;padding:3px 10px;border-radius:99px;font-weight:700;font-size:10.5px}
-.f-top .hard{margin-left:auto;font-size:16px;opacity:.35;cursor:pointer;transition:.2s}
+.f-top .hard{margin-left:auto;font-size:16px;opacity:.35;cursor:pointer;transition:var(--dur-base)}
 .f-top .hard.on{opacity:1;color:var(--warn);transform:scale(1.15)}
 .f-body{flex:1;display:flex;align-items:center;justify-content:center;
  padding:18px 24px 20px;overflow-y:auto;-webkit-overflow-scrolling:touch}
@@ -1173,7 +1254,7 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .ctrl{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .nav{flex:0 0 auto;width:42px;height:42px;border-radius:99px;background:var(--surf);
  border:1px solid var(--line);color:var(--fg);font-size:18px;cursor:pointer;box-shadow:var(--sh);
- display:flex;align-items:center;justify-content:center;transition:.15s}
+ display:flex;align-items:center;justify-content:center;transition:var(--dur-fast)}
 .nav:hover{background:var(--surf2)}
 .nav:active{transform:scale(.94)}
 .nav:disabled{opacity:.3;cursor:default}
@@ -1181,10 +1262,10 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .meter .mt{display:flex;justify-content:space-between;font-size:11px;color:var(--mut);
  margin-bottom:5px;font-variant-numeric:tabular-nums;font-weight:600}
 .mtrack{height:5px;background:var(--surf2);border-radius:99px;overflow:hidden}
-.mfill{height:100%;background:var(--acc);border-radius:99px;transition:width .3s ease}
+.mfill{height:100%;background:var(--acc);border-radius:99px;transition:width var(--dur-base) var(--ease-std)}
 .tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .tbtn{background:var(--surf);border:1px solid var(--line);color:var(--fg);border-radius:99px;
- padding:6px 14px;font:inherit;font-size:12px;cursor:pointer;box-shadow:var(--sh);transition:.15s;display:flex;align-items:center;gap:5px}
+ padding:6px 14px;font:inherit;font-size:12px;cursor:pointer;box-shadow:var(--sh);transition:var(--dur-fast);display:flex;align-items:center;gap:5px}
 .tbtn:hover{background:var(--surf2)}
 .tbtn:active{transform:scale(.96)}
 .tbtn.on{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:700}
@@ -1202,7 +1283,7 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .mi .mv{font-size:12.5px;color:var(--mut);white-space:nowrap;font-variant-numeric:tabular-nums}
 .mi .mv b{font-size:14.5px;color:var(--fg);font-weight:800}
 .mtk{position:relative;height:8px;background:var(--surf2);border-radius:99px;overflow:visible;border:1px solid var(--line)}
-.mfl{height:100%;border-radius:99px;width:0;transition:width .9s cubic-bezier(.2,.8,.2,1)}
+.mfl{height:100%;border-radius:99px;width:0;transition:width var(--dur-slow) var(--ease-std)}
 .mfl.good{background:linear-gradient(90deg,var(--ok),#34d399)}
 .mfl.mid{background:linear-gradient(90deg,var(--warn),#fde047)}
 .mfl.bad{background:linear-gradient(90deg,var(--bad),#fda4af)}
@@ -1250,6 +1331,9 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main">跳到主要看板内容</a>
+<!-- 屏幕阅读器播报区：页签切换等状态变化在此播报（视觉不可见） -->
+<div id="a11y-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 <div class="wrap">
 
 <header>
@@ -1259,9 +1343,12 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
       <div class="big">{{DDAY1}}<i>天</i></div>
     </div>
     <div class="hr2">
-      <button class="tbtn-theme" id="th-btn" title="点击切换深色/浅色模式"><svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/></svg>主题模式</button>
+      <button class="tbtn-theme" id="th-btn" type="button" aria-label="切换深色或浅色主题" title="点击切换深色/浅色模式"><svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/></svg>主题模式</button>
       <div class="hr-info">
-<div style="font-size:11px;color:var(--mut);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px;" onclick="var s=localStorage.getItem('ky-confetti-off')==='1'?'0':'1';localStorage.setItem('ky-confetti-off',s);this.innerHTML=s==='1'?'✨ 动效已关闭 (点击开启)':'✨ 动效已开启 (点击关闭)';">✨ 动效已开启 (点击关闭)</div>
+<!-- [UX 升级] 原为可点击 div：键盘不可达、读屏不识别为控件。
+     改为 <button> 并同步 aria-pressed，使其可 Tab 聚焦、Enter/Space 激活。 -->
+<button type="button" id="fx-toggle" aria-pressed="true"
+        style="font-size:11px;color:var(--mut);background:none;border:0;font:inherit;font-size:11px;display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px;padding:2px 0;">✨ 动效已开启 (点击关闭)</button>
 
         初试首日 · <b>12-19</b><br>
         备考第 <b>{{DAYNO}}</b> / {{TOTALDAYS}} 天
@@ -1274,16 +1361,17 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
   </div>
 </header>
 
+<main id="main" tabindex="-1">
 <div class="subs" id="subs"></div>
 
-<div id="p-today" class="pane on">
+<div id="p-today" class="pane on" role="tabpanel" aria-labelledby="tab-today" tabindex="-1">
   <div style="display:flex;justify-content:flex-end;margin:8px 0 4px">
     <button class="tbtn" id="mask-today-btn"><svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/></svg>开启遮罩自测</button>
   </div>
   {{TODAY}}
 </div>
 
-<div id="p-memo" class="pane">
+<div id="p-memo" class="pane" role="tabpanel" aria-labelledby="tab-memo" tabindex="-1">
   <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px">
     <div class="decks" id="dk-memo"></div>
     <button class="tbtn" id="mask-memo-btn" style="flex-shrink:0"><svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/></svg>遮罩自测</button>
@@ -1292,13 +1380,13 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
   {{MEMONOTES}}
 </div>
 
-<div id="p-weak" class="pane">
+<div id="p-weak" class="pane" role="tabpanel" aria-labelledby="tab-weak" tabindex="-1">
   <div class="decks" id="dk-weak"></div>
   <div id="fc-weak"></div>
   {{WEAKNOTES}}
 </div>
 
-<div id="p-stat" class="pane">
+<div id="p-stat" class="pane" role="tabpanel" aria-labelledby="tab-stat" tabindex="-1">
   <div id="stat-trend"></div>
   <div class="leg">
     <span><i style="background:var(--ok)"></i>达标</span>
@@ -1309,7 +1397,7 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
   <div id="stat"></div>
 </div>
 
-<div id="p-map" class="pane">
+<div id="p-map" class="pane" role="tabpanel" aria-labelledby="tab-map" tabindex="-1">
   <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 10px">
     <div class="decks" id="dk-map"></div>
   </div>
@@ -1317,20 +1405,22 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
   <div id="map-tree"></div>
 </div>
 
-<div id="p-radar" class="pane">
+<div id="p-radar" class="pane" role="tabpanel" aria-labelledby="tab-radar" tabindex="-1">
   {{RADAR}}
 </div>
+
+</main>
 
 <footer>考研学习看板 · 数据驱动 · 稳扎稳打 · 更新于 {{STAMP}}</footer>
 </div>
 
-<nav class="bar">
-  <button class="on" data-p="today"><i><svg viewBox='0 0 24 24' width='18' height='18' stroke='currentColor' stroke-width='2' fill='none'><rect x='3' y='4' width='18' height='18' rx='2'/><line x1='16' y1='2' x2='16' y2='6'/><line x1='8' y1='2' x2='8' y2='6'/><line x1='3' y1='10' x2='21' y2='10'/></svg></i>今日</button>
-  <button data-p="memo"><i>🧠</i>必背</button>
-  <button data-p="weak"><i>🎯</i>薄弱</button>
-  <button data-p="stat"><i><svg viewBox='0 0 24 24' width='18' height='18' stroke='currentColor' stroke-width='2' fill='none'><line x1='12' y1='20' x2='12' y2='10'/><line x1='18' y1='20' x2='18' y2='4'/><line x1='6' y1='20' x2='6' y2='16'/></svg></i>数据</button>
-  <button data-p="map"><i>🗺️</i>图谱</button>
-  <button data-p="radar"><i>📡</i>考情</button>
+<nav class="bar" role="tablist" aria-label="看板页签">
+  <button role="tab" id="tab-today" aria-controls="p-today" aria-selected="true" tabindex="0" class="on" data-p="today"><i><svg viewBox='0 0 24 24' width='18' height='18' stroke='currentColor' stroke-width='2' fill='none'><rect x='3' y='4' width='18' height='18' rx='2'/><line x1='16' y1='2' x2='16' y2='6'/><line x1='8' y1='2' x2='8' y2='6'/><line x1='3' y1='10' x2='21' y2='10'/></svg></i>今日</button>
+  <button role="tab" id="tab-memo" aria-controls="p-memo" aria-selected="false" tabindex="-1" data-p="memo"><i>🧠</i>必背</button>
+  <button role="tab" id="tab-weak" aria-controls="p-weak" aria-selected="false" tabindex="-1" data-p="weak"><i>🎯</i>薄弱</button>
+  <button role="tab" id="tab-stat" aria-controls="p-stat" aria-selected="false" tabindex="-1" data-p="stat"><i><svg viewBox='0 0 24 24' width='18' height='18' stroke='currentColor' stroke-width='2' fill='none'><line x1='12' y1='20' x2='12' y2='10'/><line x1='18' y1='20' x2='18' y2='4'/><line x1='6' y1='20' x2='6' y2='16'/></svg></i>数据</button>
+  <button role="tab" id="tab-map" aria-controls="p-map" aria-selected="false" tabindex="-1" data-p="map"><i>🗺️</i>图谱</button>
+  <button role="tab" id="tab-radar" aria-controls="p-radar" aria-selected="false" tabindex="-1" data-p="radar"><i>📡</i>考情</button>
 </nav>
 
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -1512,6 +1602,11 @@ function Flash(tab){
     var back=c.b.map(function(kv){
       return "<div class='row'><div class='k'>"+esc(kv[0])+"</div><div class='v'>"+esc(kv[1])+"</div></div>";
     }).join('');
+    /* [UX 升级 · 修"空壳卡片"] 默认（脱敏）构建下每张卡的背面 b 都被清空，
+       旧实现仍然渲染翻转卡与"答案解析"标签 → 用户点开一看是空白背面，
+       表现为"功能坏了"。此处：无背面内容时不再渲染翻转交互，
+       改为静态卡并明确说明原因，避免"点了没反应"的挫败感。 */
+    var hasBack = !!(c.b && c.b.length);
 
     host.innerHTML =
       "<div class='tools'>"+self.toolsHtml()+"</div>"
@@ -1522,22 +1617,24 @@ function Flash(tab){
     +     "<div class='mtrack'><div class='mfill' style='width:"+((self.ci+1)/self.order.length*100)+"%'></div></div></div>"
     +   "<button class='nav' id='nx-"+tab+"' aria-label='下一张'>›</button>"
     + "</div>"
-    + "<div class='stage'><div class='card' id='cd-"+tab+"' style='--c:"+C+"'>"
+    + "<div class='stage'><div class='card"+(hasBack?'':' noback')+"' id='cd-"+tab+"' style='--c:"+C+"'>"
     +   "<div class='face'>"
     +     "<div class='f-top'><span class='tag'>"+esc(d.subj)+"</span><span>"+esc(d.title)+"</span>"
     +       "<span class='hard"+(hard?' on':'')+"' id='hd-"+tab+"'>"+(hard?'★':'☆')+"</span></div>"
     +     "<div class='f-body'><div class='f-q'>"+esc(c.f)+"</div></div>"
-    +     "<div class='f-hint'>点击翻转卡片 · 左右轻扫切换</div>"
+    +     "<div class='f-hint'>"+(hasBack?'点击翻转卡片 · 左右轻扫切换':'答案解析已脱敏 · 本地完整模式可见')+"</div>"
     +   "</div>"
-    +   "<div class='face back'>"
-    +     "<div class='f-top'><span class='tag'>答案解析</span><span>"+esc(d.title)+"</span></div>"
-    +     "<div class='f-body'><div class='f-a'>"+back+"</div></div>"
-    +     "<div class='f-hint'>再次点击返回卡片正面</div>"
-    +   "</div>"
+    +   (hasBack
+        ? ("<div class='face back'>"
+           + "<div class='f-top'><span class='tag'>答案解析</span><span>"+esc(d.title)+"</span></div>"
+           + "<div class='f-body'><div class='f-a'>"+back+"</div></div>"
+           + "<div class='f-hint'>再次点击返回卡片正面</div>"
+           + "</div>")
+        : "")
     + "</div></div>";
 
     var card=document.getElementById('cd-'+tab);
-    if(card) card.onclick=function(e){ if(e.target.id==='hd-'+tab) return; card.classList.toggle('flip'); if(card.classList.contains('flip') && Math.random()>0.8) fireConfetti(); };
+    if(card && hasBack) card.onclick=function(e){ if(e.target.id==='hd-'+tab) return; card.classList.toggle('flip'); if(card.classList.contains('flip') && Math.random()>0.8) fireConfetti(); };
     var hd=document.getElementById('hd-'+tab);
     if(hd) hd.onclick=function(e){
       e.stopPropagation();
@@ -1613,7 +1710,7 @@ document.addEventListener('keydown',function(e){
   D.metrics.forEach(function(g){
     var C=col(g);
     h+="<div class='mgrp' style='--c:"+C+"'><h3><span class='ic'>"+g.icon+"</span>"
-      +esc(g.subj)+"<span class='sep'>·</span>"+esc(g.title)+"</h3>";
+      +esc(g.subj)+(g.title?("<span class='sep'>·</span>"+esc(g.title)):"")+"</h3>";
     g.items.forEach(function(it){
       var pct = it.pct;
       var cls='neu', w=0, tick='';
@@ -1768,25 +1865,65 @@ function animate(){
   renderMap(currSubj);
 })();
 
-/* ── 页签切换 ── */
-document.querySelectorAll('.bar button').forEach(function(b){
-  b.onclick=function(){
-    document.querySelectorAll('.bar button').forEach(function(x){x.classList.remove('on')});
-    document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('on')});
-    b.classList.add('on');
-    var targetPane=document.getElementById('p-'+b.dataset.p);
-    if(targetPane){
-      targetPane.classList.add('on');
-      tex(targetPane);
-    }
-    window.scrollTo(0,0);
-    if(b.dataset.p==='stat') animate();
-    try{localStorage.setItem('kytab',b.dataset.p)}catch(e){}
-  };
+/* ── 页签切换（无障碍契约） ───────────────────────────────────────────
+   [UX 升级] 改造前：纯 onclick，无 role/aria，无键盘漫游，方向键不可用。
+   现按 WAI-ARIA Authoring Practices 的 Tabs 模式实现：
+     · tablist / tab / tabpanel 语义（标记已在 HTML 中）
+     · roving tabindex：仅当前页签 tabindex=0，其余 -1（Tab 键只落一次）
+     · ←/→/↑/↓ 循环移动并即时激活；Home/End 跳首尾；Enter/Space 激活
+     · aria-selected 与面板显隐同步；切换结果写入 aria-live 区域播报 */
+var _tabs = Array.prototype.slice.call(document.querySelectorAll('.bar button[role="tab"]'));
+function _activateTab(b, focusIt){
+  _tabs.forEach(function(x){
+    var on = (x === b);
+    x.classList.toggle('on', on);
+    x.setAttribute('aria-selected', on ? 'true' : 'false');
+    x.setAttribute('tabindex', on ? '0' : '-1');
+  });
+  document.querySelectorAll('.pane').forEach(function(x){ x.classList.remove('on'); });
+  var targetPane = document.getElementById('p-' + b.dataset.p);
+  if (targetPane){ targetPane.classList.add('on'); tex(targetPane); }
+  if (focusIt) b.focus();
+  window.scrollTo(0, 0);
+  if (b.dataset.p === 'stat') animate();
+  try{ localStorage.setItem('kytab', b.dataset.p); }catch(e){}
+  var live = document.getElementById('a11y-live');
+  if (live) live.textContent = '已切换到「' + b.textContent.trim() + '」页签';
+}
+_tabs.forEach(function(b, i){
+  b.addEventListener('click', function(){ _activateTab(b, false); });
+  b.addEventListener('keydown', function(e){
+    var n = -1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') n = (i + 1) % _tabs.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') n = (i - 1 + _tabs.length) % _tabs.length;
+    else if (e.key === 'Home') n = 0;
+    else if (e.key === 'End') n = _tabs.length - 1;
+    else if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); _activateTab(b, true); return; }
+    else return;
+    e.preventDefault();
+    _activateTab(_tabs[n], true);
+  });
 });
 
 tex(document.getElementById('p-today'));
-setTimeout(animate,180);
+/* 减少动态效果时跳过错峰启动动画，直接落到终值 */
+if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) animate(); else setTimeout(animate, 180);
+/* 动效开关：迁移自原内联 onclick，并维护 aria-pressed 与焦点可达性 */
+(function(){
+  var fx = document.getElementById('fx-toggle');
+  if (!fx) return;
+  function render(){
+    var off = localStorage.getItem('ky-confetti-off') === '1';
+    fx.setAttribute('aria-pressed', off ? 'false' : 'true');
+    fx.textContent = off ? '✨ 动效已关闭 (点击开启)' : '✨ 动效已开启 (点击关闭)';
+  }
+  fx.addEventListener('click', function(){
+    var off = localStorage.getItem('ky-confetti-off') === '1';
+    localStorage.setItem('ky-confetti-off', off ? '0' : '1');
+    render();
+  });
+  render();
+})();
 try{
   var t=localStorage.getItem('kytab');
   if(t&&t!=='today'){var el=document.querySelector('.bar button[data-p="'+t+'"]'); if(el)el.click();}
@@ -1858,7 +1995,7 @@ def _write_state_snapshot(data: dict, snapshot_path: "Path", parse_warnings=None
     snapshot_data = dict(data)  # 浅拷贝
 
     meta = {
-        "snapshot_version": "ky-snapshot/1.0",
+        "snapshot_version": "ky-snapshot/1.1",
         "generated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "opt_in": opt_in,
         "subjects_count": len(data.get("subjects", [])),

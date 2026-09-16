@@ -195,7 +195,10 @@ class KaoYanIntelligenceEngine:
 
                 status_icon = "✅" if ev.status == "VERIFIED" else ("⚠️" if ev.status == "CONFLICT" else "⏳")
                 lines.append(f"### {status_icon} 证据项 #{i} · {ev.field}")
-                unit_str = f" {ev.unit}" if getattr(ev, "unit", None) else ""
+                # [缺陷修复] 单位只对"数量型"取值有意义；对清单/结构化取值（list/dict）
+                # 追加单位会渲染出「…专业自命题或统考 门」这类悬空字符，故此处跳过。
+                unit_str = f" {ev.unit}" if (
+                    getattr(ev, "unit", None) and not isinstance(ev.value, (list, dict))) else ""
                 lines.append(f"- **指标数值**：`{val_repr}{unit_str}`")
                 lines.append(f"- **证据来源**：`[{ev.source.level}级权威] {ev.source.name}` ([官方直达]({ev.source.url}))")
                 lines.append(f"- **考研年份**：`{ev.exam_year}年` ｜ **置信度**：`{int(ev.confidence * 100)}%` ｜ **核验状态**：`{ev.status}`")
@@ -219,9 +222,24 @@ class KaoYanIntelligenceEngine:
         # 5. 个人学情量化报考风险与提分门槛诊断 (User State Gap Analysis)
         lines.extend(self._assess_user_risk(entity, major_query, evidences))
 
+        # [缺陷修复·虚假来源声明] 此前无论证据是否真的来自官方站点，结尾都断言
+        # 「本研报基于权威官方站点生成」；而同一份研报的第 3 节刚写明
+        # 「研招网/官网当期页面未能成功抓取…离线基准…置信度 30%」，前后自相矛盾。
+        # 现按证据链的真实置信度决定措辞：只有确已取得官方证据才宣称有官方支撑。
+        _max_conf = 0.0
+        try:
+            _max_conf = max([float(getattr(_e, "confidence", 0) or 0) for _e in (evidences or [])] or [0.0])
+        except Exception:
+            _max_conf = 0.0
+        if _max_conf > 0.3:
+            _src_line = "> 💡 **KaoYan Intelligence 战略提示**：本研报核心指标由官方站点证据链支撑。"
+        else:
+            _src_line = ("⚠️ **数据来源声明**：本次**未能**抓取研招网/目标高校官网当期页面，"
+                         "上述指标为**离线基准兜底推定值（未核验）**，并非该校官方核实数据；"
+                         "报考前请务必以院校研究生院当年招生简章与专业目录为准。")
         lines.extend([
             "---",
-            f"> 💡 **KaoYan Intelligence 战略提示**：本研报基于权威官方站点生成。可结合自身模考水平，在会话中让 AI 私教为你出具针对 `{school_name}` 的定制备考处方。"
+            f"{_src_line} 可结合自身模考水平，在会话中让 AI 私教为你出具针对 `{school_name}` 的定制备考处方。"
         ])
 
         return "\n".join(lines)
@@ -242,8 +260,12 @@ class KaoYanIntelligenceEngine:
         if cfg_path.exists():
             try:
                 cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
+            except Exception as exc:
+                # 配置损坏会让整份诊断静默退回通用默认值（学员的个性化目标全部失效），
+                # 属于用户可见的降级，故用 warning 而非 debug 留痕
+                import logging
+                logging.getLogger(__name__).warning(
+                    "ky_config.json 解析失败，将使用默认目标分: %s -> %s", cfg_path, exc)
 
         plan = cfg.get("study_plan", {})
         math_target = plan.get("math_target") or cfg.get("math_target", "110+")
@@ -271,13 +293,39 @@ class KaoYanIntelligenceEngine:
         else:
             is_b_zone = any("二区" in l or "B区" in l for l in (entity.level if entity else []))
             zone_desc = "教育部国家二区线 (B区，享受降分照顾)" if is_b_zone else "教育部国家一区线 (A区)"
+            # [缺陷修复·层次误判(N3)] 此前对所有非 985/自划线院校一律断言
+            # "属地方公办/行业重点高校"。对未收录院校（层次字段为空）这是无依据的定性，
+            # 且会**低估**真实层次 —— 例如天津工业大学是"双一流"建设高校，
+            # 却被写成"地方公办/行业重点"、"非热门院校"。
+            _lvl = "、".join([l for l in (entity.level if entity else []) if l]) or ""
+            if _lvl:
+                _level_desc = f"本地院校库收录层次：{_lvl}"
+            else:
+                _level_desc = ("**未收录于本地院校库**，本条不作层次定性，请以院校官方公示为准")
             lines.extend([
-                f"- **院校门槛定位**：`{sch_title}` 属地方公办/行业重点高校，初试门槛执行 **{zone_desc}**（近三年工科/理科国家线通常在 `265~275 分` 浮动，单科线约 `36~38 分`）。",
-                f"- **考情画像与私教深度攻坚处方**：",
-                f"  1. **初试降维打击空间**：学员设定的战役目标为总分 `{total_target}`，若按计划达成，在 `{sch_title}` 一志愿报考群体中处于绝对前列（超出历年复试线约 70~100 分），初试总分具备极大溢出缓冲垫；",
-                f"  2. **严防【单科死穴】致命风险**：非热门院校报考最忌讳“总分远超国家线，但英语或数学差 1 分未达国家单科线”导致一票否决丧失复试与调剂资格。因此，数学必须稳稳守住 `{math_target}`，英语守住 `{eng_target}` 基础盘；",
-                f"  3. **自命题专业课真题黑盒警示**：若该专业为院校自命题，地方高校官方通常不主动公布历年真题与参考答案。需通过直系学长学姐提前获取近 3 年回忆版试卷，并务必在每年 9 月初核验最新《招生专业目录》，防范自命题突然改考全国统考（如 408）；",
-                f"  4. **一志愿保护与调剂红黑榜排查**：在小红书与知乎重点检索该校目标学院是否存在“压低一志愿初试分数招揽调剂”的负面舆情；若该校为“一志愿上线全收/严格保护一志愿”，则属于性价比极高的稳妥上岸优选！"
+                f"- **院校层次**：`{sch_title}` —— {_level_desc}",
+                # [缺陷修复·国家线与复试线混用(N4)] 此前先用国家线定位门槛，
+                # 随即又断言"超出历年复试线约 70~100 分""降维打击""稳妥上岸优选"。
+                # 国家线是**最低准入线**，与院校自定的复试线是两个概念；
+                # 本次并未取得该校复试线（未联网核验），因此不能给出任何分差结论。
+                f"- **初试最低门槛（国家线，仅作下限参考）**：执行 **{zone_desc}**"
+                f"（近年工科/理科国家线总分约 `265~275 分`、单科约 `36~38 分`）。"
+                f"⚠️ 达线**仅表示具备复试与调剂资格**，不等于达到该校复试线。",
+                f"- **复试线未核验（不给出分差结论）**：本次未取得 `{sch_title}` 的历年复试线"
+                f"与报录比，故**无法判断**目标分 `{total_target}` 相对该校复试线的余量，"
+                f"也不宜据此判断「稳不稳」。建议联网条件允许时运行 "
+                f"`ky admission {sch_title} {major_query or ''}`，或直接查阅该校研究生院官网"
+                f"《复试录取工作办法》与拟录取名单，拿到真实数据后再评估。",
+                f"- **考情画像与私教攻坚处方**：",
+                f"  1. **单科死穴优先**：最危险的情形不是总分不够，而是总分很高却因英语/数学"
+                f"差 1 分未过**单科线**被一票否决。请把 {math_name} 稳在 `{math_target}`、"
+                f"英语稳在 `{eng_target}`，先保单科不失。",
+                f"  2. **自命题专业课**：{pro_name} 目标 `{pro_target}`。院校自命题通常不公布"
+                f"官方真题与参考答案，需通过直系学长学姐获取近 3 年回忆版试卷，并在每年 9 月"
+                f"核验最新《招生专业目录》，防范突然改考统考。",
+                f"  3. **一志愿保护须自行核验**：请自行检索该校目标学院是否存在"
+                f"「压一志愿、招调剂」的负面舆情；在拿到官方复试录取名单之前，"
+                f"不要假定任何学校会保护一志愿。",
             ])
 
         lines.append("")

@@ -12,7 +12,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # macOS 必须覆盖：ky_cli 里有独立的 darwin 分支（pbpaste 剪贴板读取、
+        # Darwin 路径处理），此前 CI 从未执行过该分支，等于长期无人守门。
+        # 本仓库为公开仓库，macOS runner 不额外计费。
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.10", "3.11", "3.12"]
 
     # Windows runner 的默认控制台编码为 cp1252/cp936，脚本打印 ✅ / 中文时
@@ -67,3 +70,29 @@ jobs:
     - name: Run pytest Unit/Process Suite
       run: |
         python -m pytest tests/ -q -p no:cacheprovider
+
+  rust-ext:
+    # [S-6] Rust 原生加速扩展 (ky_rust_ext) 此前从未在 CI 中编译验证过 ——
+    # 一旦 PyO3 版本升级或源码失效，只有用户在本地编译时才会发现。
+    # 该项目声明 Rust 为**可选**依赖、缺失时透明降级为纯 Python 等价实现，
+    # 故此处只做「编译可用性验证」而非硬门禁：continue-on-error 让失败仅告警、
+    # 不阻塞合并（编译结果仍可在 log 中查证）。
+    # 若希望它成为硬门禁（合并前必须可编译），删除下面这行 continue-on-error 即可。
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Build ky_rust_ext with maturin
+      run: |
+        python -m pip install --upgrade pip maturin
+        cd rust_ext
+        maturin build --release
+        echo "[OK] ky_rust_ext 编译通过，产物："
+        ls -l target/wheels/

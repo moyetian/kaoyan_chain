@@ -14,6 +14,7 @@
 
 import re
 import ast
+from fractions import Fraction
 
 # 检测是否已安装 SymPy
 try:
@@ -30,7 +31,8 @@ def get_status():
     """获取数学引擎当前就绪状态"""
     if HAS_SYMPY:
         return "SymPy 高精度符号计算引擎 (已就绪 · 全功能激活 · 含微分方程/二次型/级数)"
-    return "轻量级纯 Python 计算引擎 (建议运行: pip install sympy 获取全部高等数学验算能力)"
+    return ("轻量级纯 Python 计算引擎 (支持单变量多项式求导与不定积分；"
+            "运行: pip install sympy 解锁全部高等数学验算能力)")
 
 def _parse_infinity(token: str):
     """把 'inf' / 'oo' / '-inf' / '-oo' 安全转成 sympy 符号（避免 -inf 被误判为 +oo）。
@@ -43,6 +45,136 @@ def _parse_infinity(token: str):
     if t in ("inf", "oo", "infinity"):
         return -oo if neg else oo
     return sp.sympify(token)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# 纯 Python 降级计算引擎（仅在未安装 sympy 时启用）
+# ════════════════════════════════════════════════════════════════════════
+# [G-1 修复] 此前 HAS_SYMPY=False 时无论用户问什么都只回一段"建议 pip install
+# sympy"的静态提示，看不出工具是否真的尝试过 —— 用户会误判工具已失效。
+# 现补一个最小可用的多项式引擎，覆盖考研最基础的两类命令：
+#   * diff <单变量多项式>        求导
+#   * int  <单变量多项式> dx     不定积分
+# 其余命令（极限/级数/微分方程/矩阵/方程组…）仍回落到静态提示，
+# 绝不假装算出了结果。
+
+def _detect_var(expr: str) -> str:
+    """探测表达式中的单一未知量；非单变量（如 exp(x)、x*y）则抛 ValueError。"""
+    tokens = set(re.findall(r"[A-Za-z]+", expr.replace("^", " ")))
+    single = {t for t in tokens if len(t) == 1}
+    if not single:
+        return "x"                       # 纯常数式，变量名不影响结果
+    if len(single) > 1 or (tokens - single):
+        raise ValueError("非单变量表达式")
+    return single.pop()
+
+
+def _parse_polynomial(expr: str, var: str):
+    """把单变量多项式解析为 {幂次: Fraction 系数}，不支持则抛 ValueError。
+
+    接受：``x^3`` / ``3*x^2`` / ``2x`` / ``-x`` / ``3.5`` / ``x**2``
+    拒绝：括号、函数调用、负指数、多变量、除法 —— 一律交调用方回落提示。
+    """
+    s = re.sub(r"\s+", "", expr).replace("**", "^")
+    if not s:
+        raise ValueError("空表达式")
+    term_var_re = re.compile(
+        rf"([+-]?)(\d+(?:\.\d+)?)?\*?({re.escape(var)})(?:\^(\d+))?")
+    term_const_re = re.compile(r"[+-]?\d+(?:\.\d+)?")
+    poly = {}
+    for raw in re.findall(r"[+-]?[^+-]+", s):
+        m = term_var_re.fullmatch(raw)
+        if m:
+            sign, coef_s, _v, exp_s = m.groups()
+            coef = Fraction(coef_s) if coef_s else Fraction(1)
+            if sign == "-":
+                coef = -coef
+            exp = int(exp_s) if exp_s else 1
+        elif term_const_re.fullmatch(raw):
+            coef, exp = Fraction(raw), 0
+        else:
+            raise ValueError(f"不支持的项: {raw}")
+        poly[exp] = poly.get(exp, Fraction(0)) + coef
+    return {k: v for k, v in poly.items() if v != 0}
+
+
+def _frac_str(value: Fraction) -> str:
+    if value.denominator == 1:
+        return str(value.numerator)
+    return f"{value.numerator}/{value.denominator}"
+
+
+def _poly_str(poly: dict, var: str) -> str:
+    """把 {幂次: 系数} 还原成人类可读的多项式字符串（降幂排列）。"""
+    if not poly:
+        return "0"
+    out = ""
+    for exp in sorted(poly, reverse=True):
+        coef = poly[exp]
+        if coef == 0:
+            continue
+        magnitude = abs(coef)
+        if exp == 0:
+            body = _frac_str(magnitude)
+        else:
+            if magnitude == 1:
+                coef_txt = ""
+            else:
+                coef_txt = _frac_str(magnitude)
+                # 分数系数必须加括号，否则 "1/3x^3" 会被误读成 1/(3x^3)
+                if magnitude.denominator != 1:
+                    coef_txt = f"({coef_txt})"
+            body = f"{coef_txt}{var}" if exp == 1 else f"{coef_txt}{var}^{exp}"
+        if not out:
+            out = f"-{body}" if coef < 0 else body
+        else:
+            out += f" {'-' if coef < 0 else '+'} {body}"
+    return out or "0"
+
+
+def _fallback_polynomial(query_str: str):
+    """无 sympy 时的多项式降级计算；无法覆盖的命令返回 None。"""
+    text = query_str.strip()
+    low = text.lower()
+    kind = body = None
+    for prefix, k in (("diff ", "diff"), ("d/dx ", "diff"),
+                      ("int ", "int"), ("integrate ", "int")):
+        if low.startswith(prefix):
+            kind, body = k, text[len(prefix):].strip()
+            break
+    if kind is None:
+        for kw, k in (("求导", "diff"), ("积分", "int")):
+            if kw in text:
+                kind, body = k, text.split(kw, 1)[1].strip()
+                break
+    if kind is None or not body:
+        return None
+    if kind == "int":
+        body = re.sub(r"\s*dx$", "", body, flags=re.IGNORECASE).strip()
+        if not body or re.search(r"\bfrom\b", body, re.IGNORECASE):
+            return None                  # 定积分需代入上下限，降级引擎不覆盖
+    try:
+        var = _detect_var(body)
+        poly = _parse_polynomial(body, var)
+    except (ValueError, ZeroDivisionError):
+        return None
+
+    hint = ("\n⚠️ 当前为纯 Python 降级引擎（未安装 sympy），仅支持单变量多项式的"
+            "求导与不定积分；运行 `pip install sympy` 可解锁极限/级数/微分方程/"
+            "二次型等全部高等数学验算能力。")
+    if kind == "diff":
+        result = _poly_str({e - 1: c * e for e, c in poly.items() if e >= 1}, var)
+        return (
+            f"📐 【导数精确计算结果 · 纯 Python 降级引擎】\n"
+            f"原函数: $f({var}) = {_poly_str(poly, var)}$\n"
+            f"一阶导: $f'({var}) = {result}$" + hint
+        )
+    result = _poly_str({e + 1: c / (e + 1) for e, c in poly.items()}, var)
+    return (
+        f"∫ 【不定积分精确计算结果 · 纯 Python 降级引擎】\n"
+        f"积分表达式: $\\int {_poly_str(poly, var)} \\,d{var}$\n"
+        f"原函数: ${result} + C$" + hint
+    )
 
 
 def run_math_query(query_str):
@@ -61,6 +193,11 @@ def run_math_query(query_str):
       - sum 1/n^2 from 1 to oo
     """
     if not HAS_SYMPY:
+        # [G-1 修复] 先尝试纯 Python 降级引擎；确实覆盖不到才回落到安装提示，
+        # 避免"无论问什么都只回一段提示"让用户误判工具失效。
+        degraded = _fallback_polynomial(query_str)
+        if degraded is not None:
+            return degraded
         return (
             "⚠️ 【提示】当前环境未安装 `sympy` 科学计算库。\n"
             "建议在终端运行：`pip install sympy` 即可一键激活 100% 精确的考研微积分、线代符号验算引擎！\n\n"

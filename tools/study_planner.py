@@ -186,14 +186,30 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
     # ── 维度 1: 研考时间与战役节奏 ──
     print(colorize("【维度 1/7 · ⏱️ 研考时间与战役节奏】", C.BOLD))
     curr_year = datetime.now().year
-    default_year = curr_year if datetime.now().month < 11 else curr_year + 1
+    # [缺陷修复·年份口径与校验] 此前该问项写作「目标考研初试年份」，默认值取
+    # `curr_year if month<11 else curr_year+1`（今年 2026 → 默认 2026），
+    # 但项目其余部分（init_workspace / ky_config / AGENTS.md）一律把该数字当
+    # 「考研年份＝入学年」语义（2027 表示 2026 年 12 月初试）。
+    # 两种口径混用会让按文档作答的考生把初试日整整写晚一年；
+    # 且输入 "1" 这类值会直接推算出 0001-12-15，全程无校验。
+    try:
+        default_enroll_year = exam_calendar.infer_exam_year() + 1
+    except Exception:
+        default_enroll_year = curr_year + 1
     if interactive:
-        target_year = input(f"  1. 目标考研初试年份 [默认: {default_year}]: ").strip() or str(default_year)
-        # [根因修复·日期硬编码] 此处写死 "-12-19"，但初试日实为「12 月第 3 个周六」，
-        # 只在 2026 年恰好等于 19 号；2025 应为 12-20、2027 应为 12-18。
-        default_exam_date = exam_calendar.exam_date_for_exam_year(
-            int(str(target_year)[:4]) if str(target_year)[:4].isdigit() else default_year
-        ).isoformat()
+        target_year = input(
+            f"  1. 报考年份 / 入学年 [如 2027 表示 2026 年 12 月初试，默认: {default_enroll_year}]: "
+        ).strip() or str(default_enroll_year)
+        _yr_raw = str(target_year)[:4]
+        _yr = int(_yr_raw) if _yr_raw.isdigit() else default_enroll_year
+        if not (curr_year <= _yr <= curr_year + 5):
+            print(colorize(
+                f"  [!] 年份 {_yr} 超出合理范围（{curr_year}~{curr_year + 5}），已回退为 {default_enroll_year}。",
+                C.YELLOW))
+            _yr = default_enroll_year
+        target_year = str(_yr)
+        # 初试日恒为「入学年的头一年 12 月第 3 个周六」
+        default_exam_date = exam_calendar.exam_date_for_enrollment_year(_yr).isoformat()
         exam_date = input(f"  2. 预计初试日期 (YYYY-MM-DD) [默认: {default_exam_date}]: ").strip() or default_exam_date
         
         print("\n  --- 请选择您当前所处的备考阶段 ---")
@@ -202,11 +218,14 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
         stage_choice = input("  选择备考阶段 (1~4) [默认 2]: ").strip() or "2"
         stage_name = STAGES.get(stage_choice, STAGES["2"])[0]
     else:
-        target_year = plan.get("target_year", str(default_year))
-        # [根因修复·日期硬编码] 同上：默认初试日按「12 月第 3 个周六」推算，不再写死 -12-19
-        exam_date = plan.get("exam_date") or exam_calendar.exam_date_for_exam_year(
-            int(str(target_year)[:4]) if str(target_year)[:4].isdigit() else default_year
-        ).isoformat()
+        # 非交互分支：沿用同一口径（target_year = 入学年）
+        target_year = plan.get("target_year", str(default_enroll_year))
+        _yr_raw = str(target_year)[:4]
+        _yr = int(_yr_raw) if _yr_raw.isdigit() else default_enroll_year
+        if not (curr_year <= _yr <= curr_year + 5):
+            _yr = default_enroll_year
+        target_year = str(_yr)
+        exam_date = plan.get("exam_date") or exam_calendar.exam_date_for_enrollment_year(_yr).isoformat()
         stage_name = plan.get("stage_name", STAGES["2"][0])
 
     days_left = calculate_countdown(exam_date)
@@ -655,7 +674,14 @@ def apply_study_plan(plan, interactive=True):
 
     # 1. 更新官方大纲
     try:
-        from tools import syllabus_manager
+        # [缺陷修复·导入回退] 与文件上方第 222 行的写法保持一致。
+        # 以脚本方式运行且仓库根不在 sys.path 时，`tools` 会被 site-packages 下
+        # 同名第三方包劫持，此处若无回退会直接 ImportError，
+        # 导致 apply_syllabus_selection 从未执行、考纲文件不被写入。
+        try:
+            from tools import syllabus_manager
+        except ImportError:
+            import syllabus_manager
         syllabus_manager.apply_syllabus_selection(
             math_key=plan.get("math_key", "math2"),
             eng_key=plan.get("eng_key", "eng2"),
