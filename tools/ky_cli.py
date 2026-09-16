@@ -2095,7 +2095,7 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
 
     def print_followup_toolbar():
         print(f"\n{C.CYAN}╭──────────────────────────────────────────────────────────────────────────────────╮{C.RESET}")
-        print(f"{C.CYAN}│{C.RESET}  {C.BOLD}💡 下一步:{C.RESET} [1] 📐 符号验算  [2] 📌 记错题  [3] 🌐 网页伴侣  [4] 🔄 变式演练  [5] 💡 启发提示 {C.CYAN}│{C.RESET}")
+        print(f"{C.CYAN}│{C.RESET}  {C.BOLD}💡 下一步:{C.RESET} /1 📐 符号验算  /2 📌 记错题  /3 🌐 网页伴侣  /4 🔄 变式演练  /5 💡 启发提示 {C.CYAN}│{C.RESET}")
         print(f"{C.CYAN}╰──────────────────────────────────────────────────────────────────────────────────╯{C.RESET}")
 
     print(colorize(f"当前已激活：{SUBJECT_DIRS[curr_subj][1]}。直接输入问题/题目，或使用 /img 批改草稿，/calc 验算数学。", C.DIM))
@@ -2115,13 +2115,13 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
             continue
 
         # ── 数字快捷操作响应 (Codex 风格) ──
-        if user_input == "1":
+        if user_input == "/1":
             calc_expr = input(colorize("请输入待精确验算的数学式 (如 ode y''+4*y=0, quad [[2,1],[1,2]], limit (sin(x)-x)/x^3 as x->0): ", C.YELLOW)).strip()
             if calc_expr:
                 user_input = f"/calc {calc_expr}"
             else:
                 continue
-        elif user_input == "2":
+        elif user_input == "/2":
             last_resp = history[-1]["content"] if history and history[-1]["role"] == "assistant" else "做题记录"
             last_q = ""
             for h in reversed(history):
@@ -2149,12 +2149,12 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                 raise
             print(colorize(f"\n[√] {res}\n", C.GREEN))
             continue
-        elif user_input == "3":
+        elif user_input == "/3":
             user_input = "/view"
-        elif user_input == "4":
+        elif user_input == "/4":
             print(colorize(f"\n[🔄 正在根据上一题考点与易错陷阱为您抽取同类变式真题...]\n", C.CYAN))
             user_input = "请根据上一题的核心考点与命题陷阱，为我抽取一道难度相当的考研真题同类变式题。要求：只给题干背景与设问，不要直接贴答案，让我先独立作答。"
-        elif user_input == "5":
+        elif user_input == "/5":
             last_q = ""
             for h in reversed(history):
                 if h.get("role") == "user" and not h.get("content", "").startswith("/"):
