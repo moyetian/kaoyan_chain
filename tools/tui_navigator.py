@@ -47,6 +47,12 @@ try:
 except ImportError:  # pragma: no cover - 兼容 tools.version 包式导入
     from tools.version import get_version
 
+# [缺陷修复·三端重复解析] 今日任务进度统一走共享状态层
+try:
+    from state import load_dashboard_state
+except ImportError:  # pragma: no cover - 兼容 tools.state 包式导入
+    from tools.state import load_dashboard_state
+
 
 # ════════════════════════════════════════════════════════════════
 # 终端色彩与高精度排版引擎 (Visual Layout Engine)
@@ -229,23 +235,13 @@ def get_config_summary() -> dict:
             "style": "严格把关型", "hours": 8.5
         }
     try:
-        cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        sp = cfg.get("study_plan", {})
-        school = sp.get("school") or cfg.get("target_school") or "未指定"
-        major = sp.get("major") or cfg.get("target_major") or "未指定"
-        stage = cfg.get("stage", "强化题型攻坚阶段")
-        # [P0 修复·风格单一真源] 旧逻辑只读顶层 coaching_style，向导写入的
-        # study_plan.style_name 永远读不到，导致 TUI 与向导选择显示不一致。
-        style = (
-            cfg.get("coaching_style")
-            or sp.get("style_name")
-            or "严格把关·保姆提分型 (Strict)"
-        )
-        style_short = style.split("·")[0] if "·" in style else style
-        hours = float(cfg.get("daily_budget_hours", 8.5))
+        state = load_dashboard_state(ROOT)
         return {
-            "school": school, "major": major, "stage": stage,
-            "style": style_short, "hours": hours
+            "school": state.school or "未指定",
+            "major": state.major or "未指定",
+            "stage": state.stage,
+            "style": state.style_short,
+            "hours": state.daily_hours,
         }
     except Exception:
         return {
@@ -255,30 +251,13 @@ def get_config_summary() -> dict:
 
 
 def get_today_progress() -> tuple[int, int]:
-    """统计今日四科总任务数与已完成数"""
-    total = 0
-    done = 0
-    subjs = ["01-数学", "02-英语", "03-思想政治理论", "04-专业课"]
-    for s in subjs:
-        t_file = ROOT / s / "_状态" / "今日任务.md"
-        if t_file.exists():
-            try:
-                txt = t_file.read_text(encoding="utf-8")
-                for line in txt.splitlines():
-                    l_str = line.strip()
-                    if re.match(r"^-\s*\[[ xX]\]", l_str):
-                        total += 1
-                        if re.match(r"^-\s*\[[xX]\]", l_str):
-                            done += 1
-                    elif "|" in l_str and not l_str.replace(" ", "").startswith("|---|") and "完成状态" not in l_str and "模块" not in l_str:
-                        parts = [p.strip() for p in l_str.split("|") if p.strip()]
-                        if len(parts) >= 3:
-                            total += 1
-                            if "[x]" in parts[-1].lower():
-                                done += 1
-            except Exception:
-                pass
-    return done, total
+    """统计今日四科总任务数与已完成数（返回 ``(已完成, 总数)``）。
+
+    [缺陷修复·三端重复解析] 原先自带一份与 CLI / GUI 不同的解析实现。
+    现统一委托 tools/state 共享层，三端数字必然一致。
+    """
+    state = load_dashboard_state(ROOT)
+    return state.completed, state.total
 
 
 def get_intel_ribbon() -> list[str]:

@@ -26,9 +26,9 @@ from pathlib import Path
 from datetime import datetime, date, timedelta
 
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
-    from ky_io import atomic_write_text  # noqa: E402
+    from ky_io import atomic_write_text, read_text_fallback  # noqa: E402
 except ImportError:  # pragma: no cover
-    from tools.ky_io import atomic_write_text  # noqa: E402
+    from tools.ky_io import atomic_write_text, read_text_fallback  # noqa: E402
 
 # [根因修复·日期硬编码] 初试日期统一由 exam_calendar 提供。旧兜底用
 # current_exam_year()（返回的是「入学年」）直接当年份去算 12 月，会让倒计时整体
@@ -62,6 +62,13 @@ tools_dir = Path(__file__).resolve().parent
 for p_item in (str(ROOT), str(tools_dir)):
     if p_item not in sys.path:
         sys.path.insert(0, p_item)
+
+# [缺陷修复·四端各扫各的盘] 今日任务/配置摘要统一走共享状态层，
+# 与 TUI / GUI / 看板读同一份实现，杜绝"同一份数据三端算出三个数"。
+try:
+    from state import load_dashboard_state, state_to_cli_dict  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.state import load_dashboard_state, state_to_cli_dict  # type: ignore  # noqa: E402
 
 try:
     from skills import vision_solver, math_verifier, english_dissector, socratic_tutor, pdf_extractor, error_logger, latex_beautifier, list_skills, exam_composer, variant_retriever, knowledge_map, exam_diagnoser, school_scout, material_ingestion
@@ -298,14 +305,19 @@ SUBJECT_DIRS = {
 }
 
 def read_text_safe(path):
-    if not path.exists():
+    """按候选编码安全读取文本；文件不存在或全部编码失败时返回空串。
+
+    [缺陷修复·重复实现] 编码回退列表（utf-8-sig / utf-8 / gbk）此前在本文件与
+    其它模块各写一份，容易出现「一处补了 gbk、另一处忘了」。现统一委托
+    :func:`ky_io.read_text_fallback`（ky_io 是项目既有的公共 IO 模块），
+    本函数只保留「缺文件返回空串」这一层既定语义。
+    """
+    try:
+        if not path.exists():
+            return ""
+        return read_text_fallback(path)
+    except Exception:
         return ""
-    for enc in ("utf-8", "utf-8-sig", "gbk"):
-        try:
-            return path.read_text(encoding=enc)
-        except Exception:
-            continue
-    return ""
 
 def build_system_prompt(active_subj="math"):
     """组装当前激活学科的私教系统提示词与外置记忆上下文"""
@@ -1360,68 +1372,15 @@ def cjk_width(s: str) -> int:
     return w
 
 def get_today_tasks_data() -> dict:
-    """提取四科今日任务的结构化数据字典"""
-    cfg = load_config()
-    sp = cfg.get("study_plan", {})
-    math_lbl = sp.get("math_name") or cfg.get("math_name") or "数学"
-    eng_lbl = sp.get("eng_name") or cfg.get("eng_name") or "英语"
-    pol_lbl = "思想政治理论"
-    pro_lbl = sp.get("pro_name") or cfg.get("pro_name") or "专业课"
+    """提取四科今日任务的结构化数据字典。
 
-    subjs = [
-        ("01-数学", "math", math_lbl),
-        ("02-英语", "eng", eng_lbl),
-        ("03-思想政治理论", "pol", pol_lbl),
-        ("04-专业课", "pro", pro_lbl),
-    ]
-    result = {"date": datetime.now().strftime("%Y-%m-%d"), "subjects": {}, "summary": {"total": 0, "completed": 0, "rate": 0.0}}
-    total_count = 0
-    done_count = 0
-
-    for dir_name, key, label in subjs:
-        task_file = ROOT / dir_name / "_状态" / "今日任务.md"
-        tasks = []
-        if task_file.exists():
-            content = read_text_safe(task_file)
-            for l in content.splitlines():
-                l_str = l.strip()
-                # 支持列表项语法: - [ ] 或 - [x]
-                if re.match(r"^-\s*\[[ xX]\]", l_str):
-                    is_done = bool(re.match(r"^-\s*\[[xX]\]", l_str))
-                    total_count += 1
-                    if is_done:
-                        done_count += 1
-                    desc = re.sub(r"^-\s*\[[ xX]\]\s*", "", l_str)
-                    tasks.append({
-                        "module": "任务",
-                        "content": desc,
-                        "duration": "",
-                        "done": is_done,
-                    })
-                # 支持表格语法: | 模块 | 任务内容 | 预计用时 | 完成状态 |
-                elif "|" in l_str and not l_str.replace(" ", "").startswith("|---|") and "完成状态" not in l_str and "模块" not in l_str:
-                    parts = [p.strip() for p in l_str.split("|") if p.strip()]
-                    if len(parts) >= 3:
-                        is_done = "[x]" in parts[-1].lower()
-                        total_count += 1
-                        if is_done:
-                            done_count += 1
-                        tasks.append({
-                            "module": parts[0],
-                            "content": parts[1],
-                            "duration": parts[2] if len(parts) > 2 else "",
-                            "done": is_done,
-                        })
-        result["subjects"][key] = {
-            "label": label,
-            "tasks": tasks,
-            "total": len(tasks),
-            "completed": sum(1 for t in tasks if t["done"])
-        }
-    result["summary"]["total"] = total_count
-    result["summary"]["completed"] = done_count
-    result["summary"]["rate"] = round(done_count / total_count * 100, 1) if total_count > 0 else 0.0
-    return result
+    [缺陷修复·三端重复解析] 本函数原先自带一套「读文件 + 逐行正则 + 表格切分」
+    的解析实现，与 TUI（get_today_progress）、GUI（_load_today_task_progress）
+    各写一遍且判定条件互有差异（GUI 不认 `| --- |` 这种带空格的分隔行，
+    任务总数会虚高）。现统一委托 tools/state 共享层的解析器，
+    返回结构保持原样，`ky today --json` 的消费者无需改动。
+    """
+    return state_to_cli_dict(load_dashboard_state(ROOT))
 
 def mark_today_task_done(keyword: str, subject: str = None) -> tuple:
     """在今日任务中根据关键词匹配并标记为 [x] 完成"""

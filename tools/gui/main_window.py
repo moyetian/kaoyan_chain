@@ -5,7 +5,6 @@
 
 import sys
 import json
-import re
 import io
 import contextlib
 from pathlib import Path
@@ -23,6 +22,14 @@ TOOLS = ROOT / "tools"
 for p in (str(ROOT), str(TOOLS)):
     if p not in sys.path:
         sys.path.insert(0, p)
+
+# [缺陷修复·三端重复解析] 今日任务进度统一走 tools/state 共享层。
+# 旧实现自带一份解析、且表格分隔行判定不认 `| --- |`（带空格）写法，
+# 会把分隔行当成一条任务计入总数，进度百分比随之偏低。
+try:
+    from state import load_dashboard_state  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.state import load_dashboard_state  # type: ignore  # noqa: E402
 
 CONFIG_FILE = ROOT / "ky_config.json"
 
@@ -355,41 +362,24 @@ class MainWindow(QMainWindow):
         return countdown_days(self.config)
 
     def _load_today_task_progress(self):
-        """解析各科 _状态/今日任务.md 的勾选进度 (兼容 Markdown 列表与表格语法)"""
-        subjs = [
-            ("01-数学", "math"),
-            ("02-英语", "eng"),
-            ("03-思想政治理论", "pol"),
-            ("04-专业课", "pro"),
-        ]
-        for folder, key in subjs:
-            task_file = self.workspace_root / folder / "_状态" / "今日任务.md"
-            done_count = 0
-            total_count = 0
-            if task_file.exists():
-                try:
-                    text = task_file.read_text(encoding="utf-8")
-                    for line in text.splitlines():
-                        l_str = line.strip()
-                        # 支持列表风格: - [ ] 或 - [x]
-                        if re.match(r"^-\s*\[[ xX]\]", l_str):
-                            total_count += 1
-                            if re.match(r"^-\s*\[[xX]\]", l_str):
-                                done_count += 1
-                        # 支持表格风格: | 模块 | 任务内容 | 预计用时 | 完成状态 |
-                        elif "|" in l_str and not l_str.startswith("|---|") and "完成状态" not in l_str and "模块" not in l_str:
-                            parts = [p.strip() for p in l_str.split("|") if p.strip()]
-                            if len(parts) >= 3:
-                                total_count += 1
-                                if "[x]" in parts[-1].lower():
-                                    done_count += 1
-                except Exception:
-                    pass
+        """刷新各科今日任务进度条（数据来源：tools/state 共享层）。
 
-            pct = int(done_count / total_count * 100) if total_count > 0 else 0
-            if key in self.task_progress_bars:
-                self.task_progress_bars[key].setValue(pct)
-                self.task_count_labels[key].setText(f"{done_count}/{total_count} ({pct}%)")
+        [缺陷修复·三端重复解析] 旧实现自带一份解析：只试 utf-8 编码（GBK 手写
+        笔记会被当成「没有任务」静默吞掉），且分隔行判定用 `startswith("|---|")`，
+        手写成 `| --- |` 的表头分隔行会被当成数据行、任务总数虚高。
+        现与 CLI / TUI 共用同一实现，三端数字必然一致。
+        """
+        try:
+            state = load_dashboard_state(self.workspace_root)
+        except Exception:
+            return
+        for subject in state.subjects:
+            bar = self.task_progress_bars.get(subject.key)
+            label = self.task_count_labels.get(subject.key)
+            if bar is not None:
+                bar.setValue(subject.pct)
+            if label is not None:
+                label.setText(subject.summary_text)
 
     def _refresh_error_tab(self):
         """扫描各科待复测错题"""
