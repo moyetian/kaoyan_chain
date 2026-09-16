@@ -29,12 +29,14 @@ from typing import Dict, List, Optional
 
 from ..models import SearchResult
 from . import register
-from ._http import clean_ddg_url, clean_text, get_text
+from ._http import clean_ddg_url, clean_text, get_text, looks_like_anti_bot
 from .base import ProviderError, SearchProvider
 
 _LOG = logging.getLogger(__name__)
 
 _ENDPOINT = "https://html.duckduckgo.com/html/"
+#: 备用端点（不同主机，限流桶独立；实测主端点被限流时它有时仍可用）
+_LITE_ENDPOINT = "https://lite.duckduckgo.com/lite/"
 #: 结果块：标题链接 + 摘要
 _TITLE_RE = re.compile(
     r'<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>',
@@ -65,13 +67,27 @@ class DuckDuckGoProvider(SearchProvider):
         df = _TIME_MAP.get(str(time_range or "").lower())
         if df:
             params["df"] = df
-        url = f"{_ENDPOINT}?{urllib.parse.urlencode(params)}"
-
-        html_text = get_text(url, timeout=12)
-        titles = _TITLE_RE.findall(html_text)
-        snippets = _SNIPPET_RE.findall(html_text) or _SNIPPET_DIV_RE.findall(html_text)
+        query_str = urllib.parse.urlencode(params)
+        last_anti_bot = ""
+        html_text = ""
+        titles: List = []
+        for endpoint in (_ENDPOINT, _LITE_ENDPOINT):
+            html_text = get_text(f"{endpoint}?{query_str}", timeout=12)
+            anti_bot = looks_like_anti_bot(html_text)
+            if anti_bot:
+                last_anti_bot = anti_bot
+                continue                      # 换端点再试
+            titles = _TITLE_RE.findall(html_text)
+            if titles:
+                break
         if not titles:
+            if last_anti_bot:
+                # 说清楚「是被挡了」而不是「没有结果」——两者对用户的处置完全不同
+                raise ProviderError(
+                    f"DuckDuckGo 返回反爬验证页（命中特征 {last_anti_bot}），"
+                    f"本次跳过该源（稍后重试或改用其它源）")
             raise ProviderError("页面结构未匹配到结果块（可能被限流或改版）")
+        snippets = _SNIPPET_RE.findall(html_text) or _SNIPPET_DIV_RE.findall(html_text)
 
         items: List[Dict[str, str]] = []
         for i, (href, t_html) in enumerate(titles[: max(limit, 1)]):

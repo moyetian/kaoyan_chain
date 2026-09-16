@@ -38,6 +38,13 @@ from .providers import (
     provider_names,
     register,
 )
+from .rewrite import (
+    QueryEntities,
+    QueryPlan,
+    detect_intent,
+    extract_entities,
+    plan_queries,
+)
 from .service import (
     DEFAULT_LIMIT,
     SearchService,
@@ -72,6 +79,12 @@ __all__ = [
     "SearchService",
     "format_results",
     "quick_search",
+    # 查询规划
+    "QueryEntities",
+    "QueryPlan",
+    "detect_intent",
+    "extract_entities",
+    "plan_queries",
     # 来源权威度
     "authority_of",
     "classify",

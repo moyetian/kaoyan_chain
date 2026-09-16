@@ -36,6 +36,22 @@ BROWSER_HEADERS: Dict[str, str] = {
 }
 
 
+#: 反爬/验证页特征（命中即说明「不是没结果，是被挡了」）
+ANTI_BOT_MARKERS = (
+    "anomaly", "captcha", "verify", "请协助验证", "请输入验证码",
+    "SourceVerifyCode", "访问过于频繁", "unusual traffic",
+)
+
+
+def looks_like_anti_bot(html_text: str) -> str:
+    """判断响应是否像反爬/验证页，返回命中的特征词（无则空串）。"""
+    low = str(html_text or "").lower()
+    for marker in ANTI_BOT_MARKERS:
+        if marker.lower() in low:
+            return marker
+    return ""
+
+
 def get_text(url: str, *, headers: Optional[Dict[str, str]] = None,
              timeout: int = 10) -> str:
     """抓取网页 HTML 文本；失败抛 :class:`ProviderError`。
@@ -123,6 +139,7 @@ def absolute(url: str, base: str) -> str:
 
 
 __all__ = [
+    "ANTI_BOT_MARKERS",
     "BROWSER_HEADERS",
     "USER_AGENT",
     "absolute",
@@ -130,4 +147,5 @@ __all__ = [
     "clean_ddg_url",
     "clean_text",
     "get_text",
+    "looks_like_anti_bot",
 ]

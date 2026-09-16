@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import replace
 from datetime import datetime
 from typing import Any, List, Optional, Sequence, Tuple, Union
 
@@ -161,6 +162,38 @@ class SearchService:
             providers_failed=tuple(failed), candidates=candidates,
             duplicates=removed, queries_run=1, year=q.year,
         )
+
+    def search_planned(self, text: str, *, limit: int = 10,
+                       year: Optional[int] = None, school: str = "",
+                       major: str = "", domains: Sequence[str] = (),
+                       providers: Sequence[str] = (),
+                       max_queries: int = 4) -> SearchResponse:
+        """按查询规划做多路检索，再合并去重后返回。
+
+        单条查询的召回取决于运气：实测「南方医科大学 085409 招生」能命中研究生
+        招生网，但用户原句「南方医科大学085409今年招多少人」经常只拿到培训机构的
+        二手解读。多路的意义在于覆盖**不同来源类别**（官方站内 / 研招网 / 简章 /
+        专业目录 / 资料），而不是把同一句话换几种说法。
+
+        :param max_queries: 查询路数上限。每路都会真的发请求，默认 4 路。
+        """
+        from .rewrite import plan_queries
+
+        plan = plan_queries(text, year=year, school=school, major=major,
+                            limit=max(2, int(max_queries)), domains=domains,
+                            providers=providers)
+        responses = [self.search(q) for q in plan.queries]
+
+        from .models import merge_responses
+
+        merged = merge_responses(responses, query=text)
+        # 跨查询去重：多路之间必然有重复（同一篇简章可能被多条查询命中）
+        base_query = SearchQuery(text=text, limit=limit, year=year or None)
+        kept, removed = self._dedup_results(merged.results, base_query)
+        ranked = self._rank_results(kept, base_query)
+        return replace(merged, results=tuple(ranked[:limit]),
+                       duplicates=merged.duplicates + removed,
+                       year=year or merged.year)
 
     # ── 抓取（证据） ────────────────────────────────────────
 

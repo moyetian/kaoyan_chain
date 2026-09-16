@@ -12,6 +12,7 @@ KaoYan Intelligence · 招考情报调度中枢 (Scout & Intelligence Coordinato
 """
 
 import json
+import logging
 import urllib.parse
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -97,6 +98,28 @@ class KaoYanIntelligenceEngine:
                 )
                 all_evidences.extend(extracted)
 
+        # 4b. [接通 discovery·原先的完全死代码] 官方站内检索补充。
+        #     院校注册表里的域名可能**过期、缺失或只填了学校主页**，此时上面那轮
+        #     直接抓取会一无所获，而 `OfficialDiscovery.build_targeted_queries()`
+        #     生成的 `site:域名 + 年份 + 招生简章/专业目录` 查询此前从未被任何代码
+        #     调用过（只有构造、没有使用）。现在把它接上检索运行时：
+        #     用站内查询找到**官方招生页/专业目录页**，再抓取抽取证据。
+        discovered = self._discover_official_pages(
+            entity, school_name, major_query, exam_year,
+            already_fetched={u for _, u in target_domains[:2]})
+        for url in discovered[:2]:
+            fetch_res = self.fetcher.fetch(url)
+            if fetch_res.is_valid and fetch_res.content:
+                all_evidences.extend(self.extractor.extract_from_html(
+                    html_text=fetch_res.content,
+                    page_url=url,
+                    school_name=school_name,
+                    target_year=exam_year,
+                    source_type="official_discovered",
+                    ssl_verified=getattr(fetch_res, "ssl_verified", True),
+                    access_status=getattr(fetch_res, "access_status", "OK"),
+                ))
+
         # 5. 执行证据链整合与多源冲突仲裁
         resolved_evidences = resolve_conflicts(all_evidences)
 
@@ -135,6 +158,50 @@ class KaoYanIntelligenceEngine:
             "markdown_report": markdown_content,
             "saved_path": str(saved_path) if saved_path else None
         }
+
+    def _discover_official_pages(self, entity, school_name: str,
+                                 major_query: str, exam_year: int,
+                                 already_fetched: set = None) -> List[str]:
+        """用站内检索发现官方招生页 URL（注册表域名失效时的兜底发现路径）。
+
+        这是 `OfficialDiscovery` 的**首次真实调用**：它此前只被实例化、从未被使用。
+        检索命中后只保留**官方域名**的链接（研招网/研究生院/学校官网），
+        避免把培训机构页面当成官方来源。
+        """
+        already = set(already_fetched or set())
+        found: List[str] = []
+        domains = []
+        if entity:
+            for attr in ("admission_domain", "graduate_domain", "official_domain"):
+                value = str(getattr(entity, attr, "") or "").strip()
+                if value:
+                    domains.append(value)
+        if not domains:
+            return []
+
+        try:
+            try:
+                from search import SearchQuery, SearchService
+            except ImportError:  # pragma: no cover
+                from tools.search import SearchQuery, SearchService  # type: ignore
+
+            service = SearchService()
+            for domain in domains[:2]:
+                for query in self.discovery.build_targeted_queries(
+                        school_name=school_name, domain=domain,
+                        major_keyword=major_query or None, year=exam_year):
+                    resp = service.search(SearchQuery(text=query, limit=3))
+                    for result in resp.results:
+                        if result.url in already or result.url in found:
+                            continue
+                        # 只收官方来源（研招网/研究生院/学校官网/官方文档）
+                        if result.is_official or result.source_type == "official_discovered":
+                            found.append(result.url)
+                    if found:
+                        break
+        except Exception as exc:                   # pragma: no cover - 发现失败不该阻断侦察
+            logging.getLogger(__name__).info("官方站点发现失败（忽略）: %s", exc)
+        return found
 
     def _render_markdown_report(
         self,
