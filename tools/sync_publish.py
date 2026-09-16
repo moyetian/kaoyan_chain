@@ -453,7 +453,7 @@ def cleanup_residual_hidden_dirs():
 def sanitize_source_examples():
     """Sanitize hardcoded example school names in source docstrings/comments.
 
-    [P1 修复] 原先仅硬编码替换「华南理工大学」，而当前目标院校已是天津工业大学，
+    [P1 修复] 原先仅硬编码替换「华南理工大学」，而当前目标院校是用户的真实校名，
     且 04-专业课 实际还存在华中科技大学、武汉大学、长沙理工大学等校名，
     单条替换会导致发布副本泄露真实报考信息。现统一复用 SUBSTITUTIONS 名单。
     """

@@ -33,10 +33,10 @@ COMMANDS = [
     "fatigue",
     "subject",
     "fetch info",
-    "admission 天津工业大学 医学电子信息工程 --year=2027",
-    "compare 天津工业大学 长沙理工大学 电子信息",
-    "watch 天津工业大学 --list",
-    "scout 天津工业大学 医学电子信息工程",
+    "admission 湖南大学 电子信息 --year=2027",
+    "compare 湖南大学 长沙理工大学 电子信息",
+    "watch 湖南大学 --list",
+    "scout 湖南大学 电子信息",
     "diff",
 ]
 

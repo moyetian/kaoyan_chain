@@ -174,7 +174,7 @@ def _print_srs_result(res: Dict[str, Any]) -> None:
 FAITHFULNESS_CASES: List[Dict[str, Any]] = [
     {
         "name": "逐字命中",
-        "documents": ["天津工业大学2027年硕士研究生招生简章：拟招生 60 人。"],
+        "documents": ["示例院校A2027年硕士研究生招生简章：拟招生 60 人。"],
         "answer": {"answer": "拟招 60 人", "confidence": "high",
                    "citations": [{"cited_text": "拟招生 60 人", "document_index": 0}]},
         "expected": True,
@@ -195,7 +195,7 @@ FAITHFULNESS_CASES: List[Dict[str, Any]] = [
     },
     {
         "name": "编造引文必须拒绝",
-        "documents": ["天津工业大学2027年硕士研究生招生简章：拟招生 60 人。"],
+        "documents": ["示例院校A2027年硕士研究生招生简章：拟招生 60 人。"],
         "answer": {"answer": "拟招 9999 人", "confidence": "high",
                    "citations": [{"cited_text": "拟招生 9999 人", "document_index": 0}]},
         "expected": False,

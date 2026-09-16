@@ -14,7 +14,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/Release-v2.7.0-blue?style=flat-square&logo=github&logoColor=white" alt="Release v2.7.0" />
-  <img src="https://img.shields.io/badge/Tests-401%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 401 Passed" />
+  <img src="https://img.shields.io/badge/Tests-632%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 632 Passed" />
   <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-6366f1?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
   <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
   <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
@@ -107,14 +107,14 @@ ky
 > \[!TIP\]
 > 考研学习链提供 **三大操作端** 供你自由选用：
 >
-> - 🖥️ **桌面可视化端**：输入 `ky gui`，享受 PySide6 构建的高颜值暗黑/明亮双主题看板、倒计时与可视化做题面板！
+> - 🖥️ **桌面可视化端**：输入 `ky gui`，享受 PySide6 构建的高颜值多主题看板（5 套主题预设含护眼绿/樱粉/高对比）、倒计时与可视化做题面板！
 > - 📟 **终端全景中枢**：输入 `ky menu`，启动 TUI v2.5 极客控制台，键鼠双控、零多余依赖！
 > - 💬 **流式对话私教**：输入 `ky`，即刻开启多轮推演与真题采分点打分！
 
 > \[!TIP\]
 > **装完先自检**：执行 `python tools/doctor.py`，一次性核对 Python 版本、可选依赖、四科协议、
 > `ky_config.json`、API 连通性与 Git 隐私隔离是否就绪；如需验证功能完整性，
-> 再跑 `python tools/test_ky_suite.py`（269 项断言，约 1 分钟）。
+> 再跑 `python tools/test_ky_suite.py`（284 项断言，约 1 分钟）。
 
 ---
 
@@ -131,7 +131,7 @@ ky
   想改风格只需在 `ui_theme.json` 里覆盖一个主色，悬停色与焦点环会自动跟着协调（内置 WCAG 对比度校验，看不清的配色会被拒绝）；
 - **全战役状态大盘**：Header 实时联动初试倒计时、学员目标院校/专业、当前激活辅导风格；
 - **10 大功能卡片直达**：今日任务、靶向组卷、同源变式、考纲Diff、切片入库、院校侦察、双校对标、简章监控、看板更新、公众号检索；
-- **4 大深度交互分页**：💬 **私教对话**（多线程异步防卡死）、📋 **今日任务**（打卡进度条）、📕 **错题本**（高频归因透视）、🏛️ **研招情报**（高校监控雷达）。
+- **4 大深度交互分页**：💬 **私教对话**（多线程异步防卡死、流式打字机输出）、📋 **今日任务**（打卡进度条）、📕 **错题本**（高频归因透视）、🏛️ **研招情报**（高校监控雷达）。
 
 ### 2. 📱 微信公众号考研经验检索与爬虫 (`ky wechat` / `ky wx`)
 
@@ -155,6 +155,8 @@ ky
 
 - **零服务器依赖**：自包含单文件 HTML，手机浏览器打开即用，支持 **PWA 添加到手机主屏幕**；
 - **独创遮罩自测**：在 `🧠 必背` 页签开启高斯模糊遮罩，触碰卡片秒测数学核心公式、英语高频词与政治帽子词；
+- **5 套主题预设一键轮换**：曜石黑 / 晨曦白 / 护眼绿 / 樱粉 / 高对比（无障碍）随按钮循环切换，选择自动记忆；
+- **备考节律主题**：按距初试天数自动推荐主题（基础期深色 → 强化期护眼绿 → 冲刺期亮色 → 临考月暖粉 → 决战周高对比），手动选择后不再被覆盖；
 - **全科掌握度雷达**：动态提取复习增量与掌握度分值，实时展示考情与学情趋势。
 
 ### 6. 🏛️ KaoYan Intelligence 招考全景情报与证据链引擎
@@ -176,12 +178,12 @@ ky
 
 ## 💬 常用私教交互与指令速查
 
-系统提供 34 个工业级 CLI 子命令与对话交互口令，完整参数说明请参阅 [📘 学员实操手册](操作手册.md)：
+系统提供 39 个工业级 CLI 子命令与对话交互口令，完整参数说明请参阅 [📘 学员实操手册](操作手册.md)：
 
 
 | 交互场景      | 推荐口令 / 子命令                         | 行为说明                                   |
 | --------- | ---------------------------------- | -------------------------------------- |
-| **桌面操作**  | `ky gui` / `ky-gui`                | 启动 PySide6 桌面可视化图形操作端 (支持暗黑/明亮双主题)     |
+| **桌面操作**  | `ky gui` / `ky-gui`                | 启动 PySide6 桌面可视化图形操作端 (内置 5 套主题预设)       |
 | **公众号检索** | `ky wechat 408经验 --save` / `ky wx` | 多源检索微信公众号考研文章与上岸经验贴，沉淀至本地并联动研报         |
 | **晨起看盘**  | `ky status` / `ky today`           | 查看初试倒计时、今日四科任务攻坚清单与进度                  |
 | **学科报到**  | `数学报到` / `英语报到` / `ky`             | 私教调取昨日错题，从白名单题库抽取题目派发                  |
@@ -230,7 +232,7 @@ ky
 ├── data/universities/           # 内置高校考研档案库（55+ 所，公开数据）
 ├── rust_ext/                    # Rust (PyO3) 原生加速扩展源码（可选构建）
 └── tools/                       # 全部 Python 源码
-    ├── ky_cli.py                # 主命令行入口，34 个子命令
+    ├── ky_cli.py                # 主命令行入口，39 个子命令（表驱动分发）
     ├── tui_navigator.py         # 终端全景智能中枢 (TUI)
     ├── ky_gui.py / gui/         # PySide6 桌面可视化操作端
     ├── agent/                   # Agent 内核：沙箱 / 权限 / 记忆 / 生命周期钩子
@@ -330,17 +332,17 @@ ky
 本项目包含覆盖全链路功能、权限沙箱、研招情报、Rust加速与真实 CLI 进程级 smoke test 的自动化回归套件：
 
 ```bash
-# 运行全套自动化质量回归测试 (25 组全链路回归测试，共 269 项断言)
+# 运行全套自动化质量回归测试 (25 组全链路回归测试，共 284 项断言)
 python tools/test_ky_suite.py
 
-# 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、开放题判分等，共 125 项断言)
+# 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、开放题判分等，共 130 项断言)
 python tools/test_new_features.py
 
-# pytest 单元与进程层测试（CLI 入口、并发与原子性压测，共 7 项）
+# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产等，共 218 项）
 python -m pytest -q
 ```
 
-- **测试保障**：主套件 25 组测试集 **269 项断言** + 新功能专项 **125 项断言** + pytest 单元/进程层 **7 项**（合计 **401 项**），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
+- **测试保障**：主套件 25 组测试集 **284 项断言** + 新功能专项 **130 项断言** + pytest 单元/进程层 **218 项**（合计 **632 项**，含可选依赖缺失时自动跳过的用例），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
 - **门禁脚本**：`python tools/lint_check.py`（零依赖静态检查，只卡 ERROR 级问题）、`python tools/check_dashboard.py`（看板产物守卫）已接入 CI；
 - **CI 流水线**：内置 GitHub Actions 多平台 (Linux/Windows) 与多 Python 版本自动化测试保障；
 - **开发者文档**：如需参与贡献或了解完整项目架构树，请参阅 [🛠️ 开发者与贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。

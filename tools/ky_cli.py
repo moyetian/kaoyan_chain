@@ -1985,7 +1985,7 @@ def print_status_summary():
         # [P1 修复·大盘院校错显] AGENTS.md 的「目标院校/报考专业」行可能仍是
         # 初始占位（`目标院校`/`报考专业`）—— 例如学员先跑完向导写入 ky_config.json，
         # 但根 AGENTS.md 由更早的初始化模板生成/被重置过。此前大盘只读 AGENTS.md，
-        # 于是配置文件里明明写着「天津工业大学」，态势大盘却显示「目标院校」，
+        # 于是配置文件里明明写着目标院校名（如「示例院校A」），态势大盘却显示「目标院校」，
         # 学员以为报考信息丢失。现改为：以 ky_config.json 的 study_plan 为准，
         # 若配置里是真实值就覆盖占位行；配置也缺失时才回落到 AGENTS.md 原文。
         _cfg_school = (plan.get("school") or "").strip()
@@ -3653,8 +3653,8 @@ def cmd_wechat_search(cli_args: list):
 """)
         return
 
-    # [P0 修复] 多词关键词此前只取第一个词：「天津工业大学 电子信息 考研」被截断为
-    # 「天津工业大学」，检索出教师招聘等无关内容。非选项的位置参数应整体拼接为关键词。
+    # [P0 修复] 多词关键词此前只取第一个词：「示例院校A 电子信息 考研」被截断为
+    # 「示例院校A」，检索出教师招聘等无关内容。非选项的位置参数应整体拼接为关键词。
     keyword = " ".join(a for a in cli_args if not a.startswith("-")).strip()
     max_results = 10
     save_to_local = False
@@ -4672,7 +4672,7 @@ def _cmd_compare(args: List[str]) -> None:
         missing = "第一所高校（档案报考院校为空）" if not s1 else "第二所高校（档案备选院校为空）"
         print(colorize(f"[!] 双校对标缺少{missing}，请显式指定：\n"
                        f"      用法: ky compare <高校1> <高校2> [专业关键词] [--save]\n"
-                       f"      示例: ky compare 天津工业大学 长沙理工大学 --save", C.YELLOW))
+                       f"      示例: ky compare 示例院校A 示例院校B --save", C.YELLOW))
         sys.exit(1)
     # [根因修复·默认值硬编码] 未给专业关键词时此前硬编码 "计算机"（同类缺陷
     # 此前只修了 REPL 的 /compare 分支，顶层 ky compare 被漏掉），现统一走解析函数。
