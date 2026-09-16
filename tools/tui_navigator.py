@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-考研学习链 (Kaoyan Study Chain) · 终端全景交互中枢 (TUI Navigator v2.5)
+考研学习链 (Kaoyan Study Chain) · 终端全景交互中枢 (TUI Navigator)
 
 提供纯终端/控制台下的高颜值全功能交互式操作面板：
   [1] 📋 今日任务 · 跨科目任务推进与打卡
@@ -39,6 +39,13 @@ try:
     import exam_calendar
 except ImportError:  # pragma: no cover - 兼容 tools.exam_calendar 包式导入
     from tools import exam_calendar
+
+# [缺陷修复·版本号多源漂移] Banner 版本改为读单一真源；
+# 此前写死 "v2.5"，与 pyproject 的 2.7.0、CLI 的 v2.6.0 三处互不相同。
+try:
+    from version import get_version
+except ImportError:  # pragma: no cover - 兼容 tools.version 包式导入
+    from tools.version import get_version
 
 
 # ════════════════════════════════════════════════════════════════
@@ -433,7 +440,7 @@ def render_header() -> str:
     W = TOTAL_PANEL_WIDTH
     lines = []
     lines.append(colorize("╭" + "─" * (W - 2) + "╮", Colors.CYAN))
-    lines.append(render_box_line(colorize("🎯 考研学习链 (Kaoyan Study Chain) · 终端全景智能中枢 v2.5", Colors.BOLD + Colors.CYAN), W, 'center'))
+    lines.append(render_box_line(colorize(f"🎯 考研学习链 (Kaoyan Study Chain) · 终端全景智能中枢 v{get_version()}", Colors.BOLD + Colors.CYAN), W, 'center'))
     lines.append(colorize("├" + "─" * (W - 2) + "┤", Colors.CYAN))
 
     # 第一行：倒计时与备考历程进度条

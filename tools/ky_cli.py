@@ -38,6 +38,13 @@ try:
 except ImportError:  # pragma: no cover
     from tools import exam_calendar  # type: ignore  # noqa: E402
 
+# [缺陷修复·版本号多源漂移] 项目版本收敛到 tools/version.py 单一真源，
+# 此前本文件写死 "v2.6.0" 而 pyproject 是 2.7.0，`ky --version` 与 pip 元数据打架。
+try:
+    from version import get_version  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.version import get_version  # type: ignore  # noqa: E402
+
 # Windows 控制台安全编码
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     try:
@@ -3935,7 +3942,7 @@ def main():
     if not args:
         run_repl(permission_mode=permission_mode, gateway_host=gateway_host, gateway_token=gateway_token)
     elif args[0] in ("--version", "-v", "version"):
-        print(f"考研学习链专用终端工具 (ky-cli) v2.6.0 · Python {sys.version.split()[0]}")
+        print(f"考研学习链专用终端工具 (ky-cli) v{get_version()} · Python {sys.version.split()[0]}")
         sys.exit(0)
     elif args[0] in ("view", "--view", "--web", "live"):
         port = start_background_live_server(8088, host=gateway_host) or 8088
