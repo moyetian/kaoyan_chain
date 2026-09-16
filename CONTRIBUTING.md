@@ -107,10 +107,13 @@ kaoyan_chain/
     ├── agent/                           # 工业级自主智能体内核 (Loop, Hooks, Memory, MCP, Sandbox)
     ├── gui/                             # [v2.6+] PySide6 桌面 GUI 模块
     │   ├── __init__.py                  # GUI 包入口
-    │   ├── main_window.py               # 主窗口 (4 Tab, 10 功能卡片)
-    │   ├── theme/dark.qss               # 暗黑主题样式表
-    │   ├── theme/light.qss              # 明亮主题样式表
-    │   └── widgets/                     # 对话框与自定义控件 (WeChatSearchDialog 等)
+    │   ├── main_window.py               # 主窗口：组装界面 + 事件分发（数据/样式已外移）
+    │   ├── theme_apply.py               # 主题解析、应用与 QSettings 偏好持久化
+    │   ├── services/                    # 纯数据服务（可离屏单测，不依赖 Qt 控件）
+    │   └── widgets/                     # 对话框与自定义控件 (FunctionCard / WeChatSearchDialog)
+    ├── theme/                           # 设计系统单一真源：token + 三端编译器（QSS / CSS / ANSI）
+    ├── state/                           # 四端共享状态层（今日任务、倒计时、配置摘要统一解析）
+    ├── version.py                       # 项目版本号单一真源
     ├── intelligence/                    # KaoYan Intelligence 招考全景情报与证据链引擎
     │   ├── chsi_connector.py            # 研招网 S 级权威目录连接器
     │   ├── comparator.py                # 双校招考核心指标横向深度对标引擎

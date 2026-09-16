@@ -385,27 +385,25 @@ D. 2
         ]
         for name in gui_skip_names:
             runner.skip(name, "PySide6 未安装")
-        # QSS 样式表完整性可独立验证（纯文件读取）
+        # QSS 完整性可独立验证：不再读两份手写文件，而是从 token 现场编译
+        # （设计系统单一真源见 tools/theme；手写副本已删除，避免"改了模板忘改文件"）
         try:
-            dark_qss_path = ROOT / "tools" / "gui" / "theme" / "dark.qss"
-            light_qss_path = ROOT / "tools" / "gui" / "theme" / "light.qss"
-            if dark_qss_path.exists() and light_qss_path.exists():
-                dark_qss = dark_qss_path.read_text(encoding="utf-8")
-                light_qss = light_qss_path.read_text(encoding="utf-8")
-                # [P0 修复] 行为级校验：QSS 必须覆盖 GUI 实际 setObjectName 的全部核心控件
-                _required_selectors = ("QMainWindow", "#HeaderBar", "#FunctionCard", "#TaskRow", "#QuickPill")
-                runner.assert_true(len(dark_qss) > 200 and all(s in dark_qss for s in _required_selectors),
-                                   "GUI: 暗黑主题 dark.qss 覆盖 GUI 实际使用的全部核心控件规则")
-                runner.assert_true(len(light_qss) > 200 and all(s in light_qss for s in _required_selectors),
-                                   "GUI: 明亮主题 light.qss 覆盖 GUI 实际使用的全部核心控件规则")
-            else:
-                runner.skip("GUI: QSS 样式表完整性", "QSS 文件不存在")
+            from tools.theme import build_theme, render_qss
+            _required_selectors = ("QMainWindow", "#HeaderBar", "#FunctionCard", "#TaskRow", "#QuickPill")
+            dark_qss = render_qss(build_theme("dark"))
+            light_qss = render_qss(build_theme("light"))
+            runner.assert_true(len(dark_qss) > 200 and all(s in dark_qss for s in _required_selectors),
+                               "GUI: 暗黑主题编译产物覆盖 GUI 实际使用的全部核心控件规则")
+            runner.assert_true(len(light_qss) > 200 and all(s in light_qss for s in _required_selectors),
+                               "GUI: 明亮主题编译产物覆盖 GUI 实际使用的全部核心控件规则")
+            runner.assert_true(dark_qss != light_qss,
+                               "GUI: 两套主题由不同 token 驱动（非同一份样式表）")
         except Exception as e:
-            runner.assert_true(False, f"测试组 C (QSS 校验) 异常: {e}")
+            runner.assert_true(False, f"测试组 C (QSS 编译校验) 异常: {e}")
     else:
         try:
             os.environ["QT_QPA_PLATFORM"] = "offscreen"
-            from PySide6.QtWidgets import QApplication
+            from PySide6.QtWidgets import QApplication, QWidget
             from tools.gui.main_window import MainWindow
             from tools.gui.widgets.wechat_search_dialog import WeChatSearchDialog
 
@@ -425,15 +423,27 @@ D. 2
             runner.assert_true(dialog is not None, "GUI: WeChatSearchDialog 成功实例化")
             runner.assert_true(dialog.school_input is not None and dialog.keyword_input is not None, "GUI: 微信搜索对话框控件完整")
 
-            # C.3 QSS 样式表完整性
-            dark_qss = (ROOT / "tools" / "gui" / "theme" / "dark.qss").read_text(encoding="utf-8")
-            light_qss = (ROOT / "tools" / "gui" / "theme" / "light.qss").read_text(encoding="utf-8")
-            # [P0 修复] 行为级校验：QSS 必须覆盖 GUI 实际 setObjectName 的全部核心控件
+            # C.3 主题样式：从 token 现场编译（不再读两份手写 QSS 副本）
+            from tools.theme import build_theme, render_qss
             _required_selectors = ("QMainWindow", "#HeaderBar", "#FunctionCard", "#TaskRow", "#QuickPill")
+            dark_qss = render_qss(build_theme("dark"))
+            light_qss = render_qss(build_theme("light"))
             runner.assert_true(len(dark_qss) > 200 and all(s in dark_qss for s in _required_selectors),
-                               "GUI: 暗黑主题 dark.qss 覆盖 GUI 实际使用的全部核心控件规则")
+                               "GUI: 暗黑主题编译产物覆盖 GUI 实际使用的全部核心控件规则")
             runner.assert_true(len(light_qss) > 200 and all(s in light_qss for s in _required_selectors),
-                               "GUI: 明亮主题 light.qss 覆盖 GUI 实际使用的全部核心控件规则")
+                               "GUI: 明亮主题编译产物覆盖 GUI 实际使用的全部核心控件规则")
+            runner.assert_true(app.styleSheet() == dark_qss or app.styleSheet() == light_qss,
+                               "GUI: 主窗口构造后已把编译出的主题应用到 QApplication")
+
+            # C.4 改造前后对比：控件不得再持有内联样式（浅色主题曾被内联深色压过）
+            inline_styled = [w for w in win.findChildren(QWidget)
+                             if w.styleSheet() and "#" in w.styleSheet()]
+            runner.assert_true(not inline_styled,
+                               f"GUI: 无控件内联写死颜色（浅色主题不再被压过），实际 {len(inline_styled)} 处")
+            runner.assert_true(win.countdown_label.text().startswith("⏳ 初试倒计时:"),
+                               "GUI: 倒计时以实例属性持有并可刷新（不再是取完即弃的局部变量）")
+            runner.assert_true(win.meta_label.text().startswith("🏛️ 目标:"),
+                               "GUI: 顶栏目标/风格信息由共享状态层填充")
 
             # 销毁窗口释放资源
             win.close()
@@ -536,7 +546,13 @@ D. 2
         gui_src = (ROOT / "tools" / "gui" / "main_window.py").read_text(encoding="utf-8")
         gui_ghost = [g for g in ghost_apis if g in gui_src]
         runner.assert_true(not gui_ghost, f"GUI: 已无幽灵 API 引用 (命中: {gui_ghost or '无'})")
-        runner.assert_true("compose_exam_paper" in gui_src, "GUI: 错题盲盒走 compose_exam_paper 正确入口")
+        # 后端调用已从窗口抽到 services 层（MainWindow 只负责把文本贴到面板），
+        # 因此这里改为在服务层校验入口正确性，并确认窗口确实调用了该服务。
+        gui_actions_src = (ROOT / "tools" / "gui" / "services" / "actions.py").read_text(encoding="utf-8")
+        runner.assert_true("compose_exam_paper" in gui_actions_src,
+                           "GUI: 错题盲盒走 compose_exam_paper 正确入口")
+        runner.assert_true("services.make_error_quiz" in gui_src,
+                           "GUI: 主窗口通过 services 层触发出卷（不在窗口内直连后端）")
 
         # E.5 syllabus_diff metrics 键名一致性
         gen = syllabus_diff.get_syllabus_diff_generator()

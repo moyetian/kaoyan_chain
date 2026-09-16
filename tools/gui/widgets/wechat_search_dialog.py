@@ -123,7 +123,10 @@ class WeChatSearchDialog(QDialog):
 
         # 状态与详情预览
         self.status_label = QLabel("输入关键词点击「🔍 检索」开始搜索考研经验与考点文章。")
-        self.status_label.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        # [同批修复·内联样式] 原先在此写死 #94a3b8 —— 与主窗口那 10 处同一类问题：
+        # widget 自带样式表优先级高于全局 QSS，切浅色主题后这行字仍是深灰偏白、
+        # 在白底上看不清。改走 objectName + 主题 token。
+        self.status_label.setObjectName("StatusLabel")
         layout.addWidget(self.status_label)
 
         self.preview = QTextEdit()

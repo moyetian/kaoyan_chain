@@ -48,17 +48,22 @@ def main():
     app.setApplicationName("考研学习链 GUI")
     app.setOrganizationName("KaoyanStudyChain")
 
-    # 全局字体
-    font = QFont("Microsoft YaHei", 10)
+    # 全局字体：字号随主题 token（font-scale）走，且字体族不再硬编码
+    # "Microsoft YaHei"（Linux / macOS 上该字体并不存在）。
+    try:
+        from gui import theme_apply
+    except ImportError:  # pragma: no cover
+        from tools.gui import theme_apply  # type: ignore
+
+    theme = theme_apply.resolve_theme(ROOT)
+    font = QFont()
+    font.setFamilies([f.strip().strip('"') for f in
+                      str(theme.get("font-family", "")).split(",") if f.strip()])
+    font.setPointSizeF(round(10 * theme.number("font-scale", 1.0), 1))
     app.setFont(font)
 
-    # 加载深色主题
-    theme_path = TOOLS / "gui" / "theme" / "dark.qss"
-    if theme_path.exists():
-        try:
-            app.setStyleSheet(theme_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+    # 主题 QSS 由 token 现场编译（深/浅/护眼绿/樱粉/高对比 皆可）
+    theme_apply.apply_theme(app, theme)
 
     window = MainWindow()
     window.show()

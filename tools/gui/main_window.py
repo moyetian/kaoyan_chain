@@ -1,21 +1,36 @@
 # -*- coding: utf-8 -*-
 """
 考研学习链 GUI 主窗口 (MainWindow)
+
+[本文件职责] 只做「组装界面 + 事件分发 + 生命周期」。
+
+分层（对应 agent.md 的单一职责与领域物理隔离）：
+    views/        构建控件与连线（header / function_cards / 四个页签）
+    services/     取数据与调后端，纯数据、无 Qt 控件、可离屏单测
+    theme_apply   主题解析应用 + QSettings 偏好持久化
+    widgets/      可复用控件（FunctionCard 等）
+
+改造前这里同时承担布局、业务、样式三件事（700 行；10 处内联 setStyleSheet
+把颜色写死在控件上，导致浅色主题被压过而实际不可用；倒计时是局部变量、
+永不刷新）。现在这些职责各自归位。
+
+对外契约（scripts/gui_real_session_check.py 依赖，不得改名）：
+    _feature_buttons / tab_widget / _toggle_theme()
+    _load_today_task_progress() / _refresh_error_tab() / _refresh_intel_tab()
 """
 
-import sys
-import json
-import io
-import contextlib
-from pathlib import Path
-from datetime import datetime
+from __future__ import annotations
 
+import json
+import sys
+from datetime import date
+from pathlib import Path
+
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QPushButton, QTabWidget, QProgressBar, QFrame, QScrollArea,
-    QLineEdit, QTextEdit, QMessageBox, QFileDialog, QApplication
+    QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox,
+    QTabWidget, QVBoxLayout, QWidget,
 )
-from PySide6.QtCore import Qt, Signal, QTimer
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 TOOLS = ROOT / "tools"
@@ -23,45 +38,17 @@ for p in (str(ROOT), str(TOOLS)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-# [缺陷修复·三端重复解析] 今日任务进度统一走 tools/state 共享层。
-# 旧实现自带一份解析、且表格分隔行判定不认 `| --- |`（带空格）写法，
-# 会把分隔行当成一条任务计入总数，进度百分比随之偏低。
-try:
-    from state import load_dashboard_state  # noqa: E402
+# 双导入路径兼容（py tools/ky_gui.py 脚本式 / import tools.gui 包式）
+try:  # pragma: no cover
+    from gui import services, theme_apply, views
+    from gui.widgets.function_card import FunctionCard
 except ImportError:  # pragma: no cover
-    from tools.state import load_dashboard_state  # type: ignore  # noqa: E402
+    from tools.gui import services, theme_apply, views  # type: ignore
+    from tools.gui.widgets.function_card import FunctionCard  # type: ignore
 
 CONFIG_FILE = ROOT / "ky_config.json"
 
-
-class FunctionCard(QFrame):
-    """功能模块卡片组件"""
-    clicked = Signal(str)  # 发射功能别名
-
-    def __init__(self, icon: str, title: str, desc: str, alias: str, parent=None):
-        super().__init__(parent)
-        self.alias = alias
-        self.setObjectName("FunctionCard")
-        self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumSize(200, 84)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(4)
-
-        title_label = QLabel(f"{icon}  {title}")
-        title_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #6366f1;")
-        desc_label = QLabel(desc)
-        desc_label.setStyleSheet("font-size: 11px; color: #94a3b8;")
-        desc_label.setWordWrap(True)
-
-        layout.addWidget(title_label)
-        layout.addWidget(desc_label)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.clicked.emit(self.alias)
-        super().mousePressEvent(event)
+TAB_TITLES = ("💬 私教对话", "📋 今日任务", "📕 错题本", "🏛️ 研招情报")
 
 
 class MainWindow(QMainWindow):
@@ -73,12 +60,20 @@ class MainWindow(QMainWindow):
         # 再次发送时被覆盖会导致运行中线程对象被 GC 销毁、进程直接崩溃。
         self.agent_worker = None
         self._worker_refs = []
+        self._today = date.today()
+
         self.setWindowTitle("考研学习链 · 全科智能私教中枢")
         self.setMinimumSize(1180, 780)
         self._load_config()
+        self._theme = self._apply_initial_theme()
         self._init_ui()
         self._init_timer()
-        self._load_today_task_progress()
+        self._refresh_all()
+        theme_apply.restore_geometry(self)
+
+    # ════════════════════════════════════════════════════════════
+    # 初始化
+    # ════════════════════════════════════════════════════════════
 
     def _load_config(self):
         self.config = {}
@@ -89,6 +84,14 @@ class MainWindow(QMainWindow):
             except Exception:
                 self.config = {}
 
+    def _apply_initial_theme(self):
+        """解析并应用主题（token 现场编译，不再读两份手写 QSS）。"""
+        theme = theme_apply.resolve_theme(self.workspace_root)
+        app = QApplication.instance()
+        if app is not None:
+            theme_apply.apply_theme(app, theme)
+        return theme
+
     def _init_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
@@ -96,284 +99,68 @@ class MainWindow(QMainWindow):
         main_layout.setSpacing(14)
         main_layout.setContentsMargins(18, 16, 18, 16)
 
-        # ── 顶部状态栏 ──
-        header = self._build_header()
-        main_layout.addWidget(header)
+        main_layout.addWidget(views.header.build(self))
+        main_layout.addWidget(views.function_cards.build(self), stretch=1)
 
-        # ── 核心功能区 (网格卡片) ──
-        cards_area = self._build_function_cards()
-        main_layout.addWidget(cards_area, stretch=1)
-
-        # ── 底部标签页 ──
         self.tabs = QTabWidget()
-        self.tab_widget = self.tabs
-        self.tabs.addTab(self._build_chat_tab(), "💬 私教对话")
-        self.tabs.addTab(self._build_task_tab(), "📋 今日任务")
-        self.tabs.addTab(self._build_error_tab(), "📕 错题本")
-        self.tabs.addTab(self._build_intel_tab(), "🏛️ 研招情报")
+        self.tab_widget = self.tabs          # 对外契约名
+        for builder, title in zip(
+            (views.chat_tab.build, views.task_tab.build,
+             views.error_tab.build, views.intel_tab.build),
+            TAB_TITLES,
+        ):
+            self.tabs.addTab(builder(self), title)
+        self.tabs.setCurrentIndex(self._restore_last_tab())
         main_layout.addWidget(self.tabs, stretch=3)
 
-    def _build_header(self):
-        header = QFrame()
-        header.setObjectName("HeaderBar")
-        header.setFixedHeight(75)
-        layout = QHBoxLayout(header)
+    def _restore_last_tab(self) -> int:
+        try:
+            idx = int(theme_apply.read_prefs().get("last_tab", 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+        return idx if 0 <= idx < self.tabs.count() else 0
 
-        days_left = self._calc_countdown()
+    # ════════════════════════════════════════════════════════════
+    # 主题
+    # ════════════════════════════════════════════════════════════
 
-        title = QLabel("🎯 考研学习链")
-        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #6366f1;")
+    def _sync_header_text(self):
+        """把服务层取到的头部数据写进控件（含倒计时）。
 
-        sp = self.config.get("study_plan", {})
-        school = sp.get("school") or self.config.get("target_school") or "目标院校"
-        major = sp.get("major") or self.config.get("target_major") or "报考专业"
-        # [P0 修复·风格单一真源] 旧键名 coach_style 无人写入，GUI 永远回退默认值；
-        # 统一读 study_plan.style_name → 顶层 coaching_style 的既有写入路径。
-        style = (sp.get("style_name")
-                 or self.config.get("coaching_style")
-                 or sp.get("coach_style")
-                 or "严格把关·保姆提分型")
+        [缺陷修复·死数字] 头部倒计时改造前是局部变量，构造时算一次就再也不动。
+        """
+        info = services.header_info(self.workspace_root)
+        self.countdown_label.setText(f"⏳ 初试倒计时: {info['days_left']} 天")
+        self.meta_label.setText(
+            f"🏛️ 目标: {info['school']} · {info['major']}  |  "
+            f"🛡️ 风格: {info['style_short']}")
+        self._sync_theme_button()
 
-        countdown = QLabel(f"⏳ 初试倒计时: {days_left} 天")
-        countdown.setStyleSheet("font-size: 15px; font-weight: bold; color: #f59e0b;")
-
-        meta_label = QLabel(f"🏛️ 目标: {school} · {major}  |  🛡️ 风格: {style.split('·')[0]}")
-        meta_label.setStyleSheet("font-size: 12px; color: #94a3b8;")
-
-        layout.addWidget(title)
-        layout.addSpacing(16)
-        layout.addWidget(meta_label)
-        layout.addStretch()
-
-        self._current_theme = "dark"
-        self.theme_btn = QPushButton("☀️ 浅色")
-        self.theme_btn.setFixedWidth(70)
-        self.theme_btn.setStyleSheet("font-size: 11px; padding: 4px 8px; border-radius: 6px; background: #2e344e; color: #a5b4fc;")
-        self.theme_btn.clicked.connect(self._toggle_theme)
-        layout.addWidget(self.theme_btn)
-        layout.addSpacing(12)
-
-        layout.addWidget(countdown)
-        return header
+    def _sync_theme_button(self):
+        self.theme_btn.setText("🌙 深色" if self._theme.mode == "light" else "☀️ 浅色")
 
     def _toggle_theme(self):
-        """切换深色/浅色主题"""
+        """在明暗预设间切换并持久化（改造前重启即回退深色）。"""
         app = QApplication.instance()
-        if not app:
+        if app is None:
             return
-        theme_dir = TOOLS / "gui" / "theme"
-        if getattr(self, "_current_theme", "dark") == "dark":
-            light_qss = theme_dir / "light.qss"
-            if light_qss.exists():
-                app.setStyleSheet(light_qss.read_text(encoding="utf-8"))
-                self._current_theme = "light"
-                self.theme_btn.setText("🌙 深色")
-        else:
-            dark_qss = theme_dir / "dark.qss"
-            if dark_qss.exists():
-                app.setStyleSheet(dark_qss.read_text(encoding="utf-8"))
-                self._current_theme = "dark"
-                self.theme_btn.setText("☀️ 浅色")
+        target = theme_apply.next_preset(self._theme.name)
+        self._theme = theme_apply.set_preset(app, target, self.workspace_root)
+        self._sync_theme_button()
 
-    def _build_function_cards(self):
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setObjectName("CardScrollArea")
-        scroll.setMaximumHeight(200)
+    # ════════════════════════════════════════════════════════════
+    # 数据刷新（全部委托 services，本类不自行解析文件）
+    # ════════════════════════════════════════════════════════════
 
-        container = QWidget()
-        grid = QGridLayout(container)
-        grid.setSpacing(10)
-        grid.setContentsMargins(4, 4, 4, 4)
-
-        cards_data = [
-            ("📋", "今日任务", "查看四科任务量与推进打卡", "today"),
-            ("🎯", "靶向组卷", "按考点与难度智能拼卷演练", "compose"),
-            ("🔄", "同源变式", "薄弱考点同源变式真题检索", "variant"),
-            ("📈", "考纲Diff", "新旧考纲层级对比与动荡率", "diff"),
-            ("📥", "切片入库", "真题/模拟卷结构化切片入库", "ingest"),
-            ("🔍", "院校侦察", "研招网与社媒实名口碑研报", "scout"),
-            ("⚖️", "双校对标", "双校初复试指标横向对标", "compare"),
-            ("📡", "简章监控", "高校研究生院简章变动预警", "watch"),
-            ("📊", "看板更新", "重新编译掌握度雷达看板", "build"),
-            ("📱", "公众号检索", "微信公众号考研文章检索与沉淀", "wechat_search"),
-        ]
-
-        self._feature_buttons = []
-        self.feature_cards = []
-        for idx, (icon, title, desc, alias) in enumerate(cards_data):
-            card = FunctionCard(icon, title, desc, alias, container)
-            card.clicked.connect(self._on_card_clicked)
-            self._feature_buttons.append(card)
-            self.feature_cards.append(card)
-            row, col = divmod(idx, 5)
-            grid.addWidget(card, row, col)
-
-        scroll.setWidget(container)
-        return scroll
-
-    def _build_chat_tab(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(10)
-
-        self.chat_display = QTextEdit()
-        self.chat_display.setReadOnly(True)
-        self.chat_display.setPlaceholderText("欢迎来到考研全科专属私教中枢！输入口令 (如：数学报到 / 交作业) 或直接提问开始辅导...")
-        layout.addWidget(self.chat_display, stretch=3)
-
-        # 快捷指令药丸栏 (Quick Command Pills)
-        quick_bar = QHBoxLayout()
-        quick_bar.setSpacing(6)
-        quick_cmds = ["数学报到", "英语报到", "政治报到", "专业课报到", "交作业", "查漏", "更新看板"]
-        for q_cmd in quick_cmds:
-            pill = QPushButton(q_cmd)
-            pill.setObjectName("QuickPill")
-            pill.setCursor(Qt.PointingHandCursor)
-            pill.setStyleSheet("padding: 3px 8px; font-size: 11px; border-radius: 10px; background: #2e344e; color: #a5b4fc;")
-            pill.clicked.connect(lambda checked=False, c=q_cmd: self._on_quick_command(c))
-            quick_bar.addWidget(pill)
-        quick_bar.addStretch()
-        layout.addLayout(quick_bar)
-
-        input_bar = QHBoxLayout()
-        self.input_box = QLineEdit()
-        self.input_box.setPlaceholderText("输入口令 (如：数学报到 / 英语长难句 / 交作业) 或向私教提问...")
-        self.input_box.returnPressed.connect(self._on_send_message)
-
-        send_btn = QPushButton("发送 ➤")
-        send_btn.clicked.connect(self._on_send_message)
-
-        input_bar.addWidget(self.input_box, stretch=1)
-        input_bar.addWidget(send_btn)
-        layout.addLayout(input_bar)
-        return widget
-
-    def _build_task_tab(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(12)
-
-        self.task_progress_bars = {}
-        self.task_count_labels = {}
-
-        sp = self.config.get("study_plan", {})
-        math_lbl = sp.get("math_name") or self.config.get("math_name") or "数学"
-        eng_lbl = sp.get("eng_name") or self.config.get("eng_name") or "英语"
-        pol_lbl = "思想政治理论"
-        pro_lbl = sp.get("pro_name") or self.config.get("pro_name") or "专业课"
-
-        subjects = [
-            ("01-数学", math_lbl, "math"),
-            ("02-英语", eng_lbl, "eng"),
-            ("03-思想政治理论", pol_lbl, "pol"),
-            ("04-专业课", pro_lbl, "pro"),
-        ]
-
-        for folder, label_text, key in subjects:
-            frame = QFrame()
-            frame.setObjectName("TaskRow")
-            frame.setStyleSheet("background: #1a1e2e; border-radius: 8px; padding: 8px 14px;")
-            h = QHBoxLayout(frame)
-
-            label = QLabel(f"📚 {label_text}")
-            label.setFixedWidth(180)
-            label.setStyleSheet("font-weight: bold; font-size: 13px;")
-
-            progress = QProgressBar()
-            progress.setRange(0, 100)
-            progress.setValue(0)
-            progress.setFixedHeight(18)
-
-            pct_label = QLabel("0/0 (0%)")
-            pct_label.setFixedWidth(90)
-            pct_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            pct_label.setStyleSheet("color: #94a3b8; font-size: 12px;")
-
-            h.addWidget(label)
-            h.addWidget(progress, stretch=1)
-            h.addWidget(pct_label)
-            layout.addWidget(frame)
-
-            self.task_progress_bars[key] = progress
-            self.task_count_labels[key] = pct_label
-
-        refresh_btn = QPushButton("🔄 刷新今日进度")
-        refresh_btn.setMaximumWidth(140)
-        refresh_btn.clicked.connect(self._load_today_task_progress)
-        layout.addWidget(refresh_btn)
-
-        layout.addStretch()
-        return widget
-
-    def _build_error_tab(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(10)
-
-        self.error_info = QTextEdit()
-        self.error_info.setReadOnly(True)
-        layout.addWidget(self.error_info, stretch=1)
-
-        btn_bar = QHBoxLayout()
-        quiz_btn = QPushButton("🎯 一键组装错题盲盒自测卷")
-        quiz_btn.clicked.connect(self._generate_error_quiz)
-        refresh_err_btn = QPushButton("🔄 刷新待复测队列")
-        refresh_err_btn.clicked.connect(self._refresh_error_tab)
-
-        btn_bar.addWidget(quiz_btn)
-        btn_bar.addWidget(refresh_err_btn)
-        btn_bar.addStretch()
-        layout.addLayout(btn_bar)
-
+    def _refresh_all(self):
+        self._sync_header_text()
+        self._load_today_task_progress()
         self._refresh_error_tab()
-        return widget
-
-    def _build_intel_tab(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(10)
-
-        self.intel_display = QTextEdit()
-        self.intel_display.setReadOnly(True)
-        layout.addWidget(self.intel_display, stretch=1)
-
-        btn_bar = QHBoxLayout()
-        btn_watch = QPushButton("📡 查看监控高校")
-        btn_watch.clicked.connect(lambda: self._run_action_to_display("watch", self.intel_display))
-        btn_scout = QPushButton("🔍 院校深度侦察")
-        btn_scout.clicked.connect(lambda: self._run_action_to_display("scout", self.intel_display))
-        btn_bar.addWidget(btn_watch)
-        btn_bar.addWidget(btn_scout)
-        btn_bar.addStretch()
-        layout.addLayout(btn_bar)
-
         self._refresh_intel_tab()
-        return widget
-
-    def _calc_countdown(self) -> int:
-        # [根因修复·日期硬编码] 旧实现兜底初试日写死 "2026-12-19"、异常返回魔法数 103，
-        # 与 TUI（兜底 104）、CLI（动态推算）三端互不一致且过期后永久失效。
-        # 现统一委托 exam_calendar 解析（配置 → 入学年 → 日历推算）。
-        try:
-            from exam_calendar import countdown_days
-        except ImportError:  # pragma: no cover
-            from tools.exam_calendar import countdown_days
-        return countdown_days(self.config)
 
     def _load_today_task_progress(self):
-        """刷新各科今日任务进度条（数据来源：tools/state 共享层）。
-
-        [缺陷修复·三端重复解析] 旧实现自带一份解析：只试 utf-8 编码（GBK 手写
-        笔记会被当成「没有任务」静默吞掉），且分隔行判定用 `startswith("|---|")`，
-        手写成 `| --- |` 的表头分隔行会被当成数据行、任务总数虚高。
-        现与 CLI / TUI 共用同一实现，三端数字必然一致。
-        """
-        try:
-            state = load_dashboard_state(self.workspace_root)
-        except Exception:
-            return
-        for subject in state.subjects:
+        """刷新各科今日任务进度条（与 CLI / TUI 同源的共享解析器）。"""
+        for subject in services.subject_progress(self.workspace_root):
             bar = self.task_progress_bars.get(subject.key)
             label = self.task_count_labels.get(subject.key)
             if bar is not None:
@@ -382,212 +169,84 @@ class MainWindow(QMainWindow):
                 label.setText(subject.summary_text)
 
     def _refresh_error_tab(self):
-        """扫描各科待复测错题"""
-        lines = [
-            "# 📕 FSRS 记忆稳定性曲线 · 到期错题复测队列",
-            f"> 更新时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-            "",
-            "---",
-            ""
-        ]
-        subjs = [("01-数学", "数学"), ("02-英语", "英语"), ("03-思想政治理论", "政治"), ("04-专业课", "专业课")]
-        total_due = 0
-        for folder, name in subjs:
-            mistake_dir = self.workspace_root / folder / "错题本"
-            if mistake_dir.exists():
-                due_files = [f for f in mistake_dir.glob("*.md") if not f.stem.startswith("自测卷_") and not f.stem.startswith("_")]
-                lines.append(f"### 📚 {name}错题本: 共 {len(due_files)} 道错题档案")
-                total_due += len(due_files)
-                for f in due_files[:3]:
-                    lines.append(f"- 📄 `{f.stem}`")
-                if len(due_files) > 3:
-                    lines.append(f"- *(其余 {len(due_files) - 3} 道已归档)*")
-            else:
-                lines.append(f"### 📚 {name}错题本: 暂无到期错题")
-            lines.append("")
-
-        lines.append(f"**全科待攻坚错题总数**: `{total_due}` 道")
-        self.error_info.setMarkdown("\n".join(lines))
-
-    def _generate_error_quiz(self):
-        """生成自测盲盒试卷并回显在错题本页"""
-        try:
-            from skills import exam_composer
-            # 与 CLI/TUI 保持同一后端契约: compose_exam_paper(subject, count, include_weak, save_file)
-            res = exam_composer.compose_exam_paper(subject="pro", count=3, include_weak=True, save_file=True)
-            saved = res.get("saved_path", "")
-            paper_text = res.get("formatted_paper") or res.get("content") or ""
-            display = f"\n\n🎯 【错题盲盒自测卷】已生成！\n{'=' * 50}\n{paper_text}\n"
-            if saved:
-                display += f"\n> 💾 自测卷已落盘: `{saved}`"
-            # 在错题本页追加反馈，而不是跳转到私教对话分页
-            current = self.error_info.toPlainText()
-            self.error_info.setPlainText(current + display)
-            # 同时给出一条轻量提示（不切换分页）
-            self.chat_display.append(f"\n✅ 错题盲盒自测卷已生成: {saved}\n")
-        except Exception as e:
-            QMessageBox.warning(self, "提示", f"组卷异常: {e}")
+        self.error_info.setMarkdown(services.error_queue_markdown(self.workspace_root))
 
     def _refresh_intel_tab(self):
-        """加载研招监控与情报概要"""
-        lines = [
-            "# 🏛️ 研招招考动态与高校监控雷达",
-            f"> 数据基准: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-            "",
-            "---",
-            ""
-        ]
-        watch_file = self.workspace_root / ".memory" / "admission_watch.json"
-        if watch_file.exists():
-            try:
-                data = json.loads(watch_file.read_text(encoding="utf-8"))
-                lines.append(f"### 📡 正在动态监控的高校 ({len(data)} 所):")
-                for code, it in data.items():
-                    lines.append(f"- **{it.get('name')}** (`{code}`) | 上次核验: `{it.get('last_check', '-')}`")
-                    titles = it.get("recent_titles", [])
-                    if titles:
-                        lines.append(f"  - 最新通知: *{titles[0]}*")
-            except Exception:
-                lines.append("暂无监控数据。")
-        else:
-            lines.append("暂未配置监控高校，点击下方按钮或在 TUI 中输入 8 即可纳入监控。")
+        self.intel_display.setMarkdown(services.intel_markdown(self.workspace_root))
 
-        self.intel_display.setMarkdown("\n".join(lines))
-
-    def _run_ingest_from_dialog(self):
-        """切片入库：通过文件选择框取得真题文件后执行结构化切片入库"""
-        path, _ = QFileDialog.getOpenFileName(
-            self, "选择要切片的真题 / 讲义文件", str(self.workspace_root),
-            "题库文件 (*.md *.txt *.pdf);;所有文件 (*.*)"
-        )
-        if not path:
-            return
-        self.tabs.setCurrentIndex(0)
-        self.chat_display.append(f"\n▶ 正在切片入库 [{path}] ...")
-        try:
-            from skills import material_ingestion
-            pipe = material_ingestion.MaterialIngestionPipeline(workspace_root=self.workspace_root)
-            res = pipe.ingest_file(Path(path), subject="pro")
-            if res.get("success"):
-                self.chat_display.append(
-                    f"✔ 切片入库成功：识别 {res['count']} 道题目 "
-                    f"(选择 {res['choices']} / 填空 {res['blanks']} / 大题 {res['essays']})\n"
-                    f"   生成路径: {res['target_path']}"
-                )
-            else:
-                self.chat_display.append(f"❌ 切片入库失败: {res.get('msg')}")
-        except Exception as e:
-            self.chat_display.append(f"❌ 切片入库异常: {e}")
-
-    def _run_diff_from_dialog(self):
-        """考纲 Diff：依次选取基准大纲与最新大纲后执行比对（严禁在未提供新大纲时伪造变动）"""
-        old_path, _ = QFileDialog.getOpenFileName(
-            self, "选择【基准(旧)】考纲文件", str(ROOT / "04-专业课"),
-            "Markdown (*.md *.txt);;所有文件 (*.*)"
-        )
-        if not old_path:
-            return
-        new_path, _ = QFileDialog.getOpenFileName(
-            self, "选择【最新】考纲文件", str(Path(old_path).parent),
-            "Markdown (*.md *.txt);;所有文件 (*.*)"
-        )
-        if not new_path:
-            return
-        self.tabs.setCurrentIndex(0)
-        self.chat_display.append(f"\n▶ 正在比对考纲：\n   基准: {old_path}\n   最新: {new_path} ...")
-        try:
-            from intelligence.syllabus_diff import get_syllabus_diff_generator
-            from intelligence.models import current_exam_year
-            y_new = current_exam_year()
-            gen = get_syllabus_diff_generator()
-            sp = self.config.get("study_plan", {})
-            target_school = sp.get("school") or self.config.get("target_school") or "目标院校"
-            target_major = sp.get("major") or self.config.get("target_major") or Path(new_path).stem
-            rep = gen.compare_files(
-                old_file=Path(old_path), new_file=Path(new_path),
-                school=target_school, major=target_major,
-                year_old=y_new - 1, year_new=y_new
-            )
-            saved = gen.save_diff_report(rep)
-            m = rep["metrics"]
-            self.chat_display.append(
-                f"✔ 考纲 Diff 完成 (动荡率 {m['volatility_percentage']}% / {m['stability_grade']})："
-                f"新增 {m['added_count']} | 剔除 {m['removed_count']} | "
-                f"调整 {m['modified_count']} | 不变 {m['unchanged_count']}\n"
-                f"   研报路径: {saved}"
-            )
-        except Exception as e:
-            self.chat_display.append(f"❌ 考纲比对异常: {e}")
+    # ════════════════════════════════════════════════════════════
+    # 事件分发
+    # ════════════════════════════════════════════════════════════
 
     def _on_quick_command(self, cmd_text: str):
-        """点击快捷指令药丸发送指令"""
         self.input_box.setText(cmd_text)
         self._on_send_message()
 
     def _run_action_to_display(self, alias: str, display_widget, brief_to_chat: bool = True):
-        """执行后端模块并将标准输出回显到指定 QTextEdit"""
-        import contextlib, io
+        """执行后端模块并把输出回显到指定文本框。"""
         display_widget.append(f"\n▶ 正在启动模块 [{alias}] ...")
-        try:
-            from tui_navigator import execute_action
-            buf = io.StringIO()
-            with contextlib.redirect_stdout(buf):
-                execute_action(alias, interactive=False)
-            out_str = buf.getvalue().strip()
-            if out_str:
-                display_widget.append(out_str)
-            display_widget.append(f"✔ 模块 [{alias}] 执行调用完毕。")
-            if brief_to_chat:
-                self.chat_display.append(f"\n✔ 模块 [{alias}] 已在对应页面执行完毕，详见上方分页。")
-        except Exception as e:
-            display_widget.append(f"❌ 模块 [{alias}] 执行异常: {e}")
+        out = services.run_action_capture(alias)
+        if out:
+            display_widget.append(out)
+        display_widget.append(f"✔ 模块 [{alias}] 执行调用完毕。")
+        if brief_to_chat:
+            self.chat_display.append(f"\n✔ 模块 [{alias}] 已在对应页面执行完毕，详见上方分页。")
 
     def _on_card_clicked(self, alias: str):
-        """功能卡片点击处理"""
         if alias == "wechat_search":
             self._open_wechat_search_dialog()
-            return
         elif alias == "today":
             self.tabs.setCurrentIndex(1)
             self._load_today_task_progress()
-            return
         elif alias == "watch":
             self.tabs.setCurrentIndex(3)
-            self._run_action_to_display("watch", self.intel_display, brief_to_chat=True)
-            return
+            self._run_action_to_display("watch", self.intel_display)
         elif alias == "ingest":
             self._run_ingest_from_dialog()
-            return
         elif alias == "diff":
             self._run_diff_from_dialog()
-            return
         elif alias == "scout":
             self.tabs.setCurrentIndex(3)
-            self._run_action_to_display("scout", self.intel_display, brief_to_chat=True)
-            return
+            self._run_action_to_display("scout", self.intel_display)
         elif alias == "compare":
             self._run_compare_from_dialog()
-            return
-
-        # 其他模块在私教对话窗口中以执行日志形式展现
-        self.tabs.setCurrentIndex(0)
-        self.chat_display.append(f"\n▶ 正在启动模块 [{alias}] ...")
-
-        try:
-            from tui_navigator import execute_action
-            buf = io.StringIO()
-            with contextlib.redirect_stdout(buf):
-                execute_action(alias, interactive=False)
-            out_str = buf.getvalue().strip()
-            if out_str:
-                self.chat_display.append(out_str)
+        else:
+            self.tabs.setCurrentIndex(0)
+            self.chat_display.append(f"\n▶ 正在启动模块 [{alias}] ...")
+            out = services.run_action_capture(alias)
+            if out:
+                self.chat_display.append(out)
             self.chat_display.append(f"✔ 模块 [{alias}] 执行调用完毕。")
-        except Exception as e:
-            self.chat_display.append(f"❌ 模块 [{alias}] 执行异常: {e}")
+
+    def _run_ingest_from_dialog(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择要切片的真题 / 讲义文件", str(self.workspace_root),
+            "题库文件 (*.md *.txt *.pdf);;所有文件 (*.*)")
+        if not path:
+            return
+        self.tabs.setCurrentIndex(0)
+        self.chat_display.append(f"\n▶ 正在切片入库 [{path}] ...")
+        self.chat_display.append(services.ingest_file(self.workspace_root, path))
+
+    def _run_diff_from_dialog(self):
+        """考纲 Diff：必须选到两个真实文件，严禁伪造变动。"""
+        old_path, _ = QFileDialog.getOpenFileName(
+            self, "选择【基准(旧)】考纲文件", str(self.workspace_root / "04-专业课"),
+            "Markdown (*.md *.txt);;所有文件 (*.*)")
+        if not old_path:
+            return
+        new_path, _ = QFileDialog.getOpenFileName(
+            self, "选择【最新】考纲文件", str(Path(old_path).parent),
+            "Markdown (*.md *.txt);;所有文件 (*.*)")
+        if not new_path:
+            return
+        self.tabs.setCurrentIndex(0)
+        self.chat_display.append(
+            f"\n▶ 正在比对考纲：\n   基准: {old_path}\n   最新: {new_path} ...")
+        self.chat_display.append(services.diff_syllabus(self.workspace_root, old_path, new_path))
 
     def _run_compare_from_dialog(self):
-        """GUI 双校对标：显式询问第二所高校与专业，避免沿用残留默认值"""
-        from PySide6.QtWidgets import QInputDialog
+        """双校对标：显式询问第二所高校与专业，避免沿用残留默认值。"""
         info = self.config.get("study_plan", {})
         s1 = info.get("school") or self.config.get("target_school") or "目标院校"
         s2, ok1 = QInputDialog.getText(self, "双校对标", "请输入第二所高校:", text="")
@@ -595,35 +254,36 @@ class MainWindow(QMainWindow):
             self.chat_display.append("\n[!] 双校对标已取消：未指定第二所高校。")
             return
         mj, ok2 = QInputDialog.getText(
-            self, "双校对标",
-            "请输入专业关键词（可选）:",
-            text=info.get("major") or self.config.get("target_major") or ""
-        )
+            self, "双校对标", "请输入专业关键词（可选）:",
+            text=info.get("major") or self.config.get("target_major") or "")
         if not ok2:
             return
         major = mj.strip() or info.get("major") or self.config.get("target_major") or ""
-        # 透传参数到 compare 后端：直接调用 comparator，绕过 execute_action 的交互默认值
-        try:
-            from intelligence import get_school_comparator
-            comp = get_school_comparator().compare(
-                school1_query=s1, school2_query=s2.strip(),
-                major_keyword=major, save_report=True
-            )
-            report = comp.get("terminal_report", "")
-            self.tabs.setCurrentIndex(3)
-            self.intel_display.append(f"\n{report}")
-            saved = comp.get("saved_path")
-            if saved:
-                self.intel_display.append(f"\n[+] 双校对标研报已落盘: {saved}")
-                self.chat_display.append(f"\n[+] 双校对标研报已落盘: {saved}")
-        except Exception as e:
-            self.chat_display.append(f"\n❌ 双校对标执行异常: {e}")
+        report, saved = services.compare_schools(self.workspace_root, s1, s2.strip(), major)
+        self.tabs.setCurrentIndex(3)
+        self.intel_display.append(f"\n{report}")
+        if saved:
+            self.intel_display.append(f"\n[+] 双校对标研报已落盘: {saved}")
+            self.chat_display.append(f"\n[+] 双校对标研报已落盘: {saved}")
 
     def _open_wechat_search_dialog(self):
-        """打开微信公众号文章检索对话框"""
-        from gui.widgets.wechat_search_dialog import WeChatSearchDialog
-        dialog = WeChatSearchDialog(self)
-        dialog.exec()
+        try:
+            from gui.widgets.wechat_search_dialog import WeChatSearchDialog
+        except ImportError:  # pragma: no cover
+            from tools.gui.widgets.wechat_search_dialog import WeChatSearchDialog  # type: ignore
+        WeChatSearchDialog(self).exec()
+
+    def _generate_error_quiz(self):
+        display, saved = services.make_error_quiz(self.workspace_root)
+        if display.startswith("❌"):
+            QMessageBox.warning(self, "提示", display)
+            return
+        self.error_info.setPlainText(self.error_info.toPlainText() + display)
+        self.chat_display.append(f"\n✅ 错题盲盒自测卷已生成: {saved}\n")
+
+    # ════════════════════════════════════════════════════════════
+    # 私教工作线程
+    # ════════════════════════════════════════════════════════════
 
     def _on_send_message(self):
         text = self.input_box.text().strip()
@@ -641,7 +301,6 @@ class MainWindow(QMainWindow):
             try:
                 still_running = worker.isRunning()
             except RuntimeError:
-                # 底层对象已析构：视为空闲，丢弃悬垂引用后继续发送
                 still_running = False
                 self.agent_worker = None
                 worker = None
@@ -653,38 +312,54 @@ class MainWindow(QMainWindow):
         self.input_box.clear()
         self.chat_display.append(f"\n👤 你: {text}\n🤖 私教正在思考中...")
 
-        from gui.workers.agent_worker import AgentWorker
+        try:
+            from gui.workers.agent_worker import AgentWorker
+        except ImportError:  # pragma: no cover
+            from tools.gui.workers.agent_worker import AgentWorker  # type: ignore
+
         self.agent_worker = AgentWorker(self.config, text)
-        # [P1 修复·D1] 强引用池：线程运行期间绝不释放，避免 QThread 被 GC 提前销毁
         self._worker_refs.append(self.agent_worker)
         self.agent_worker.finished_signal.connect(self._on_agent_reply)
         self.agent_worker.finished.connect(self._on_agent_finished)
         self.agent_worker.start()
 
     def _on_agent_finished(self):
-        """[P1 修复·D1] 线程结束后只释放"当前活跃"语义，不再 deleteLater。
-
-        QThread 本身无 parent，线程已结束时由 Python GC 安全回收；
-        若此处 deleteLater()，底层 C++ 对象会在事件循环下一轮被销毁，
-        而 self.agent_worker 仍持有其包装器，二次发送即抛 RuntimeError（D1 根因）。
-        """
+        """[P1 修复·D1] 线程结束后只释放"当前活跃"语义，不再 deleteLater。"""
         w = self.sender()
         if w is None:
             return
         if w in self._worker_refs:
             self._worker_refs.remove(w)
-        # 清空活跃句柄，杜绝悬垂引用参与下一轮 isRunning() 判定
         if getattr(self, "agent_worker", None) is w:
             self.agent_worker = None
 
     def _on_agent_reply(self, reply: str):
         self.chat_display.append(f"\n🤖 私教:\n{reply}\n" + "-" * 50)
 
+    # ════════════════════════════════════════════════════════════
+    # 定时器与生命周期
+    # ════════════════════════════════════════════════════════════
+
     def _init_timer(self):
-        """定时刷新倒计时与任务进度"""
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._on_timer_tick)
         self.timer.start(60000)
 
     def _on_timer_tick(self):
-        self._load_today_task_progress()
+        # [缺陷修复·死数字 + 跨天不刷新] 旧实现只刷任务进度，头部倒计时永不更新；
+        # 挂机跨天后任务清单也仍是昨天的。现每次刷新倒计时，跨天则整表重读。
+        self._sync_header_text()
+        today = date.today()
+        if today != self._today:
+            self._today = today
+            self._refresh_all()
+        else:
+            self._load_today_task_progress()
+
+    def closeEvent(self, event):
+        theme_apply.write_pref(theme_apply.KEY_LAST_TAB, self.tabs.currentIndex())
+        theme_apply.write_geometry(self)
+        super().closeEvent(event)
+
+
+__all__ = ["FunctionCard", "MainWindow", "TAB_TITLES"]
