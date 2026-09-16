@@ -16,7 +16,12 @@ Web 看板构建支撑模块
 
 from __future__ import annotations
 
-from .theme_vars import build_theme_css
+from .theme_vars import (
+    build_theme_css,
+    theme_preset_gallery,
+    theme_presets_json,
+    theme_rhythm_json,
+)
 from .vendor import (
     KATEX_VERSION,
     MARKED_VERSION,
@@ -32,4 +37,7 @@ __all__ = [
     "build_theme_css",
     "download_vendor_assets",
     "load_fallback_math_js",
+    "theme_presets_json",
+    "theme_rhythm_json",
+    "theme_preset_gallery",
 ]

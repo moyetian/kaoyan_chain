@@ -31,8 +31,8 @@ _CSS_ONLY = ("acc-grad-from", "acc-grad-to", "dur-fast", "dur-base", "dur-slow",
              "ease-std", "ease-emph", "focus-ring", "focus-w", "radius", "radius-sm")
 
 
-def _var_block(theme: Theme, indent: str = "  ") -> str:
-    """把一套主题渲染成 ``--key:value`` 声明块。"""
+def var_block(theme: Theme, indent: str = "  ") -> str:
+    """把一套主题渲染成 ``--key:value`` 声明块（预设规则与基础变量块共用）。"""
     lines: List[str] = []
     for key, value in theme.to_flat().items():
         if key.startswith("fs-") or key.startswith("pad") or key.endswith("-px"):
@@ -59,19 +59,19 @@ def render_css_vars(theme: Optional[Theme] = None,
     parts = [
         f"/* 由 tools/theme 编译生成 · 请勿手工编辑 */",
         ":root{",
-        _var_block(light),
+        var_block(light),
         "}",
         ":root[data-t=dark]{",
-        _var_block(dark),
+        var_block(dark),
         "}",
         ":root[data-t=light]{",
-        _var_block(light),
+        var_block(light),
         "}",
     ]
     if include_media_query:
         parts += [
             "@media(prefers-color-scheme:dark){:root:not([data-t=light]){",
-            _var_block(dark),
+            var_block(dark),
             "}}",
         ]
     return "\n".join(parts)
@@ -106,6 +106,7 @@ def render_to_file(out_path: Path, theme: Optional[Theme] = None,
 __all__ = [
     "CSS_PLACEHOLDER",
     "render_css_vars",
+    "var_block",
     "render_preset_gallery",
     "render_to_file",
     "theme_tokens_for_js",

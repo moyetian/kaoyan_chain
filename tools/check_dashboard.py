@@ -135,6 +135,27 @@ async page => {
     const hosts = Array.from(document.querySelectorAll('.si, .ic'));
     return { total: hosts.length, withSvg: hosts.filter(e => e.querySelector('svg')).length };
   });
+  /* 主题预设选择器：点一圈必须按顺序走完 5 套预设，且选择要落盘。
+     node --check 只能证明语法没错，证明不了「点了没反应」。 */
+  const theme = await page.evaluate(async () => {
+    const order = (typeof KY_PRESETS === 'undefined') ? [] : KY_PRESETS.map(function(p){ return p.k; });
+    const first = document.documentElement.getAttribute('data-t');
+    const seen = [];
+    for (let i = 0; i < order.length; i++) {
+      const b = document.getElementById('th-btn');
+      if (b) b.click();
+      await new Promise(r => setTimeout(r, 60));
+      seen.push(document.documentElement.getAttribute('data-t'));
+    }
+    return {
+      first: first,
+      order: order,
+      seen: seen,
+      saved: (function(){ try { return localStorage.getItem('kytheme'); } catch (e) { return null; } })(),
+      bg: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(),
+      label: ((document.querySelector('#th-btn .th-name') || {}).textContent || '').trim()
+    };
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
   const overflow = await page.evaluate(() => ({
@@ -142,7 +163,7 @@ async page => {
     scrollW: document.documentElement.scrollWidth,
   }));
   await page.setViewportSize({ width: 1280, height: 900 });
-  return { errors: errors, rawSvg: rawSvg, icons: icons, overflow: overflow };
+  return { errors: errors, rawSvg: rawSvg, icons: icons, overflow: overflow, theme: theme };
 }
 """
 
@@ -259,10 +280,26 @@ def check_runtime(artifact: Path) -> Tuple[Optional[bool], str]:
         if ov and ov.get("scrollW", 0) > ov.get("vw", 0) + 1:
             problems.append(f"390px 手机视口横向溢出: 内容宽 {ov.get('scrollW')} > 视口 {ov.get('vw')}")
 
+        th = result.get("theme") or {}
+        order = th.get("order") or []
+        if not order:
+            problems.append("主题预设清单缺失（KY_PRESETS 未注入）")
+        else:
+            seen = th.get("seen") or []
+            start = order.index(th.get("first")) if th.get("first") in order else 0
+            expected = [order[(start + i + 1) % len(order)] for i in range(len(order))]
+            if seen != expected:
+                problems.append(f"主题按钮轮换异常: 期望 {expected} 实得 {seen}")
+            if seen and th.get("saved") != seen[-1]:
+                problems.append(f"主题选择未落盘: localStorage={th.get('saved')}")
+            if not th.get("bg"):
+                problems.append("切换后 --bg 取不到值（预设 CSS 规则未生效）")
+
         if problems:
             return False, "；".join(problems)
         detail = (f"逐页签无报错；{icons.get('total', '?')} 个图标容器全部渲染成 SVG；"
-                  f"390px 视口无横向溢出（内容宽 {ov.get('scrollW')}）")
+                  f"390px 视口无横向溢出（内容宽 {ov.get('scrollW')}）；"
+                  f"主题按钮按 {len(order)} 套预设轮换正常（当前 {th.get('first')}）")
         return True, detail
     finally:
         _pcli("close", timeout=30)

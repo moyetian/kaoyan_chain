@@ -12,11 +12,18 @@
    旧实现把主题恢复放在页面末尾、且在所有 CDN <script src> 之后，
    浏览器必然先用默认（或系统）配色绘制一帧再跳变。
    主题必须在**首次绘制之前**确定，故前置到 <head> 内、任何外链之前。
-   注：此处刻意不依赖任何外部脚本，纯同步执行。 */
+   注：此处刻意不依赖任何外部脚本，纯同步执行。
+   [主题预设选择器] KY_PRESETS 是 5 套预设的键/显示名/明暗，KY_RHYTHM 是按
+   距初试天数推荐的「备考节律」主题。用户手动选过主题时 localStorage 优先，
+   否则用节律主题 —— 两者都在首次绘制前确定，避免闪一下再跳变。 */
+var KY_PRESETS=[{"k":"dark","n":"曜石黑","m":"dark"},{"k":"light","n":"晨曦白","m":"light"},{"k":"eye-green","n":"护眼绿","m":"light"},{"k":"pink","n":"樱粉","m":"light"},{"k":"hc","n":"高对比（无障碍）","m":"dark"}];
+var KY_RHYTHM={"p":"eye-green","label":"强化期","days":94};
+var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
 (function(){
   try{
     var t=localStorage.getItem('kytheme');
-    if(t==='dark'||t==='light'){document.documentElement.setAttribute('data-t',t);}
+    if(!t||KY_MODE[t]===undefined) t=KY_RHYTHM.p;
+    document.documentElement.setAttribute('data-t',t);
   }catch(e){}
 })();
 </script>
@@ -200,6 +207,136 @@
   --acc-press:#c1affb;
   --acc-grad: linear-gradient(135deg, #c4b5fd, #a78bfa);
 }}
+/* ── 主题预设（由 tools/theme 编译注入，勿手工编辑） ───────────────── */
+:root[data-t='eye-green']{
+  --bg:#eef4ea;
+  --surf:#f8fbf5;
+  --surf2:#e3ecdc;
+  --surf3:#d2e0c8;
+  --fg:#1b2a1f;
+  --mut:#4d6b52;
+  --line:#d5e3cb;
+  --acc:#2f7d4f;
+  --acc-sub:#dff0e3;
+  --on-acc:#ffffff;
+  --ok:#1f7a3d;
+  --warn:#a16207;
+  --bad:#b3261e;
+  --focus-ring:#1f5f3c;
+  --acc-grad-from:#4b9c6a;
+  --acc-grad-to:#2f7d4f;
+  --sh:0 4px 12px rgba(47, 125, 79, 0.08),0 1px 3px rgba(0,0,0,.04);
+  --sh2:0 8px 24px rgba(47, 125, 79, 0.14),0 2px 6px rgba(0,0,0,.03);
+  --radius:16;
+  --radius-sm:8;
+  --density:1.0;
+  --font-scale:1.0;
+  --focus-w:2;
+  --font-family:"Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --dur-fast:180ms;
+  --dur-base:240ms;
+  --dur-slow:320ms;
+  --ease-std:cubic-bezier(.2,.8,.2,1);
+  --ease-emph:cubic-bezier(.3,1.4,.5,1);
+  --preset:eye-green;
+  --fg-strong:#1b2a1f;
+  --line-strong:#bfcdb6;
+  --input-bg:#f8fbf5;
+  --acc-soft:#2f7d4f;
+  --acc-line:#9ec2aa;
+  --sel-bg:#dff0e3;
+  --sel-fg:#ffffff;
+  --grid-line:#d5e3cb;
+  --acc-hover:#2b6e46;
+  --acc-press:#296240;
+  --acc-grad: linear-gradient(135deg, #4b9c6a, #2f7d4f);
+}
+:root[data-t='pink']{
+  --bg:#fdf3f7;
+  --surf:#fffafc;
+  --surf2:#fbe9f1;
+  --surf3:#f6d6e4;
+  --fg:#3a1f2b;
+  --mut:#7d5468;
+  --line:#f3d9e5;
+  --acc:#be185d;
+  --acc-sub:#fce7f0;
+  --on-acc:#ffffff;
+  --ok:#15803d;
+  --warn:#b45309;
+  --bad:#be123c;
+  --focus-ring:#9d174d;
+  --acc-grad-from:#db2777;
+  --acc-grad-to:#be185d;
+  --sh:0 4px 12px rgba(190, 24, 93, 0.07),0 1px 3px rgba(0,0,0,.04);
+  --sh2:0 8px 24px rgba(190, 24, 93, 0.13),0 2px 6px rgba(0,0,0,.03);
+  --radius:16;
+  --radius-sm:8;
+  --density:1.0;
+  --font-scale:1.0;
+  --focus-w:2;
+  --font-family:"Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --dur-fast:180ms;
+  --dur-base:240ms;
+  --dur-slow:320ms;
+  --ease-std:cubic-bezier(.2,.8,.2,1);
+  --ease-emph:cubic-bezier(.3,1.4,.5,1);
+  --preset:pink;
+  --fg-strong:#3a1f2b;
+  --line-strong:#ddc3cf;
+  --input-bg:#fffafc;
+  --acc-soft:#be185d;
+  --acc-line:#e294b4;
+  --sel-bg:#fce7f0;
+  --sel-fg:#ffffff;
+  --grid-line:#f3d9e5;
+  --acc-hover:#a61954;
+  --acc-press:#941a4d;
+  --acc-grad: linear-gradient(135deg, #db2777, #be185d);
+}
+:root[data-t='hc']{
+  --bg:#000000;
+  --surf:#000000;
+  --surf2:#141414;
+  --surf3:#262626;
+  --fg:#ffffff;
+  --mut:#e6e6e6;
+  --line:#ffffff;
+  --acc:#ffff00;
+  --acc-sub:#333300;
+  --on-acc:#000000;
+  --ok:#4ade80;
+  --warn:#fde047;
+  --bad:#ff6b6b;
+  --focus-ring:#00ffff;
+  --acc-grad-from:#ffff66;
+  --acc-grad-to:#ffff00;
+  --sh:none;
+  --sh2:none;
+  --radius:16;
+  --radius-sm:8;
+  --density:1.0;
+  --font-scale:1.0;
+  --focus-w:2;
+  --font-family:"Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --dur-fast:180ms;
+  --dur-base:240ms;
+  --dur-slow:320ms;
+  --ease-std:cubic-bezier(.2,.8,.2,1);
+  --ease-emph:cubic-bezier(.3,1.4,.5,1);
+  --preset:hc;
+  --fg-strong:#ffffff;
+  --line-strong:#ffffff;
+  --input-bg:#000000;
+  --acc-soft:#ffff00;
+  --acc-line:#737300;
+  --sel-bg:#333300;
+  --sel-fg:#000000;
+  --grid-line:#ffffff;
+  --acc-hover:#ffff2e;
+  --acc-press:#ffff52;
+  --acc-grad: linear-gradient(135deg, #ffff66, #ffff00);
+}
 
 /* ── 键盘焦点可见性（全站统一焦点环） ──────────────────────────────
    改造前全站 :focus/:focus-visible 样式为 0 处，键盘用户只能依赖浏览器
@@ -507,7 +644,7 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
       <div class="big">94<i>天</i></div>
     </div>
     <div class="hr2">
-      <button class="tbtn-theme" id="th-btn" type="button" aria-label="切换深色或浅色主题" title="点击切换深色/浅色模式"><svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/></svg>主题模式</button>
+      <button class="tbtn-theme" id="th-btn" type="button" aria-label="切换主题预设" title="点击切换主题预设"><svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/></svg><span class="th-name">主题</span></button>
       <div class="hr-info">
 <!-- [UX 升级] 原为可点击 div：键盘不可达、读屏不识别为控件。
      改为 <button> 并同步 aria-pressed，使其可 Tab 聚焦、Enter/Space 激活。 -->
@@ -577,7 +714,7 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
 
 </main>
 
-<footer>考研学习看板 · 数据驱动 · 稳扎稳打 · 更新于 2026-09-16 13:06</footer>
+<footer>考研学习看板 · 数据驱动 · 稳扎稳打 · 更新于 2026-09-16 14:11</footer>
 </div>
 
 <nav class="bar" role="tablist" aria-label="看板页签">
@@ -656,7 +793,9 @@ function tex(el){
 function esc(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
 function isDark(){
   var a=document.documentElement.getAttribute('data-t');
-  if(a) return a==='dark';
+  /* 明暗必须查 KY_MODE 而不是写死 t==='dark'：新增的护眼绿/樱粉是浅色、
+     高对比是深色，写死会让这两个预设下的图表与强调色整体错位。 */
+  if(a&&KY_MODE[a]!==undefined) return KY_MODE[a]==='dark';
   return matchMedia('(prefers-color-scheme:dark)').matches;
 }
 function col(o){return isDark()?(o.dark||o.color):(o.color||'#4f46e5');}
@@ -667,19 +806,29 @@ function col(o){return isDark()?(o.dark||o.color):(o.color||'#4f46e5');}
    而产生 SyntaxError，导致整个 <script> 块失效。 */
 var MASK_EYE_SVG = "<svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/></svg>";
 
-/* ── 主题切换 ── */
+/* ── 主题切换（5 套预设轮换；未手动选择时按备考节律给出默认） ── */
 (function(){
   var tb=document.getElementById('th-btn');
   if(!tb) return;
-  try{
-    var saved=localStorage.getItem('kytheme');
-    if(saved) document.documentElement.setAttribute('data-t', saved);
-  }catch(e){}
+  var nameEl=tb.querySelector('.th-name');
+  function idxOf(k){
+    for(var i=0;i<KY_PRESETS.length;i++){if(KY_PRESETS[i].k===k) return i;}
+    return 0;
+  }
+  function apply(i,save){
+    var p=KY_PRESETS[i];
+    document.documentElement.setAttribute('data-t',p.k);
+    if(save){try{localStorage.setItem('kytheme',p.k);}catch(e){}}
+    var tip='当前：'+p.n+(KY_RHYTHM.label?'（距初试 '+KY_RHYTHM.days+' 天 · '+KY_RHYTHM.label+'）':'');
+    tb.setAttribute('title',tip+'　点击切换到下一套');
+    tb.setAttribute('aria-label','当前主题 '+p.n+'，点击切换到下一套');
+    if(nameEl) nameEl.textContent=p.n;
+  }
+  var cur=document.documentElement.getAttribute('data-t')||KY_RHYTHM.p;
+  apply(idxOf(cur),false);
   tb.onclick=function(){
-    var cur=document.documentElement.getAttribute('data-t');
-    var next=cur==='dark'?'light':(cur==='light'?'dark':(isDark()?'light':'dark'));
-    document.documentElement.setAttribute('data-t',next);
-    try{localStorage.setItem('kytheme',next);}catch(e){}
+    var now=document.documentElement.getAttribute('data-t')||KY_RHYTHM.p;
+    apply((idxOf(now)+1)%KY_PRESETS.length,true);
   };
 })();
 

@@ -130,6 +130,33 @@ def test_theme_vars_cover_dark_and_light_selectors():
         assert selector in html, f"缺少主题变量块: {selector}"
 
 
+def test_preset_selector_injected_into_page():
+    """5 套预设必须真正出现在页面上可选，而不只活在 token 层。"""
+    html = INDEX.read_text(encoding="utf-8")
+    from tools.theme import PRESET_ORDER
+
+    for key in PRESET_ORDER:
+        if key in ("dark", "light"):
+            continue
+        assert f":root[data-t='{key}']{{" in html, f"看板缺少 {key} 预设的 CSS 规则"
+    assert "var KY_PRESETS=" in html, "前端选择器缺少预设清单"
+
+
+def test_rhythm_theme_injected_and_valid():
+    """节律主题必须是已知预设，且与构建时的倒计时一致。"""
+    import json
+    import re
+
+    from tools.theme import PRESET_ORDER, rhythm_preset
+
+    html = INDEX.read_text(encoding="utf-8")
+    rhythm = json.loads(re.search(r"var KY_RHYTHM=(\{.*?\});", html).group(1))
+    assert rhythm["p"] in PRESET_ORDER, f"节律推荐了未知预设: {rhythm['p']}"
+    assert rhythm["p"] == rhythm_preset(rhythm["days"]), "节律预设应与自身天数自洽"
+    dday = int(re.search(r"倒计时 (\d+) 天", html).group(1))
+    assert rhythm["days"] == dday, "节律天数应与看板倒计时同源"
+
+
 # ── --offline ──────────────────────────────────────────────────
 
 def test_offline_assets_point_to_local_vendor():

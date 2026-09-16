@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:
 from tools.theme import (  # noqa: E402
     DEFAULT_PRESET,
     PRESET_ORDER,
+    RHYTHM_STAGES,
     TemplateError,
     build_theme,
     contrast_ratio,
@@ -29,9 +30,13 @@ from tools.theme import (  # noqa: E402
     list_presets,
     load_theme,
     placeholder_names,
+    preset_meta,
+    preset_rules_css,
     render_ansi,
     render_css_vars,
     render_qss,
+    rhythm_label,
+    rhythm_preset,
     validate_all_presets,
     validate_tokens,
 )
@@ -249,3 +254,65 @@ def test_apply_to_colors_class_updates_in_place():
     apply_to_colors_class(Colors, build_theme("dark"), truecolor=True, disabled=False)
     assert Colors.CYAN.startswith("\033[38;2;"), "既有字段应被主题覆盖"
     assert hasattr(Colors, "OK"), "语义扩展字段应被补充"
+
+
+# ── 主题预设选择器（5 套预设真正可选） ──────────────────────────
+
+def test_preset_rules_cover_every_non_base_preset():
+    """除 dark/light（基础块已输出）外，每套预设都要有自己的 [data-t] 规则。
+
+    改造前另外 3 套预设只存在于 token 层，页面上无从选择 —— 这条防止再退化。
+    """
+    css = preset_rules_css()
+    for key in PRESET_ORDER:
+        if key in ("dark", "light"):
+            continue
+        assert f":root[data-t='{key}']{{" in css, f"缺少预设规则: {key}"
+
+
+def test_preset_rules_do_not_duplicate_base_blocks():
+    css = preset_rules_css()
+    assert ":root[data-t='dark']{" not in css, "dark 已在基础块输出，重复会白增体积"
+    assert ":root[data-t='light']{" not in css
+
+
+def test_each_preset_rule_carries_its_own_accent():
+    css = preset_rules_css()
+    for key in PRESET_ORDER:
+        if key in ("dark", "light"):
+            continue
+        block = css.split(f":root[data-t='{key}']{{")[1].split("}")[0]
+        assert str(build_theme(key).get("acc")) in block, f"{key} 的规则块缺少自己的主色"
+        assert "--acc-grad:" in block, f"{key} 缺少看板既有的 --acc-grad 变量"
+
+
+def test_preset_meta_matches_presets_and_modes():
+    meta = list(preset_meta())
+    assert [m["k"] for m in meta] == list(PRESET_ORDER)
+    for item in meta:
+        assert item["m"] == build_theme(item["k"]).mode, f"{item['k']} 明暗信息不一致"
+        assert item["n"] == build_theme(item["k"]).display_name
+
+
+# ── 备考节律主题 ────────────────────────────────────────────────
+
+def test_rhythm_preset_walks_all_stages():
+    for floor, preset, label in RHYTHM_STAGES:
+        assert rhythm_preset(floor + 1) == preset, f"{label} 档位取值不对"
+        assert rhythm_label(floor + 1) == label
+
+
+def test_rhythm_preset_is_monotonic_by_urgency():
+    """越临近初试，节律只能换档不能回头乱跳；且每档都必须是已知预设。"""
+    seen = []
+    for days in range(400, -1, -7):
+        preset = rhythm_preset(days)
+        assert preset in PRESET_ORDER, f"{days} 天推荐了不存在的预设 {preset}"
+        if not seen or seen[-1] != preset:
+            seen.append(preset)
+    assert seen == [p for _f, p, _l in RHYTHM_STAGES], f"节律换档顺序异常: {seen}"
+
+
+def test_rhythm_preset_handles_past_exam_date():
+    assert rhythm_preset(-5) == rhythm_preset(0)
+    assert rhythm_preset(0) in PRESET_ORDER

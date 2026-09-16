@@ -14,6 +14,7 @@ Web / GUI / 终端三端会一起变 —— 这是「可自定义风格」能真
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 from pathlib import Path
@@ -34,11 +35,16 @@ def build_theme_css(workspace_root: Path | None = None) -> str:
     """
     try:
         try:
-            from theme import build_theme, render_css_vars
+            from theme import (build_theme, preset_meta, preset_rules_css,
+                               render_css_vars, rhythm_label, rhythm_preset)
         except ImportError:                # pragma: no cover
-            from tools.theme import build_theme, render_css_vars  # type: ignore
+            from tools.theme import (  # type: ignore
+                build_theme, preset_meta, preset_rules_css, render_css_vars,
+                rhythm_label, rhythm_preset)
 
-        return render_css_vars(build_theme("light"), build_theme("dark"))
+        css = render_css_vars(build_theme("light"), build_theme("dark"))
+        rules = preset_rules_css()
+        return css + (("\n" + rules) if rules else "")
     except Exception as exc:
         _LOG.warning("主题变量生成失败，看板回落到内置兜底配色: %s", exc)
         return _FALLBACK_CSS
@@ -53,6 +59,41 @@ _FALLBACK_CSS = """/* 兜底配色：tools/theme 不可用 */
 :root[data-t=dark]{--bg:#090d16;--surf:#111827;--surf2:#1e293b;--surf3:#334155;
 --fg:#f8fafc;--mut:#94a3b8;--line:#1e293b;--acc:#a78bfa;--acc-sub:#2e1065;
 --ok:#34d399;--warn:#fbbf24;--bad:#f87171}"""
+
+
+def theme_presets_json() -> str:
+    """预设清单 JSON（键/显示名/明暗），注入 ``{{THEME_PRESETS}}``。
+
+    前端选择器与 ``isDark()`` 都读它：明暗判断若继续写死 ``t==='dark'``，
+    新增的护眼绿/樱粉会被误判成深色，图表与主题色会一起错位。
+    """
+    try:
+        try:
+            from theme import preset_meta
+        except ImportError:                # pragma: no cover
+            from tools.theme import preset_meta  # type: ignore
+
+        raw = json.dumps(preset_meta(), ensure_ascii=False, separators=(",", ":"))
+        return raw.replace("</", "<\\/")
+    except Exception as exc:               # pragma: no cover
+        _LOG.warning("预设清单生成失败，看板回落到深色/浅色两套: %s", exc)
+        return '[{"k":"dark","n":"深色","m":"dark"},{"k":"light","n":"浅色","m":"light"}]'
+
+
+def theme_rhythm_json(days_left: int) -> str:
+    try:
+        try:
+            from theme import rhythm_label, rhythm_preset
+        except ImportError:                # pragma: no cover
+            from tools.theme import rhythm_label, rhythm_preset  # type: ignore
+
+        payload = {"p": rhythm_preset(days_left),
+                   "label": rhythm_label(days_left),
+                   "days": max(0, int(days_left))}
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    except Exception as exc:               # pragma: no cover
+        _LOG.warning("节律主题生成失败，回落到深色: %s", exc)
+        return '{"p":"dark","label":"","days":0}'
 
 
 def theme_preset_gallery() -> str:

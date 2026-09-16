@@ -278,7 +278,8 @@ def build(offline: bool = False):
 
     # 先注入主题变量/降级脚本/第三方资源地址，再注入数据
     html = load_template()
-    for placeholder, value in render_theme_placeholders(offline=offline).items():
+    for placeholder, value in render_theme_placeholders(offline=offline,
+                                                        days_left=d_day1).items():
         html = html.replace(placeholder, value)
 
     return (html
@@ -309,17 +310,20 @@ def load_template() -> str:
     return (_DIR / "web" / "template.html").read_text(encoding="utf-8")
 
 
-def render_theme_placeholders(offline: bool = False) -> dict:
+def render_theme_placeholders(offline: bool = False, days_left: int = 0) -> dict:
     """模板占位符 → 取值（主题变量 / 公式降级脚本 / 第三方资源地址）。
 
     第三方资源地址与版本由 web/vendor.py 统一提供，`offline=True` 时
     指向本地 vendor 目录，使看板在无外网时公式仍能渲染。
     """
-    from web import asset_map, build_theme_css, load_fallback_math_js
+    from web import (asset_map, build_theme_css, load_fallback_math_js,
+                     theme_presets_json, theme_rhythm_json)
 
     mapping = {
         "{{THEME_CSS}}": build_theme_css(ROOT),
         "{{FALLBACK_MATH_JS}}": load_fallback_math_js(),
+        "{{THEME_PRESETS}}": theme_presets_json(),
+        "{{RHYTHM}}": theme_rhythm_json(days_left),
     }
     mapping.update(asset_map(offline))
     return mapping

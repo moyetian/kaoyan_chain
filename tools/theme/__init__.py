@@ -36,6 +36,7 @@ from .compile_web import (
     render_css_vars,
     render_preset_gallery,
     theme_tokens_for_js,
+    var_block,
 )
 from .contrast import (
     CONTRAST_LARGE,
@@ -63,6 +64,13 @@ from .tokens import (
     load_theme,
     validate_all_presets,
 )
+from .preset_rules import (
+    RHYTHM_STAGES,
+    preset_meta,
+    preset_rules_css,
+    rhythm_label,
+    rhythm_preset,
+)
 
 __all__ = [
     # token 与主题
@@ -78,6 +86,12 @@ __all__ = [
     "load_theme",
     "list_presets",
     "validate_all_presets",
+    # 预设选择器与备考节律
+    "RHYTHM_STAGES",
+    "preset_rules_css",
+    "preset_meta",
+    "rhythm_preset",
+    "rhythm_label",
     # 色彩与可读性
     "contrast_ratio",
     "relative_luminance",
@@ -99,6 +113,7 @@ __all__ = [
     "render_preset_gallery",
     "theme_tokens_for_js",
     "CSS_PLACEHOLDER",
+    "var_block",
     "render_ansi",
     "apply_to_colors_class",
     "supports_truecolor",

@@ -12,11 +12,18 @@
    旧实现把主题恢复放在页面末尾、且在所有 CDN <script src> 之后，
    浏览器必然先用默认（或系统）配色绘制一帧再跳变。
    主题必须在**首次绘制之前**确定，故前置到 <head> 内、任何外链之前。
-   注：此处刻意不依赖任何外部脚本，纯同步执行。 */
+   注：此处刻意不依赖任何外部脚本，纯同步执行。
+   [主题预设选择器] KY_PRESETS 是 5 套预设的键/显示名/明暗，KY_RHYTHM 是按
+   距初试天数推荐的「备考节律」主题。用户手动选过主题时 localStorage 优先，
+   否则用节律主题 —— 两者都在首次绘制前确定，避免闪一下再跳变。 */
+var KY_PRESETS={{THEME_PRESETS}};
+var KY_RHYTHM={{RHYTHM}};
+var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
 (function(){
   try{
     var t=localStorage.getItem('kytheme');
-    if(t==='dark'||t==='light'){document.documentElement.setAttribute('data-t',t);}
+    if(!t||KY_MODE[t]===undefined) t=KY_RHYTHM.p;
+    document.documentElement.setAttribute('data-t',t);
   }catch(e){}
 })();
 </script>
@@ -335,7 +342,7 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
       <div class="big">{{DDAY1}}<i>天</i></div>
     </div>
     <div class="hr2">
-      <button class="tbtn-theme" id="th-btn" type="button" aria-label="切换深色或浅色主题" title="点击切换深色/浅色模式"><svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/></svg>主题模式</button>
+      <button class="tbtn-theme" id="th-btn" type="button" aria-label="切换主题预设" title="点击切换主题预设"><svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/></svg><span class="th-name">主题</span></button>
       <div class="hr-info">
 <!-- [UX 升级] 原为可点击 div：键盘不可达、读屏不识别为控件。
      改为 <button> 并同步 aria-pressed，使其可 Tab 聚焦、Enter/Space 激活。 -->
@@ -442,7 +449,9 @@ function tex(el){
 function esc(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
 function isDark(){
   var a=document.documentElement.getAttribute('data-t');
-  if(a) return a==='dark';
+  /* 明暗必须查 KY_MODE 而不是写死 t==='dark'：新增的护眼绿/樱粉是浅色、
+     高对比是深色，写死会让这两个预设下的图表与强调色整体错位。 */
+  if(a&&KY_MODE[a]!==undefined) return KY_MODE[a]==='dark';
   return matchMedia('(prefers-color-scheme:dark)').matches;
 }
 function col(o){return isDark()?(o.dark||o.color):(o.color||'#4f46e5');}
@@ -453,19 +462,29 @@ function col(o){return isDark()?(o.dark||o.color):(o.color||'#4f46e5');}
    而产生 SyntaxError，导致整个 <script> 块失效。 */
 var MASK_EYE_SVG = "<svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/></svg>";
 
-/* ── 主题切换 ── */
+/* ── 主题切换（5 套预设轮换；未手动选择时按备考节律给出默认） ── */
 (function(){
   var tb=document.getElementById('th-btn');
   if(!tb) return;
-  try{
-    var saved=localStorage.getItem('kytheme');
-    if(saved) document.documentElement.setAttribute('data-t', saved);
-  }catch(e){}
+  var nameEl=tb.querySelector('.th-name');
+  function idxOf(k){
+    for(var i=0;i<KY_PRESETS.length;i++){if(KY_PRESETS[i].k===k) return i;}
+    return 0;
+  }
+  function apply(i,save){
+    var p=KY_PRESETS[i];
+    document.documentElement.setAttribute('data-t',p.k);
+    if(save){try{localStorage.setItem('kytheme',p.k);}catch(e){}}
+    var tip='当前：'+p.n+(KY_RHYTHM.label?'（距初试 '+KY_RHYTHM.days+' 天 · '+KY_RHYTHM.label+'）':'');
+    tb.setAttribute('title',tip+'　点击切换到下一套');
+    tb.setAttribute('aria-label','当前主题 '+p.n+'，点击切换到下一套');
+    if(nameEl) nameEl.textContent=p.n;
+  }
+  var cur=document.documentElement.getAttribute('data-t')||KY_RHYTHM.p;
+  apply(idxOf(cur),false);
   tb.onclick=function(){
-    var cur=document.documentElement.getAttribute('data-t');
-    var next=cur==='dark'?'light':(cur==='light'?'dark':(isDark()?'light':'dark'));
-    document.documentElement.setAttribute('data-t',next);
-    try{localStorage.setItem('kytheme',next);}catch(e){}
+    var now=document.documentElement.getAttribute('data-t')||KY_RHYTHM.p;
+    apply((idxOf(now)+1)%KY_PRESETS.length,true);
   };
 })();
 
