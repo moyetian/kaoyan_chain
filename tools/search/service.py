@@ -24,7 +24,7 @@ from dataclasses import replace
 from datetime import datetime
 from typing import Any, List, Optional, Sequence, Tuple, Union
 
-from . import relevance, source_registry
+from . import dedup, health, relevance, source_registry
 from .models import (
     Document,
     SearchQuery,
@@ -66,6 +66,7 @@ class SearchService:
         self._fetcher = fetcher
         self._dedup = deduplicator
         self._ranker = ranker
+        self._cache = None                        # 由 default() 装配（见 _cache_get/_cache_put）
         self._classify = classifier or source_registry.classify
 
     # ── 构造 ────────────────────────────────────────────────
@@ -73,18 +74,30 @@ class SearchService:
     @classmethod
     def default(cls, providers: Optional[Sequence[SearchProvider]] = None) -> "SearchService":
         """装配默认实现（去重与重排模块缺失时自动降级，不影响检索本身）。"""
-        dedup = ranker = None
+        # 注意局部变量名不要与模块名同名：这里 dedup 是模块，装配结果另用 deduplicator
+        deduplicator = None
+        ranker = None
         try:
-            from . import dedup as _dedup_mod
-            dedup = _dedup_mod.Deduplicator()
-        except Exception as exc:                  # pragma: no cover - 尚未实现时
+            deduplicator = dedup.Deduplicator()
+        except Exception as exc:                  # pragma: no cover
             _LOG.debug("去重模块不可用，跳过去重: %s", exc)
+
+        # 缓存：实测 DDG 限流后，多路检索会成倍放大请求数，缓存是必需项而非优化
+        search_cache = None
         try:
-            from . import rank as _rank_mod
-            ranker = _rank_mod.Ranker()
+            from .cache import SearchCache
+            search_cache = SearchCache()
+        except Exception as exc:                  # pragma: no cover
+            _LOG.debug("检索缓存不可用，本次不缓存: %s", exc)
+        try:
+            from .rank import Ranker
+            ranker = Ranker()
         except Exception as exc:                  # pragma: no cover
             _LOG.debug("重排模块不可用，保持原序: %s", exc)
-        return cls(providers=providers, deduplicator=dedup, ranker=ranker)
+            ranker = None
+        svc = cls(providers=providers, deduplicator=deduplicator, ranker=ranker)
+        svc._cache = search_cache
+        return svc
 
     # ── 检索 ────────────────────────────────────────────────
 
@@ -98,7 +111,18 @@ class SearchService:
                 chosen = [p for p in self._providers if p.name.lower() in wanted]
         else:
             chosen = available_providers(names)
-        return sorted(chosen, key=lambda p: getattr(p, "priority", 100))
+        # 冷却中的源不再请求（避免把限流越试越严，也避免每轮都产生同样的失败噪音）
+        return sorted([p for p in chosen if not health.is_cooling(p.name)],
+                      key=lambda p: getattr(p, "priority", 100))
+
+    def cooling_down(self, names: Sequence[str] = ()) -> List[Tuple[str, str]]:
+        """返回当前因冷却而跳过的源及其原因。"""
+        candidates = self._providers or available_providers(names)
+        out: List[Tuple[str, str]] = []
+        for provider in candidates:
+            if health.is_cooling(provider.name):
+                out.append((provider.name, health.cooldown_reason(provider.name)))
+        return out
 
     def search(self, query: Union[str, SearchQuery],
                limit: Optional[int] = None) -> SearchResponse:
@@ -109,28 +133,39 @@ class SearchService:
                             exclude_domains=q.exclude_domains, year=q.year,
                             time_range=q.time_range, providers=q.providers)
 
+        # 冷却中的源：先算出来（即便它是唯一的源，也要如实报「冷却中」而不是
+        # 泛泛地说「没有可用源」—— 两者的处置完全不同：前者等一会儿就好）。
+        cooling = self.cooling_down(q.providers)
+
         active = self.providers(q.providers)
         if not active:
-            return SearchResponse(
-                query=q.text,
-                providers_failed=(("*", "没有可用的检索源（未安装可选依赖或被网络策略拦截）"),),
-                year=q.year,
-            )
+            reasons = cooling or [("*", "没有可用的检索源（未安装可选依赖或被网络策略拦截）")]
+            return SearchResponse(query=q.text, providers_failed=tuple(reasons), year=q.year)
 
         collected: List[SearchResult] = []
         used: List[str] = []
         failed: List[Tuple[str, str]] = []
 
+        failed.extend(cooling)
+
         for provider in active:
+            want = max(q.limit, DEFAULT_LIMIT)
+            cached = self._cache_get(provider, q)
+            if cached is not None:
+                used.append(f"{provider.name}(缓存)")
+                collected.extend(self._annotate(cached))
+                continue
+
             try:
-                raw = provider.search(q.text, limit=max(q.limit, DEFAULT_LIMIT),
-                                      time_range=q.time_range)
+                raw = provider.search(q.text, limit=want, time_range=q.time_range)
             except ProviderError as exc:
                 failed.append((provider.name, str(exc)))
+                self._maybe_cooldown(provider, str(exc))
                 continue
             except Exception as exc:              # pragma: no cover - 实现内部错误
                 failed.append((provider.name, f"未预期异常: {exc}"))
                 continue
+            self._cache_put(provider, q, raw)
 
             # [防「200 但内容是垃圾」] 逐条过相关性守门；全部不相关时按失败处理。
             # 实测 Bing 对裸 urllib 请求会返回 200 + 完全无关的内容（软性反爬），
@@ -256,6 +291,26 @@ class SearchService:
 
     # ── 内部 ────────────────────────────────────────────────
 
+    def _cache_get(self, provider: SearchProvider, q: SearchQuery) -> Optional[List[SearchResult]]:
+        if self._cache is None:
+            return None
+        try:
+            return self._cache.get(provider.name, q.text, max(q.limit, DEFAULT_LIMIT),
+                                   q.time_range)
+        except Exception as exc:                  # pragma: no cover
+            _LOG.debug("缓存读取失败（按未命中处理）: %s", exc)
+            return None
+
+    def _cache_put(self, provider: SearchProvider, q: SearchQuery,
+                   results: Sequence[SearchResult]) -> None:
+        if self._cache is None:
+            return
+        try:
+            self._cache.put(provider.name, q.text, max(q.limit, DEFAULT_LIMIT),
+                            results, q.time_range)
+        except Exception as exc:                  # pragma: no cover
+            _LOG.debug("缓存写入失败（忽略）: %s", exc)
+
     def _get_fetcher(self):
         if self._fetcher is not None:
             return self._fetcher
@@ -265,6 +320,26 @@ class SearchService:
             from tools.intelligence.fetcher import HTTPFetcher  # type: ignore
         self._fetcher = HTTPFetcher()
         return self._fetcher
+
+    @staticmethod
+    def _maybe_cooldown(provider: SearchProvider, reason: str) -> None:
+        """失败原因看起来像「被反爬/被挡」时，让该源冷却，避免继续硬试。"""
+        lowered = str(reason or "").lower()
+        if any(marker in lowered for marker in ("反爬", "验证", "captcha", "anomaly",
+                                                "频繁", "限流", "blocked")):
+            health.mark_blocked(provider.name, reason)
+
+    def _annotate(self, results: Sequence[SearchResult]) -> List[SearchResult]:
+        """补齐来源类型与权威度（统一走 source_registry，避免与服务外的调用方漂移）。"""
+        return source_registry.classify_results(list(results))
+
+    @staticmethod
+    def _maybe_cooldown(provider: SearchProvider, reason: str) -> None:
+        """失败原因看起来像「被反爬/被挡」时，让该源冷却，避免继续硬试。"""
+        lowered = str(reason or "").lower()
+        if any(marker in lowered for marker in ("反爬", "验证", "captcha", "anomaly",
+                                                "频繁", "限流", "blocked")):
+            health.mark_blocked(provider.name, reason)
 
     def _annotate(self, results: Sequence[SearchResult]) -> List[SearchResult]:
         """补齐来源类型与权威分（provider 可以不填，但上层必须拿得到）。"""

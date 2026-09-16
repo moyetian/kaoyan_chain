@@ -29,6 +29,7 @@ from tools.search.providers import ddg as ddg_mod  # noqa: E402
 from tools.search.providers import sogou as sogou_mod  # noqa: E402
 from tools.search.providers import tavily as tavily_mod  # noqa: E402
 from tools.search import relevance  # noqa: E402
+from tools.search.cache import SearchCache  # noqa: E402
 
 
 # ── 真实响应夹具（已裁剪） ──────────────────────────────────────
@@ -72,6 +73,27 @@ SOGOU_HTML = """
 
 SOGOU_CAPTCHA_HTML = "<html>请输入验证码 SourceVerifyCode：480928ab 请协助验证</html>"
 SOGOU_EMPTY_HTML = "<html>以下内容来自微信公众平台 呀！ 没有找到相关的微信公众号文章。</html>"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_search_state():
+    """隔离全局状态：provider 注册表与冷却表都是**进程级全局**的。
+
+    不隔离的话，其它测试文件注册的假 provider（如 test_search_core 里的
+    FakeProvider_*）会泄漏进 `available_providers()`，本文件的用例就会莫名
+    多出几个源；冷却表同理。
+    """
+    from tools.search import health
+    from tools.search.providers import _REGISTRY
+
+    saved_registry = dict(_REGISTRY)
+    health.reset()
+    try:
+        yield
+    finally:
+        health.reset()
+        _REGISTRY.clear()
+        _REGISTRY.update(saved_registry)
 
 
 @pytest.fixture()
@@ -139,11 +161,18 @@ def test_relevance_pure_numeric_query_still_works():
                                  "https://yjs.smu.edu.cn/a", tokens)
 
 
-def test_service_marks_anti_bot_provider_as_failed(patch_text):
-    """集成：Bing 返回垃圾 → 记为失败源，且结果里不出现垃圾。"""
+def test_service_marks_anti_bot_provider_as_failed(patch_text, tmp_path):
+    """集成：Bing 返回垃圾 → 记为失败源，且结果里不出现垃圾。
+
+    缓存必须指向临时目录：默认缓存落在 `.memory/search_cache.json`（跨运行留存），
+    若之前联网跑过同一条查询，这里会命中**真实结果**的缓存而看不到"Bing 垃圾"，
+    用例就会假失败。
+    """
     patch_text(bing_mod, BING_JUNK_HTML)
     patch_text(ddg_mod, DDG_HTML)
-    svc = SearchService.default()
+    svc = SearchService.default(providers=[bing_mod.BingProvider(),
+                                           ddg_mod.DuckDuckGoProvider()])
+    svc._cache = SearchCache(path=tmp_path / "c.json")
     resp = svc.search(SearchQuery(text="南方医科大学 085409 招生", limit=5))
 
     assert resp.has_results and all("youtube" not in r.url for r in resp.results)

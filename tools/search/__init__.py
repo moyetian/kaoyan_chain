@@ -30,6 +30,9 @@ from .models import (
     domain_of,
     merge_responses,
 )
+from .cache import SearchCache
+from .dedup import Deduplicator, canonical_url, dedup_urls
+from .health import cooldown_state, mark_blocked, reset_cooldown
 from .providers import (
     ProviderError,
     SearchProvider,
@@ -51,6 +54,7 @@ from .service import (
     format_results,
     quick_search,
 )
+from .rank import Ranker, detect_year, year_status
 from .source_registry import (
     authority_of,
     classify,
@@ -85,6 +89,14 @@ __all__ = [
     "detect_intent",
     "extract_entities",
     "plan_queries",
+    # 去重 / 缓存 / 健康度
+    "Deduplicator",
+    "canonical_url",
+    "dedup_urls",
+    "SearchCache",
+    "Ranker",
+    "detect_year",
+    "year_status",
     # 来源权威度
     "authority_of",
     "classify",

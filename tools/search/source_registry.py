@@ -126,6 +126,28 @@ def is_official(url_or_host: str) -> bool:
 _NOT_SCHOOL_HOSTS = frozenset({"yz.chsi.com.cn", "chsi.com.cn", "yz.chsi.cn"})
 
 
+def classify_results(results) -> List:
+    """给一批结果补上来源类型与权威度（provider 可以不填，但上层必须拿得到）。
+
+    抽成公共函数的原因：离线评测（benchmark）也要走同一套归类，否则评测里的
+    「官方结果」永远判不出来 —— 这点在写评测时才暴露出来。
+    """
+    out: List = []
+    for result in results:
+        stype, authority = classify(result.domain or result.url)
+        if result.source_type in ("", "unknown") or result.authority <= 0:
+            result = result.__class__(
+                title=result.title, url=result.url, snippet=result.snippet,
+                engine=result.engine, domain=result.domain,
+                source_type=result.source_type if result.source_type != "unknown" else stype,
+                published_at=result.published_at,
+                authority=result.authority if result.authority > 0 else authority,
+                score=result.score, extra=dict(result.extra or {}),
+            )
+        out.append(result)
+    return out
+
+
 def domains_for_school(school: str) -> Dict[str, str]:
     """由院校名取该院校的三个官方域名（学校 / 研究生院 / 研招办）。
 
@@ -166,6 +188,7 @@ def domains_for_school(school: str) -> Dict[str, str]:
 
 
 __all__ = [
+    "classify_results",
     "DEFAULT_AUTHORITY",
     "DEFAULT_TYPE",
     "DOMAIN_TABLE",
