@@ -1,0 +1,32 @@
+{"query": "华中科技大学 2027 招生简章", "intent": "fact", "acceptable_domains": ["hust.edu.cn", "yz.chsi.com.cn"], "must_terms": ["招生简章"], "year": 2027}
+{"query": "浙江大学 招生专业目录 计算机", "intent": "fact", "acceptable_domains": ["zju.edu.cn", "yz.chsi.com.cn"], "must_terms": ["专业目录"], "year": 2027}
+{"query": "南方医科大学 招生简章 硕士", "intent": "fact", "acceptable_domains": ["smu.edu.cn", "yz.chsi.com.cn"], "must_terms": ["招生简章"], "year": 2027}
+{"query": "天津工业大学 2027 硕士招生专业目录", "intent": "fact", "acceptable_domains": ["tiangong.edu.cn", "yz.chsi.com.cn"], "must_terms": ["专业目录"], "year": 2027}
+{"query": "华中科技大学 计算机 初试科目", "intent": "fact", "acceptable_domains": ["hust.edu.cn", "yz.chsi.com.cn"], "must_terms": ["初试科目"], "year": 2027}
+{"query": "北京邮电大学 计算机 考什么", "intent": "fact", "acceptable_domains": ["bupt.edu.cn", "yz.chsi.com.cn"], "must_terms": ["初试科目"], "year": 2027}
+{"query": "电子科技大学 408 自命题", "intent": "fact", "acceptable_domains": ["uestc.edu.cn", "yz.chsi.com.cn"], "must_terms": ["408"], "year": 2027}
+{"query": "南方医科大学085409今年招多少人", "intent": "fact", "acceptable_domains": ["smu.edu.cn", "yz.chsi.com.cn"], "must_terms": ["085409"], "year": 2027}
+{"query": "南京大学 计算机 招生人数", "intent": "fact", "acceptable_domains": ["nju.edu.cn", "yz.chsi.com.cn"], "must_terms": ["招生"], "year": 2027}
+{"query": "武汉大学 软件工程 拟招生人数", "intent": "fact", "acceptable_domains": ["whu.edu.cn", "yz.chsi.com.cn"], "must_terms": ["招生"], "year": 2027}
+{"query": "华中科技大学 计算机 复试线", "intent": "fact", "acceptable_domains": ["hust.edu.cn", "gszs.hust.edu.cn"], "must_terms": ["复试"], "year": 2027}
+{"query": "浙江大学 2026 复试分数线", "intent": "fact", "acceptable_domains": ["zju.edu.cn", "grs.zju.edu.cn"], "must_terms": ["复试"], "year": 2026}
+{"query": "西安交通大学 复试基本线", "intent": "fact", "acceptable_domains": ["xjtu.edu.cn", "yz.chsi.com.cn"], "must_terms": ["复试"], "year": 2027}
+{"query": "哈尔滨工业大学 拟录取名单 计算机", "intent": "fact", "acceptable_domains": ["hit.edu.cn", "yz.chsi.com.cn"], "must_terms": ["拟录取"], "year": 2027}
+{"query": "北京大学 报录比 计算机", "intent": "fact", "acceptable_domains": ["pku.edu.cn", "yz.chsi.com.cn"], "must_terms": ["报录比"], "year": 2027}
+{"query": "找南方医科大学085409专业课真题", "intent": "resource", "acceptable_domains": ["smu.edu.cn", "mp.weixin.qq.com", "zhihu.com"], "must_terms": ["真题"], "year": null}
+{"query": "考研数学二 真题 pdf", "intent": "resource", "acceptable_domains": ["zhihu.com", "mp.weixin.qq.com"], "must_terms": ["真题"], "year": null}
+{"query": "华中科技大学 408 真题 回忆版", "intent": "resource", "acceptable_domains": ["hust.edu.cn", "zhihu.com", "mp.weixin.qq.com"], "must_terms": ["真题"], "year": null}
+{"query": "考研英语二 作文模板", "intent": "resource", "acceptable_domains": ["zhihu.com", "mp.weixin.qq.com"], "must_terms": ["作文"], "year": null}
+{"query": "政治 帽子词 速记", "intent": "resource", "acceptable_domains": ["zhihu.com", "mp.weixin.qq.com"], "must_terms": ["帽子词"], "year": null}
+{"query": "华中科技大学 计算机 考研难度", "intent": "general", "acceptable_domains": ["hust.edu.cn", "zhihu.com", "mp.weixin.qq.com"], "must_terms": ["考研"], "year": null}
+{"query": "南方医科大学 考研 值不值得考", "intent": "general", "acceptable_domains": ["smu.edu.cn", "zhihu.com"], "must_terms": ["考研"], "year": null}
+{"query": "天津工业大学 双一流 学科", "intent": "general", "acceptable_domains": ["tiangong.edu.cn", "yz.chsi.com.cn"], "must_terms": ["双一流"], "year": null}
+{"query": "2027 考研数学二 考试大纲", "intent": "fact", "acceptable_domains": ["moe.gov.cn", "yz.chsi.com.cn", "zhihu.com"], "must_terms": ["大纲"], "year": 2027}
+{"query": "考研英语二 大纲 变动", "intent": "fact", "acceptable_domains": ["moe.gov.cn", "yz.chsi.com.cn", "zhihu.com"], "must_terms": ["大纲"], "year": 2027}
+{"query": "考研 调剂 政策 2027", "intent": "fact", "acceptable_domains": ["moe.gov.cn", "yz.chsi.com.cn"], "must_terms": ["调剂"], "year": 2027}
+{"query": "南京大学 软件工程 招生简章", "intent": "fact", "acceptable_domains": ["nju.edu.cn", "yz.chsi.com.cn"], "must_terms": ["招生简章"], "year": 2027}
+{"query": "武汉大学 计算机 初试科目", "intent": "fact", "acceptable_domains": ["whu.edu.cn", "yz.chsi.com.cn"], "must_terms": ["初试科目"], "year": 2027}
+{"query": "北京邮电大学 复试线 计算机", "intent": "fact", "acceptable_domains": ["bupt.edu.cn", "yz.chsi.com.cn"], "must_terms": ["复试"], "year": 2027}
+{"query": "电子科技大学 软件工程 招生人数", "intent": "fact", "acceptable_domains": ["uestc.edu.cn", "yz.chsi.com.cn"], "must_terms": ["招生"], "year": 2027}
+{"query": "清华大学 计算机 推免 名额", "intent": "fact", "acceptable_domains": ["tsinghua.edu.cn", "yz.chsi.com.cn"], "must_terms": ["推免"], "year": 2027}
+{"query": "浙江大学 软件学院 专业目录", "intent": "fact", "acceptable_domains": ["zju.edu.cn", "yz.chsi.com.cn"], "must_terms": ["专业目录"], "year": 2027}
