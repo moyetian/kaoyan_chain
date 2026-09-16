@@ -55,6 +55,7 @@ from .service import (
     quick_search,
 )
 from .rank import Ranker, detect_year, year_status
+from .report import SearchReport, build_report
 from .source_registry import (
     authority_of,
     classify,
@@ -97,6 +98,9 @@ __all__ = [
     "Ranker",
     "detect_year",
     "year_status",
+    # 报告
+    "SearchReport",
+    "build_report",
     # 来源权威度
     "authority_of",
     "classify",

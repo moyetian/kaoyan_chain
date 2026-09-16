@@ -595,16 +595,36 @@ class ToolRegistry:
             """
             try:
                 try:
-                    from search import SearchQuery, SearchService, format_results
+                    from search import (
+                        SearchQuery,
+                        SearchService,
+                        build_report,
+                        detect_intent,
+                        extract_entities,
+                        format_results,
+                    )
                 except ImportError:  # pragma: no cover
                     from tools.search import (  # type: ignore
-                        SearchQuery, SearchService, format_results)
+                        SearchQuery,
+                        SearchService,
+                        build_report,
+                        detect_intent,
+                        extract_entities,
+                        format_results,
+                    )
 
                 domain_tuple = tuple(str(d) for d in (domains or []) if str(d).strip())
                 response = SearchService.default().search(SearchQuery(
                     text=str(query), limit=max(1, int(num_results or 5)),
                     domains=domain_tuple))
-                return format_results(response)
+                if response.has_results:
+                    return format_results(response)
+                # [结构化失败报告] 没结果时必须说清是「确实没有」还是「没搜到」——
+                # 否则模型只能回一句"未找到相关资料"，用户无法据此决定下一步。
+                entities = extract_entities(str(query))
+                return build_report(
+                    response, intent=detect_intent(str(query)),
+                    year=entities.year or None).to_markdown()
             except Exception as e:
                 return (f"【网络检索提示】: 检索失败（{e}）。"
                         f"请优先参考工作区内置的官方考纲与 参考资料。")
