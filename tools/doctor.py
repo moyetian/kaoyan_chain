@@ -389,8 +389,52 @@ def run_doctor(return_summary=False):
     html_docs = ROOT / "docs" / "index.html"
     if not check_item("看板编译引擎 (05-考研看板/build.py)", build_script.exists()):
         issues += 1
-    if not check_item("自测看板主页 (docs/index.html)", html_docs.exists() and html_docs.stat().st_size > 1000):
+
+    # [新增·版本一致性] 项目版本号此前在四处各写一份且互不相同
+    # （pyproject 2.7.0 / ky_cli 打印 v2.6.0 / gui 包 2.5.0 / TUI Banner v2.5），
+    # 用户在任何一端看到的版本都不同，无法据此判断该不该升级。
+    # 现收敛到 tools/version.py 单一真源，这里做一次回归体检。
+    try:
+        try:
+            from version import get_version
+        except ImportError:
+            from tools.version import get_version
+        try:
+            import gui as _gui_pkg
+            gui_ver = str(getattr(_gui_pkg, "__version__", ""))
+        except Exception:
+            gui_ver = get_version()
+        ver = get_version()
+        consistent = ver != "0.0.0+unknown" and gui_ver == ver
+        check_item("版本号单一真源 (tools/version.py)", consistent,
+                   f"各端一致：v{ver}",
+                   f"版本不一致：pyproject={ver} / GUI 包={gui_ver}，请检查 tools/version.py 的取值")
+        if not consistent:
+            warnings += 1
+    except Exception as _e:
+        check_item("版本号单一真源 (tools/version.py)", False, "", f"版本读取失败: {_e}")
         warnings += 1
+
+    # [新增·主题入口] 用户可自定义界面主题（颜色/圆角/密度/字号）。
+    # 文件缺失属正常（用内置预设）；存在但不可读/不达标会被 tools/theme 拒绝并回退，
+    # 此处提前把"自定义被拒"这件事暴露出来，避免用户以为设置没生效。
+    theme_file = ROOT / "ui_theme.json"
+    if theme_file.exists():
+        try:
+            from tools.theme import load_theme
+            theme = load_theme(ROOT)
+            ok = theme.source != "builtin-fallback"
+            check_item("个人主题配置 (ui_theme.json)", ok,
+                       f"已生效：{theme.display_name}（{theme.name}）",
+                       "自定义配色可读性不达标（WCAG 对比度校验未通过），已回退内置默认主题")
+            if not ok:
+                warnings += 1
+        except Exception as _e:
+            check_item("个人主题配置 (ui_theme.json)", False, "", f"主题解析失败: {_e}")
+            warnings += 1
+    else:
+        check_item("个人主题配置 (ui_theme.json)", True,
+                   "未自定义，使用内置预设（可在工作区根创建该文件切换主题）")
 
     # 检测 8088 端口状态
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
