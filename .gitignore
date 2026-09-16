@@ -51,6 +51,10 @@ README优化方案*.md
 # 仓库仅保留脱敏模板 00_考研全科总战役规划.example.md
 /00_考研全科总战役规划.md
 
+# 个人界面主题配置（tokens 见 tools/theme/）：由用户在本机定制，
+# 纯外观偏好、不随仓库分发；缺失时自动使用内置预设。
+/ui_theme.json
+
 **/_状态/*.md
 !**/_状态/*.template.md
 !**/_状态/*.example.md

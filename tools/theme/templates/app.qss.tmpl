@@ -1,0 +1,237 @@
+/* ============================================================================
+   考研学习链 GUI · 唯一结构样式模板 (Single Structural QSS Template)
+   ----------------------------------------------------------------------------
+   这里只写「结构与布局」，颜色/圆角/字号/间距一律走 token 占位
+   （双花括号包住 token 名，如 acc、radius、fs-base；取值见 tools/theme/tokens.py）。
+   加一套新主题 = 加一组 token，而不是再抄一份 163 行的样式表 ——
+   改造前 dark.qss / light.qss 正是两份逐条手写的完整副本。
+
+   占位符由 tools/theme/compile_qt.py 注入；引用未定义的 token 会直接报错，
+   避免出现「样式里写了一个预设中不存在的色名」导致的静默失效。
+   ========================================================================== */
+
+QMainWindow, QWidget {
+    background-color: {{bg}};
+    color: {{fg}};
+    font-family: {{font-family}};
+}
+
+/* 键盘用户必须能看见焦点落在哪里（改造前全站 :focus 样式为 0 处） */
+*:focus {
+    outline: {{focus-w}}px solid {{focus-ring}};
+    outline-offset: 1px;
+}
+
+#HeaderBar {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {{surf}}, stop:1 {{surf2}});
+    border-radius: {{radius}}px;
+    border: 1px solid {{line}};
+    padding: {{pad}}px {{pad-lg}}px;
+}
+
+#Countdown {
+    color: {{warn}};
+    font-size: {{fs-lg}};
+    font-weight: bold;
+}
+
+#MetaLabel {
+    color: {{mut}};
+    font-size: {{fs-sm}};
+}
+
+#FunctionCard {
+    background-color: {{surf}};
+    border: 1px solid {{line}};
+    border-radius: {{radius-sm}}px;
+}
+
+#FunctionCard:hover {
+    background-color: {{surf3}};
+    border: 1px solid {{acc}};
+}
+
+#CardTitle {
+    color: {{acc-soft}};
+    font-weight: bold;
+    font-size: {{fs-base}};
+}
+
+#CardDesc {
+    color: {{mut}};
+    font-size: {{fs-sm}};
+}
+
+#CardScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+/* 主页任务行 */
+#TaskRow {
+    background-color: {{surf}};
+    border: 1px solid {{line}};
+    border-radius: {{radius-sm}}px;
+}
+
+#TaskRow:hover {
+    border: 1px solid {{acc}};
+}
+
+#TaskLabel {
+    color: {{fg}};
+    font-size: {{fs-base}};
+}
+
+#TaskPct {
+    color: {{mut}};
+    font-size: {{fs-sm}};
+}
+
+/* 主页顶部快捷胶囊 */
+#QuickPill {
+    background-color: {{acc-sub}};
+    color: {{acc-soft}};
+    border: 1px solid {{acc-line}};
+    border-radius: {{radius-sm}}px;
+    padding: {{pad-sm}}px {{pad}}px;
+    font-weight: 600;
+}
+
+#ThemeToggle {
+    background-color: {{surf2}};
+    color: {{acc-soft}};
+    border: 1px solid {{acc-line}};
+    border-radius: {{radius-sm}}px;
+    padding: {{pad-sm}}px {{pad}}px;
+    font-size: {{fs-sm}};
+}
+
+QProgressBar {
+    background-color: {{input-bg}};
+    border: 1px solid {{line-strong}};
+    border-radius: {{radius-sm}}px;
+    text-align: center;
+    color: {{fg-strong}};
+    font-weight: bold;
+}
+
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {{acc-grad-from}}, stop:1 {{acc-grad-to}});
+    border-radius: {{radius-sm}}px;
+}
+
+QTabWidget::pane {
+    border: 1px solid {{line}};
+    border-radius: {{radius-sm}}px;
+    background-color: {{surf}};
+}
+
+QTabBar::tab {
+    background-color: {{surf2}};
+    color: {{mut}};
+    padding: {{pad}}px {{pad-lg}}px;
+    border-top-left-radius: {{radius-sm}}px;
+    border-top-right-radius: {{radius-sm}}px;
+    margin-right: {{pad-sm}}px;
+    font-weight: 500;
+}
+
+QTabBar::tab:selected {
+    background-color: {{acc}};
+    color: {{on-acc}};
+    font-weight: bold;
+}
+
+QTabBar::tab:hover:!selected {
+    background-color: {{surf3}};
+    color: {{fg-strong}};
+}
+
+QPushButton {
+    background-color: {{acc}};
+    color: {{on-acc}};
+    border: none;
+    padding: {{pad}}px {{pad-lg}}px;
+    border-radius: {{radius-sm}}px;
+    font-size: {{fs-base}};
+    font-weight: 600;
+}
+
+QPushButton:hover {
+    background-color: {{acc-hover}};
+}
+
+QPushButton:pressed {
+    background-color: {{acc-press}};
+}
+
+QPushButton:disabled {
+    background-color: {{surf3}};
+    color: {{mut}};
+}
+
+QLineEdit, QTextEdit, QPlainTextEdit {
+    background-color: {{input-bg}};
+    border: 1px solid {{line-strong}};
+    border-radius: {{radius-sm}}px;
+    padding: {{pad}}px {{pad}}px;
+    color: {{fg-strong}};
+    font-size: {{fs-base}};
+    selection-background-color: {{acc}};
+}
+
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
+    border: 1px solid {{acc}};
+}
+
+QTableWidget {
+    background-color: {{input-bg}};
+    border: 1px solid {{line-strong}};
+    border-radius: {{radius-sm}}px;
+    gridline-color: {{grid-line}};
+    color: {{fg-strong}};
+}
+
+QHeaderView::section {
+    background-color: {{surf}};
+    color: {{mut}};
+    padding: {{pad-sm}}px;
+    border: none;
+    border-bottom: 1px solid {{line}};
+    font-weight: bold;
+}
+
+QTableWidget::item:selected {
+    background-color: {{sel-bg}};
+    color: {{sel-fg}};
+}
+
+QScrollBar:vertical {
+    background-color: {{bg}};
+    width: 10px;
+    margin: 0px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: {{line-strong}};
+    min-height: 20px;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: {{mut}};
+}
+
+QStatusBar {
+    background-color: {{surf2}};
+    color: {{mut}};
+    font-size: {{fs-sm}};
+}
+
+QToolTip {
+    background-color: {{surf3}};
+    color: {{fg}};
+    border: 1px solid {{line}};
+    padding: {{pad-sm}}px;
+}
