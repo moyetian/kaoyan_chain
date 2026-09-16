@@ -44,6 +44,8 @@ class SearchProvider(ABC):
     requires_key: bool = False
     #: 说明文案，供 `ky search --providers` 展示
     description: str = ""
+    #: 检索优先级（越小越先被查询，也用于同分排序兜底）
+    priority: int = 100
 
     @abstractmethod
     def search(self, query: str, *, limit: int = 10,

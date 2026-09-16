@@ -562,51 +562,52 @@ class ToolRegistry:
             except Exception as e:
                 return f"Error 访问网页失败: {e}"
 
+
         @self.register(
             name="web_search",
-            desc="安全联网检索考研真题、官方大纲变动通知、目标院校考研专业课简章等外部权威资讯。",
+            desc=("联网检索考研资讯与院校信息。返回带【真实链接】的结果（可直接用 fetch_url 打开），"
+                  "并标注来源类型（官方/公众号/社区）与失败源，便于判断证据强弱。"),
             params_schema={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "搜索关键词 (例如 2026考研数学二大纲变动, 浙江大学408自命题)"},
-                    "num_results": {"type": "integer", "description": "返回结果条数 (默认5)"}
+                    "query": {"type": "string", "description": "搜索关键词 (例如 2027 南方医科大学 085409 招生简章)"},
+                    "num_results": {"type": "integer", "description": "返回结果条数 (默认5)"},
+                    "domains": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "可选：限定站点(如 [\"smu.edu.cn\"] 只搜该校官网，含子域)"
+                    }
                 },
                 "required": ["query"]
             },
             level=PermissionLevel.NETWORK
         )
-        def web_search(query: str, num_results: int = 5) -> str:
-            import urllib.parse
-            import re
-            url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-            req = urllib.request.Request(url, headers=headers)
+        def web_search(query: str, num_results: int = 5, domains=None) -> str:
+            """联网检索（走统一的 Search Runtime）。
+
+            [缺陷修复·检索结果不可用] 旧实现只正则抓 DuckDuckGo 的 result__url
+            文本与摘要：**不返回真实 href**，模型拿到"看起来像网址的字符串"却无法
+            打开验证，Search→Fetch 闭环是断的；同时没有来源标注与多源联邦，
+            引擎被反爬返回无关内容时也无从察觉。
+
+            现在统一走 tools/search：多源联邦 + 相关性守门 + 来源类型/权威度标注 +
+            失败源如实汇报，且每条结果都带真实链接（可直接交给 fetch_url）。
+            """
             try:
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    html = resp.read().decode("utf-8", errors="ignore")
-                    snippets = re.findall(r'<a[^>]+class="result__snippet"[^>]*>(.*?)</a>', html, re.DOTALL)
-                    titles = re.findall(r'<a[^>]+class="result__url"[^>]*>(.*?)</a>', html, re.DOTALL)
-                    results = []
-                    limit = min(len(snippets), num_results)
-                    for i in range(limit):
-                        t_clean = re.sub(r'<[^>]+>', '', titles[i]).strip() if i < len(titles) else f"结果 {i+1}"
-                        s_clean = re.sub(r'<[^>]+>', '', snippets[i]).strip()
-                        results.append(f"[{i+1}] {t_clean}\n    摘要: {s_clean}")
-                    if results:
-                        return f"【DuckDuckGo 考研网络检索: {query}】:\n\n" + "\n\n".join(results)
-                    else:
-                        clean_txt = re.sub(r"<[^>]+>", " ", html)
-                        clean_txt = re.sub(r"\s+", " ", clean_txt).strip()
-                        return f"【网络检索摘要: {query}】:\n" + clean_txt[:1000]
+                try:
+                    from search import SearchQuery, SearchService, format_results
+                except ImportError:  # pragma: no cover
+                    from tools.search import (  # type: ignore
+                        SearchQuery, SearchService, format_results)
+
+                domain_tuple = tuple(str(d) for d in (domains or []) if str(d).strip())
+                response = SearchService.default().search(SearchQuery(
+                    text=str(query), limit=max(1, int(num_results or 5)),
+                    domains=domain_tuple))
+                return format_results(response)
             except Exception as e:
-                return f"【网络检索提示】: 当前本地网络暂时无法访问外部搜索引擎 ({e})。请优先参考工作区内置的官方考纲与参考资料。"
-
-        # ─────────────────────────────────────────────────────────────
-        # 6. 考研专属能力工具 (针对用户痛点定制)
-        # ─────────────────────────────────────────────────────────────
-
+                return (f"【网络检索提示】: 检索失败（{e}）。"
+                        f"请优先参考工作区内置的官方考纲与 参考资料。")
         @self.register(
             name="read_exam_paper",
             desc="专门从考研真题或习题集 PDF 中检索并提取指定年份、题号或知识点的原版题干。专门用于解决从真题集抽题需求！",

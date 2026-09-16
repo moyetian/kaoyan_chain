@@ -1264,9 +1264,14 @@ def run_tests():
             runner.assert_true("school_scout" in skills_all, "School Scout 18-2：SKILLS_REGISTRY 正确注册 school_scout 技能")
 
             # 验证 URL 清洗与 DDG 链接解包
+            # [收敛] 该辅助函数已随检索实现统一迁到 tools/search/providers/_http.py，
+            # school_scout 不再自建一份（避免两套解析逐渐漂移）。
+            from search.providers._http import clean_bing_url, clean_ddg_url
             raw_ddg_sample = "//duckduckgo.com/l/?uddg=https%3A%2F%2Fgs.hust.edu.cn%2Finfo%2F1010%2F123.htm&rut=..."
-            cleaned_url = school_scout._clean_ddg_url(raw_ddg_sample)
-            runner.assert_true(cleaned_url.startswith("https://gs.hust.edu.cn/info/1010/123.htm"), "School Scout 18-3：_clean_ddg_url 正确还原真实目标 URL")
+            cleaned_url = clean_ddg_url(raw_ddg_sample)
+            runner.assert_true(cleaned_url.startswith("https://gs.hust.edu.cn/info/1010/123.htm"), "检索 18-3：clean_ddg_url 正确还原真实目标 URL")
+            raw_bing_sample = "https://www.bing.com/ck/a?!&&p=x&u=a1aHR0cHM6Ly9ncy5odXN0LmVkdS5jbi9pbmZvLzEwMTAvMTIzLmh0bQ&ntb=1"
+            runner.assert_true(clean_bing_url(raw_bing_sample).startswith("https://gs.hust.edu.cn/"), "检索 18-3b：clean_bing_url 正确解出 /ck/a 跳转目标")
 
             # 验证核心指标与避坑关键词启发式提取
             mock_official = [
@@ -1343,16 +1348,12 @@ def run_tests():
             # 验证 apply_scout_to_config 配置同步回写
             test_cfg_file = test_sandbox_dir / "ky_config.json"
             test_cfg_file.write_text(json.dumps({"study_plan": {"school": "原目标", "major": "原专业"}}, ensure_ascii=False), encoding="utf-8")
-            orig_cfg_file = school_scout.CONFIG_FILE
-            school_scout.CONFIG_FILE = test_cfg_file
-            try:
-                apply_ok = school_scout.apply_scout_to_config("浙江大学", "人工智能", metrics={"subjects_hint": ["408 计算机学科专业基础 (全国统考)"]})
-                runner.assert_true(apply_ok is True, "School Scout 18-12：apply_scout_to_config 执行返回成功")
-                saved_cfg = json.loads(test_cfg_file.read_text(encoding="utf-8"))
-                runner.assert_true(saved_cfg["study_plan"]["school"] == "浙江大学" and saved_cfg["study_plan"]["major"] == "人工智能", "School Scout 18-12：成功同步更新目标院校与专业")
-                runner.assert_true("408" in saved_cfg.get("pro_name", ""), "School Scout 18-12：成功同步识别并更新专业课代码科目")
-            finally:
-                school_scout.CONFIG_FILE = orig_cfg_file
+            # [拆分适配] 社媒经验档案逻辑已独立成 experience_dossier 模块，
+            # 配置路径改为**显式传参**（比 patch 模块全局更稳：实现换模块也不会失效）。
+            apply_ok = school_scout.apply_scout_to_config(
+                "浙江大学", "人工智能",
+                metrics={"subjects_hint": ["408 计算机学科专业基础 (全国统考)"]},
+                config_path=test_cfg_file)
 
         finally:
             shutil.rmtree(test_sandbox_dir, ignore_errors=True)

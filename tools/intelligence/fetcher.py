@@ -50,8 +50,13 @@ class HTTPFetcher:
     def __init__(self, timeout: int = 6):
         self.timeout = timeout
 
-    def fetch(self, url: str, referer: Optional[str] = None) -> FetchResult:
-        """安全抓取 URL 并诊断页面访问健康状态"""
+    def fetch(self, url: str, referer: Optional[str] = None,
+              extra_headers: Optional[Dict[str, str]] = None) -> FetchResult:
+        """安全抓取 URL 并诊断页面访问健康状态。
+
+        :param extra_headers: 追加/覆盖请求头。搜索引擎对 Cookie 与 Accept 敏感
+            （缺少时会返回 200 但内容是无关垃圾），故允许调用方补充。
+        """
         headers = {
             "User-Agent": USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -61,6 +66,8 @@ class HTTPFetcher:
         }
         if referer:
             headers["Referer"] = referer
+        if extra_headers:
+            headers.update({str(k): str(v) for k, v in extra_headers.items()})
 
         req = urllib.request.Request(url, headers=headers)
         ssl_ctx = _DEFAULT_SSL_CONTEXT

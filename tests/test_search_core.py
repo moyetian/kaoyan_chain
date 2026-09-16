@@ -290,8 +290,8 @@ def test_limit_is_respected():
 
 def test_format_results_includes_urls_and_failures():
     svc = _service(_p(), _p("ddg", error="被限流"))
-    out = format_results(svc.search(SearchQuery(text="查询词")))
-    assert "查询词" in out and "https://yjs.smu.edu.cn" in out
+    out = format_results(svc.search(SearchQuery(text="南方医科大学 085409 招生")))
+    assert "南方医科大学" in out and "https://yjs.smu.edu.cn" in out
     assert "未参与的检索源" in out and "被限流" in out
 
 

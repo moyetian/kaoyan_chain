@@ -15,13 +15,10 @@
 """
 
 import json
+import logging
 import re
-import html
-import base64
 import urllib.request
 import urllib.parse
-import urllib.error
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -34,6 +31,23 @@ try:  # 双导入路径兼容：高校情报库已从本文件拆分至独立模
     from .school_db import TARGET_SCHOOLS_DB  # noqa: E402
 except ImportError:  # pragma: no cover
     from school_db import TARGET_SCHOOLS_DB  # noqa: E402
+
+# [拆分] 社媒经验档案逻辑已独立成模块（见 experience_dossier.py）；
+# 此处重新导出，保证内部调用与 wechat_searcher 的既有引用零改动。
+try:
+    from .experience_dossier import (
+        append_experience_to_dossier,
+        apply_scout_to_config,
+        filter_community_experiences,
+        save_experience_dossier,
+    )
+except ImportError:  # pragma: no cover
+    from experience_dossier import (  # type: ignore
+        append_experience_to_dossier,
+        apply_scout_to_config,
+        filter_community_experiences,
+        save_experience_dossier,
+    )
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 CONFIG_FILE = ROOT / "ky_config.json"
@@ -51,116 +65,33 @@ USER_AGENT = (
 
 
 
-def _clean_ddg_url(raw_url: str) -> str:
-    """清洗 DuckDuckGo 重定向链接，获取真实目标网址"""
-    if not raw_url:
-        return ""
-    if "uddg=" in raw_url:
-        try:
-            parsed = urllib.parse.urlparse(raw_url)
-            params = urllib.parse.parse_qs(parsed.query)
-            if "uddg" in params and params["uddg"]:
-                return params["uddg"][0]
-        except Exception:
-            pass
-    if raw_url.startswith("//"):
-        return "https:" + raw_url
-    return raw_url
-
-
-def _clean_bing_url(raw_url: str) -> str:
-    """从 Bing /ck/a 跳转链接中解密还原原始目标真实网址"""
-    if not raw_url:
-        return ""
-    if "/ck/a?" in raw_url and "u=" in raw_url:
-        try:
-            m = re.search(r'[?&]u=([^&]+)', raw_url)
-            if m:
-                val = m.group(1)
-                if val.startswith("a1"):
-                    val = val[2:]
-                val += "=" * (-len(val) % 4)
-                decoded = base64.b64decode(val).decode("utf-8", errors="ignore")
-                if decoded.startswith("http"):
-                    return decoded
-        except Exception:
-            pass
-    return raw_url
-
-
-def _sanitize_text(raw_text: str) -> str:
-    """清理字符串中的 HTML 标签、实体与 Windows 控制台非法编码字符"""
-    if not raw_text:
-        return ""
-    text = re.sub(r"<(script|style|nav|footer|header)[^>]*>.*?</\1>", " ", raw_text, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = html.unescape(text)
-    # 清洗窄空格、零宽空格等容易引起 GBK 编码崩溃的特殊 Unicode 字符
-    text = re.sub(r'[\u2000-\u200f\u202f\u205f\u3000\ufeff]', ' ', text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
-
 def raw_web_search(query: str, max_results: int = 5, timeout: int = 8) -> List[Dict[str, str]]:
+    """通用网页检索（统一走 tools/search 的检索运行时）。
+
+    [缺陷修复·返回无关内容] 旧实现自建一套 Bing→DuckDuckGo 抓取与解析。实测
+    2026-09-16：Bing 对裸 urllib 请求返回 **HTTP 200 但内容完全无关**的页面
+    （查询「南方医科大学 085409 招生」拿到的是 Glodon CAD 用户协议页），而
+    HTML 结构正常、正则照样匹配出 10 条「结果」—— 于是这些垃圾被当成检索结果，
+    直接污染下游的院校研报与 Agent 回答。
+
+    现统一委托 `tools/search`：多源联邦 + 相关性守门（全不相关即判为失败并丢弃）
+    + 来源权威度标注，且与 Agent 的 `web_search` 工具同源，两端行为一致。
+
+    :param timeout: 保留仅为兼容既有调用点；实际超时由 provider 的 HTTP 层控制。
     """
-    轻量通用网页检索：优先使用国内高可用 Bing，失败则降级至 DuckDuckGo
-    零第三方 pip 依赖！
-    """
-    results = []
-
-    # 1. 优先尝试 Bing China
     try:
-        bing_headers = {
-            "User-Agent": USER_AGENT,
-            "Accept-Language": "zh-CN,zh;q=0.9",
-            "Cookie": "SRCHHPGUSR=SRCHLANG=zh-Hans; _EDGE_S=mkt=zh-cn;"
-        }
-        url_bing = f"https://www.bing.com/search?q={urllib.parse.quote(query)}&mkt=zh-CN&setlang=zh-Hans"
-        req = urllib.request.Request(url_bing, headers=bing_headers)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            html_txt = resp.read().decode("utf-8", errors="ignore")
-            matches = re.findall(r'<li class="b_algo"[^>]*>(.*?)</li>', html_txt, re.DOTALL)
-            for m in matches:
-                t_match = re.search(r'<h2[^>]*><a[^>]+href="([^"]+)"[^>]*>(.*?)</a></h2>', m)
-                s_match = re.search(r'<div class="b_caption"[^>]*>.*?<p[^>]*>(.*?)</p>', m, re.DOTALL)
-                if not t_match:
-                    continue
-                t_clean = _sanitize_text(t_match.group(2))
-                u_clean = _clean_bing_url(t_match.group(1))
-                s_clean = _sanitize_text(s_match.group(1)) if s_match else ""
-                if t_clean and u_clean:
-                    results.append({"title": t_clean, "url": u_clean, "snippet": s_clean})
-                    if len(results) >= max_results:
-                        break
-        if results:
-            return results
-    except Exception:
-        pass
+        try:
+            from search import SearchQuery, SearchService
+        except ImportError:  # pragma: no cover
+            from tools.search import SearchQuery, SearchService  # type: ignore
 
-    # 2. 备用 DuckDuckGo HTML
-    try:
-        ddg_url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
-        ddg_headers = {"User-Agent": USER_AGENT}
-        req = urllib.request.Request(ddg_url, headers=ddg_headers)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            html_txt = resp.read().decode("utf-8", errors="ignore")
-            titles = re.findall(r'<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>', html_txt, re.DOTALL)
-            snippets = re.findall(r'<a[^>]+class="result__snippet"[^>]*>(.*?)</a>', html_txt, re.DOTALL)
-            limit = min(len(titles), max_results)
-            for i in range(limit):
-                href, t_html = titles[i]
-                t_clean = _sanitize_text(t_html)
-                s_clean = _sanitize_text(snippets[i]) if i < len(snippets) else ""
-                real_url = _clean_ddg_url(href)
-                results.append({
-                    "title": t_clean or f"检索结果 {i+1}",
-                    "url": real_url,
-                    "snippet": s_clean
-                })
-    except Exception:
-        pass
-
-    return results
+        response = SearchService.default().search(
+            SearchQuery(text=str(query), limit=max(1, int(max_results or 5))))
+        return [{"title": r.title, "url": r.url, "snippet": r.snippet}
+                for r in response.results]
+    except Exception as exc:                       # pragma: no cover - 兜底不阻断侦察
+        logging.getLogger(__name__).warning("检索失败，返回空结果: %s", exc)
+        return []
 
 
 def find_school_in_db(school_name: str) -> Optional[Dict[str, Any]]:
@@ -695,375 +626,6 @@ def format_scout_report(data: Dict[str, Any], use_color: bool = False) -> str:
     return "\n".join(lines)
 
 
-def apply_scout_to_config(school: str, major: str, metrics: Dict[str, Any] = None) -> bool:
-    """
-    一键将侦察到的院校与专业信息同步回写至本地 ky_config.json
-    """
-    if not CONFIG_FILE.exists():
-        return False
-    try:
-        cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        study_plan = cfg.setdefault("study_plan", {})
-        study_plan["school"] = school
-        if major:
-            study_plan["major"] = major
-
-        # 若识别到专业课科目，自动同步
-        if metrics and metrics.get("subjects_hint"):
-            for s in metrics["subjects_hint"]:
-                if "408" in s:
-                    cfg["pro_name"] = "408 计算机学科专业基础"
-                    study_plan["pro_name"] = "408 计算机学科专业基础"
-                    break
-                elif "自命题" in s:
-                    clean_name = s.replace("专业课自命题:", "").strip()
-                    cfg["pro_name"] = clean_name
-                    study_plan["pro_name"] = clean_name
-
-        atomic_write_text(CONFIG_FILE, json.dumps(cfg, ensure_ascii=False, indent=2))
-        return True
-    except Exception:
-        return False
-
-
-def filter_community_experiences(social_data: Dict[str, Any], school: str = "", major: str = "") -> List[Dict[str, Any]]:
-    """
-    社媒经验贴智能降噪与置信度量化过滤引擎
-    依据时间新鲜度 (近1-2年加权)、初试各科分数明细、真实就读/避坑特征，
-    严密过滤商业卖课、淘宝代写、引流微信等低质噪声。
-    
-    返回按置信度从高到低排序的高价值真实经验条目。
-    """
-    if not isinstance(social_data, dict):
-        return []
-
-    school_lower = (school or "").strip().lower()
-    major_lower = (major or "").strip().lower()
-
-    raw_items = []
-    platform_map = {
-        "zhihu": "知乎",
-        "bilibili": "哔哩哔哩",
-        "xiaohongshu": "小红书"
-    }
-    for plat_key, plat_name in platform_map.items():
-        items = social_data.get(plat_key, [])
-        if isinstance(items, list):
-            for it in items:
-                if isinstance(it, dict):
-                    raw_items.append({
-                        "platform": plat_name,
-                        "platform_key": plat_key,
-                        "title": it.get("title", "").strip(),
-                        "url": it.get("url", "").strip(),
-                        "snippet": it.get("snippet", "").strip()
-                    })
-
-    if "items" in social_data and isinstance(social_data["items"], list):
-        for it in social_data["items"]:
-            if isinstance(it, dict):
-                raw_items.append({
-                    "platform": it.get("platform", "社交网络"),
-                    "platform_key": it.get("platform_key", "custom"),
-                    "title": it.get("title", "").strip(),
-                    "url": it.get("url", "").strip(),
-                    "snippet": it.get("snippet", "").strip()
-                })
-
-    SPAM_PATTERNS = [
-        r"(?:加[vV微]|微信|VX|vx|咨询微信|私聊|私信|加群)[：:\s]*[a-zA-Z0-9_\-]+",
-        r"(?:买资料|卖资料|出售资料|学姐资料|独家笔记|无偿分享|留邮箱|点赞送)",
-        r"(?:淘宝|闲鱼|拼多多|转转|买课|报名咨询|保过|包过|内部渠道)",
-        r"(?:代写|代做|接单|枪手|押题准|密卷)",
-        r"(?:关注公众号|公众号后台回复)",
-    ]
-
-    SCORE_PATTERNS = [
-        r"(?:初试|总分|初试成绩|考了|总成绩)[：:\s]*([34]\d{2})",
-        r"(?:政治|英语|数学|专业课|408)[：:\s]*(\d{2,3})分?",
-        r"(?:排名|专业第|第)(\d+)名",
-        r"400\+?",
-    ]
-
-    RECENCY_PATTERNS = [
-        (r"202[5-7]|2[5-7]考研", 20),
-        (r"202[3-4]|2[3-4]考研", 15),
-        (r"202[1-2]|2[1-2]考研", 5),
-        (r"201\d|2020", -15),
-    ]
-
-    SUBSTANTIVE_KEYWORDS = [
-        ("保护一志愿", 10), ("不歧视双非", 10), ("复试线", 8), ("差额复试", 8),
-        ("调剂", 6), ("机试", 8), ("面试细节", 8), ("专业课难", 6), ("压分", 8),
-        ("不压分", 8), ("真题风格", 6), ("导师评价", 6), ("就读体验", 6),
-        ("学长建议", 5), ("踩坑", 6), ("避坑", 8), ("上岸", 5), ("复习规划", 5)
-    ]
-
-    filtered_results = []
-    seen_urls = set()
-
-    for item in raw_items:
-        url = item["url"]
-        if url and url in seen_urls:
-            continue
-        if url:
-            seen_urls.add(url)
-
-        full_text = f"{item['title']} {item['snippet']}"
-        full_text_lower = full_text.lower()
-
-        score = 50.0
-        tags = []
-        is_spam = False
-
-        # 1. 商业推销判定
-        spam_hits = 0
-        for sp in SPAM_PATTERNS:
-            if re.search(sp, full_text, re.IGNORECASE):
-                spam_hits += 1
-        if spam_hits >= 1:
-            score -= spam_hits * 35.0
-            tags.append("含引流或营销嫌疑")
-            is_spam = True
-
-        # 2. 院校与专业匹配
-        if school_lower:
-            if school_lower in full_text_lower:
-                score += 15.0
-                tags.append("院校精确匹配")
-            else:
-                score -= 10.0
-
-        if major_lower:
-            if major_lower in full_text_lower:
-                score += 10.0
-                tags.append("专业精确匹配")
-
-        # 3. 考研年份时效性
-        recency_awarded = False
-        for rp, delta in RECENCY_PATTERNS:
-            if re.search(rp, full_text):
-                score += delta
-                if delta > 10:
-                    tags.append("高时效近期贴")
-                recency_awarded = True
-                break
-        if not recency_awarded:
-            score -= 5.0
-
-        # 4. 分数或排名明细
-        score_hits = 0
-        for sp in SCORE_PATTERNS:
-            if re.search(sp, full_text):
-                score_hits += 1
-        if score_hits > 0:
-            score += min(score_hits * 8.0, 20.0)
-            tags.append("含分数或排名明细")
-
-        # 5. 备考就读高频实质语义
-        for kw, weight in SUBSTANTIVE_KEYWORDS:
-            if kw in full_text:
-                score += weight
-                if kw in ("保护一志愿", "不歧视双非", "不压分"):
-                    tags.append("正面口碑")
-                elif kw in ("压分", "踩坑", "避坑", "差额复试"):
-                    tags.append("避坑预警")
-                elif kw in ("机试", "面试细节"):
-                    tags.append("复试干货")
-
-        score = max(0.0, min(100.0, round(score, 1)))
-
-        if score >= 75.0:
-            quality = "HIGH"
-        elif score >= 50.0:
-            quality = "MEDIUM"
-        else:
-            quality = "LOW_OR_SPAM"
-
-        clean_snippet = item["snippet"] or item["title"]
-
-        filtered_results.append({
-            "platform": item["platform"],
-            "title": item["title"],
-            "url": item["url"],
-            "snippet": clean_snippet,
-            "confidence": score,
-            "quality": quality,
-            "is_spam": is_spam,
-            "tags": list(dict.fromkeys(tags))
-        })
-
-    filtered_results.sort(key=lambda x: x["confidence"], reverse=True)
-    return filtered_results
-
-
-def save_experience_dossier(
-    school: str,
-    major: str,
-    exp_data: List[Dict[str, Any]],
-    metrics: Optional[Dict[str, Any]] = None,
-    output_dir: Optional[Path] = None
-) -> Path:
-    """
-    将经置信度过滤降噪后的真实考研经验与就读体验生成规范化档案，
-    落盘至 .memory/experiences/<学校>_<专业>.md (本地隐私目录)
-    """
-    school = (school or "通用院校").strip()
-    major = (major or "").strip()
-    # [P0 修复] 默认落地到 .memory/experiences/ 目录，避免学员考情隐私泄露至 Pages
-    out_dir = output_dir or (ROOT / ".memory" / "experiences")
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    file_stem = f"{school}_{major}" if major else school
-    clean_stem = re.sub(r'[\\/:*?"<>|]', '_', file_stem)
-    target_file = out_dir / f"{clean_stem}.md"
-
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    high_items = [x for x in exp_data if x.get("quality") == "HIGH"]
-    med_items = [x for x in exp_data if x.get("quality") == "MEDIUM"]
-    spam_count = sum(1 for x in exp_data if x.get("is_spam"))
-
-    lines = [
-        f"# 🎓 考研社媒真实经验与就读体验档案 · {school}" + (f" ({major})" if major else ""),
-        "",
-        f"> **生成时间**：`{now_str}`  ",
-        f"> **数据沉淀**：本档案聚合知乎、哔哩哔哩、小红书等实名备考与就读评价，经 AI 降噪置信度过滤算法清洗。",
-        "",
-        "## 📊 1. 院校口碑与考情画像",
-        f"- **目标高校**：`{school}`",
-        f"- **办学层次**：`{metrics.get('level', '全国重点本科高校')}`",
-        f"- **学科专业**：`{major if major else '未指定'}`",
-        f"- **经验条目概况**：有效经验贴 `{len(high_items) + len(med_items)}` 篇 (高置信度 `{len(high_items)}` 篇，中置信度 `{len(med_items)}` 篇，已自动拦截营销中介 `{spam_count}` 篇)",
-        "",
-        "### 🟢 正向口碑与亮点信号",
-    ]
-
-    pos_signals = metrics.get("positive_signals", [])
-    if pos_signals:
-        for ps in pos_signals:
-            lines.append(f"- ✅ **{ps}**")
-    else:
-        lines.append("- ✅ 历年录取出分公开，导师信息详实")
-
-    lines.append("")
-    lines.append("### 🔴 核心避坑防线与风险信号")
-    risk_signals = metrics.get("risk_signals", [])
-    if risk_signals:
-        for rs in risk_signals:
-            lines.append(f"- ⚠️ **{rs}**")
-    else:
-        lines.append("- ⚠️ 警惕复试自命题大纲调整与复试差额变动")
-
-    lines.append("")
-    lines.append("## 💡 2. 精选高置信度学长学姐实名经验 (Top Experiences)")
-
-    top_list = (high_items + med_items)[:8]
-    if top_list:
-        for idx, it in enumerate(top_list, 1):
-            tag_str = " ".join([f"`{t}`" for t in it.get("tags", [])])
-            lines.append(f"### {idx}. [{it['platform']}] {it['title']} (置信度: {it['confidence']}分)")
-            if tag_str:
-                lines.append(f"> 标签特征: {tag_str}")
-            lines.append(f"**核心摘录**：*“{it['snippet']}”*")
-            if it.get("url"):
-                lines.append(f"**原文链接**：[{it['url']}]({it['url']})")
-            lines.append("")
-    else:
-        lines.append("> 暂无抓取到的社媒经验条目，请在有网络连接时执行 `ky fetch info` 检索或参考内置直达专题。")
-        lines.append("")
-
-    lines.append("## 🔗 3. 实名社媒讨论直通车 (持续追踪)")
-    target_kw = f"{school} {major}".strip()
-    zh_url = f"https://www.zhihu.com/search?type=content&q={urllib.parse.quote(target_kw + ' 考研 就读体验')}"
-    bi_url = f"https://search.bilibili.com/all?keyword={urllib.parse.quote(target_kw + ' 考研 备考经验')}"
-    xh_url = f"https://www.xiaohongshu.com/search_result?keyword={urllib.parse.quote(target_kw + ' 考研 避坑')}"
-    lines.append(f"- 💡 [知乎 · {school} 考研就读体验真实讨论]({zh_url})")
-    lines.append(f"- 📺 [B站 · {school} 考研备考经验与高分复盘]({bi_url})")
-    lines.append(f"- 📕 [小红书 · {school} 考研避坑与初复试经验]({xh_url})")
-    lines.append("")
-    lines.append("---")
-    lines.append("*本档案由考研学习链 (Kaoyan Study Chain) AI Intelligence 模块自动生成并持续维护。*")
-
-    content = "\n".join(lines)
-    atomic_write_text(target_file, content)
-    return target_file
-
-
-def append_experience_to_dossier(
-    school_name: str,
-    source_or_major: str = "微信公众号",
-    author_or_info: Any = "",
-    content: str = "",
-    url: str = "",
-    title: str = "",
-    dossier_path: Optional[Path] = None
-) -> bool:
-    """向目标高校的经验档案 (.memory/experiences/<学校>.md 或指定路径) 追加一条经验"""
-    try:
-        source = "微信公众号"
-        author = ""
-        exp_content = content
-        exp_url = url
-        exp_title = title
-
-        if isinstance(author_or_info, dict):
-            # 支持传入字典结构
-            exp_title = author_or_info.get("title", "") or exp_title
-            author = author_or_info.get("source", "") or author_or_info.get("author", "")
-            exp_url = author_or_info.get("url", "") or exp_url
-            exp_content = author_or_info.get("content", "") or author_or_info.get("snippet", "") or exp_content
-        else:
-            source = source_or_major
-            author = str(author_or_info)
-
-        school = (school_name or "通用院校").strip()
-        if dossier_path:
-            target_file = Path(dossier_path)
-            target_file.parent.mkdir(parents=True, exist_ok=True)
-        else:
-            # [P0 修复] 默认落地到 .memory/experiences/
-            out_dir = ROOT / ".memory" / "experiences"
-            out_dir.mkdir(parents=True, exist_ok=True)
-            target_file = out_dir / f"{school}.md"
-            old_file = ROOT / "docs" / "experiences" / f"{school}.md"
-            if not target_file.exists() and old_file.exists():
-                # [P0 修复] 旧目录文件一次性迁移到隐私目录后再追加，
-                # 严禁继续向公开发布目录 (docs/) 写入任何内容
-                try:
-                    atomic_write_text(target_file,
-                        old_file.read_text(encoding="utf-8"), encoding="utf-8"
-                    )
-                except OSError:
-                    pass  # 迁移失败则按新建档案处理，不影响联动主流程
-
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-        block = [
-            f"\n### 📱 [{source}] {exp_title or '公众号精选备考经验'}",
-            f"> **作者/来源**: {author or '公众号学长'} | **记录时间**: {now_str}",
-            f"> **原文链接**: [{exp_url}]({exp_url})" if exp_url else "",
-            f"\n{exp_content}\n"
-        ]
-        text_to_append = "\n".join([line for line in block if line])
-
-        if target_file.exists():
-            orig = target_file.read_text(encoding="utf-8")
-            if "## 💡 2. 精选高置信度学长学姐实名经验" in orig:
-                updated = orig.replace(
-                    "## 💡 2. 精选高置信度学长学姐实名经验 (Top Experiences)",
-                    "## 💡 2. 精选高置信度学长学姐实名经验 (Top Experiences)\n" + text_to_append
-                )
-                atomic_write_text(target_file, updated)
-                return True
-            else:
-                atomic_write_text(target_file, orig + "\n" + text_to_append)
-                return True
-        else:
-            header = f"# 🎓 考研社媒真实经验与就读体验档案 · {school}\n\n## 💡 2. 精选高置信度学长学姐实名经验 (Top Experiences)\n"
-            atomic_write_text(target_file, header + text_to_append)
-            return True
-    except Exception:
-        return False
 
 
 

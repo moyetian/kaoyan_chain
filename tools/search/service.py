@@ -23,7 +23,7 @@ import re
 from datetime import datetime
 from typing import Any, List, Optional, Sequence, Tuple, Union
 
-from . import source_registry
+from . import relevance, source_registry
 from .models import (
     Document,
     SearchQuery,
@@ -88,12 +88,16 @@ class SearchService:
     # ── 检索 ────────────────────────────────────────────────
 
     def providers(self, names: Sequence[str] = ()) -> List[SearchProvider]:
+        """按优先级返回待查询的 provider（小的先查）。"""
         if self._providers is not None:
             if not names:
-                return list(self._providers)
-            wanted = {str(n).lower() for n in names}
-            return [p for p in self._providers if p.name.lower() in wanted]
-        return available_providers(names)
+                chosen = list(self._providers)
+            else:
+                wanted = {str(n).lower() for n in names}
+                chosen = [p for p in self._providers if p.name.lower() in wanted]
+        else:
+            chosen = available_providers(names)
+        return sorted(chosen, key=lambda p: getattr(p, "priority", 100))
 
     def search(self, query: Union[str, SearchQuery],
                limit: Optional[int] = None) -> SearchResponse:
@@ -120,12 +124,30 @@ class SearchService:
             try:
                 raw = provider.search(q.text, limit=max(q.limit, DEFAULT_LIMIT),
                                       time_range=q.time_range)
-                used.append(provider.name)
-                collected.extend(self._annotate(raw))
             except ProviderError as exc:
                 failed.append((provider.name, str(exc)))
+                continue
             except Exception as exc:              # pragma: no cover - 实现内部错误
                 failed.append((provider.name, f"未预期异常: {exc}"))
+                continue
+
+            # [防「200 但内容是垃圾」] 逐条过相关性守门；全部不相关时按失败处理。
+            # 实测 Bing 对裸 urllib 请求会返回 200 + 完全无关的内容（软性反爬），
+            # 结构正常、正则匹配得到 10 条「结果」——不加这道守门就会被当成素材。
+            if raw:
+                relevant, dropped = relevance.filter_relevant(raw, q.text)
+                if not relevant:
+                    failed.append((provider.name,
+                                   relevance.anti_bot_reason(len(raw), 0)))
+                    _LOG.warning("provider %s 的结果与查询无关，已丢弃 %d 条",
+                                 provider.name, len(raw))
+                    continue
+                if dropped:
+                    _LOG.info("provider %s 丢弃 %d 条无关结果", provider.name, dropped)
+                raw = relevant
+
+            used.append(provider.name)
+            collected.extend(self._annotate(raw))
 
         candidates = len(collected)
         filtered = [r for r in collected if self._passes_domain_filter(r, q)]
