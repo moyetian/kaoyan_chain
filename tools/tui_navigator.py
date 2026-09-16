@@ -20,9 +20,9 @@ import os
 import re
 import json
 import argparse
-import unicodedata
 from pathlib import Path
 from datetime import datetime, date, timedelta
+from typing import Optional
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -53,6 +53,33 @@ try:
 except ImportError:  # pragma: no cover - 兼容 tools.state 包式导入
     from tools.state import load_dashboard_state
 
+# [缺陷修复·宽度写死 / 幽灵依赖 / Windows ANSI 乱码] 终端能力与排版工具
+# 统一收敛到 tools/tui/terminal.py（纯文本 TUI 与 textual 版共用）：
+#   * panel_width()      跟随终端列数并夹在合理区间，替代写死的 84
+#   * enable_windows_vt() 真正启用虚拟终端（仅 os.system("color") 并不够，
+#                        旧版 Windows 控制台会把 ANSI 转义当字面量打印）
+#   * NO_COLOR          业界约定的去色开关
+try:  # pragma: no cover - 取决于运行方式
+    from tui.terminal import (
+        colors_disabled as _colors_disabled,
+        display_width as _display_width,
+        enable_windows_vt as _enable_windows_vt,
+        is_emoji_char as _is_emoji_char,
+        is_tty as _is_tty,
+        pad_display,
+        panel_width,
+    )
+except ImportError:  # pragma: no cover
+    from tools.tui.terminal import (  # type: ignore
+        colors_disabled as _colors_disabled,
+        display_width as _display_width,
+        enable_windows_vt as _enable_windows_vt,
+        is_emoji_char as _is_emoji_char,
+        is_tty as _is_tty,
+        pad_display,
+        panel_width,
+    )
+
 
 # ════════════════════════════════════════════════════════════════
 # 终端色彩与高精度排版引擎 (Visual Layout Engine)
@@ -74,44 +101,52 @@ class Colors:
 
 
 def colorize(text: str, color: str) -> str:
-    if sys.stdout.isatty():
-        return f"{color}{text}{Colors.RESET}"
-    return text
+    """给文本着色；非 TTY 或设置了 NO_COLOR/KY_NO_COLOR 时原样返回。
+
+    [缺陷修复] 旧实现只看 `sys.stdout.isatty()`，用户即便显式声明 NO_COLOR
+    （例如把输出重定向到文件、或终端本身配色受限于无障碍需求）也仍会被塞进
+    转义序列。现统一走 terminal.colors_disabled()。
+    """
+    if _colors_disabled():
+        return text
+    return f"{color}{text}{Colors.RESET}"
+
+
+def _install_theme_palette() -> None:
+    """把主题 token 编译成 ANSI 调色板并覆盖到 Colors 上（失败则保留 16 色默认）。
+
+    这样 TUI 的颜色与 GUI / Web 看板同源（同一组 token），
+    而不是各端自己挑一套色号。
+    """
+    try:
+        try:
+            from theme import apply_to_colors_class, load_theme
+        except ImportError:  # pragma: no cover
+            from tools.theme import apply_to_colors_class, load_theme  # type: ignore
+
+        apply_to_colors_class(Colors, load_theme(ROOT))
+    except Exception:                          # pragma: no cover - 主题不可用不该拖垮 TUI
+        # 保留 16 色默认值即可，纯外观降级
+        return
+
+
+_install_theme_palette()
 
 
 def is_emoji_char(ch: str) -> bool:
-    cp = ord(ch)
-    return (
-        0x1F300 <= cp <= 0x1FAFF or
-        0x2600 <= cp <= 0x27BF or
-        0x2300 <= cp <= 0x23FF or
-        0x2B50 <= cp <= 0x2B55
-    )
+    """兼容门面：实现在 tools/tui/terminal.py（纯文本与 textual 两版共用）。"""
+    return _is_emoji_char(ch)
 
 
 def display_width(s: str) -> int:
-    """计算字符串在终端的实际打印宽度 (去除 ANSI，精准判定全角汉字与 Emoji)"""
-    clean_s = re.sub(r'\033\[[0-9;]*m', '', str(s))
-    clean_s = clean_s.replace('\ufe0f', '').replace('\u200d', '')
-    w = 0
-    for ch in clean_s:
-        if is_emoji_char(ch) or unicodedata.east_asian_width(ch) in ('W', 'F'):
-            w += 2
-        else:
-            w += 1
-    return w
+    """兼容门面：实现在 tools/tui/terminal.py。"""
+    return _display_width(s)
 
 
-def pad_display(s: str, target_w: int) -> str:
-    """按终端可见宽度填充空格"""
-    w = display_width(s)
-    if w < target_w:
-        return s + ' ' * (target_w - w)
-    return s
-
-
-def render_box_line(text: str, total_w: int = 84, align: str = 'left', border: str = '│', pad: int = 1) -> str:
+def render_box_line(text: str, total_w: Optional[int] = None, align: str = 'left', border: str = '│', pad: int = 1) -> str:
     """渲染带边框的单行，并严格校准右边框对其"""
+    if total_w is None:
+        total_w = panel_width()
     w = display_width(text)
     rem = max(0, total_w - 2 - w)
     if align == 'center':
@@ -122,14 +157,18 @@ def render_box_line(text: str, total_w: int = 84, align: str = 'left', border: s
         return f"{border}{' ' * pad}{text}{' ' * max(0, rem - pad)}{border}"
 
 
-def render_sec_header(title: str, total_w: int = 84, color: str = '') -> str:
-    # 组成: "╭"(1) + "──"(2) + " "(1) + title(w) + " "(1) + 填充 + "╮"(1) = 6 + w + rem
+def render_sec_header(title: str, total_w: Optional[int] = None, color: str = '') -> str:
+    # 组成: "╭"(1) + "──"(2) + " "(1) + title(w) + "(1) + 填充 + "╮"(1) = 6 + w + rem
+    if total_w is None:
+        total_w = panel_width()
     w = display_width(title)
     rem = max(0, total_w - 6 - w)
     return colorize(f"╭── {title} " + "─" * rem + "╮", color)
 
 
-def render_sec_footer(total_w: int = 84, color: str = '') -> str:
+def render_sec_footer(total_w: Optional[int] = None, color: str = '') -> str:
+    if total_w is None:
+        total_w = panel_width()
     return colorize("╰" + "─" * (total_w - 2) + "╯", color)
 
 
@@ -261,14 +300,22 @@ def get_today_progress() -> tuple[int, int]:
 
 
 def get_intel_ribbon() -> list[str]:
-    """提取考情雷达关键情报条目 (优先联动学员目标高校)"""
-    ribbon = []
+    """提取考情雷达关键情报条目（只读本地数据，不做任何网络请求）。
+
+    [缺陷修复·渲染路径里发网络请求] 旧实现在「未配置监控且有目标院校」时会
+    就地 new 一个 AdmissionWatcher 并调用 ``add_watch()`` —— 那是一次真实网络请求。
+    而本函数被 ``render_header()`` 调用、``render_header()`` 又被主循环每轮打印，
+    于是**每渲染一次主菜单就发一次网络请求**，是首屏卡顿的直接来源。
+    注册监控本属用户显式动作，现已统一由 ``execute_action("watch")`` 触发
+    （那里本就有 add_watch 逻辑），此处只负责读取已有数据。
+    """
+    ribbon: list[str] = []
     info = get_config_summary()
     target_school = info.get("school")
     if target_school in ("未指定", "目标院校", None):
         target_school = ""
 
-    # 1. 监控状态 (若未配置，自动联动学员目标院校)
+    # 1. 监控状态（纯本地读取）
     watch_file = ROOT / ".memory" / "admission_watch.json"
     w_data = {}
     if watch_file.exists():
@@ -276,16 +323,6 @@ def get_intel_ribbon() -> list[str]:
             w_data = json.loads(watch_file.read_text(encoding="utf-8"))
         except Exception:
             w_data = {}
-
-    if not w_data and target_school:
-        try:
-            from intelligence.watcher import AdmissionWatcher
-            watcher = AdmissionWatcher()
-            add_res = watcher.add_watch(target_school)
-            if add_res.get("success"):
-                w_data = watcher.watch_data
-        except Exception:
-            pass
 
     if w_data:
         names = [v.get("school", k) for k, v in list(w_data.items())[:2]]
@@ -363,7 +400,9 @@ MENU_GROUPS = [
 # 扁平化映射列表，供快速查询与测试断言
 MENU_OPTIONS = [(k, n, d, alias) for _, _, items in MENU_GROUPS for k, n, icon, d, alias in items]
 
-TOTAL_PANEL_WIDTH = 84
+# [缺陷修复·宽度写死] 原先写死 TOTAL_PANEL_WIDTH = 84，与终端实际列数无关：
+# 窄终端折行错位、宽终端右侧空一大片。现在宽度由 terminal.panel_width() 动态
+# 计算（跟随终端列数并夹在 60~110 之间），旧常量已删除。
 
 
 # ════════════════════════════════════════════════════════════════
@@ -416,7 +455,7 @@ def render_header() -> str:
 
     total_study_days, passed_days, calendar_pct = get_study_journey_stats(days)
 
-    W = TOTAL_PANEL_WIDTH
+    W = panel_width()
     lines = []
     lines.append(colorize("╭" + "─" * (W - 2) + "╮", Colors.CYAN))
     lines.append(render_box_line(colorize(f"🎯 考研学习链 (Kaoyan Study Chain) · 终端全景智能中枢 v{get_version()}", Colors.BOLD + Colors.CYAN), W, 'center'))
@@ -457,7 +496,7 @@ def render_header() -> str:
 
 
 def render_menu() -> str:
-    W = TOTAL_PANEL_WIDTH
+    W = panel_width()
     lines = []
     lines.append("")
 
@@ -752,17 +791,35 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
     return True
 
 
-def run_tui_loop():
-    """交互式主循环"""
-    if sys.platform == "win32":
-        try:
-            os.system("color")
-        except Exception:
-            pass
+def should_use_textual() -> bool:
+    """是否启用 textual 版界面。
+
+    条件：textual 已安装 + 处于真实终端 + 未被 KY_TUI_LEGACY 显式禁用。
+    任何一条不满足都回落到下面的纯文本循环 —— 降级必须可用，
+    否则「零依赖开箱即用」的承诺就破了。
+    """
+    if os.environ.get("KY_TUI_LEGACY"):
+        return False
+    if not _is_tty():
+        return False
+    try:
+        import importlib.util
+
+        return importlib.util.find_spec("textual") is not None
+    except Exception:
+        return False
+
+
+def _run_text_loop():
+    """纯文本交互循环（textual 不可用时的降级路径）。"""
+    _enable_windows_vt()
 
     while True:
-        if sys.stdout.isatty():
-            os.system("cls" if os.name == "nt" else "clear")
+        if _is_tty():
+            try:
+                os.system("cls" if os.name == "nt" else "clear")
+            except Exception:
+                pass
 
         print("\n" + render_header())
         print(render_menu())
@@ -772,10 +829,29 @@ def run_tui_loop():
             keep_running = execute_action(choice, interactive=True)
             if not keep_running:
                 break
+            # [UX] 执行结果保留在屏幕上，按 Enter 才返回主菜单（旧实现立即清屏，
+            # 输出一闪而过，用户经常来不及看）
             input(colorize("\n按 Enter 键返回主菜单...", Colors.DIM + Colors.WHITE))
         except (KeyboardInterrupt, EOFError):
             print(colorize("\n👋 操作中断，已安全返回。\n", Colors.YELLOW))
             break
+
+
+def run_tui_loop():
+    """交互式主循环：优先 textual（键鼠双控），不可用时回落纯文本。"""
+    if should_use_textual():
+        try:
+            try:
+                from tui.app import run_textual_app
+            except ImportError:  # pragma: no cover
+                from tools.tui.app import run_textual_app  # type: ignore
+
+            run_textual_app(ROOT)
+            return
+        except Exception as exc:               # pragma: no cover - 界面起不来不该阻断使用
+            print(colorize(f"[!] 图形化终端界面启动失败（{exc}），已回落到纯文本模式。",
+                           Colors.YELLOW))
+    _run_text_loop()
 
 
 def main():
