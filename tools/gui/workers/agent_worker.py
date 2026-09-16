@@ -16,6 +16,8 @@ for p in (str(ROOT), str(TOOLS)):
 
 class AgentWorker(QThread):
     finished_signal = Signal(str)
+    #: 流式片段（每小段一次，避免逐字符刷爆 GUI 主线程）
+    chunk_signal = Signal(str)
 
     def __init__(self, config: dict, user_input: str, timeout: float = 60.0):
         super().__init__()
@@ -86,6 +88,16 @@ class AgentWorker(QThread):
             return f"[本地执行异常] {text}: {e}"
         return None
 
+    def _emit_chunk(self, text: str) -> None:
+        """把流式片段转发到 GUI 主线程（QThread 内直接 emit 信号是线程安全的）。"""
+        if self._is_cancelled or not text:
+            return
+        try:
+            self.chunk_signal.emit(str(text))
+        except RuntimeError:
+            # 底层 C++ 对象可能已被释放（窗口关闭），忽略即可
+            return
+
     def run(self):
         if self._is_cancelled:
             self.finished_signal.emit("[已取消]: 用户主动取消了任务。")
@@ -128,9 +140,13 @@ class AgentWorker(QThread):
                 workspace_root=ROOT,
                 permission_mode="acceptEdits",
                 max_steps=8,
+                # [S3 改善·流式输出] 此前只有一次性 finished_signal，学员盯着空白等几十秒；
+                # 现每小段推送一次。quiet=True：不往 stdout 重复打字机输出。
                 # [P2 修复·GUI 卡死] GUI 场景下上限收敛到 60s（此前沿用 120s 默认值，
                 # 上游无响应时用户要盯着转圈两分钟）。CLI 仍走 120s。
                 request_timeout=self.timeout,
+                stream_callback=self._emit_chunk,
+                quiet=True,
             )
             reply = runner.run(self.user_input, interactive=False)
             if self._is_cancelled:

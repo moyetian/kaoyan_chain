@@ -41,13 +41,16 @@ class AgentRunner:
         max_steps: int = 10,
         stream_callback: Optional[Callable[[str], None]] = None,
         live_callback: Optional[Callable[[str, str], None]] = None,
-        request_timeout: Optional[float] = None
+        request_timeout: Optional[float] = None,
+        # GUI 场景设 True：不在 stdout 打字机输出（否则控制台与界面各刷一份）
+        quiet: bool = False,
     ):
         self.config = config
         self.workspace_root = workspace_root
         self.max_steps = max_steps
         self.stream_callback = stream_callback
         self.live_callback = live_callback
+        self.quiet = bool(quiet)
         # [P2 修复·GUI 卡死] 上游对话请求此前硬编码 120s 超时，GUI 端点击一次
         # 若上游无响应会「转圈」两分钟且无任何反馈。现允许调用方覆盖，
         # 并支持通过配置项 request_timeout / GUI 传入值调低。
@@ -354,14 +357,28 @@ class AgentRunner:
         return calls
 
     def _display_final_answer(self, text: str):
-        """流式打字机逐字输出给终端学员"""
+        """流式打字机逐字输出给终端学员。
+
+        [S3 改善] ``quiet=True``（GUI 场景）时不再往 stdout 打字机输出，避免控制台与
+        界面各刷一份；有 ``stream_callback`` 时仍逐字符推送给调用方（GUI 的 chunk_signal）
+        ，并且把「每次 1 个字符 + sleep 2ms」改为**按小片段推送**：原实现对上千字答案会
+        产生上千次跨线程信号，GUI 主线程事件循环被刷爆，表现为界面卡顿。
+        """
         if not text:
             return
-        for char in text:
-            sys.stdout.write(char)
-            sys.stdout.flush()
-            if self.stream_callback:
-                self.stream_callback(char)
-            # 极速打字机手感
-            time.sleep(0.002)
-        print()
+        if self.stream_callback:
+            step = 12                       # 每 12 字推送一次，兼顾手感与主线程压力
+            for i in range(0, len(text), step):
+                self.stream_callback(text[i:i + step])
+                if not self.quiet:
+                    sys.stdout.write(text[i:i + step])
+                    sys.stdout.flush()
+                time.sleep(0.02)
+        elif not self.quiet:
+            for char in text:
+                sys.stdout.write(char)
+                sys.stdout.flush()
+                time.sleep(0.002)
+
+        if not self.quiet:
+            print()

@@ -27,6 +27,8 @@ from datetime import date
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
+# QTextCursor 用于流式输出时把光标移到末尾；否则 append 会另起段落，流式片段会断成多行。
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox,
     QTabWidget, QVBoxLayout, QWidget,
@@ -61,6 +63,8 @@ class MainWindow(QMainWindow):
         self.agent_worker = None
         self._worker_refs = []
         self._today = date.today()
+        #: 本轮是否已流式输出过（决定收尾时是否补整段，避免答案打两遍）
+        self._streamed = False
 
         self.setWindowTitle("考研学习链 · 全科智能私教中枢")
         self.setMinimumSize(1180, 780)
@@ -310,7 +314,7 @@ class MainWindow(QMainWindow):
                 return
 
         self.input_box.clear()
-        self.chat_display.append(f"\n👤 你: {text}\n🤖 私教正在思考中...")
+        self.chat_display.append(f"\n👤 你: {text}\n🤖 私教:")
 
         try:
             from gui.workers.agent_worker import AgentWorker
@@ -319,9 +323,24 @@ class MainWindow(QMainWindow):
 
         self.agent_worker = AgentWorker(self.config, text)
         self._worker_refs.append(self.agent_worker)
+        # [S3 改善·流式输出] 原先只有一次性 finished_signal，学员盯着空白等几十秒；现逐段追加。
+        self.agent_worker.chunk_signal.connect(self._on_agent_chunk)
         self.agent_worker.finished_signal.connect(self._on_agent_reply)
         self.agent_worker.finished.connect(self._on_agent_finished)
+        self._streamed = False
         self.agent_worker.start()
+
+    def _on_agent_chunk(self, chunk: str):
+        """流式片段：直接插入光标处，不另起段落（保持一段话连续）。
+        """
+        if not chunk:
+            return
+        self._streamed = True
+        cur = self.chat_display.textCursor()
+        cur.movePosition(QTextCursor.MoveOperation.End)
+        self.chat_display.setTextCursor(cur)
+        self.chat_display.insertPlainText(chunk)
+        self.chat_display.ensureCursorVisible()
 
     def _on_agent_finished(self):
         """[P1 修复·D1] 线程结束后只释放"当前活跃"语义，不再 deleteLater。"""
@@ -334,7 +353,15 @@ class MainWindow(QMainWindow):
             self.agent_worker = None
 
     def _on_agent_reply(self, reply: str):
-        self.chat_display.append(f"\n🤖 私教:\n{reply}\n" + "-" * 50)
+        """收尾：已流式输出过就不再重复整段；未流式（本地兜底路径）才整段补上。
+
+        这样两类路径都能正确显示，且不会把答案打两遍。
+        """
+        if getattr(self, "_streamed", False):
+            self.chat_display.append("\n" + "-" * 50)
+        else:
+            self.chat_display.append(f"\n{reply}\n" + "-" * 50)
+        self._streamed = False
 
     # ════════════════════════════════════════════════════════════
     # 定时器与生命周期
