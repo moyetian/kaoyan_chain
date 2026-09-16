@@ -51,6 +51,11 @@ README优化方案*.md
 # 仓库仅保留脱敏模板 00_考研全科总战役规划.example.md
 /00_考研全科总战役规划.md
 
+# --offline 构建下本地化的第三方前端资源（KaTeX / marked 及字体），
+# 属可弃构建产物：几百 KB 且可随时用 `py 05-考研看板/build.py --offline` 重新生成。
+docs/assets/vendor/
+05-考研看板/docs/assets/vendor/
+
 # 个人界面主题配置（tokens 见 tools/theme/）：由用户在本机定制，
 # 纯外观偏好、不随仓库分发；缺失时自动使用内置预设。
 /ui_theme.json

@@ -181,18 +181,26 @@ def _toplevel_io(try_node: ast.Try) -> Tuple[int, str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="考研学习链 · 零依赖静态检查")
-    parser.add_argument("--path", default="tools", help="待检查目录（默认 tools）")
+    # [新增·多根扫描] 看板构建器已拆分为 05-考研看板/web/ 多个模块，
+    # 若只扫 tools/ 这些新模块就完全脱离门禁（改坏了没人拦）。
+    # 支持多次 --path 指定，默认覆盖 tools 与看板两个根。
+    parser.add_argument("--path", action="append", default=None,
+                        help="待检查目录，可重复指定（默认 tools 与 05-考研看板）")
     parser.add_argument("--quiet", action="store_true", help="仅输出汇总")
     args = parser.parse_args()
 
-    base = (ROOT / args.path).resolve()
-    if not base.exists():
-        print(f"[!] 目录不存在: {base}")
-        return 1
+    roots = args.path or ["tools", "05-考研看板"]
+    bases = []
+    for raw in roots:
+        base = (ROOT / raw).resolve()
+        if not base.exists():
+            print(f"[!] 目录不存在: {base}")
+            return 1
+        bases.append(base)
 
-    files = iter_py_files(base)
+    files = [(p, b) for b in bases for p in iter_py_files(b)]
     errors = warns = 0
-    for path in files:
+    for path, base in files:
         issues = check_file(path, base)
         if not issues:
             continue
