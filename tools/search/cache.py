@@ -23,7 +23,7 @@ import logging
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
 from .models import SearchResult
 

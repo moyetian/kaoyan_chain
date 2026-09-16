@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Dict, Optional, Tuple
+from typing import Dict
 
 _LOG = logging.getLogger(__name__)
 

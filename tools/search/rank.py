@@ -18,9 +18,9 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from .models import SearchQuery, SearchResult
 from .relevance import significant_tokens
@@ -75,8 +75,9 @@ def detect_year(result: SearchResult) -> int:
         if raw.isdigit() and len(raw) >= 9:
             try:
                 return datetime.fromtimestamp(int(raw)).year
-            except Exception:                      # pragma: no cover
-                pass
+            except Exception as exc:                  # pragma: no cover
+                # 时间戳非法只丢失年份这一个字段，不影响其余打分；留痕便于排查
+                logging.getLogger(__name__).debug("结果年份解析失败（按未知年份处理）: %s", exc)
         m = _YEAR_RE.search(raw)
         if m:
             return int(m.group(0))
