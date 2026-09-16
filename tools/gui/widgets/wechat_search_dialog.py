@@ -60,7 +60,7 @@ class WeChatSearchWorker(QThread):
 class WeChatSearchDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("📱 微信公众号考研文章多源检索")
+        self.setWindowTitle("微信公众号考研文章多源检索")
         self.setMinimumSize(880, 620)
         self._current_results = []
         self._init_ui()
@@ -93,7 +93,7 @@ class WeChatSearchDialog(QDialog):
         self.school_input.setPlaceholderText("联动高校名 (可选)")
         self.school_input.setMaximumWidth(140)
 
-        self.search_btn = QPushButton("🔍 检索")
+        self.search_btn = QPushButton("检索")
         self.search_btn.clicked.connect(self._on_search)
 
         cond_layout.addWidget(QLabel("关键词:"))
@@ -122,7 +122,7 @@ class WeChatSearchDialog(QDialog):
         layout.addWidget(self.result_table, stretch=2)
 
         # 状态与详情预览
-        self.status_label = QLabel("输入关键词点击「🔍 检索」开始搜索考研经验与考点文章。")
+        self.status_label = QLabel("输入关键词点击「检索」开始搜索考研经验与考点文章。")
         # [同批修复·内联样式] 原先在此写死 #94a3b8 —— 与主窗口那 10 处同一类问题：
         # widget 自带样式表优先级高于全局 QSS，切浅色主题后这行字仍是深灰偏白、
         # 在白底上看不清。改走 objectName + 主题 token。
@@ -167,11 +167,11 @@ class WeChatSearchDialog(QDialog):
 
     def _on_search_done(self, result: dict):
         self.search_btn.setEnabled(True)
-        self.search_btn.setText("🔍 检索")
+        self.search_btn.setText("检索")
 
         if not result.get("success", True):
             err = result.get("error", "未知异常")
-            self.status_label.setText(f"❌ 检索失败: {err}")
+            self.status_label.setText(f"[×] 检索失败: {err}")
             self.preview.setText(f"错误详情:\n{err}")
             return
 
@@ -182,11 +182,11 @@ class WeChatSearchDialog(QDialog):
 
         saved_msg = f" | 已沉淀 {len(result.get('saved_paths', []))} 篇到 .memory/experiences/ (本地隐私目录)" if result.get("saved_paths") else ""
         scout_msg = " | 已联动更新目标校口碑档案" if result.get("scout_linked") else ""
-        self.status_label.setText(f"✅ 检索完成：找到 {total} 篇，正文抓取 {fetched} 篇{saved_msg}{scout_msg}")
+        self.status_label.setText(f"[√] 检索完成：找到 {total} 篇，正文抓取 {fetched} 篇{saved_msg}{scout_msg}")
 
         self.result_table.setRowCount(len(items))
         for row, item in enumerate(items):
-            status = "✅ 已抓取" if item.get("fetched") else "📋 仅标题"
+            status = "[√] 已抓取" if item.get("fetched") else "[-] 仅标题"
             self.result_table.setItem(row, 0, QTableWidgetItem(item.get("title", "")))
             # [P3 修复·D8] 读取入口统一下发的 account_display/date_display，避免 GUI 独写「未知」
             self.result_table.setItem(row, 1, QTableWidgetItem(

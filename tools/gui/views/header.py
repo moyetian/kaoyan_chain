@@ -10,6 +10,11 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton
 
+try:  # pragma: no cover
+    from gui.widgets.icons import icon_label
+except ImportError:  # pragma: no cover
+    from tools.gui.widgets.icons import icon_label  # type: ignore
+
 
 def build(win) -> QFrame:
     header = QFrame()
@@ -17,7 +22,9 @@ def build(win) -> QFrame:
     header.setFixedHeight(75)
     layout = QHBoxLayout(header)
 
-    title = QLabel("🎯 考研学习链")
+    # SVG 图标 + 文字标题（替代改造前的 emoji 字符 "🎯 考研学习链"）
+    icon = icon_label("compose", 24, win._theme.color("acc") if hasattr(win, "_theme") else "")
+    title = QLabel("考研学习链")
     title.setObjectName("HeaderTitle")
 
     win.countdown_label = QLabel("")
@@ -28,13 +35,20 @@ def build(win) -> QFrame:
 
     win.theme_btn = QPushButton("")
     win.theme_btn.setObjectName("ThemeToggle")
-    win.theme_btn.setFixedWidth(84)
+    win.theme_btn.setFixedWidth(64)
     win.theme_btn.clicked.connect(win._toggle_theme)
 
+    win.settings_btn = QPushButton("设置")
+    win.settings_btn.setObjectName("SettingsBtn")
+    win.settings_btn.setFixedWidth(64)
+    win.settings_btn.clicked.connect(win._open_settings)
+
+    layout.addWidget(icon)
     layout.addWidget(title)
     layout.addSpacing(16)
     layout.addWidget(win.meta_label)
     layout.addStretch()
+    layout.addWidget(win.settings_btn)
     layout.addWidget(win.theme_btn)
     layout.addSpacing(12)
     layout.addWidget(win.countdown_label)

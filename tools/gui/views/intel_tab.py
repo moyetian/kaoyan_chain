@@ -21,9 +21,9 @@ def build(win) -> QWidget:
     layout.addWidget(win.intel_display, stretch=1)
 
     btn_bar = QHBoxLayout()
-    btn_watch = QPushButton("📡 查看监控高校")
+    btn_watch = QPushButton("查看监控高校")
     btn_watch.clicked.connect(lambda: win._run_action_to_display("watch", win.intel_display))
-    btn_scout = QPushButton("🔍 院校深度侦察")
+    btn_scout = QPushButton("院校深度侦察")
     btn_scout.clicked.connect(lambda: win._run_action_to_display("scout", win.intel_display))
     btn_bar.addWidget(btn_watch)
     btn_bar.addWidget(btn_scout)

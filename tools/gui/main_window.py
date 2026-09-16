@@ -50,7 +50,7 @@ except ImportError:  # pragma: no cover
 
 CONFIG_FILE = ROOT / "ky_config.json"
 
-TAB_TITLES = ("💬 私教对话", "📋 今日任务", "📕 错题本", "🏛️ 研招情报")
+TAB_TITLES = ("私教对话", "今日任务", "错题本", "研招情报")
 
 
 class MainWindow(QMainWindow):
@@ -134,14 +134,28 @@ class MainWindow(QMainWindow):
         [缺陷修复·死数字] 头部倒计时改造前是局部变量，构造时算一次就再也不动。
         """
         info = services.header_info(self.workspace_root)
-        self.countdown_label.setText(f"⏳ 初试倒计时: {info['days_left']} 天")
+        self.countdown_label.setText(f"初试倒计时: {info['days_left']} 天")
         self.meta_label.setText(
-            f"🏛️ 目标: {info['school']} · {info['major']}  |  "
-            f"🛡️ 风格: {info['style_short']}")
+            f"目标: {info['school']} · {info['major']}  |  "
+            f"风格: {info['style_short']}")
         self._sync_theme_button()
 
     def _sync_theme_button(self):
-        self.theme_btn.setText("🌙 深色" if self._theme.mode == "light" else "☀️ 浅色")
+        self.theme_btn.setText("深色" if self._theme.mode == "light" else "浅色")
+
+    def _refresh_card_icons(self):
+        """用当前主题的主色重渲染所有功能卡片图标（SVG 跟随主题色）。"""
+        color = self._theme.color("acc")
+        for card in getattr(self, "feature_cards", []):
+            card.refresh_icon(color)
+
+    def _open_settings(self):
+        """打开主题 L2 旋钮设置面板。"""
+        try:
+            from gui.widgets.settings_dialog import SettingsDialog
+        except ImportError:  # pragma: no cover
+            from tools.gui.widgets.settings_dialog import SettingsDialog  # type: ignore
+        SettingsDialog(self).exec()
 
     def _toggle_theme(self):
         """在明暗预设间切换并持久化（改造前重启即回退深色）。"""
@@ -151,6 +165,7 @@ class MainWindow(QMainWindow):
         target = theme_apply.next_preset(self._theme.name)
         self._theme = theme_apply.set_preset(app, target, self.workspace_root)
         self._sync_theme_button()
+        self._refresh_card_icons()
 
     # ════════════════════════════════════════════════════════════
     # 数据刷新（全部委托 services，本类不自行解析文件）
@@ -192,9 +207,9 @@ class MainWindow(QMainWindow):
         out = services.run_action_capture(alias)
         if out:
             display_widget.append(out)
-        display_widget.append(f"✔ 模块 [{alias}] 执行调用完毕。")
+        display_widget.append(f"[√] 模块 [{alias}] 执行调用完毕。")
         if brief_to_chat:
-            self.chat_display.append(f"\n✔ 模块 [{alias}] 已在对应页面执行完毕，详见上方分页。")
+            self.chat_display.append(f"\n[√] 模块 [{alias}] 已在对应页面执行完毕，详见上方分页。")
 
     def _on_card_clicked(self, alias: str):
         if alias == "wechat_search":
@@ -220,7 +235,7 @@ class MainWindow(QMainWindow):
             out = services.run_action_capture(alias)
             if out:
                 self.chat_display.append(out)
-            self.chat_display.append(f"✔ 模块 [{alias}] 执行调用完毕。")
+            self.chat_display.append(f"[√] 模块 [{alias}] 执行调用完毕。")
 
     def _run_ingest_from_dialog(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -279,11 +294,11 @@ class MainWindow(QMainWindow):
 
     def _generate_error_quiz(self):
         display, saved = services.make_error_quiz(self.workspace_root)
-        if display.startswith("❌"):
+        if display.startswith("[×]"):
             QMessageBox.warning(self, "提示", display)
             return
         self.error_info.setPlainText(self.error_info.toPlainText() + display)
-        self.chat_display.append(f"\n✅ 错题盲盒自测卷已生成: {saved}\n")
+        self.chat_display.append(f"\n[√] 错题盲盒自测卷已生成: {saved}\n")
 
     # ════════════════════════════════════════════════════════════
     # 私教工作线程
@@ -310,11 +325,11 @@ class MainWindow(QMainWindow):
                 worker = None
             if still_running:
                 self.chat_display.append(
-                    "\n⚠️ 私教仍在思考中，请等待本轮回复完成后再发送下一条指令。")
+                    "\n[!] 私教仍在思考中，请等待本轮回复完成后再发送下一条指令。")
                 return
 
         self.input_box.clear()
-        self.chat_display.append(f"\n👤 你: {text}\n🤖 私教:")
+        self.chat_display.append(f"\n你: {text}\n私教:")
 
         try:
             from gui.workers.agent_worker import AgentWorker

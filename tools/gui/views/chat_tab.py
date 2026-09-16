@@ -42,7 +42,7 @@ def build(win) -> QWidget:
     win.input_box.setPlaceholderText(
         "输入口令 (如：数学报到 / 英语长难句 / 交作业) 或向私教提问...")
     win.input_box.returnPressed.connect(win._on_send_message)
-    send_btn = QPushButton("发送 ➤")
+    send_btn = QPushButton("发送")
     send_btn.clicked.connect(win._on_send_message)
     input_bar.addWidget(win.input_box, stretch=1)
     input_bar.addWidget(send_btn)

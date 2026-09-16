@@ -87,7 +87,7 @@ def subject_labels(workspace_root: Path) -> List[Tuple[str, str, str]]:
 def error_queue_markdown(workspace_root: Path) -> str:
     """扫描各科错题本，生成「待复测队列」Markdown 文本。"""
     lines = [
-        "# 📕 FSRS 记忆稳定性曲线 · 到期错题复测队列",
+        "# FSRS 记忆稳定性曲线 · 到期错题复测队列",
         f"> 更新时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
         "",
         "---",
@@ -99,14 +99,14 @@ def error_queue_markdown(workspace_root: Path) -> str:
         if mistake_dir.exists():
             due_files = [f for f in mistake_dir.glob("*.md")
                          if not f.stem.startswith("自测卷_") and not f.stem.startswith("_")]
-            lines.append(f"### 📚 {name}错题本: 共 {len(due_files)} 道错题档案")
+            lines.append(f"### {name}错题本: 共 {len(due_files)} 道错题档案")
             total_due += len(due_files)
             for f in due_files[:3]:
-                lines.append(f"- 📄 `{f.stem}`")
+                lines.append(f"- `{f.stem}`")
             if len(due_files) > 3:
                 lines.append(f"- *(其余 {len(due_files) - 3} 道已归档)*")
         else:
-            lines.append(f"### 📚 {name}错题本: 暂无到期错题")
+            lines.append(f"### {name}错题本: 暂无到期错题")
         lines.append("")
     lines.append(f"**全科待攻坚错题总数**: `{total_due}` 道")
     return "\n".join(lines)
@@ -117,7 +117,7 @@ def error_queue_markdown(workspace_root: Path) -> str:
 def intel_markdown(workspace_root: Path) -> str:
     """读取监控高校清单，生成「研招动态」Markdown 文本。"""
     lines = [
-        "# 🏛️ 研招招考动态与高校监控雷达",
+        "# 研招招考动态与高校监控雷达",
         f"> 数据基准: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
         "",
         "---",
@@ -139,7 +139,7 @@ def intel_markdown(workspace_root: Path) -> str:
         lines.append("暂未配置监控高校，点击下方按钮或在 TUI 中输入 8 即可纳入监控。")
         return "\n".join(lines)
 
-    lines.append(f"### 📡 正在动态监控的高校 ({len(data)} 所):")
+    lines.append(f"### 正在动态监控的高校 ({len(data)} 所):")
     for code, it in data.items():
         if not isinstance(it, dict):
             continue

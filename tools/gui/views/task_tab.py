@@ -32,7 +32,7 @@ def build(win) -> QWidget:
         frame.setObjectName("TaskRow")
         h = QHBoxLayout(frame)
 
-        label = QLabel(f"📚 {label_text}")
+        label = QLabel(label_text)
         label.setObjectName("TaskLabel")
         label.setFixedWidth(200)
 
@@ -54,7 +54,7 @@ def build(win) -> QWidget:
         win.task_progress_bars[key] = progress
         win.task_count_labels[key] = pct_label
 
-    refresh_btn = QPushButton("🔄 刷新今日进度")
+    refresh_btn = QPushButton("刷新今日进度")
     refresh_btn.setMaximumWidth(160)
     refresh_btn.clicked.connect(win._load_today_task_progress)
     layout.addWidget(refresh_btn)

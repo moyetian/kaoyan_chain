@@ -102,15 +102,80 @@ def test_hardcoded_font_is_gone():
     assert "font-scale" in src, "字号应随主题 token 缩放"
 
 
+# ── SVG 图标 ──────────────────────────────────────────────────
+
+def test_svg_icon_templates_are_valid():
+    """所有 SVG 模板必须含 {COLOR} 占位符且可被 QSvgRenderer 解析。"""
+    from tools.gui.widgets.icons import SVG_TEMPLATES, _format_svg, _HAS_SVG
+    assert len(SVG_TEMPLATES) >= 15, f"图标数应 >=15，实际 {len(SVG_TEMPLATES)}"
+    for key, tmpl in SVG_TEMPLATES.items():
+        assert "{COLOR}" in tmpl, f"图标 {key} 缺少 {{COLOR}} 占位符"
+        assert tmpl.startswith("<svg"), f"图标 {key} 不是合法 SVG 根"
+        assert tmpl.endswith("</svg>"), f"图标 {key} 未正确闭合"
+        # 格式化后的字符串不含花括号
+        formatted = _format_svg(key, "#a78bfa")
+        assert "{COLOR}" not in formatted
+
+
+def test_render_icon_produces_pixmap(app):
+    """render_icon 在有 QApplication 时返回非空 QPixmap。"""
+    if not __import__("tools.gui.widgets.icons", fromlist=["_HAS_SVG"])._HAS_SVG:
+        pytest.skip("QtSvg 不可用")
+    from tools.gui.widgets.icons import render_icon
+    pm = render_icon("today", 20, "#a78bfa")
+    assert not pm.isNull()
+    assert pm.width() == 20 and pm.height() == 20
+
+
+def test_function_card_uses_svg_not_emoji(win):
+    """功能卡片标题行不应再含 emoji 字符，应有 SVG pixmap 图标。"""
+    card = win._feature_buttons[0]
+    # 卡片图标 label 应有 pixmap（而非文本 emoji）
+    pm = card._icon_label.pixmap()
+    assert pm is not None and not pm.isNull(), "卡片图标应为 SVG pixmap"
+    # 卡片标题不应以 emoji 开头
+    titles = [c.findChild(type(card._icon_label)) for c in win._feature_buttons]
+    # 遍历卡片，确认标题文本不含 emoji 区段
+    from tools.gui.views.function_cards import CARD_ITEMS
+    for _icon, title, _desc, _alias in CARD_ITEMS:
+        # icon 字段应为 SVG key（纯 ASCII），不是 emoji 字符
+        assert len(_icon) <= 20 and _icon.isascii(), \
+            f"图标键应为 ASCII key，非 emoji: {_icon!r}"
+
+
+def test_settings_dialog_writes_and_applies_l2(app):
+    """设置面板写入 QSettings 并即时应用主题。"""
+    from tools.gui.widgets.settings_dialog import SettingsDialog
+    from tools.gui import theme_apply
+    win = MainWindow()
+    try:
+        dlg = SettingsDialog(win)
+        dlg.preset_combo.setCurrentIndex(
+            dlg.preset_combo.findData("light"))
+        dlg.acc_edit.setText("#3b82f6")
+        dlg.radius_spin.setValue(10)
+        dlg._apply()
+        prefs = theme_apply.read_prefs()
+        assert prefs.get("preset") == "light"
+        assert prefs.get("acc") == "#3b82f6"
+        assert int(prefs.get("radius", 0)) == 10
+        # 清理 L2 覆盖，避免影响其他测试
+        for k in ("ui/preset", "ui/acc", "ui/radius",
+                   "ui/density", "ui/font_scale"):
+            theme_apply._settings().setValue(k, "")
+    finally:
+        win.close()
+
+
 # ── 倒计时与任务进度 ────────────────────────────────────────────
 
 def test_countdown_label_is_refreshable(win):
     """[缺陷修复] 改造前 countdown 是局部变量，挂一整天也不动。"""
     label = win.countdown_label
-    assert label.text().startswith("⏳ 初试倒计时:"), f"初始文本异常: {label.text()!r}"
+    assert label.text().startswith("初试倒计时:"), f"初始文本异常: {label.text()!r}"
 
     original = label.text()
-    label.setText("⏳ 初试倒计时: -1 天")
+    label.setText("初试倒计时: -1 天")
     win._sync_header_text()                       # 定时器走的就是这条路径
     assert label.text() == original, "刷新后应重新取真实倒计时，覆盖手工写入的值"
 

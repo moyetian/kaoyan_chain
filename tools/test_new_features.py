@@ -440,9 +440,9 @@ D. 2
                              if w.styleSheet() and "#" in w.styleSheet()]
             runner.assert_true(not inline_styled,
                                f"GUI: 无控件内联写死颜色（浅色主题不再被压过），实际 {len(inline_styled)} 处")
-            runner.assert_true(win.countdown_label.text().startswith("⏳ 初试倒计时:"),
+            runner.assert_true(win.countdown_label.text().startswith("初试倒计时:"),
                                "GUI: 倒计时以实例属性持有并可刷新（不再是取完即弃的局部变量）")
-            runner.assert_true(win.meta_label.text().startswith("🏛️ 目标:"),
+            runner.assert_true(win.meta_label.text().startswith("目标:"),
                                "GUI: 顶栏目标/风格信息由共享状态层填充")
 
             # 销毁窗口释放资源

@@ -17,7 +17,12 @@ GUI 功能卡片组件 (FunctionCard)
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
+
+try:  # pragma: no cover - 取决于运行方式
+    from gui.widgets.icons import render_icon
+except ImportError:  # pragma: no cover
+    from tools.gui.widgets.icons import render_icon  # type: ignore
 
 
 class FunctionCard(QFrame):
@@ -28,6 +33,7 @@ class FunctionCard(QFrame):
     def __init__(self, icon: str, title: str, desc: str, alias: str, parent=None):
         super().__init__(parent)
         self.alias = alias
+        self._icon_key = icon           # SVG 模板 key（见 widgets/icons.py）
         # 样式一律由 objectName 选择器提供（#FunctionCard / #CardTitle / #CardDesc）
         self.setObjectName("FunctionCard")
         self.setCursor(Qt.PointingHandCursor)
@@ -40,16 +46,36 @@ class FunctionCard(QFrame):
         layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(4)
 
-        title_label = QLabel(f"{icon}  {title}")
+        # 标题行：SVG 图标 + 文字（横向排列），替代改造前的 emoji 字符拼接。
+        # emoji 跨系统字形差异大（彩色/单色、宽高不一），SVG 矢量渲染保证一致。
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
+        title_row.setContentsMargins(0, 0, 0, 0)
+
+        self._icon_label = QLabel()
+        self._icon_label.setObjectName("CardIcon")
+        self._icon_label.setFixedSize(22, 22)
+        title_label = QLabel(title)
         title_label.setObjectName("CardTitle")
+
+        title_row.addWidget(self._icon_label)
+        title_row.addWidget(title_label)
+        title_row.addStretch()
+
         desc_label = QLabel(desc)
         desc_label.setObjectName("CardDesc")
         desc_label.setWordWrap(True)
 
-        layout.addWidget(title_label)
+        layout.addLayout(title_row)
         layout.addWidget(desc_label)
 
     # ── 交互 ────────────────────────────────────────────────
+    def refresh_icon(self, color: str) -> None:
+        """用主题色重新渲染 SVG 图标（切主题时由 MainWindow 调用）。"""
+        pm = render_icon(self._icon_key, 20, color)
+        if not pm.isNull():
+            self._icon_label.setPixmap(pm)
+
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self._emit_clicked()

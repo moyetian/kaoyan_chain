@@ -38,6 +38,7 @@ SETTINGS_APP = "ky-gui"
 
 #: 用户偏好键
 KEY_PRESET = "ui/preset"
+KEY_ACCENT = "ui/acc"
 KEY_RADIUS = "ui/radius"
 KEY_DENSITY = "ui/density"
 KEY_FONT_SCALE = "ui/font_scale"
@@ -61,8 +62,9 @@ def read_prefs() -> Dict[str, Any]:
     except Exception:                      # pragma: no cover - 无 Qt 环境
         return {}
     prefs: Dict[str, Any] = {}
-    for key, name in ((KEY_PRESET, "preset"), (KEY_RADIUS, "radius"),
-                      (KEY_DENSITY, "density"), (KEY_FONT_SCALE, "font_scale")):
+    for key, name in ((KEY_PRESET, "preset"), (KEY_ACCENT, "acc"),
+                      (KEY_RADIUS, "radius"), (KEY_DENSITY, "density"),
+                      (KEY_FONT_SCALE, "font_scale")):
         raw = s.value(key)
         if raw not in (None, ""):
             prefs[name] = raw
@@ -122,9 +124,11 @@ def resolve_theme(workspace_root: Optional[Path] = None,
 
 
 def read_overrides() -> Dict[str, Any]:
-    """QSettings 里的 L2 覆盖项（圆角/密度/字号）。"""
+    """QSettings 里的 L2 覆盖项（主色/圆角/密度/字号）。"""
     prefs = read_prefs()
     overrides: Dict[str, Any] = {}
+    if "acc" in prefs:
+        overrides["acc"] = prefs["acc"]
     if "radius" in prefs:
         overrides["radius"] = prefs["radius"]
     if "density" in prefs:
@@ -150,6 +154,16 @@ def set_preset(app, preset: str, workspace_root: Optional[Path] = None) -> Theme
     return theme
 
 
+def apply_prefs(app, workspace_root: Optional[Path] = None) -> Theme:
+    """从 QSettings 读取全部 L2 旋钮（预设 + 主色 + 圆角 + 密度 + 字号），
+    重新解析并应用主题。
+
+    设置面板的「应用」按钮调此函数即可即时预览，无需重启。"""
+    theme = resolve_theme(workspace_root)
+    apply_theme(app, theme)
+    return theme
+
+
 def next_preset(current: str) -> str:
     """在明暗两套主预设间切换（GUI 顶栏按钮的语义：深色 ↔ 浅色）。"""
     if current == "light":
@@ -161,6 +175,7 @@ def next_preset(current: str) -> str:
 
 
 __all__ = [
+    "KEY_ACCENT",
     "KEY_DENSITY",
     "KEY_FONT_SCALE",
     "KEY_GEOMETRY",
@@ -170,6 +185,7 @@ __all__ = [
     "KEY_WINDOW_STATE",
     "SETTINGS_APP",
     "SETTINGS_ORG",
+    "apply_prefs",
     "apply_theme",
     "next_preset",
     "read_overrides",

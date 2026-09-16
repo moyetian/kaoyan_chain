@@ -14,18 +14,18 @@ try:  # pragma: no cover - 取决于运行方式
 except ImportError:  # pragma: no cover
     from tools.gui.widgets.function_card import FunctionCard  # type: ignore
 
-#: 功能卡片清单（图标 / 标题 / 说明 / 动作别名）
+#: 功能卡片清单（SVG 图标 key / 标题 / 说明 / 动作别名）
 CARD_ITEMS = (
-    ("📋", "今日任务", "查看四科任务量与推进打卡", "today"),
-    ("🎯", "靶向组卷", "按考点与难度智能拼卷演练", "compose"),
-    ("🔄", "同源变式", "薄弱考点同源变式真题检索", "variant"),
-    ("📈", "考纲Diff", "新旧考纲层级对比与动荡率", "diff"),
-    ("📥", "切片入库", "真题/模拟卷结构化切片入库", "ingest"),
-    ("🔍", "院校侦察", "研招网与社媒实名口碑研报", "scout"),
-    ("⚖️", "双校对标", "双校初复试指标横向对标", "compare"),
-    ("📡", "简章监控", "高校研究生院简章变动预警", "watch"),
-    ("📊", "看板更新", "重新编译掌握度雷达看板", "build"),
-    ("📱", "公众号检索", "微信公众号考研文章检索与沉淀", "wechat_search"),
+    ("today", "今日任务", "查看四科任务量与推进打卡", "today"),
+    ("compose", "靶向组卷", "按考点与难度智能拼卷演练", "compose"),
+    ("variant", "同源变式", "薄弱考点同源变式真题检索", "variant"),
+    ("diff", "考纲Diff", "新旧考纲层级对比与动荡率", "diff"),
+    ("ingest", "切片入库", "真题/模拟卷结构化切片入库", "ingest"),
+    ("scout", "院校侦察", "研招网与社媒实名口碑研报", "scout"),
+    ("compare", "双校对标", "双校初复试指标横向对标", "compare"),
+    ("watch", "简章监控", "高校研究生院简章变动预警", "watch"),
+    ("build", "看板更新", "重新编译掌握度雷达看板", "build"),
+    ("wechat_search", "公众号检索", "微信公众号考研文章检索与沉淀", "wechat_search"),
 )
 
 #: 每行卡片数
@@ -52,6 +52,11 @@ def build(win) -> QScrollArea:
         win.feature_cards.append(card)
         row, col = divmod(idx, COLUMNS)
         grid.addWidget(card, row, col)
+
+    # 用当前主题色渲染图标（切主题时由 win._refresh_card_icons() 重渲染）
+    color = win._theme.color("acc") if hasattr(win, "_theme") else ""
+    for card in win.feature_cards:
+        card.refresh_icon(color)
 
     scroll.setWidget(container)
     return scroll

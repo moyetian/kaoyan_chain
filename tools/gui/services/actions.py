@@ -40,7 +40,7 @@ def run_action_capture(alias: str, interactive: bool = False) -> str:
         return buf.getvalue().strip()
     except Exception as exc:
         _LOG.warning("动作执行失败: %s -> %s", alias, exc)
-        return f"❌ 模块 [{alias}] 执行异常: {exc}"
+        return f"[×] 模块 [{alias}] 执行异常: {exc}"
 
 
 def ingest_file(workspace_root: Path, path: str, subject: str = "pro") -> str:
@@ -54,12 +54,12 @@ def ingest_file(workspace_root: Path, path: str, subject: str = "pro") -> str:
         pipe = material_ingestion.MaterialIngestionPipeline(workspace_root=workspace_root)
         res = pipe.ingest_file(Path(path), subject=subject)
         if res.get("success"):
-            return (f"✔ 切片入库成功：识别 {res['count']} 道题目 "
+            return (f"[√] 切片入库成功：识别 {res['count']} 道题目 "
                     f"(选择 {res['choices']} / 填空 {res['blanks']} / 大题 {res['essays']})\n"
                     f"   生成路径: {res['target_path']}")
-        return f"❌ 切片入库失败: {res.get('msg')}"
+        return f"[×] 切片入库失败: {res.get('msg')}"
     except Exception as exc:
-        return f"❌ 切片入库异常: {exc}"
+        return f"[×] 切片入库异常: {exc}"
 
 
 def diff_syllabus(workspace_root: Path, old_path: str, new_path: str) -> str:
@@ -85,12 +85,12 @@ def diff_syllabus(workspace_root: Path, old_path: str, new_path: str) -> str:
         )
         saved = gen.save_diff_report(rep)
         m = rep["metrics"]
-        return (f"✔ 考纲 Diff 完成 (动荡率 {m['volatility_percentage']}% / "
+        return (f"[√] 考纲 Diff 完成 (动荡率 {m['volatility_percentage']}% / "
                 f"{m['stability_grade']})：新增 {m['added_count']} | "
                 f"剔除 {m['removed_count']} | 调整 {m['modified_count']} | "
                 f"不变 {m['unchanged_count']}\n   研报路径: {saved}")
     except Exception as exc:
-        return f"❌ 考纲比对异常: {exc}"
+        return f"[×] 考纲比对异常: {exc}"
 
 
 def compare_schools(workspace_root: Path, school1: str, school2: str,
@@ -108,7 +108,7 @@ def compare_schools(workspace_root: Path, school1: str, school2: str,
         )
         return str(comp.get("terminal_report", "")), str(comp.get("saved_path") or "")
     except Exception as exc:
-        return f"❌ 双校对标执行异常: {exc}", ""
+        return f"[×] 双校对标执行异常: {exc}", ""
 
 
 def make_error_quiz(workspace_root: Path, subject: str = "pro",
@@ -124,12 +124,12 @@ def make_error_quiz(workspace_root: Path, subject: str = "pro",
             subject=subject, count=count, include_weak=True, save_file=True)
         saved = str(res.get("saved_path", "") or "")
         paper_text = res.get("formatted_paper") or res.get("content") or ""
-        display = f"\n\n🎯 【错题盲盒自测卷】已生成！\n{'=' * 50}\n{paper_text}\n"
+        display = f"\n\n【错题盲盒自测卷】已生成！\n{'=' * 50}\n{paper_text}\n"
         if saved:
-            display += f"\n> 💾 自测卷已落盘: `{saved}`"
+            display += f"\n> 自测卷已落盘: `{saved}`"
         return display, saved
     except Exception as exc:
-        return f"❌ 组卷异常: {exc}", ""
+        return f"[×] 组卷异常: {exc}", ""
 
 
 def _target_labels(workspace_root: Path, new_path: Path) -> Tuple[str, str]:
