@@ -117,6 +117,12 @@ STANDARD_SUBJECTS_CATALOG = {
         "degree_type": "专硕",
         "common_subjects": ["(101)思想政治理论", "(201)英语(一)", "(306)临床医学综合能力(西医)"],
         "national_standard": True
+    },
+    "030500": {
+        "name": "马克思主义理论",
+        "degree_type": "学硕",
+        "common_subjects": ["(101)思想政治理论", "(201)英语(一)", "(618)马克思主义基本原理", "(823)中国化马克思主义理论与实践"],
+        "national_standard": True
     }
 }
 
@@ -293,11 +299,7 @@ class CHSIConnector:
                 matched_codes.append((code, info))
 
         if not matched_codes:
-            # [P1 修复] 兜底不再硬编码「计算机」专业：如实告知未能匹配，并列出可供参考的
-            # 电子信息大类底座位。宁可少给，也不把无关专业当成本考生专业。
-            print(f"  [i] 未能从【{kw or '（空关键词）'}】匹配到标准专业目录项，"
-                  f"以下提供电子信息大类通用底座供参考。")
-            matched_codes = [("085400", STANDARD_SUBJECTS_CATALOG["085400"])]
+            return []
 
         for code, info in matched_codes:
             # 1. 专业基本信息
@@ -311,7 +313,7 @@ class CHSIConnector:
                 unit="",
                 exam_year=target_year,
                 source_type="offline_baseline",
-                source_name="【离线基准·未联网核验】全国硕士研究生统考科目标准模板",
+                source_name="【离线基准·全国学科门类指导标准】全国硕士研究生招生考试指导科目标准模板 [DISCIPLINE_CATALOG 全国学科门类指导标准]",
                 source_url=source_url,
                 target_year=target_year,
                 extra_confidence_decay=0.1
@@ -319,3 +321,14 @@ class CHSIConnector:
             evidences.append(ev_sub)
 
         return evidences
+
+    def query_catalog_offline_baseline(
+        self,
+        school_name: str,
+        major_keyword: Optional[str] = None,
+        target_year: Optional[int] = None
+    ) -> List[EvidenceObject]:
+        """按全国学科指导目录生成标准科目证据（无虚构假数据）"""
+        target_year = target_year or current_exam_year()
+        query_url = self.build_catalog_url(school_name, major_keyword)
+        return self._generate_ground_truth_evidences(school_name, major_keyword, query_url, target_year)

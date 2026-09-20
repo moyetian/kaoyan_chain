@@ -551,8 +551,12 @@ D. 2
         gui_actions_src = (ROOT / "tools" / "gui" / "services" / "actions.py").read_text(encoding="utf-8")
         runner.assert_true("compose_exam_paper" in gui_actions_src,
                            "GUI: 错题盲盒走 compose_exam_paper 正确入口")
-        runner.assert_true("services.make_error_quiz" in gui_src,
-                           "GUI: 主窗口通过 services 层触发出卷（不在窗口内直连后端）")
+        # [架构更新] 出卷已改为后台异步执行：窗口经 IntelTaskWorker 触发，
+        # worker 内部再调用 services.make_error_quiz（仍然不经窗口直连后端）。
+        gui_worker_src = (ROOT / "tools" / "gui" / "workers" / "intel_worker.py").read_text(encoding="utf-8")
+        runner.assert_true(
+            'IntelTaskWorker("error_quiz"' in gui_src and "services.make_error_quiz" in gui_worker_src,
+            "GUI: 主窗口通过 services 层触发出卷（经 IntelTaskWorker，不在窗口内直连后端）")
 
         # E.5 syllabus_diff metrics 键名一致性
         gen = syllabus_diff.get_syllabus_diff_generator()

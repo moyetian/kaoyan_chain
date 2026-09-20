@@ -181,15 +181,30 @@ def _plan(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def resolve_subject_specs(cfg: Dict[str, Any]) -> Tuple[SubjectSpec, ...]:
-    """按配置解析四科的显示名（自命题专业课名不再被硬编码成「专业课」）。"""
+    """按配置解析科目的显示名（支持不考数学、双自命题专业课、199管综等多种模式）。"""
     sp = _plan(cfg)
+    exam_mode = sp.get("exam_mode") or cfg.get("exam_mode")
+    pro2_name = (sp.get("pro2_name") or cfg.get("pro2_name") or "").strip()
+    is_mode_c = exam_mode == "mode_c" or sp.get("pol_disabled") or cfg.get("pol_disabled") or ("199" in str(sp.get("pro_name", "")))
+    is_mode_b = exam_mode == "mode_b" or bool(pro2_name)
+    math_off = is_mode_b or is_mode_c or sp.get("math_key") == "none" or sp.get("math_name") == "不考数学"
+
     specs = []
     for key, folder in SUBJECT_ORDER:
+        if key == "math" and math_off:
+            continue
+        if key == "pol" and is_mode_c:
+            continue
         label = ""
         if key != "pol":                      # 政治是统考，恒用官方全称
             label = (sp.get(f"{key}_name") or cfg.get(f"{key}_name") or "").strip()
         specs.append(SubjectSpec(
             key=key, folder=folder, label=label or _FALLBACK_LABELS[key]))
+
+    if is_mode_b:
+        specs.append(SubjectSpec(
+            key="pro2", folder="04-专业课", label=pro2_name or "专业课二"
+        ))
     return tuple(specs)
 
 
@@ -242,8 +257,9 @@ def resolve_stage(cfg: Dict[str, Any]) -> str:
 # 主入口
 # ════════════════════════════════════════════════════════════════
 
-def read_subject_tasks(folder: Path) -> Tuple[TaskItem, ...]:
+def read_subject_tasks(folder: Path, key: str = "") -> Tuple[TaskItem, ...]:
     """读取某科 ``_状态/今日任务.md`` 并解析为任务元组。
+    若 key == 'pro2'，优先读取 ``今日任务_专业课二.md``。
 
     编码回退走 :func:`ky_io.read_text_fallback`（utf-8-sig/utf-8/gbk）——
     与 CLI 既有行为一致；GUI/TUI 旧实现只试 utf-8 且静默吞异常，
@@ -251,7 +267,12 @@ def read_subject_tasks(folder: Path) -> Tuple[TaskItem, ...]:
 
     文件不存在时返回空元组（与三端旧实现一致，不代为回落到模板文件）。
     """
-    task_file = folder / "_状态" / "今日任务.md"
+    if key == "pro2":
+        task_file = folder / "_状态" / "今日任务_专业课二.md"
+        if not task_file.exists():
+            task_file = folder / "_状态" / "今日任务.md"
+    else:
+        task_file = folder / "_状态" / "今日任务.md"
     if not task_file.exists():
         return ()
     try:
@@ -291,7 +312,7 @@ def load_dashboard_state(
             key=spec.key,
             folder=spec.folder,
             label=spec.label,
-            tasks=read_subject_tasks(root / spec.folder),
+            tasks=read_subject_tasks(root / spec.folder, key=spec.key),
         ))
 
     return DashboardState(

@@ -1,6 +1,7 @@
 @echo off
 setlocal
-chcp 65001 >nul
+chcp 936 >nul 2>nul
+rem [R2-C3] ±¾ÎÄ¼þÒÔ GBK(CP936) ÂäÅÌ£¬ÇëÎðÁí´æÎª UTF-8£¨Ïê¼û GUI.bat ¶¥²¿ËµÃ÷£©
 cd /d "%~dp0"
 set PYTHONIOENCODING=utf-8
 
@@ -20,7 +21,7 @@ if %errorlevel% equ 0 (
 
 
 
-echo [!] æœªæ£€æµ‹åˆ°å¯ç”¨çš„ Python 3.10+ çŽ¯å¢ƒã€‚
-echo è¯·è®¿é—® https://www.python.org/downloads/ å®‰è£… Python 3.10 æˆ–æ›´é«˜ç‰ˆæœ¬ã€‚
+echo [!] Î´¼ì²âµ½¿ÉÓÃµÄ Python 3.10+ »·¾³¡£
+echo Çë·ÃÎÊ https://www.python.org/downloads/ °²×° Python 3.10 »ò¸ü¸ß°æ±¾¡£
 pause
 exit /b 1

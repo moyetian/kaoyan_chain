@@ -28,9 +28,9 @@ except Exception:
         get_subject_name = lambda s, d=None: SUBJECT_NAMES.get(s, s)
 
 try:  # 公共 IO 工具：原子写 + 文件名净化 + 路径包含断言（双导入路径兼容）
-    from ky_io import atomic_write_text, safe_filename, is_within
+    from ky_io import atomic_write_text, guard_write, safe_filename, is_within
 except ImportError:  # pragma: no cover
-    from tools.ky_io import atomic_write_text, safe_filename, is_within
+    from tools.ky_io import atomic_write_text, guard_write, safe_filename, is_within
 
 try:  # 笔记锁定闸门：frontmatter 中 locked: true 的卡片禁止被自动改写
     from note_lock import NoteLockedError, assert_writable
@@ -43,6 +43,68 @@ SUBJECT_DIRS = {
     "pol": "03-思想政治理论",
     "pro": "04-专业课",
 }
+
+# ── 科目名归一化（P2 修复）────────────────────────────────────────
+# log_mistake 工具的 schema 只声明 math/eng/pol/pro，但 LLM 不保证遵守；
+# 此前 SUBJECT_DIRS.get(subject, "01-数学") 会把任何无法识别的科目名（含中文名）
+# 静默写进数学错题本并回报「已成功归档」—— 不考数学的文科考生错题全堆进 01-数学，
+# 专业课错题队列永远为空。现统一归一化，无法识别时显式报错，绝不静默回退。
+_SUBJECT_ALIASES = {
+    # 数学
+    "math": "math", "数学": "math",
+    "数一": "math", "数二": "math", "数三": "math",
+    "数学一": "math", "数学二": "math", "数学三": "math",
+    "数1": "math", "数2": "math", "数3": "math",
+    "math1": "math", "math2": "math", "math3": "math",
+    "math396": "math", "396": "math",
+    # 英语
+    "eng": "eng", "英语": "eng",
+    "英一": "eng", "英二": "eng", "英语一": "eng", "英语二": "eng",
+    "eng1": "eng", "eng2": "eng",
+    # 政治
+    "pol": "pol", "政治": "pol", "思想政治理论": "pol",
+    "政治理论": "pol", "思政": "pol",
+    # 专业课（含统考代码 408 计算机 / 199 管综 / 432 统计）
+    "pro": "pro", "专业课": "pro", "专业课一": "pro", "专业课二": "pro",
+    "专业": "pro", "自命题": "pro", "pro2": "pro",
+    "408": "pro", "199": "pro", "432": "pro",
+}
+
+
+def _configured_pro_name() -> str:
+    """读取 ky_config.json 的 study_plan.pro_name（失败返回空串）。"""
+    import json
+    try:
+        cfg = json.loads((ROOT / "ky_config.json").read_text(encoding="utf-8"))
+        return str((cfg.get("study_plan") or {}).get("pro_name") or "").strip()
+    except Exception:
+        return ""
+
+
+def normalize_subject(subject) -> str:
+    """把科目名/别名归一化为 math / eng / pol / pro。
+
+    支持中文名与常见别名（数学/数一/数二/数三、英语/英一/英二、
+    政治/思想政治理论/思政、专业课/专业/自命题），以及配置里的专业课名
+    （如 study_plan.pro_name 含 408/199 时识别为 pro）。
+
+    无法识别时抛 ``ValueError`` —— 调用方必须显式处理，严禁静默回退到数学。
+    """
+    raw = str(subject or "").strip()
+    if not raw:
+        raise ValueError("科目名为空，无法归档错题；请传入 math/eng/pol/pro 或对应中文名")
+    key = raw.lower()
+    if key in _SUBJECT_ALIASES:
+        return _SUBJECT_ALIASES[key]
+    pro_name = _configured_pro_name()
+    if pro_name:
+        pn = pro_name.lower()
+        if pn and (pn in key or key in pn):
+            return "pro"
+    raise ValueError(
+        f"无法识别的科目名 {subject!r}，请使用 math/eng/pol/pro 或对应中文名；"
+        "已拒绝归档，以免错题串入其他科目"
+    )
 
 # 仅作 config 缺失时的中性回退；实际科目名以 ky_config.json 的 study_plan 为准
 _SUBJECT_NAME_FALLBACK = {
@@ -151,6 +213,11 @@ def record_review_event(
         "due_after": str(due_after or ""),
     }
     try:
+        # [safe 模式收口] 这里原先是裸 ``open(..., "a")`` 追加，绕开了 ky_io 的统一
+        # 写闸门。虽然当前唯一调用方 ``mark_error_status`` 会先经 atomic_write_text
+        # 写错题卡片（已被闸门拦住、走不到这里），但「写盘点必须过闸门」不应依赖
+        # 调用顺序 —— 先过 guard_write，只读模式下直接拒绝。
+        guard_write("追加复测事件日志", REVIEW_LOG_FILE)
         REVIEW_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(REVIEW_LOG_FILE, "a", encoding="utf-8") as f:
             f.write(_json.dumps(event, ensure_ascii=False) + "\n")
@@ -163,7 +230,18 @@ def record_review_event(
 
 def log_error_record(subject="math", title="错题记录", error_type="计算失误", detail="", prescription="", question=""):
     """向对应科目的错题本追加一条结构化错题记录"""
-    subj_folder = SUBJECT_DIRS.get(subject, "01-数学")
+    # [缺陷修复·错因五分类硬约束] AGENTS.md 规定错因只能取五分类（+「无」）。
+    # 此前写入链路不校验，任意字符串（含 LLM 幻觉出的分类名）会被原样落盘，
+    # 污染薄弱点雷达的错因统计口径。此处统一收敛到 open_grader 的白名单。
+    try:
+        from skills.open_grader import MISTAKE_TYPES
+    except ImportError:  # pragma: no cover
+        from tools.skills.open_grader import MISTAKE_TYPES  # type: ignore
+    if error_type not in MISTAKE_TYPES:
+        error_type = "概念漏洞"
+    # [P2 修复] 科目名先归一化；无法识别时抛 ValueError，绝不静默回退数学
+    subject = normalize_subject(subject)
+    subj_folder = SUBJECT_DIRS[subject]
     mistake_dir = ROOT / subj_folder / "错题本"
     if subject == "eng":
         mistake_dir = ROOT / subj_folder / "错题与长难句本"
@@ -324,6 +402,14 @@ def scan_error_records(subject=None):
                 if sa_m:
                     std_ans = sa_m.group(1).strip()
 
+                def _clean_fallback_stem(text: str) -> str:
+                    if not text:
+                        return ""
+                    bad_markers = ["未作答或明确放弃", "判卷未通过", "由自测卷链路自动归档"]
+                    if any(marker in text for marker in bad_markers):
+                        return ""
+                    return text[:200]
+
                 results.append({
                     "subject": s,
                     "subject_name": get_subject_name(s, SUBJECT_NAMES.get(s, s)),
@@ -335,7 +421,7 @@ def scan_error_records(subject=None):
                     "error_type": err_type,
                     "stage": stage,
                     "next_due": next_due,
-                    "question": q_text or detail_text[:200],
+                    "question": q_text or _clean_fallback_stem(detail_text),
                     "detail": detail_text or q_text or "",
                     "standard_answer": std_ans,
                     "raw_section": sec

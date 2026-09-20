@@ -31,6 +31,16 @@ def read(p):
     return None
 
 
+#: 章节标题的编号前缀（「一、」「2.」「3)」等），精确匹配时先行剥离
+_ENUM_PREFIX = re.compile(r"^\s*(?:[0-9]+|[一二三四五六七八九十百]+)\s*[、.．:：)）\-]\s*")
+
+
+def _is_exact_heading(title: str, kw: str) -> bool:
+    """标题（去编号前缀后）是否与关键词全等 —— 精确章节名匹配。"""
+    t = title.strip()
+    return t == kw or _ENUM_PREFIX.sub("", t).strip() == kw
+
+
 def get_section(md, kw):
     if md is None:
         return None
@@ -38,11 +48,22 @@ def get_section(md, kw):
         return md
     lines = md.splitlines()
     start = lvl = None
+    # [P24 修复·精确章节名匹配] 第一遍只认「去编号前缀后全等」的精确命中。
+    # 旧实现单遍子串匹配时，pro 同时配置的「章节掌握度」与「掌握度」都会命中
+    # 标题「二、章节掌握度雷达」，导致同一章节被重复抽卡成两份相同卡片组。
     for i, ln in enumerate(lines):
         m = re.match(r"^(#{2,4})\s+(.*)$", ln)
-        if m and kw in m.group(2):
+        if m and _is_exact_heading(m.group(2), kw):
             start, lvl = i, len(m.group(1))
             break
+    # 第二遍回退子串匹配：保留「长难句」「公式默写卡」「马原」「核心概念」等
+    # 描述性关键词命中完整章节标题的既有能力（这些并非精确章节名）。
+    if start is None:
+        for i, ln in enumerate(lines):
+            m = re.match(r"^(#{2,4})\s+(.*)$", ln)
+            if m and kw in m.group(2):
+                start, lvl = i, len(m.group(1))
+                break
     if start is None:
         return None
     end = len(lines)

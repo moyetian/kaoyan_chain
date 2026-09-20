@@ -98,7 +98,10 @@ class SyllabusDiffGenerator:
             if m_module and not line_str.startswith("###"):
                 candidate = m_module.group(1).strip()
                 # 负面清单 / 提示性标题：进入跳过模式，直到下一个有效标题为止
-                if any(k in candidate for k in ["说明", "红线", "准则", "背景", "范围", "不考", "超纲", "参考书目"]):
+                # [说明文字误切] "三、2027届调整"这类考纲修订说明小节不是知识章节，
+                # 其下"新增：…/剔除：无。"会被误切成考点，故一并跳过。
+                if any(k in candidate for k in ["说明", "红线", "准则", "背景", "范围", "不考", "超纲", "参考书目",
+                                                "调整", "新增", "剔除", "变动", "修订", "变化说明"]):
                     skip_section = True
                     continue
                 skip_section = False
@@ -110,7 +113,8 @@ class SyllabusDiffGenerator:
             m_chap = re.match(r"^#{3,4}\s+(?:第?[0-9一二三四五六七八九十]+[章讲节、\.\s]*)?([^#]+)$", line_str)
             if m_chap:
                 candidate = m_chap.group(1).strip()
-                if any(k in candidate for k in ["说明", "红线", "准则", "不考", "超纲"]):
+                if any(k in candidate for k in ["说明", "红线", "准则", "不考", "超纲",
+                                                "调整", "新增", "剔除", "变动", "修订"]):
                     skip_section = True
                     continue
                 skip_section = False
@@ -132,6 +136,12 @@ class SyllabusDiffGenerator:
                 for sub in sub_items:
                     sub = sub.strip()
                     if not sub:
+                        continue
+                    # [说明文字误切] 同 m_plain 分支：修订说明不是考点
+                    _sub_head = re.split(r"[：:]", sub, maxsplit=1)[0].strip()
+                    if _sub_head in ("新增", "剔除", "调整", "变动", "修订", "删除", "变化"):
+                        continue
+                    if sub in ("无", "无。"):
                         continue
                     terms = re.split(r"[、,，]+", sub)
                     if len(terms) <= 1:
@@ -160,6 +170,14 @@ class SyllabusDiffGenerator:
                 m_plain = re.match(r"^[-*]\s+(.+)$", line_str)
                 if m_plain and not line_str.startswith("<!--"):
                     raw_text = m_plain.group(1).strip()
+                    # [说明文字误切] "新增：现代新儒家…""剔除：无。"是修订说明，
+                    # 不是考点（此前被当成"掌握"级考点计入动荡率）。冒号头为元词
+                    # 或正文仅"无"时整行丢弃。
+                    _meta_head = re.split(r"[：:]", raw_text, maxsplit=1)[0].replace("*", "").strip()
+                    if _meta_head in ("新增", "剔除", "调整", "变动", "修订", "删除", "变化"):
+                        continue
+                    if raw_text.strip() in ("无", "无。", "无变化", "略"):
+                        continue
                     # 行尾 [掌握]/[理解] 等等级标签优先作为考查要求
                     req_tag = None
                     tag_m = re.search(r"[\[【](掌握|熟练应用|熟练掌握|熟练求解|灵活运用|理解|了解|会|能)[\]】]\s*$", raw_text)
@@ -389,8 +407,17 @@ class SyllabusDiffGenerator:
         """
         将比对结果格式化为高可读性的 Markdown 深度研报
         """
-        m = report_data["metrics"]
-        diff_items: List[DiffItem] = report_data["diff_items"]
+        m = report_data.get("metrics") or {
+            "stability_grade": report_data.get("summary", "稳定"),
+            "volatility_percentage": round(float(report_data.get("volatility", 0.0)) * 100, 1),
+            "total_old": len(report_data.get("items", [])),
+            "total_new": len(report_data.get("items", [])),
+            "added_count": len(report_data.get("added", [])),
+            "removed_count": len(report_data.get("removed", [])),
+            "modified_count": len(report_data.get("modified", [])),
+            "unchanged_count": len(report_data.get("items", [])),
+        }
+        diff_items: List[DiffItem] = report_data.get("diff_items", [])
         school = report_data.get("school", "全国统考")
         major = report_data.get("major", "专业课")
         y_old = report_data.get("year_old", 2026)
@@ -467,15 +494,53 @@ class SyllabusDiffGenerator:
         else:
             lines.append("📌 **无考查要求升降级变动。**")
 
+        # 生成第五部分：指导建议（优先大模型动态深度研判）
+        custom_advice = None
+        try:
+            try:
+                from tools.llm_client import is_llm_configured, chat_completion
+            except ImportError:
+                from llm_client import is_llm_configured, chat_completion
+            if is_llm_configured(workspace_root=ROOT):
+                added_summary = "、".join([it.point_new.text for it in added_items[:5]]) or "无新增"
+                removed_summary = "、".join([it.point_old.text for it in removed_items[:5]]) or "无剔除"
+                modified_summary = "、".join([f"{it.point_new.text}({it.detail})" for it in modified_items[:5]]) or "无微调"
+                school = report_data.get("school", "目标院校")
+                major = report_data.get("major", "专业")
+                prompt = (
+                    f"你是一位考研命题研究总教练。\n"
+                    f"目标院校专业：{school} - {major}。\n"
+                    f"大纲变动情况：\n"
+                    f"- 新增考点：{added_summary}\n"
+                    f"- 剔除考点：{removed_summary}\n"
+                    f"- 级别微调考点：{modified_summary}\n"
+                    f"请结合以上具体的考点变动，为考生输出 3-4 条极具战术针对性的备考执行建议（包括时间分配、变式练兵、规避无谓消耗与题型防范）。\n"
+                    f"以编号列表形式输出，每条标出加粗核心观点，语气严谨专业，直接返回列表文字。"
+                )
+                llm_advice = chat_completion(prompt, workspace_root=ROOT, timeout=12.0)
+                if llm_advice and len(llm_advice.strip()) > 30:
+                    custom_advice = llm_advice.strip()
+        except Exception:
+            pass
+
         lines.extend([
             "",
             "---",
             "",
             "## 五、考研总教练战役执行指导建议 (Strategic Advice)",
             "",
-            "1. **新增考点零遗漏**：大纲首次出现的新考点，命题组有极高概率在当年试卷中以客观题或送分小题的形式考察（以示大纲修订价值），必须本周内调用 `ky variant <考点>` 完成 3 道基础变式题练兵。",
-            "2. **剔除考点立即止损**：在题集或错题本中遇到被剔除的考点，坚决不做、不背、不纠结，将节省出的宝贵时间倾斜至核心薄弱盘。",
-            "3. **级别提升重点防范**：凡由“了解”上升为“掌握”的考点，题型极可能由选择题升格为推导证明或综合解答大题，需规范书写推导步骤。",
+        ])
+
+        if custom_advice:
+            lines.append(custom_advice)
+        else:
+            lines.extend([
+                "1. **新增考点零遗漏**：大纲首次出现的新考点，命题组有极高概率在当年试卷中以客观题或送分小题的形式考察（以示大纲修订价值），必须本周内调用 `ky variant <考点>` 完成 3 道基础变式题练兵。",
+                "2. **剔除考点立即止损**：在题集或错题本中遇到被剔除的考点，坚决不做、不背、不纠结，将节省出的宝贵时间倾斜至核心薄弱盘。",
+                "3. **级别提升重点防范**：凡由“了解”上升为“掌握”的考点，题型极可能由选择题升格为推导证明或综合解答大题，需规范书写推导步骤。",
+            ])
+
+        lines.extend([
             "",
             "---",
             "*本研报由 考研学习链 (kaoyan_chain) · Syllabus Diff Generator 全自动比对生成，杜绝 AI 编造，严守官方大纲。*"

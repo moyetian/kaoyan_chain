@@ -22,9 +22,13 @@
 
 ### 1.1 系统要求
 
-- **操作系统**：Windows 10/11、macOS 或 Linux
-- **Python 运行**：Python 3.10+（推荐 Python 3.12+）；基础 CLI 使用标准库，数学/PDF/图像/OCR 技能按需安装 `requirements.txt` 中的可选依赖。
+- **操作系统**：Windows 10/11、macOS 或 Linux（三者均已验证）
+- **Python**：**3.10+**（推荐 3.11 / 3.12）；低于 3.10 会因语言特性与类型标注报错
 - **Git**：用于版本管理与多设备同步
+- **磁盘空间**：源码约 300 MB；`dist/` **打包产物约 1 GB**（不需要时可直接删除）
+- **网络**：仅情报类命令（`scout` / `admission` / `watch` / `wechat` / `fetch`）与模型调用需要
+- **第三方依赖**：**可选**。基础 CLI 使用标准库即可运行；数学符号验算 / PDF 抽取 / 图像 OCR / 桌面 GUI 等增强技能按需安装 `requirements.txt`
+  > 各依赖的「必需 vs 可选」与「缺失时的降级行为」见 [README.md](README.md) 的依赖矩阵。
 
 > \[!TIP\]
 > 考研专有高级技能（如数学高精符号验算、真题 PDF 抽取、草稿图像识别）为可选依赖。如需启用：
@@ -36,6 +40,11 @@
 ---
 
 ### 1.2 三分钟开箱初始化
+
+> 📦 **只想直接使用？** 本版本提供**开箱即用程序包**：到
+> [Releases 页面](https://github.com/moyetian/kaoyan_chain/releases) 下载最新版，
+> 安装或解压后跟随引导配置即可，**无需 Python 环境**。详见
+> [README.md](README.md) 的「📦 开箱即用」章节。以下流程面向**源码部署**。
 
 在项目工作区根目录下，打开终端运行工作区全自动初始化向导：
 
@@ -155,14 +164,14 @@ ky review math
 ky review eng
 
 # 定向侦察目标高校招生简章、专业目录、自命题大纲与知乎/B站口碑
-ky scout 华中科技大学 计算机 --save
+ky scout 对比院校B 计算机 --save
 ky scout 浙江大学 软件工程 --apply
 
 # 双校招考核心指标横向深度对标
-ky compare 华中科技大学 武汉大学 计算机 --save
+ky compare 对比院校B 对比院校B 计算机 --save
 
 # 目标高校研招动态指纹监控雷达
-ky watch 华中科技大学
+ky watch 对比院校B
 ky watch --check
 
 # 查看或切换私教辅导风格 (1:严格把关 2:高效秒杀 3:温和启发 4:学霸溯源)
@@ -298,13 +307,13 @@ ky diagnose "1-5: A B C D A; 6-10: C B A D C"
 
 ```bash
 # 1. 精准调取研招网 (S级) 与高校官网 (A级) 权威招考事实与证据链
-ky admission 华中科技大学 085404 --save
+ky admission 对比院校B 085404 --save
 
 # 2. 锁定特定年份招考数据 (默认当年，可指定 --year)
 ky admission 浙江大学 计算机技术 --year=2027
 
 # 3. 将高校纳入动态简章监控雷达 (比对 SHA256 指纹与最新标题)
-ky watch 华中科技大学
+ky watch 对比院校B
 
 # 4. 轮询所有监控高校，第一时间捕捉 2027 招生简章出炉
 ky watch --check
@@ -313,10 +322,10 @@ ky watch --check
 ky watch --list
 
 # 6. 双校横向对比：深度对标 408/自命题、复试线走势与一志愿保护机制
-ky compare 华中科技大学 武汉大学 计算机 --save
+ky compare 对比院校B 对比院校B 计算机 --save
 
 # 7. 综合全景侦察：聚合知乎、B站、小红书实名口碑与避坑指南
-ky scout 华中科技大学 计算机 --save
+ky scout 对比院校B 计算机 --save
 ```
 
 - **双校深度对标**：一键生成两校教育部代码、办学层次、自划线、初试科目差异（如 408 统考 vs 自命题）、近三年复试线走向与一志愿保护机制对比表格与 Markdown 研报；

@@ -28,7 +28,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QTimer
 # QTextCursor 用于流式输出时把光标移到末尾；否则 append 会另起段落，流式片段会断成多行。
-from PySide6.QtGui import QTextCursor
+from PySide6.QtGui import QIcon, QTextCursor
 from PySide6.QtWidgets import (
     QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox,
     QTabWidget, QVBoxLayout, QWidget,
@@ -67,6 +67,13 @@ class MainWindow(QMainWindow):
         self._streamed = False
 
         self.setWindowTitle("考研学习链 · 全科智能私教中枢")
+        icon_path = self.workspace_root / "docs" / "assets" / "logo" / "logo.png"
+        if not icon_path.exists():
+            icon_path = self.workspace_root / "docs" / "assets" / "logo.png"
+        if not icon_path.exists():
+            icon_path = self.workspace_root / "docs" / "assets" / "favicon.png"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
         self.setMinimumSize(1180, 780)
         self._load_config()
         self._theme = self._apply_initial_theme()
@@ -74,6 +81,10 @@ class MainWindow(QMainWindow):
         self._init_timer()
         self._refresh_all()
         theme_apply.restore_geometry(self)
+
+        # 首次进入或配置缺失时自动唤起新手引导与学情建档向导
+        if hasattr(services, "is_unconfigured") and services.is_unconfigured(self.workspace_root):
+            QTimer.singleShot(150, self._open_onboarding_wizard)
 
     # ════════════════════════════════════════════════════════════
     # 初始化
@@ -129,15 +140,25 @@ class MainWindow(QMainWindow):
     # ════════════════════════════════════════════════════════════
 
     def _sync_header_text(self):
-        """把服务层取到的头部数据写进控件（含倒计时）。
+        """把服务层取到的头部数据写进控件（含倒计时与个性化元标签）。
 
-        [缺陷修复·死数字] 头部倒计时改造前是局部变量，构造时算一次就再也不动。
+        优先与当前内存中的 self.config 合并，确保设置与向导修改即刻毫秒级生效。
         """
         info = services.header_info(self.workspace_root)
-        self.countdown_label.setText(f"初试倒计时: {info['days_left']} 天")
+        cfg = getattr(self, "config", None) or {}
+        plan = cfg.get("study_plan") or {}
+        school = plan.get("school") or cfg.get("target_school") or info["school"]
+        major = plan.get("major") or cfg.get("target_major") or info["major"]
+        style = cfg.get("coaching_style") or plan.get("style_name") or info["style"]
+        style_short = style.split("·")[0] if "·" in style else (style.split()[0] if style else info["style_short"])
+        days = plan.get("days_left")
+        if days is None:
+            days = info["days_left"]
+
+        self.countdown_label.setText(f"初试倒计时: {days} 天")
         self.meta_label.setText(
-            f"目标: {info['school']} · {info['major']}  |  "
-            f"风格: {info['style_short']}")
+            f"目标: {school} · {major}  |  "
+            f"风格: {style_short}")
         self._sync_theme_button()
 
     def _sync_theme_button(self):
@@ -156,6 +177,29 @@ class MainWindow(QMainWindow):
         except ImportError:  # pragma: no cover
             from tools.gui.widgets.settings_dialog import SettingsDialog  # type: ignore
         SettingsDialog(self).exec()
+
+    def _open_onboarding_wizard(self):
+        """打开 5 步新手引导与个性化学情建档向导。"""
+        try:
+            from gui.widgets.onboarding_wizard import OnboardingWizard
+        except ImportError:  # pragma: no cover
+            from tools.gui.widgets.onboarding_wizard import OnboardingWizard  # type: ignore
+        wizard = OnboardingWizard(self, workspace_root=self.workspace_root)
+        wizard.config_saved.connect(self.on_config_updated)
+        return wizard.exec()
+
+    def on_config_updated(self, config: dict):
+        """向导或设置中心保存后即时热更新 GUI 界面，无需重启。"""
+        self.config = config
+        self._sync_header_text()
+        self._load_today_task_progress()
+        self._refresh_error_tab()
+        self._refresh_intel_tab()
+        plan = config.get("study_plan") or {}
+        school = plan.get("school") or config.get("target_school") or "目标院校"
+        major = plan.get("major") or config.get("target_major") or "报考专业"
+        days = plan.get("days_left", "")
+        self.chat_display.append(f"\n[√] 考研个性化档案已更新并即时生效：{school} · {major} (初试倒计时 {days} 天)")
 
     def _toggle_theme(self):
         """在明暗预设间切换并持久化（改造前重启即回退深色）。"""
@@ -192,6 +236,11 @@ class MainWindow(QMainWindow):
 
     def _refresh_intel_tab(self):
         self.intel_display.setMarkdown(services.intel_markdown(self.workspace_root))
+        try:
+            from tools.gui.views.intel_tab import update_api_status_banner
+            update_api_status_banner(self)
+        except Exception:
+            pass
 
     # ════════════════════════════════════════════════════════════
     # 事件分发
@@ -201,15 +250,67 @@ class MainWindow(QMainWindow):
         self.input_box.setText(cmd_text)
         self._on_send_message()
 
+    def _on_upload_image(self):
+        """选择答卷或错题图片并填入输入框，准备发送给视觉私教批改。"""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择作业/草稿/错题截图", str(self.workspace_root),
+            "图片文件 (*.png *.jpg *.jpeg *.bmp *.webp);;所有文件 (*.*)"
+        )
+        if not path:
+            return
+        norm_path = path.replace("\\", "/")
+        cur = self.input_box.text().strip()
+        if cur:
+            self.input_box.setText(f"{cur} /img \"{norm_path}\"")
+        else:
+            self.input_box.setText(f"/img \"{norm_path}\" 请私教审阅批改我的推导过程，按考研大纲指出采分点与失分漏洞")
+        self.input_box.setFocus()
+        self.chat_display.append(f"\n[📷 图片已挂载]: {Path(path).name}\n    可直接点击「发送」或补充具体疑问后开始批改。")
+
+    def _on_upload_file(self):
+        """选择考研资料或真题讲义文件并挂载。"""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择考研资料/大纲/真题文档", str(self.workspace_root),
+            "考研文档 (*.md *.txt *.pdf *.docx *.doc *.json);;所有文件 (*.*)"
+        )
+        if not path:
+            return
+        norm_path = path.replace("\\", "/")
+        cur = self.input_box.text().strip()
+        if cur:
+            self.input_box.setText(f"{cur} /file \"{norm_path}\"")
+        else:
+            self.input_box.setText(f"/file \"{norm_path}\" 请私教精读分析该资料的核心考点与复习建议")
+        self.input_box.setFocus()
+        self.chat_display.append(f"\n[📎 文件已挂载]: {Path(path).name}\n    可直接点击「发送」或补充提问，私教将读取内容并针对性指导。")
+
     def _run_action_to_display(self, alias: str, display_widget, brief_to_chat: bool = True):
-        """执行后端模块并把输出回显到指定文本框。"""
+        """异步执行后端模块并把输出回显到指定文本框（绝不阻塞 GUI 主线程）。"""
         display_widget.append(f"\n▶ 正在启动模块 [{alias}] ...")
-        out = services.run_action_capture(alias)
-        if out:
-            display_widget.append(out)
-        display_widget.append(f"[√] 模块 [{alias}] 执行调用完毕。")
-        if brief_to_chat:
-            self.chat_display.append(f"\n[√] 模块 [{alias}] 已在对应页面执行完毕，详见上方分页。")
+
+        try:
+            from tools.gui.workers.intel_worker import IntelTaskWorker
+        except ImportError:
+            from gui.workers.intel_worker import IntelTaskWorker
+
+        worker = IntelTaskWorker("action", self.workspace_root, {"alias": alias})
+        self._worker_refs.append(worker)
+
+        worker.log_signal.connect(lambda text: display_widget.append(text))
+        def _on_done(out, saved):
+            if out:
+                display_widget.append(f"\n{out}\n")
+            display_widget.append(f"[√] 模块 [{alias}] 执行完毕。\n" + "-" * 40)
+            if brief_to_chat:
+                self.chat_display.append(f"\n[√] 模块 [{alias}] 已在对应页面执行完毕，详见上方分页。")
+
+        def _on_err(err):
+            display_widget.append(f"\n[×] 模块 [{alias}] 执行异常: {err}\n")
+
+        worker.finished_signal.connect(_on_done)
+        worker.error_signal.connect(_on_err)
+        worker.finished.connect(lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.start()
 
     def _on_card_clicked(self, alias: str):
         if alias == "wechat_search":
@@ -225,17 +326,60 @@ class MainWindow(QMainWindow):
         elif alias == "diff":
             self._run_diff_from_dialog()
         elif alias == "scout":
-            self.tabs.setCurrentIndex(3)
-            self._run_action_to_display("scout", self.intel_display)
+            self._run_scout_from_dialog()
         elif alias == "compare":
             self._run_compare_from_dialog()
         else:
             self.tabs.setCurrentIndex(0)
-            self.chat_display.append(f"\n▶ 正在启动模块 [{alias}] ...")
-            out = services.run_action_capture(alias)
+            self._run_action_to_display(alias, self.chat_display, brief_to_chat=False)
+
+    def _run_scout_from_dialog(self):
+        """院校侦察：显式确认或输入目标高校，后台异步执行，绝不卡死界面。"""
+        info = self.config.get("study_plan", {})
+        default_sch = info.get("school") or self.config.get("target_school") or ""
+        if default_sch in ("未指定", "目标院校"):
+            default_sch = ""
+        sch, ok = QInputDialog.getText(
+            self, "目标院校深度侦察", "请输入要侦察的高校名称:", text=default_sch
+        )
+        if not ok or not sch.strip():
+            return
+        sch = sch.strip()
+        mj, ok2 = QInputDialog.getText(
+            self, "目标院校深度侦察", "请输入专业关键词（可选）:",
+            text=info.get("major") or self.config.get("target_major") or ""
+        )
+        if not ok2:
+            return
+        major = mj.strip() or info.get("major") or self.config.get("target_major") or ""
+
+        self.tabs.setCurrentIndex(3)
+        self.intel_display.append(f"\n▶ 正在启动【{sch}】深度考情与社媒口碑侦察 (专业: {major or '统考科目'})...\n")
+
+        try:
+            from tools.gui.workers.intel_worker import IntelTaskWorker
+        except ImportError:
+            from gui.workers.intel_worker import IntelTaskWorker
+
+        worker = IntelTaskWorker("action", self.workspace_root, {
+            "alias": "scout", "school": sch, "major": major
+        })
+        self._worker_refs.append(worker)
+
+        worker.log_signal.connect(lambda text: self.intel_display.append(text))
+        def _on_scout_done(out, saved):
             if out:
-                self.chat_display.append(out)
-            self.chat_display.append(f"[√] 模块 [{alias}] 执行调用完毕。")
+                self.intel_display.append(f"\n{out}\n")
+            self.intel_display.append(f"[√] 目标院校【{sch}】深度侦察完成。\n" + "-" * 40)
+            self.chat_display.append(f"\n[√] 目标院校【{sch}】深度侦察已在研招情报页完成。")
+
+        def _on_scout_err(err):
+            self.intel_display.append(f"\n[×] 院校侦察执行异常: {err}\n")
+
+        worker.finished_signal.connect(_on_scout_done)
+        worker.error_signal.connect(_on_scout_err)
+        worker.finished.connect(lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.start()
 
     def _run_ingest_from_dialog(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -245,7 +389,18 @@ class MainWindow(QMainWindow):
             return
         self.tabs.setCurrentIndex(0)
         self.chat_display.append(f"\n▶ 正在切片入库 [{path}] ...")
-        self.chat_display.append(services.ingest_file(self.workspace_root, path))
+        try:
+            from tools.gui.workers.intel_worker import IntelTaskWorker
+        except ImportError:  # pragma: no cover
+            from gui.workers.intel_worker import IntelTaskWorker  # type: ignore
+
+        worker = IntelTaskWorker("ingest_file", self.workspace_root, {"path": path})
+        self._worker_refs.append(worker)
+        worker.log_signal.connect(lambda text: self.chat_display.append(text))
+        worker.finished_signal.connect(lambda out, saved: self.chat_display.append(out))
+        worker.error_signal.connect(lambda err: self.chat_display.append(f"\n[×] 切片入库异常: {err}\n"))
+        worker.finished.connect(lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.start()
 
     def _run_diff_from_dialog(self):
         """考纲 Diff：必须选到两个真实文件，严禁伪造变动。"""
@@ -262,59 +417,119 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentIndex(0)
         self.chat_display.append(
             f"\n▶ 正在比对考纲：\n   基准: {old_path}\n   最新: {new_path} ...")
-        self.chat_display.append(services.diff_syllabus(self.workspace_root, old_path, new_path))
+        try:
+            from tools.gui.workers.intel_worker import IntelTaskWorker
+        except ImportError:  # pragma: no cover
+            from gui.workers.intel_worker import IntelTaskWorker  # type: ignore
+
+        worker = IntelTaskWorker("diff_syllabus", self.workspace_root,
+                                 {"old_path": old_path, "new_path": new_path})
+        self._worker_refs.append(worker)
+        worker.log_signal.connect(lambda text: self.chat_display.append(text))
+        worker.finished_signal.connect(lambda out, saved: self.chat_display.append(out))
+        worker.error_signal.connect(lambda err: self.chat_display.append(f"\n[×] 考纲比对异常: {err}\n"))
+        worker.finished.connect(lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.start()
 
     def _run_compare_from_dialog(self):
-        """双校对标：显式询问第二所高校与专业，避免沿用残留默认值。"""
+        """双校对标：显式询问第一所与第二所高校及专业，后台异步执行，绝不卡死界面。"""
         info = self.config.get("study_plan", {})
-        s1 = info.get("school") or self.config.get("target_school") or "目标院校"
-        s2, ok1 = QInputDialog.getText(self, "双校对标", "请输入第二所高校:", text="")
-        if not ok1 or not s2.strip():
+        default_s1 = info.get("school") or self.config.get("target_school") or ""
+        if default_s1 in ("未指定", "目标院校"):
+            default_s1 = ""
+        s1, ok1 = QInputDialog.getText(
+            self, "双校对标", "请输入第一所高校 (您的目标高校):", text=default_s1
+        )
+        if not ok1 or not s1.strip():
+            self.chat_display.append("\n[!] 双校对标已取消：未指定第一所高校。")
+            return
+        s1 = s1.strip()
+        s2, ok2 = QInputDialog.getText(
+            self, "双校对标", "请输入第二所高校 (对比高校):", text=""
+        )
+        if not ok2 or not s2.strip():
             self.chat_display.append("\n[!] 双校对标已取消：未指定第二所高校。")
             return
-        mj, ok2 = QInputDialog.getText(
+        s2 = s2.strip()
+        mj, ok3 = QInputDialog.getText(
             self, "双校对标", "请输入专业关键词（可选）:",
             text=info.get("major") or self.config.get("target_major") or "")
-        if not ok2:
+        if not ok3:
             return
         major = mj.strip() or info.get("major") or self.config.get("target_major") or ""
-        report, saved = services.compare_schools(self.workspace_root, s1, s2.strip(), major)
+
         self.tabs.setCurrentIndex(3)
-        self.intel_display.append(f"\n{report}")
-        if saved:
-            self.intel_display.append(f"\n[+] 双校对标研报已落盘: {saved}")
-            self.chat_display.append(f"\n[+] 双校对标研报已落盘: {saved}")
+        self.intel_display.append(f"\n▶ 正在启动双校考情深度对标：【{s1}】 vs 【{s2}】({major or '统考科目'})...\n")
+
+        try:
+            from tools.gui.workers.intel_worker import IntelTaskWorker
+        except ImportError:
+            from gui.workers.intel_worker import IntelTaskWorker
+
+        worker = IntelTaskWorker("compare", self.workspace_root, {
+            "school1": s1, "school2": s2, "major": major
+        })
+        self._worker_refs.append(worker)
+
+        worker.log_signal.connect(lambda text: self.intel_display.append(text))
+        def _on_compare_done(report, saved):
+            self.intel_display.append(f"\n{report}\n")
+            if saved:
+                self.intel_display.append(f"\n[+] 双校对标研报已落盘: {saved}")
+                self.chat_display.append(f"\n[+] 双校对标研报已落盘: {saved}")
+            self.intel_display.append("[√] 双校深度对标完成。\n" + "-" * 40)
+
+        def _on_compare_err(err):
+            self.intel_display.append(f"\n[×] 双校对标执行失败: {err}\n")
+
+        worker.finished_signal.connect(_on_compare_done)
+        worker.error_signal.connect(_on_compare_err)
+        worker.finished.connect(lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.start()
 
     def _open_wechat_search_dialog(self):
         try:
-            from gui.widgets.wechat_search_dialog import WeChatSearchDialog
+            from tools.gui.widgets.wechat_search_dialog import WeChatSearchDialog
         except ImportError:  # pragma: no cover
-            from tools.gui.widgets.wechat_search_dialog import WeChatSearchDialog  # type: ignore
+            from gui.widgets.wechat_search_dialog import WeChatSearchDialog  # type: ignore
         WeChatSearchDialog(self).exec()
 
     def _generate_error_quiz(self):
-        display, saved = services.make_error_quiz(self.workspace_root)
-        if display.startswith("[×]"):
-            QMessageBox.warning(self, "提示", display)
-            return
-        self.error_info.setPlainText(self.error_info.toPlainText() + display)
-        self.chat_display.append(f"\n[√] 错题盲盒自测卷已生成: {saved}\n")
+        try:
+            from tools.gui.workers.intel_worker import IntelTaskWorker
+        except ImportError:  # pragma: no cover
+            from gui.workers.intel_worker import IntelTaskWorker  # type: ignore
+
+        worker = IntelTaskWorker("error_quiz", self.workspace_root, {})
+        self._worker_refs.append(worker)
+        worker.log_signal.connect(lambda text: self.chat_display.append(text))
+
+        def _on_done(display, saved):
+            if display.startswith("[×]"):
+                QMessageBox.warning(self, "提示", display)
+                return
+            self.error_info.setPlainText(self.error_info.toPlainText() + display)
+            self.chat_display.append(f"\n[√] 错题盲盒自测卷已生成: {saved}\n")
+
+        worker.finished_signal.connect(_on_done)
+        worker.error_signal.connect(lambda err: self.chat_display.append(f"\n[×] 组卷异常: {err}\n"))
+        worker.finished.connect(lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.start()
 
     # ════════════════════════════════════════════════════════════
     # 私教工作线程
     # ════════════════════════════════════════════════════════════
+
+    def _on_quick_command(self, cmd: str):
+        """响应私教快捷药丸点击（如：英语报到、政治报到、专业课报到、交作业等）。"""
+        self.input_box.setText(cmd)
+        self._on_send_message()
 
     def _on_send_message(self):
         text = self.input_box.text().strip()
         if not text:
             return
 
-        # [P1 修复·D1] 二次交互必现 RuntimeError 的根因链：
-        # 上一轮 worker 结束后被 deleteLater() 销毁底层 C++ 对象，而 self.agent_worker
-        # 仍指向该悬垂包装器 → 本轮 isRunning() 直接抛
-        # "RuntimeError: Internal C++ object (AgentWorker) already deleted"，
-        # 槽内异常被 Qt/PySide 静默吞掉 → 用户消息不上屏、无回复、无报错。
-        # 修复：① 访问前做 RuntimeError 兜底并就地清理悬垂引用；② 结束后不再 deleteLater。
         worker = getattr(self, "agent_worker", None)
         if worker is not None:
             try:
@@ -332,18 +547,29 @@ class MainWindow(QMainWindow):
         self.chat_display.append(f"\n你: {text}\n私教:")
 
         try:
-            from gui.workers.agent_worker import AgentWorker
+            from tools.gui.workers.agent_worker import AgentWorker
         except ImportError:  # pragma: no cover
-            from tools.gui.workers.agent_worker import AgentWorker  # type: ignore
+            from gui.workers.agent_worker import AgentWorker  # type: ignore
 
         self.agent_worker = AgentWorker(self.config, text)
         self._worker_refs.append(self.agent_worker)
-        # [S3 改善·流式输出] 原先只有一次性 finished_signal，学员盯着空白等几十秒；现逐段追加。
+        # [S3 改善·流式输出与中间态上屏] 实时追加思考链、工具调用与文字片段
         self.agent_worker.chunk_signal.connect(self._on_agent_chunk)
+        self.agent_worker.step_signal.connect(self._on_agent_step)
         self.agent_worker.finished_signal.connect(self._on_agent_reply)
         self.agent_worker.finished.connect(self._on_agent_finished)
         self._streamed = False
         self.agent_worker.start()
+
+    def _on_agent_step(self, step_text: str):
+        """私教动作/思考链实时上屏，免除查看外部命令行黑框。"""
+        if not step_text:
+            return
+        cur = self.chat_display.textCursor()
+        cur.movePosition(QTextCursor.MoveOperation.End)
+        self.chat_display.setTextCursor(cur)
+        self.chat_display.insertPlainText(f"\n{step_text}\n")
+        self.chat_display.ensureCursorVisible()
 
     def _on_agent_chunk(self, chunk: str):
         """流式片段：直接插入光标处，不另起段落（保持一段话连续）。

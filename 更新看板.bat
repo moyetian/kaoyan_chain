@@ -1,5 +1,6 @@
 @echo off
-chcp 65001 >nul
+chcp 936 >nul 2>nul
+rem [R2-C3] ±¾ÎÄ¼þÒÔ GBK(CP936) ÂäÅÌ£¬ÇëÎðÁí´æÎª UTF-8£¨Ïê¼û GUI.bat ¶¥²¿ËµÃ÷£©
 cd /d "%~dp0"
 
 rem ---- locate python ----
@@ -7,20 +8,20 @@ set PY=python
 where python >nul 2>nul || set PY=py
 
 echo ========================================================
-echo   è€ƒç ”å­¦ä¹ é“¾ (Kaoyan Study Chain) - æœ¬åœ°æž„å»ºçœ‹æ¿
+echo   ¿¼ÑÐÑ§Ï°Á´ (Kaoyan Study Chain) - ±¾µØ¹¹½¨¿´°å
 echo ========================================================
 echo.
 
-echo [1/3] æ­£åœ¨è§£æžå››ç§‘çŠ¶æ€å¹¶ç”Ÿæˆ Web çœ‹æ¿...
-"%PY%" "05-è€ƒç ”çœ‹æ¿\build.py"
+echo [1/3] ÕýÔÚ½âÎöËÄ¿Æ×´Ì¬²¢Éú³É Web ¿´°å...
+"%PY%" "05-¿¼ÑÐ¿´°å\build.py"
 if errorlevel 1 (
-  echo [!] æž„å»ºå¤±è´¥ï¼Œè¯·æ£€æŸ¥ Python çŽ¯å¢ƒæˆ–æ•°æ®æºã€‚
+  echo [!] ¹¹½¨Ê§°Ü£¬Çë¼ì²é Python »·¾³»òÊý¾ÝÔ´¡£
   pause
   exit /b 1
 )
 
 echo.
-echo [2/2] æœ¬åœ°æž„å»ºå®Œæˆï¼Œæœªæ‰§è¡Œ Git æäº¤æˆ–æŽ¨é€ã€‚
-echo å¦‚éœ€åŒæ­¥ï¼Œè¯·åœ¨ç»ˆç«¯è¿è¡Œï¼špython tools/update_dashboard.py --push
+echo [2/2] ±¾µØ¹¹½¨Íê³É£¬Î´Ö´ÐÐ Git Ìá½»»òÍÆËÍ¡£
+echo ÈçÐèÍ¬²½£¬ÇëÔÚÖÕ¶ËÔËÐÐ£ºpython tools/update_dashboard.py --push
 
 timeout /t 5

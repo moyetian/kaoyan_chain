@@ -10,6 +10,7 @@ KaoYan Intelligence · 文档与页面结构化抽取器 (Document & Page Extrac
 
 import re
 import html
+from urllib.parse import urlparse
 from typing import Dict, Any, List, Optional
 from .models import EvidenceObject, current_exam_year
 from .evidence_engine import build_evidence
@@ -102,7 +103,7 @@ class DocumentExtractor:
                 unit="篇",
                 exam_year=detected_year,
                 source_type=source_type,
-                source_name=f"{school_name} 官方公告",
+                source_name=self._source_label(page_url, school_name, "官方公告"),
                 source_url=page_url,
                 published_at=pub_date,
                 target_year=target_year,
@@ -125,7 +126,7 @@ class DocumentExtractor:
                 unit="人",
                 exam_year=detected_year,
                 source_type=source_type,
-                source_name=f"{school_name} 官方通告",
+                source_name=self._source_label(page_url, school_name, "官方通告"),
                 source_url=page_url,
                 published_at=pub_date,
                 target_year=target_year,
@@ -144,7 +145,7 @@ class DocumentExtractor:
                 unit="门",
                 exam_year=detected_year,
                 source_type=source_type,
-                source_name=f"{school_name} 官方大纲/目录",
+                source_name=self._source_label(page_url, school_name, "官方大纲/目录"),
                 source_url=page_url,
                 published_at=pub_date,
                 target_year=target_year,
@@ -163,7 +164,7 @@ class DocumentExtractor:
                 unit="个",
                 exam_year=detected_year,
                 source_type=source_type,
-                source_name=f"{school_name} 官方附件",
+                source_name=self._source_label(page_url, school_name, "官方附件"),
                 source_url=page_url,
                 published_at=pub_date,
                 target_year=target_year,
@@ -174,6 +175,31 @@ class DocumentExtractor:
             evidences.append(ev_pdf)
 
         return evidences
+
+    @staticmethod
+    def _is_school_source(page_url: str, school_name: str) -> bool:
+        """来源标签不能仅凭调用方传入的院校名生成，避免跨校证据冒充官方。"""
+        host = (urlparse(str(page_url or "")).hostname or "").lower()
+        if not host:
+            return False
+        from .registry import get_registry
+        entity = get_registry().resolve(school_name)
+        if entity is None:
+            return False
+        domains = [urlparse(getattr(entity, name, "") or "").hostname
+                   for name in ("official_domain", "graduate_domain", "admission_domain")]
+        return any(domain and (host == domain.lower() or host.endswith("." + domain.lower()))
+                   for domain in domains)
+
+    @classmethod
+    def _source_label(cls, page_url: str, school_name: str, official_kind: str) -> str:
+        """[P1-1 修复·跨校证据冒充官方] 所有证据的来源名统一走域名校验：
+        页面域名属于目标院校官方域才冠 `{school} {kind}`，否则一律标为
+        外部来源（待核验）。杜绝"福州大学简章标成中国人民大学官方公告"类错配。"""
+        if cls._is_school_source(page_url, school_name):
+            return f"{school_name} {official_kind}"
+        host = urlparse(str(page_url or "")).hostname or str(page_url or "")
+        return f"外部来源（待核验）: {host}"
 
     def _title_span(self, html_text: str) -> Optional[str]:
         """返回 <title> 标签内的**原始**文本片段，仅用于引文溯源锚点。
@@ -361,7 +387,7 @@ class DocumentExtractor:
                     unit="个",
                     exam_year=target_year,
                     source_type="graduate_school",
-                    source_name=f"{school_name} 官方招生简章/专业目录 (PDF文件)",
+                    source_name=self._source_label(source_url, school_name, "官方招生简章/专业目录 (PDF文件)"),
                     source_url=source_url,
                     target_year=target_year,
                     ssl_verified=ssl_verified,
@@ -379,7 +405,7 @@ class DocumentExtractor:
                 unit="门",
                 exam_year=target_year,
                 source_type="graduate_school",
-                source_name=f"{school_name} 官方初试大纲 (PDF文件)",
+                source_name=self._source_label(source_url, school_name, "官方初试大纲 (PDF文件)"),
                 source_url=source_url,
                 target_year=target_year,
                 ssl_verified=ssl_verified,
@@ -398,7 +424,7 @@ class DocumentExtractor:
                 unit="人",
                 exam_year=target_year,
                 source_type="graduate_school",
-                source_name=f"{school_name} 官方招生简章 (PDF文件)",
+                source_name=self._source_label(source_url, school_name, "官方招生简章 (PDF文件)"),
                 source_url=source_url,
                 target_year=target_year,
                 ssl_verified=ssl_verified,

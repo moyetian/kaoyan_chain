@@ -11,12 +11,31 @@
   7. latex_beautifier: 终端数学公式 Unicode 美化与实时网页伴侣联动
 """
 
+# [C2 修复·惰性导入] 本包此前在 ``import skills`` 时无条件导入全部 16 个子模块。
+# 其中 pdf_extractor 会经 pypdf 拉起 cryptography（实测约 100ms），是 CLI
+# 冷启动噪音与延迟的主因之一；而多数命令（`ky --version` / `ky doctor` /
+# `ky build`）根本用不到 PDF 能力。
+#
+# 采用 PEP 562 模块级 ``__getattr__``：``from .skills import pdf_extractor``、
+# ``skills.pdf_extractor``、``import skills; skills.pdf_extractor`` 三种写法
+# 语义**完全不变**（首次访问时按需导入并缓存进模块命名空间），但 ``import skills``
+# 本身不再付出 pypdf/cryptography 的导入代价。其余子模块保持 eager 导入 ——
+# SKILLS_REGISTRY 的 status 字段需要在导入期调用它们的 get_status()，
+# 把它们一并惰性化收益有限、却会让状态展示与真实情况脱节。
+#
+# ⚠ 维护提醒：variant_retriever 等子模块会在**自身导入期**``from skills import
+# pdf_extractor`` —— 那会把 pdf_extractor 再次绑进本包命名空间并连带拉起 pypdf，
+# 使上面的惰性化失效。新增子模块时请改用 ``from . import xxx`` 直接引用兄弟模块，
+# 不要经由包命名空间中转。下方 import 之后有断言守住这一点。
+
+import importlib
+from typing import Any
+
 from . import vision_solver
 from . import math_verifier
 from . import english_dissector
 from . import socratic_tutor
 from . import error_logger
-from . import pdf_extractor
 from . import latex_beautifier
 from . import exam_composer
 from . import variant_retriever
@@ -28,6 +47,21 @@ from . import wechat_searcher
 from . import material_scanner
 from . import open_grader
 
+#: 惰性加载的子模块清单（含重依赖，不适合在 ``import skills`` 时拉起）
+_LAZY_MODULES = ("pdf_extractor",)
+
+
+def __getattr__(name: str) -> Any:
+    """按需导入重依赖子模块（PEP 562）。"""
+    if name in _LAZY_MODULES:
+        module = importlib.import_module(f".{name}", __name__)
+        globals()[name] = module          # 缓存，后续访问不再走 __getattr__
+        return module
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(set(globals()) | set(_LAZY_MODULES))
 SKILLS_REGISTRY = {
     "vision_solver": {
         "name": "👁️ 视觉看图与手写批改技能 (Vision & OCR Solver)",

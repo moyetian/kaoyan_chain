@@ -30,7 +30,8 @@ class WeChatSearchWorker(QThread):
         source: str,
         fetch_content: bool,
         save: bool,
-        school: str
+        school: str,
+        time_range: str = "year"
     ):
         super().__init__()
         self.keyword = keyword
@@ -39,6 +40,7 @@ class WeChatSearchWorker(QThread):
         self.fetch_content = fetch_content
         self.save = save
         self.school = school
+        self.time_range = time_range
 
     def run(self):
         try:
@@ -50,7 +52,8 @@ class WeChatSearchWorker(QThread):
                 fetch_content=self.fetch_content,
                 save_to_local=self.save,
                 school_name=self.school,
-                source=self.source
+                source=self.source,
+                time_range=self.time_range
             )
             self.finished_signal.emit(result)
         except Exception as e:
@@ -73,12 +76,32 @@ class WeChatSearchDialog(QDialog):
         # 检索条件区
         cond_layout = QHBoxLayout()
         self.keyword_input = QLineEdit()
-        self.keyword_input.setPlaceholderText("输入检索关键词 (如: 408计算机考研经验 / 数学二高分复盘)")
+        # [收尾修复·placeholder 硬编码 408] TUI 已按档案动态化，GUI 同步：
+        # 有档案取"学校 专业 考研经验"，否则保留通用示例。
+        _ph_school, _ph_major = "", ""
+        try:
+            import json as _js
+            _cfg_p = ROOT / "ky_config.json"
+            if _cfg_p.exists():
+                _sp = (_js.loads(_cfg_p.read_text(encoding="utf-8")) or {}).get("study_plan", {}) or {}
+                _ph_school = str(_sp.get("school", "") or "")
+                _ph_major = str(_sp.get("major", "") or "")
+                if _ph_school in ("目标院校", "未指定"):
+                    _ph_school = ""
+                if _ph_major in ("报考专业", "专业课", "未指定"):
+                    _ph_major = ""
+        except Exception:
+            pass
+        _ph_kw = f"{_ph_school} {_ph_major} 考研经验".strip() or "408计算机考研经验 / 数学二高分复盘"
+        self.keyword_input.setPlaceholderText(f"输入检索关键词 (如: {_ph_kw})")
         self.keyword_input.returnPressed.connect(self._on_search)
 
         self.max_spin = QSpinBox()
         self.max_spin.setRange(1, 30)
         self.max_spin.setValue(10)
+
+        self.time_combo = QComboBox()
+        self.time_combo.addItems(["近一年 (推荐)", "近半年", "近三年", "全部时间"])
 
         self.source_combo = QComboBox()
         self.source_combo.addItems(["auto (自动降级)", "sogou (搜狗微信)", "bing (Bing定向)", "local (本地沉淀)"])
@@ -92,12 +115,16 @@ class WeChatSearchDialog(QDialog):
         self.school_input = QLineEdit()
         self.school_input.setPlaceholderText("联动高校名 (可选)")
         self.school_input.setMaximumWidth(140)
+        if _ph_school:
+            self.school_input.setText(_ph_school)
 
         self.search_btn = QPushButton("检索")
         self.search_btn.clicked.connect(self._on_search)
 
         cond_layout.addWidget(QLabel("关键词:"))
         cond_layout.addWidget(self.keyword_input, stretch=2)
+        cond_layout.addWidget(QLabel("时效:"))
+        cond_layout.addWidget(self.time_combo)
         cond_layout.addWidget(QLabel("数量:"))
         cond_layout.addWidget(self.max_spin)
         cond_layout.addWidget(self.source_combo)
@@ -148,6 +175,14 @@ class WeChatSearchDialog(QDialog):
         }
         source = source_map.get(self.source_combo.currentText(), "auto")
 
+        time_map = {
+            "近一年 (推荐)": "year",
+            "近半年": "half_year",
+            "近三年": "three_years",
+            "全部时间": "all",
+        }
+        time_range = time_map.get(self.time_combo.currentText(), "year")
+
         self.search_btn.setEnabled(False)
         self.search_btn.setText("正在检索...")
         self.status_label.setText(f"⏳ 正在多源检索关键词「{keyword}」中，请稍候...")
@@ -160,7 +195,8 @@ class WeChatSearchDialog(QDialog):
             source=source,
             fetch_content=self.fetch_check.isChecked(),
             save=self.save_check.isChecked(),
-            school=self.school_input.text().strip()
+            school=self.school_input.text().strip(),
+            time_range=time_range
         )
         self.worker.finished_signal.connect(self._on_search_done)
         self.worker.start()

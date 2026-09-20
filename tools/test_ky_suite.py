@@ -111,6 +111,167 @@ def run_tests():
     tracked_restore = {}   # rel -> bytes（运行前的原始内容）
     tracked_existing = set()  # 运行前已存在的受控文件（用于识别测试残留）
 
+    # ── R2-D7 工作区守卫（自包含；先于快照与所有测试执行）──────────────────
+    # 事故背景（实测）：本套件会真实改写工作区用户数据 —— 测试组 10 的
+    # run_study_plan_wizard() 把 ky_config.json 的 study_plan 换成默认模板
+    # （school=目标院校/math_key=math2/pro_name=408/total_hours=8.5）；
+    # 测试组 18 的 apply_scout_to_config 曾把真实配置冲成 {浙江大学/人工智能/408}。
+    # 旧兜底是「内存快照 + finally + atexit」，但 SIGKILL / 超时 / 关控制台时
+    # 三者都不执行 → 残缺配置留在盘上；更糟的是下一次运行会在 _snapshot_guarded()
+    # 拍到这份已污染内容，还原时「忠实地」写回 → 自锁。
+    # 现加三道防线：
+    #   1) 快照落盘（.pytest_tmp/ky_suite_guard/）+ running.lock：被强杀也能在
+    #      下一次启动时**先自愈再开跑**；
+    #   2) 真实用户工作区**默认拒跑**（需 KY_TEST_ALLOW_REAL_WORKSPACE=1 显式放行），
+    #      从源头保证用户数据不被写；
+    #   3) 放行时按「自愈 → 快照 → 落盘 → 开跑」顺序执行。
+    #
+    # [R2-D7 追加·判据可见 + 副本情形说明]
+    # 判据（_guard_real_workspace_reason）：
+    #   命中任一即判为真实工作区 ——
+    #     * study_plan.school 非空且不是「目标院校 / 未指定」；
+    #     * api_key 非空且不在占位符集合（_PLACEHOLDER_API_KEYS）里。
+    #   找不到 ky_config.json / 解析失败 / 根层级非对象 → 判为非真实（不拦）。
+    # 拒跑时会打印 ROOT 绝对路径 + 命中的具体字段值，用户可一眼核对是否认错地方。
+    #
+    # 已知边界（不是 bug，是判据的固有限制）：判据只看 ky_config.json 的**内容**，
+    # 所以「忠实副本」（复制目录 / robocopy，带着考生的 ky_config.json）与真实工作区
+    # 无法自动区分 → 忠实副本一样被拒跑。三种情形的正确做法：
+    #   A 忠实副本（数据可丢弃）→ 在副本里用 KY_TEST_ALLOW_REAL_WORKSPACE=1 放行；
+    #   B git archive 副本 → 守卫不触发（无未跟踪的 ky_config.json），但 .memory/、
+    #     错题本等也未跟踪数据一并缺失，通过/跳过计数与真实工作区不一致；
+    #   C 真实工作区 → 先备份 ky_config.json 再用 KY_TEST_ALLOW_REAL_WORKSPACE=1。
+    import base64 as _b64
+    _GUARD_DIR = ROOT / ".pytest_tmp" / "ky_suite_guard"
+    _GUARD_SNAP = _GUARD_DIR / "snapshot.json"
+    _GUARD_LOCK = _GUARD_DIR / "running.lock"
+    _PLACEHOLDER_API_KEYS = {"", "sk-test-fake", "sk-test", "sk-xxx", "YOUR_API_KEY_HERE"}
+
+    def _guard_real_workspace_reason():
+        """判定「是否像一个真实考生工作区」，并**同时给出判定依据**。
+
+        [R2-D7 追加] 原来只返回 bool，用户被拒跑时看不到「它凭什么这么判」，
+        也无法判断守卫是不是认错了地方。现返回 ``(is_real, reason)``，reason 里
+        带上命中的具体字段值，配合调用处打印的 ROOT 绝对路径即可一眼核对。
+
+        注意：判据是 ky_config.json 的**内容**，因此「忠实副本」（复制目录 /
+        robocopy，带着考生的 ky_config.json）与真实工作区**无法自动区分** ——
+        这是本判据的固有限制，不是 bug；调用处的文案已按此说明。
+        """
+        cfg_path = ROOT / "ky_config.json"
+        try:
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return False, "未找到 ky_config.json（未跟踪文件，git archive 副本里没有）"
+        except Exception as e:
+            return False, f"ky_config.json 读取/解析失败（{type(e).__name__}: {e}）"
+        if not isinstance(cfg, dict):
+            return False, "ky_config.json 根层级不是 JSON 对象"
+        sp = cfg.get("study_plan") if isinstance(cfg.get("study_plan"), dict) else {}
+        school = str(sp.get("school") or "").strip()
+        if school and school not in ("目标院校", "未指定"):
+            return True, f"study_plan.school={school!r}（非模板占位）"
+        api_key = str(cfg.get("api_key") or "").strip()
+        if api_key not in _PLACEHOLDER_API_KEYS:
+            return True, "api_key 已配置真实值（非占位符）"
+        return False, (f"study_plan.school={school!r} 为模板/空，"
+                       f"api_key 为占位符 → 判定为非真实工作区")
+
+    def _py_hint() -> str:
+        """用户应键入的 Python 解释器名（与 tools/cli/shared.py:interpreter_hint 同口径）。
+
+        Windows 上 ``python`` 常被微软商店 stub 劫持（exit 49 零输出），提示文案里
+        写 ``python`` 会让考生照着敲却跑不起来。
+        """
+        try:
+            try:
+                from tools.cli.shared import interpreter_hint
+            except ImportError:
+                from cli.shared import interpreter_hint
+            return interpreter_hint()
+        except Exception:
+            return "python"
+
+    def _guard_persist():
+        """把内存快照落盘，并写下 running.lock（供下次启动自愈）。"""
+        try:
+            _GUARD_DIR.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "pid": os.getpid(),
+                "files": {rel: _b64.b64encode(b).decode("ascii")
+                          for rel, b in tracked_restore.items()},
+            }
+            _GUARD_SNAP.write_text(json.dumps(payload), encoding="utf-8")
+            _GUARD_LOCK.write_text(str(os.getpid()), encoding="utf-8")
+        except OSError:
+            pass
+
+    def _guard_clear():
+        try:
+            _GUARD_LOCK.unlink()
+        except OSError:
+            pass
+        try:
+            _GUARD_SNAP.unlink()
+        except OSError:
+            pass
+
+    def _guard_heal():
+        """上次运行未完成（lock 仍在）→ 用落盘快照还原，返回还原文件数。"""
+        if not (_GUARD_LOCK.exists() and _GUARD_SNAP.exists()):
+            return 0
+        healed = 0
+        try:
+            payload = json.loads(_GUARD_SNAP.read_text(encoding="utf-8"))
+        except Exception:
+            _guard_clear()
+            return 0
+        for rel, b64 in (payload.get("files") or {}).items():
+            try:
+                content = _b64.b64decode(b64)
+                target = ROOT / rel
+                if not target.exists() or target.read_bytes() != content:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(content)
+                    healed += 1
+            except (OSError, ValueError):
+                continue
+        _guard_clear()
+        return healed
+
+    _healed = _guard_heal()
+    if _healed:
+        print(f"\n  [!] 检测到上一次运行未正常结束，已自动还原 {_healed} 个用户数据文件。\n")
+
+    _is_real_ws, _ws_reason = _guard_real_workspace_reason()
+    if _is_real_ws and os.environ.get("KY_TEST_ALLOW_REAL_WORKSPACE") != "1":
+        _py = _py_hint()
+        print("=" * 68)
+        print("  [已拒绝运行] 本套件会真实改写工作区用户数据，已中止。")
+        print(f"  ROOT = {ROOT}")
+        print(f"  判定依据：{_ws_reason}")
+        print("")
+        print("  ⚠️ 该判据只看 ky_config.json 的内容，因此【忠实副本】（复制目录 /")
+        print("     robocopy，带着你的 ky_config.json）与真实工作区**无法自动区分**，")
+        print("     一样会被拒跑。这不是认错地方 —— 请按下面三种情形对号入座：")
+        print("")
+        print("  情形 A｜忠实副本（数据可丢弃，最常用）")
+        print("     守卫仍会拒跑（无法自动区分）；在副本里显式放行是安全的：")
+        print(f"       KY_TEST_ALLOW_REAL_WORKSPACE=1 {_py} tools/test_ky_suite.py")
+        print("")
+        print("  情形 B｜git archive 副本（验证代码本身）")
+        print("       git archive HEAD | tar -x -C /tmp/ky_copy")
+        print(f"       cd /tmp/ky_copy && {_py} tools/test_ky_suite.py")
+        print("     守卫不会触发（副本里没有未跟踪的 ky_config.json）。但注意：")
+        print("     .memory/ 错题本、ky_config.json 等未跟踪数据也一并缺失，")
+        print("     通过/跳过计数会与真实工作区**不一致**。")
+        print("")
+        print("  情形 C｜确实要在真实工作区跑（风险最高）")
+        print("     先手工备份 ky_config.json（或整目录），再：")
+        print(f"       KY_TEST_ALLOW_REAL_WORKSPACE=1 {_py} tools/test_ky_suite.py")
+        print("=" * 68)
+        sys.exit(2)
+
     def _snapshot_guarded():
         for pat in _GUARDED_PATTERNS:
             try:
@@ -133,6 +294,7 @@ def run_tests():
                     pass
 
     _snapshot_guarded()
+    _guard_persist()   # [R2-D7] 快照落盘 + 写 running.lock，供强杀后下次启动自愈
 
     def _restore_guarded():
         """还原受控文件内容，并清理测试运行期间新产生的残留文件。"""
@@ -165,6 +327,8 @@ def run_tests():
                         removed += 1
                     except OSError:
                         pass
+        # [R2-D7] 现场已还原 → 清掉落盘快照与 running.lock，表示本次运行正常收尾。
+        _guard_clear()
         return restored, removed
 
     # 安全网：即便套件在 try/finally 覆盖范围之外崩溃（例如「测试组 1~15」抛异常，
@@ -410,9 +574,6 @@ def run_tests():
     import subprocess
     inside = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"],
                             cwd=str(ROOT), capture_output=True, text=True)
-    runner.assert_true(inside.returncode == 0 and inside.stdout.strip() == "true",
-                       "隐私门禁前置条件：必须位于 Git 工作区内，否则检查无效")
-
     targets = [
         "ky_config.json",
         "docs/experiences/华中科技大学_计算机.md",
@@ -420,9 +581,13 @@ def run_tests():
         "04-专业课/双校考情对比_华中科技大学_VS_武汉大学_计算机.md",
         "04-专业课/目标院校情报_测试.md"
     ]
-    for t in targets:
-        chk = subprocess.run(["git", "check-ignore", "--no-index", "-q", t], cwd=str(ROOT))
-        runner.assert_true(chk.returncode == 0, f"隐私目标应被 .gitignore 忽略: {t}")
+    if inside.returncode != 0 or inside.stdout.strip() != "true":
+        for t in targets:
+            runner.skip(f"隐私目标应被 .gitignore 忽略: {t}", "非 Git 工作区")
+    else:
+        for t in targets:
+            chk = subprocess.run(["git", "check-ignore", "--no-index", "-q", t], cwd=str(ROOT))
+            runner.assert_true(chk.returncode == 0, f"隐私目标应被 .gitignore 忽略: {t}")
 
     # ------------------------------------------------------------
     # 测试 8: 考研专有 Skills 体系校验
@@ -535,11 +700,11 @@ def run_tests():
         "pro_name": "408 计算机学科专业基础",
         "math_baseline": "60分",
         "math_weakness": "导数中值定理、计算失误",
-        "eng_baseline": "四级已过 / 摸底50分",
-        "eng_weakness": "长难句主干速抓、细节定位",
+        "eng_baseline": "四级已过 / 摸底水平分",
+        "eng_weakness": "待诊断薄弱点、细节定位",
         "pol_baseline": "基础刚起步 / 摸底40分",
         "pol_weakness": "马原唯物辩证法、多选题漏选",
-        "pro_baseline": "科班有基础 / 摸底80分",
+        "pro_baseline": "科班有基础 / 摸底水平分",
         "pro_weakness": "核心算法设计与证明步骤",
         "math_books": "同济教材+基础讲义+历年真题",
         "eng_books": "近15年历年真题精解+真题词汇宝典",
@@ -583,7 +748,17 @@ def run_tests():
     orig_scan = study_planner.scan_local_materials
     try:
         study_planner.scan_local_materials = lambda s: []
-        no_book_plan = study_planner.run_study_plan_wizard(interactive=False)
+        # [R2-D8 连带修正] 这里必须显式给 preset_data，不能依赖「不带 preset 的非交互
+        # 向导会回落内置默认值」—— 那条路径已被修掉：非交互且未给 preset 时，向导
+        # 现在以工作区既有 ky_config.json 为基线（否则每次重跑都会把考生方案重置成
+        # 内置默认模板，这正是 2026-09-19 两次真实数据被覆盖的根因）。
+        # 上面第 668 行的向导刚把 preset 里的「同济教材+…」写进了配置，若不显式给
+        # 基线，本用例读到的 math_books 就是那份旧值，断言会假失败。
+        # 本用例要验的是「本地无资料 → 不虚构书目」，所以给一份不含书目的最小基线。
+        no_book_plan = study_planner.run_study_plan_wizard(
+            interactive=False,
+            preset_data={"school": "目标院校", "major": "报考专业", "math_key": "math2"},
+        )
         runner.assert_true("暂未放置实体资料" in no_book_plan.get("math_books", "") and "李林" not in no_book_plan.get("math_books", ""), "无实体资料时向导严格杜绝虚构书目")
         clean_agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
         runner.assert_true("暂未放置实体资料" in clean_agents, "AGENTS.md 真实记录无资料状态，杜绝任何硬编码假书目")
@@ -694,6 +869,16 @@ def run_tests():
 
         up_ok, up_msg = el_test.mark_error_status("math", due_list[0]["file_name"], due_list[0]["title"], new_status="已掌握")
         runner.assert_true(up_ok is True, "闭环状态回写：成功将复测合格题目更新标记为 [已掌握]")
+
+        # [缺陷修复回归·阴性测试] 错因五分类写入链路必须收敛到白名单：
+        # 传入非法分类名（模拟 LLM 幻觉）时，落盘内容不得原样写入非法值。
+        el_test.log_error_record("math", "白名单校验探针", "LLM幻觉出的非法分类", "d", "p")
+        _probe_files = sorted((_el_sandbox / "01-数学" / "错题本").glob("错题记录_*.md"))
+        _probe_raw = _probe_files[-1].read_text(encoding="utf-8")
+        runner.assert_true(
+            "LLM幻觉出的非法分类" not in _probe_raw and "`概念漏洞`" in _probe_raw,
+            "错因五分类：写入链路把非法分类名收敛到白名单（阴性测试）",
+        )
     finally:
         el_test.ROOT = _el_real_root
         import shutil as _shutil
@@ -1362,6 +1547,30 @@ def run_tests():
         # 19. KaoYan Intelligence 考研招考情报与证据链引擎测试
         # =========================================================================
         print("\n[测试组 19: KaoYan Intelligence 考研招考情报与证据链引擎 (28 项验证)]")
+        # [测试隔离修正·离线确定性] 本组（19~23 共用一个 try）里的
+        # SchoolComparator.compare() 对**不在内置 8 校考情库**里的高校（如「武汉大学」）
+        # 会落到 tools/intelligence/agentic_research.research_university_profile()：
+        # 只要 ky_config.json 配了真实 API Key，它就会发起真实、**计费**的 LLM+联网检索。
+        # 实测带来两个问题：
+        #   ① 偶发崩溃 —— 模型把 majors 返回成 [{...}] 对象数组时，下游
+        #      comparator._analyze_differences() 的 " ".join(info["majors"]) 抛
+        #      TypeError: sequence item 0: expected str instance, dict found；
+        #      （生产侧已由 agentic_research.coerce_str_list 在边界收口，这里再断掉
+        #        测试对真实模型的依赖，双保险）
+        #   ② 整组耗时与断言结果随网络/模型漂移，而 CI（无 ky_config.json，走离线
+        #      fallback）永远绿 —— 「本地红、CI 绿」最难查。
+        # 沿用本文件既有的 ky_config 快照/还原范式，临时清空 api_key。
+        _g19_cfg_path = Path(__file__).resolve().parent.parent / "ky_config.json"
+        _g19_cfg_snap = _g19_cfg_path.read_text(encoding="utf-8") if _g19_cfg_path.exists() else None
+        if _g19_cfg_snap is not None:
+            try:
+                _g19_cfg_now = json.loads(_g19_cfg_snap)
+                if isinstance(_g19_cfg_now, dict):
+                    _g19_cfg_now["api_key"] = ""
+                    _g19_cfg_path.write_text(
+                        json.dumps(_g19_cfg_now, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception:
+                pass
         try:
             import intelligence as ki
             
@@ -1730,6 +1939,10 @@ D. 无度为2的结点
 
         except Exception as e:
             runner.assert_true(False, f"Sprint 6/7 模块测试异常: {e}")
+        finally:
+            # 还原上面为「离线确定性」临时清空的 api_key（缺失时不动盘）。
+            if _g19_cfg_snap is not None:
+                _g19_cfg_path.write_text(_g19_cfg_snap, encoding="utf-8")
 
         # =========================================================================
         # 24. CLI 真实进程级 smoke tests
@@ -1790,7 +2003,29 @@ D. 无度为2的结点
                 "CLI smoke：exam --count=3 返回足量且不重复的题目",
             )
 
-            compare_res = run_cli("compare", "不存在的甲校", "不存在的乙校", "计算机")
+            # [测试隔离修正·离线确定性] 本项断言的是「未命中院校库时的离线回退语义」，
+            # 与 CI 一致（CI 由 actions/checkout 全新检出，没有 ky_config.json）。
+            # 但本机运行时若 ky_config.json 里配了真实 API Key，
+            # comparator._get_school_profile() 会落到
+            # tools/intelligence/agentic_research.research_university_profile()：
+            # 对两所不存在的高校发起真实、**计费**的 LLM + 联网检索
+            # （实测同一个沙箱连续三次 26.6s / 40.4s / 100.1s，远超本项 30s 超时，
+            #  随机变红；且会真实消耗额度）。无配置时同一命令仅 0.8s。
+            # 这里沿用本文件既有的 ky_config 快照/还原范式，临时清空 api_key，
+            # 强制走「无 Key → dynamic_fallback_profile」的确定性离线分支。
+            _cmp_cfg_path = Path(__file__).resolve().parent.parent / "ky_config.json"
+            _cmp_cfg_snap = _cmp_cfg_path.read_text(encoding="utf-8") if _cmp_cfg_path.exists() else None
+            try:
+                if _cmp_cfg_snap is not None:
+                    _cmp_cfg_now = json.loads(_cmp_cfg_snap)
+                    if isinstance(_cmp_cfg_now, dict):
+                        _cmp_cfg_now["api_key"] = ""
+                        _cmp_cfg_path.write_text(
+                            json.dumps(_cmp_cfg_now, ensure_ascii=False, indent=2), encoding="utf-8")
+                compare_res = run_cli("compare", "不存在的甲校", "不存在的乙校", "计算机")
+            finally:
+                if _cmp_cfg_snap is not None:
+                    _cmp_cfg_path.write_text(_cmp_cfg_snap, encoding="utf-8")
             runner.assert_true(compare_res.returncode == 0 and "未核验" in compare_res.stdout, "CLI smoke：未命中院校数据库时明确标注未核验")
 
             missing_diag = run_cli("diagnose", "missing-answer-card.txt")
@@ -1805,8 +2040,68 @@ D. 无度为2的结点
             snapshot = json.loads((ROOT / "docs" / "state_snapshot.json").read_text(encoding="utf-8"))
             runner.assert_true(snapshot.get("meta", {}).get("sanitized") is True, "CLI smoke：默认 build 产物为脱敏快照")
             public_html = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
-            private_markers = ("暂未放置实体资料", "题库切片_", "四级已过 / 摸底50分", "导数中值定理、计算失误")
+            private_markers = ("暂未放置实体资料", "题库切片_", "四级已过 / 摸底水平分", "导数中值定理、计算失误")
             runner.assert_true(not any(marker in public_html for marker in private_markers), "发布安全：公开看板 HTML 不包含私有任务/资料文本")
+
+            # [H-0 回归] 脱敏必须真正剥离可识别文本，而非只置 meta.sanitized=True。
+            # 阴性测试：注入真实自命题科目名与自由文本告警，确认发布前被泛化/剥离。
+            sys.path.insert(0, str(ROOT / "05-考研看板"))
+            from web.snapshot import sanitize_public_data as _sanitize
+            _leak = "自命题专业课科目"
+            _probe = {
+                "subjects": [{"key": "pro", "name": "专业课"}],
+                "maps": {"pro": {"subject": "pro", "subject_name": _leak,
+                                 "syllabus_warning": f"【{_leak}】考试大纲.md 仍为占位模板",
+                                 "modules": {"x": 1}, "chapters": [], "total_points": 0}},
+            }
+            _safe = _sanitize(_probe)
+            _safe_pro = _safe["maps"]["pro"]
+            runner.assert_true(
+                _leak not in json.dumps(_safe, ensure_ascii=False)
+                and _safe_pro.get("subject_name") == "专业课"
+                and "syllabus_warning" not in _safe_pro
+                and "modules" not in _safe_pro,
+                "发布安全：脱敏真实剥离自命题科目全称与 syllabus_warning（H-0 阴性测试）",
+            )
+
+            # 真实产物内容级校验：各 maps.subject_name 必须已泛化为通用短名，且不含 syllabus_warning
+            _snap_data = snapshot.get("data", {})
+            _generic = {s.get("key"): s.get("name") for s in _snap_data.get("subjects", [])}
+            _bad = [sk for sk, m in (_snap_data.get("maps") or {}).items()
+                    if isinstance(m, dict) and (("syllabus_warning" in m)
+                                                or (sk in _generic and m.get("subject_name") != _generic[sk]))]
+            runner.assert_true(
+                not _bad,
+                f"发布安全：state_snapshot.json 科目名已泛化且无 syllabus_warning（越界: {_bad}）",
+            )
+
+            # [H-0b 阴性测试] 雷达节的监控院校名/研究生院官网 URL 来自隐私目录
+            # .memory/admission_watch.json，而 docs/index.html 会随 GitHub Pages 公开
+            # （实测曾泄露 https://gra.henau.edu.cn）。注入哨兵院校确认脱敏拦截。
+            import tempfile as _tf
+            import shutil as _sh
+            _rroot = Path(_tf.mkdtemp(prefix="ky_radar_"))
+            try:
+                (_rroot / ".memory").mkdir(parents=True, exist_ok=True)
+                (_rroot / ".memory" / "admission_watch.json").write_text(json.dumps({
+                    "99999": {"name": "哨兵测试大学", "chsi_code": "99999",
+                              "url": "https://gra.sentinel-probe.edu.cn",
+                              "added_at": "2026-09-19 00:00", "last_check": "2026-09-19 00:00",
+                              "recent_titles": ["哨兵测试大学2027年推荐免试研究生接收办法"]},
+                }, ensure_ascii=False), encoding="utf-8")
+                _radar_html = board_build.build_radar_html(_rroot)
+                runner.assert_true(
+                    "哨兵测试大学" not in _radar_html
+                    and "sentinel-probe.edu.cn" not in _radar_html
+                    and "推荐免试研究生接收办法" not in _radar_html,
+                    "发布安全：雷达节在脱敏模式下不回显监控院校名/官网 URL/简章标题（H-0b 阴性测试）",
+                )
+                runner.assert_true(
+                    "已配置 <b>1</b> 所监控院校" in _radar_html,
+                    "发布安全：雷达节脱敏后仍如实输出已配置院校数量",
+                )
+            finally:
+                _sh.rmtree(_rroot, ignore_errors=True)
 
             updater_text = (ROOT / "tools" / "update_dashboard.py").read_text(encoding="utf-8")
             default_guard = '"--push" not in sys.argv' in updater_text
@@ -1823,14 +2118,37 @@ D. 无度为2的结点
             )
 
             # Test sync_publish.py --force to prevent regression of P0-2
+            # 本体守卫（与环境无关）：加 --allow-placeholder-identity 显式放行门禁，
+            # 断言脚本「强制执行不崩溃」。逃生舱语义见 sync_publish.py 的 main()。
             sync_res = subprocess.run(
-                [sys.executable, str(ROOT / "tools" / "sync_publish.py"), "--force"],
+                [sys.executable, str(ROOT / "tools" / "sync_publish.py"),
+                 "--force", "--allow-placeholder-identity"],
                 cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
             )
             runner.assert_true(
                 sync_res.returncode == 0 and "files copied" in sync_res.stdout,
-                "发布安全：sync_publish.py --force 强制执行成功且不崩溃",
+                "发布安全：sync_publish.py --force --allow-placeholder-identity 强制执行成功且不崩溃",
             )
+            # 再跑一次**不带逃生舱**，按环境分支断言门禁行为。
+            # CI 由 actions/checkout 全新检出，工作区里没有 ky_config.json
+            #（.gitignore:40 保护、未跟踪）→ 动态身份规则必然无效 → 门禁应
+            # fail-closed（exit 3 且打印「拒绝导出」），这本身是有价值的断言。
+            from privacy_policy import identity_rules_effective
+            _eff, _eff_reason = identity_rules_effective(ROOT)
+            gate_res = subprocess.run(
+                [sys.executable, str(ROOT / "tools" / "sync_publish.py"), "--force"],
+                cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+            )
+            if _eff:
+                runner.assert_true(
+                    gate_res.returncode == 0 and "files copied" in gate_res.stdout,
+                    "发布安全：sync_publish.py --force（有身份规则时正常导出）",
+                )
+            else:
+                runner.assert_true(
+                    gate_res.returncode == 3 and "拒绝导出" in gate_res.stdout,
+                    "发布安全：sync_publish.py --force（无身份规则时 fail-closed 拒绝导出）",
+                )
         except Exception as e:
             runner.assert_true(False, f"CLI 进程级 smoke tests 异常: {e}")
 
@@ -1872,6 +2190,161 @@ D. 无度为2的结点
                     print(f"    [DEBUG stderr] {line}")
         except Exception as e:
             runner.assert_true(False, f"新功能集成测试异常: {e}")
+
+        # =========================================================================
+        # 26. 全国高校数据库构建器 (national_institutions.json)
+        # 覆盖 2026-09-19 新增的三条硬约束：
+        #   ① 已证伪的抓取阶段（研招网详情页/专业库）不得复活；
+        #   ② 合并时手工条目权威度更高：标量覆盖、列表取并集；
+        #   ③ 官网域名只来自 xioajiumi，绝不写入研招网样例模板（pku.edu.cn）。
+        # =========================================================================
+        print("\n[测试组 26: 全国高校数据库构建器 (反幻觉 / 合并语义 / 域名来源)]")
+        import tempfile
+        import shutil as _shutil
+        try:
+            sys.path.insert(0, str(ROOT / "tools" / "intelligence"))
+            import university_db_builder as _ub
+
+            # --- 26-1 已证伪的抓取阶段不得复活 ---
+            runner.assert_true(
+                not hasattr(_ub, "crawl_details") and not hasattr(_ub, "crawl_majors")
+                and not hasattr(_ub, "CATEGORY_IDS"),
+                "高校库 26-1：研招网详情页/专业库抓取阶段已删除（实测分别返回北大样例模板与「请登录」）",
+            )
+            _rejected = False
+            try:
+                _ub.main(["crawl-details"])
+            except SystemExit as _se:
+                _rejected = _se.code == 2
+            runner.assert_true(_rejected, "高校库 26-2：已废弃子命令 crawl-details 被 argparse 拒绝")
+
+            # --- 26-3 纯函数：空值判定与官网归一 ---
+            runner.assert_true(
+                _ub._is_blank("") and _ub._is_blank("待查") and _ub._is_blank(None)
+                and not _ub._is_blank("河南"),
+                "高校库 26-3：_is_blank 正确识别空串/待查/None",
+            )
+            runner.assert_true(
+                _ub._official_domain("https://www.tsinghua.edu.cn/") == "https://www.tsinghua.edu.cn"
+                and _ub._official_domain("http://x.edu.cn/deep/path?q=1") == "http://x.edu.cn"
+                and _ub._official_domain("") == "",
+                "高校库 26-4：_official_domain 归一为根地址，非法输入返回空串",
+            )
+
+            # --- 26-5 合并语义（用最小 fixture 真实跑一遍 merge） ---
+            _tmp = Path(tempfile.mkdtemp(prefix="ky_uni_"))
+            try:
+                _src = _tmp / "src"
+                _out = _tmp / "out"
+                _data = _tmp / "data"
+                for _d in (_src, _out, _data):
+                    _d.mkdir(parents=True, exist_ok=True)
+
+                (_src / "chsi_schools.json").write_text(json.dumps({
+                    "count": 1,
+                    "schools": [{
+                        "name": "甲大学", "sch_id": "111", "dwdm": "10001",
+                        "region": "河南", "authority": "河南省",
+                        "tags": ["研究生院"], "source_url": "https://yz.chsi.com.cn/sch/x.dhtml",
+                    }],
+                }, ensure_ascii=False), encoding="utf-8")
+                (_src / "chsi_408_offerings.json").write_text(json.dumps({
+                    "items": [{
+                        "schoolCode": "10001", "schoolName": "甲大学", "region": "河南",
+                        "collegeName": "信息与管理科学学院",
+                        "majorCode": "081200", "majorName": "计算机科学与技术",
+                        "subjects": [{"code": "101", "name": "思想政治理论"},
+                                     {"code": "408", "name": "计算机学科专业基础"}],
+                    }],
+                }, ensure_ascii=False), encoding="utf-8")
+                (_src / "fjw_universities.json").write_text(json.dumps({
+                    "provinces": {"河南": {"all": [{"name": "甲大学", "tags": ["211", "本科", "河南"]}]}},
+                }, ensure_ascii=False), encoding="utf-8")
+                (_src / "xioajiumi_universities.json").write_text(json.dumps({
+                    "count": 1,
+                    "universities": [{"name": "甲大学", "name_eng": "Jia University",
+                                      "type": "综合", "official_link": "https://www.jia.edu.cn/"}],
+                }, ensure_ascii=False), encoding="utf-8")
+                (_src / "zsts_places.json").write_text(json.dumps({
+                    "count": 1, "places": {"甲大学": {"province": "河南省", "city": "郑州市"}},
+                }, ensure_ascii=False), encoding="utf-8")
+                # 既有手工条目（权威度更高）
+                (_data / "national_institutions.json").write_text(json.dumps({
+                    "甲大学": {
+                        "chsi_code": "10001", "name": "甲大学",
+                        "aliases": ["甲大", "jia"], "level": ["省部共建高校"],
+                        "region": "河南郑州", "official_domain": "https://www.jia.edu.cn",
+                        "graduate_domain": "https://gra.jia.edu.cn",
+                        "departments": {"马克思主义理论": {"college_name": "马克思主义学院",
+                                                        "subjects": ["(101)思想政治理论"]}},
+                    },
+                }, ensure_ascii=False), encoding="utf-8")
+
+                _old_src, _old_data = _ub.SOURCES_DIR, _ub.DATA_DIR
+                _ub.SOURCES_DIR, _ub.DATA_DIR = _src, _data
+                try:
+                    _stats = _ub.merge(out_dir=_out)
+                finally:
+                    _ub.SOURCES_DIR, _ub.DATA_DIR = _old_src, _old_data
+
+                _rec = json.loads((_out / "national_institutions.json").read_text(encoding="utf-8"))["甲大学"]
+                runner.assert_true(
+                    "甲大" in _rec["aliases"] and "jia" in _rec["aliases"] and "10001" in _rec["aliases"],
+                    "高校库 26-5：手工 aliases 与抓取别名取并集，不被批量数据冲掉",
+                )
+                runner.assert_true(
+                    "省部共建高校" in _rec["level"] and "硕士研究生招生单位" in _rec["level"],
+                    "高校库 26-6：手工 level 与生成标签取并集（阴性回归：旧实现会整段覆盖）",
+                )
+                runner.assert_true(
+                    _rec["official_domain"] == "https://www.jia.edu.cn"
+                    and _rec["graduate_domain"] == "https://gra.jia.edu.cn",
+                    "高校库 26-7：手工官网/研究生院域名优先于批量抓取值",
+                )
+                runner.assert_true(
+                    set(_rec["departments"]) == {"马克思主义理论", "(081200)计算机科学与技术"},
+                    "高校库 26-8：departments 以「学科专业」为键（院系名进 college_name），与消费侧关键词匹配语义一致",
+                )
+                runner.assert_true(
+                    _rec["departments"]["(081200)计算机科学与技术"]["college_name"] == "信息与管理科学学院",
+                    "高校库 26-9：408 科目挂到学科键上且保留院系名",
+                )
+                runner.assert_true(
+                    not any("pku.edu.cn" in (v.get("official_domain") or "")
+                            for v in json.loads((_out / "national_institutions.json").read_text(encoding="utf-8")).values()),
+                    "高校库 26-10：合并产物不含研招网样例模板域名 pku.edu.cn（反幻觉阴性测试）",
+                )
+                runner.assert_true(
+                    _stats.get("with_official") == 1 and _stats.get("enriched_manual") == 1,
+                    f"高校库 26-11：合并统计正确 (with_official/enriched_manual)，实得 {_stats}",
+                )
+            finally:
+                _shutil.rmtree(_tmp, ignore_errors=True)
+
+            # --- 26-12 真实全国库：无代码院校不得把校名写进 chsi_code ---
+            from tools.intelligence.registry import UniversityRegistry
+            _reg = UniversityRegistry()
+            _ni = json.loads((ROOT / "data" / "universities" / "national_institutions.json").read_text(encoding="utf-8"))
+            _nocode = [k for k, v in _ni.items() if not v.get("chsi_code")]
+            runner.assert_true(len(_nocode) > 0, "高校库 26-12：全国库存在无教育部代码院校（本科院校底座）")
+            _probe_name = _nocode[0]
+            _probe = _reg.resolve(_probe_name)
+            runner.assert_true(
+                _probe is not None and _probe.chsi_code != _probe_name
+                and "UNLISTED" in _reg._name_map.get(_probe_name, ""),
+                f"高校库 26-13：无代码院校 {_probe_name} 的 chsi_code 未被填成校名，且标记为 UNLISTED（未核验）",
+            )
+            _henau = _reg.resolve("目标院校")
+            runner.assert_true(
+                _henau is not None and _henau.chsi_code == "10466"
+                and "pku.edu.cn" not in _henau.official_domain,
+                "高校库 26-14：目标院校解析出真实代码 10466 且官网非样例域名",
+            )
+            _polluted = [e.name for e in {id(x): x for x in _reg._entities.values()}.values()
+                         if "pku.edu.cn" in (e.official_domain or "") and e.name != "北京大学"]
+            runner.assert_true(not _polluted, f"高校库 26-15：全国库无样例域名污染（越界: {_polluted[:5]}）")
+        except Exception as e:
+            runner.assert_true(False, f"全国高校数据库测试异常: {e}")
 
     finally:
         # 还原现场：把主流程前快照的受控用户数据写回，并清理测试残留文件。

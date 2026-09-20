@@ -237,8 +237,16 @@ def build(offline: bool = False):
         if str(ROOT.parent) not in sys.path:
             sys.path.insert(0, str(ROOT.parent))
         from tools.skills import knowledge_map
+        # [P5 残留修复·图谱数据] 只为本考生实际报考的科目构建图谱，不再无条件
+        # 塞入 maps.math。SUBJECTS 已由 web/config.py 按同一口径（_math_none：
+        # math_key=none / math_name=不考数学 / mode_b 双专业课 / mode_c 管综）
+        # 过滤掉数学，这里直接复用，避免另写一套判定再次漂移。
+        # 再与 knowledge_map 支持的科目键取交集：它仅支持 math/eng/pol/pro，
+        # 传入未知键（如 mode_b 的 pro2）会回退到 01-数学 目录产出错误图谱。
+        present = {s["key"] for s in SUBJECTS}
         for sk in ("math", "eng", "pol", "pro"):
-            k_maps[sk] = knowledge_map.build_knowledge_map(sk)
+            if sk in present:
+                k_maps[sk] = knowledge_map.build_knowledge_map(sk)
     except Exception as e:
         parse_warnings.append({"severity": "warn", "subject": "all", "kw": "knowledge_map", "msg": f"知识图谱构建失败: {e}"})
         k_maps = {}
@@ -333,11 +341,20 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-    # [新增·--offline] 无外网环境（考场/内网/离线机）下改用本地 vendor 资源，
-    # 否则 KaTeX 加载失败，考研数学公式会退化成 LaTeX 源码串。
-    offline = "--offline" in sys.argv
+    # [C7 修复·默认离线] 默认改用本地 vendor 资源：手机看板的主用场景是
+    # 地铁/破网/自习室，走 CDN 时公式会退化成 LaTeX 源码串。
+    # 需要走 CDN 时显式 `--cdn` 或设 KY_VENDOR_MODE=cdn。
+    from web import vendor_mode
+    _mode = vendor_mode()
+    offline = _mode == "local"
+    if "--cdn" in sys.argv:
+        offline = False
+        _mode = "cdn"
     if offline:
-        print("[i] --offline：第三方前端资源将改用 docs/assets/vendor/ 本地副本")
+        print("[i] 默认离线：第三方前端资源使用 docs/assets/vendor/ 本地副本"
+              "（如需 CDN 请加 --cdn）")
+    else:
+        print("[i] 已切换到 CDN 模式（KY_VENDOR_MODE=cdn / --cdn）")
 
     content, data_obj, parse_warnings, sections_status = build(offline=offline)
     OUT.parent.mkdir(parents=True, exist_ok=True)

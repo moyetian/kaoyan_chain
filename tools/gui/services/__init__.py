@@ -18,6 +18,13 @@ from .dashboard import (
     subject_labels,
     subject_progress,
 )
+from .settings import (
+    is_unconfigured,
+    read_config,
+    save_onboarding_config,
+    test_api_connectivity,
+    update_agents_md,
+)
 
 __all__ = [
     # dashboard
@@ -35,4 +42,10 @@ __all__ = [
     "ingest_file",
     "make_error_quiz",
     "run_action_capture",
+    # settings
+    "is_unconfigured",
+    "read_config",
+    "save_onboarding_config",
+    "test_api_connectivity",
+    "update_agents_md",
 ]

@@ -23,7 +23,7 @@ from typing import Dict, List, Optional
 
 from ..models import SearchResult
 from . import register
-from ._http import BROWSER_HEADERS, USER_AGENT, clean_bing_url, clean_text, get_text
+from ._http import BROWSER_HEADERS, USER_AGENT, clean_bing_url, clean_text, get_text, looks_like_anti_bot
 from .base import ProviderError, SearchProvider
 
 _LOG = logging.getLogger(__name__)
@@ -51,7 +51,8 @@ class BingProvider(SearchProvider):
     description = "Bing 网页检索（补充源，实测易返回无关页，已加相关性守门）"
 
     def search(self, query: str, *, limit: int = 10,
-               time_range: Optional[str] = None) -> List[SearchResult]:
+               time_range: Optional[str] = None,
+               safe: bool = False) -> List[SearchResult]:
         params = {"q": str(query), "mkt": "zh-CN", "setlang": "zh-Hans"}
         if str(time_range or "").lower() == "year":
             params["filters"] = "ex1%3a\"ez1\""      # Bing 的「过去一年」过滤器
@@ -60,10 +61,25 @@ class BingProvider(SearchProvider):
         headers = dict(BROWSER_HEADERS)
         headers["User-Agent"] = USER_AGENT
         headers["Cookie"] = _BING_COOKIES
-        html_text = get_text(url, headers=headers, timeout=12)
+        try:
+            html_text = get_text(url, headers=headers, timeout=12)
+        except Exception as exc:
+            if safe:
+                _LOG.warning("Bing 网络请求异常，优雅降级为空列表: %s", exc)
+                return []
+            raise ProviderError(f"Bing 网络请求失败: {exc}") from exc
+
+        anti_bot = looks_like_anti_bot(html_text)
+        if anti_bot:
+            if safe:
+                _LOG.warning("Bing 触发反爬验证 (%s)，优雅降级为空列表", anti_bot)
+                return []
+            raise ProviderError(f"Bing 返回反爬验证页（命中特征 {anti_bot}）")
 
         blocks = _BLOCK_RE.findall(html_text)
         if not blocks:
+            if safe:
+                return []
             raise ProviderError("页面结构未匹配到结果块（可能被限流或改版）")
 
         items: List[Dict[str, str]] = []
@@ -85,8 +101,15 @@ class BingProvider(SearchProvider):
                 break
 
         if not items:
+            if safe:
+                return []
             raise ProviderError("解析到结果块，但无可用链接")
         return self.normalize(items)
+
+    def safe_search(self, query: str, *, limit: int = 10,
+                    time_range: Optional[str] = None) -> List[SearchResult]:
+        """安全检索：遇到网络异常或反爬验证码时优雅降级为空列表，绝不抛出异常。"""
+        return self.search(query, limit=limit, time_range=time_range, safe=True)
 
 
 __all__ = ["BingProvider"]

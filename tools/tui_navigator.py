@@ -665,10 +665,13 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
             info = get_config_summary()
             school = input(f"请输入目标高校 [默认 {info['school']}]: ").strip() if interactive else ""
             if not school:
-                school = info["school"]
+                school = (extra.get("school") or info.get("school", "")).strip()
             major = input(f"请输入专业 [默认 {info['major']}]: ").strip() if interactive else ""
             if not major:
-                major = info["major"]
+                major = (extra.get("major") or info.get("major", "")).strip()
+            if not school or school in ("未指定", "目标院校"):
+                print(colorize("\n[!] 目标院校尚未指定，请在【设置】中配置高校或传入指定高校名称。", Colors.RED))
+                return True
             from skills import school_scout
             res = school_scout.scout_school(school=school, major=major, include_social=True, save_report=True)
             print(colorize(f"\n[+] 院校研报生成完毕: {res.get('saved_path')}", Colors.GREEN))

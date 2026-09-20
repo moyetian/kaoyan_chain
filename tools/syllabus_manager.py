@@ -5,6 +5,7 @@
 """
 
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
     from ky_io import atomic_write_text  # noqa: E402
@@ -114,7 +115,7 @@ MATH_SYLLABI = {
         "full_name": "全国硕士研究生招生考试 · 数学二 (科目代码: 302)",
         "scope": "高等数学 (约78%) + 线性代数 (约22%)",
         "description": "专硕与轻工/化工/地质等工学门类主流科目，不考概率论；高数不考级数、三重积分与曲线曲面积分。",
-        "anti_out_of_syllabus": "【数二严禁超纲禁区】：严禁考查三重积分、第一/二型曲线曲面积分、格林公式、高斯公式、无穷级数、傅里叶级数、向量代数与空间解析几何、欧拉方程、伯努利方程、概率论全科目！",
+        "anti_out_of_syllabus": "【数二严禁超纲禁区】：严禁考查三重积分、第一/二型曲线曲面积分、格林公式、高斯公式、斯托克斯公式、无穷级数、傅里叶级数、向量代数与空间解析几何、欧拉方程、伯努利方程、概率论全科目！",
         "content": """# 01-数学 · 全国统考【数学二 (302)】官方核心考试大纲
 
 > **【AI 私教执行最高红线】**：
@@ -182,7 +183,7 @@ MATH_SYLLABI = {
         "full_name": "全国硕士研究生招生考试 · 数学三 (科目代码: 303)",
         "scope": "微积分 (约56%) + 线性代数 (约22%) + 概率论与数理统计 (约22%)",
         "description": "经济学、管理学门类主流科目，偏重经济应用（边际、弹性、差分方程），不考空间几何、曲面积分与物理应用。",
-        "anti_out_of_syllabus": "【数三严禁超纲禁区】：不考空间解析几何、三重积分、第一/二型曲线曲面积分、物理应用（功/水压力/引力）、伯努利方程、欧拉方程、假设检验！",
+        "anti_out_of_syllabus": "【数三严禁超纲禁区】：不考空间解析几何、三重积分、第一/二型曲线曲面积分、物理应用（功/水压力/引力）、傅里叶级数、伯努利方程、欧拉方程、假设检验！",
         "content": """# 01-数学 · 全国统考【数学三 (303)】官方核心考试大纲
 
 > **【AI 私教执行准则】**：
@@ -249,6 +250,35 @@ MATH_SYLLABI = {
 """
     }
 }
+
+# ─────────────────────────────────────────────────────────────
+# 1b. 数学「不考 / 自命题」非统考分支（P4 修复）
+# ─────────────────────────────────────────────────────────────
+# 背景：MATH_SYLLABI 只有 math1/math2/math3/math396 四键，此前
+#   math_info = MATH_SYLLABI.get(math_key, MATH_SYLLABI["math2"])
+# 会让「不考数学 (none)」与「院校自主命题数学 (custom)」都静默回退成数学二 (302)，
+# 于是不考数学的考生 01-数学/考试大纲.md 写着数二、AGENTS.md 还被注入数二超纲禁区，
+# 与根 AGENTS.md「科目一：不考数学 / 0.0 小时」自相矛盾。
+# 现在这两种情况各写一份明确占位大纲，绝不回退到任何统考科目。
+MATH_NONE_SYLLABUS = """# 01-数学 · 本人不考数学
+
+> 根据备考方案（math_key=none），本日不安排数学学习任务。
+> 报到/任务/组卷/看板中的数学入口已自动隐藏。如专业实际要求数学，请重跑 `ky subject` 切回。
+"""
+
+MATH_CUSTOM_SYLLABUS = """# 01-数学 · 院校自主命题数学
+
+> ⚠️ **【待自填·占位大纲】** 本方案标记为「院校自主命题数学」，无全国统考预设大纲。
+> 请前往 **目标院校研究生院官网** 下载最新自命题数学考试大纲，替换本节内容（标明：掌握 / 理解 / 了解）。
+> 未替换前，AI 私教严禁按数学一/二/三统考范围出题，以免超纲或漏考。
+"""
+
+MATH_NONE_INFO = {"name": "不考数学", "content": MATH_NONE_SYLLABUS}
+MATH_CUSTOM_INFO = {"name": "院校自主命题数学", "content": MATH_CUSTOM_SYLLABUS}
+
+# 判断 math_key 是否为「不考数学」的统一集合（与 study_planner / dashboard_state 口径一致）
+MATH_NONE_KEYS = {"none", "no", "不考数学"}
+
 
 # ─────────────────────────────────────────────────────────────
 # 2. 英语大纲预设
@@ -414,6 +444,84 @@ CS408_SYLLABUS = """# 04-专业课 · 全国统考【408 计算机学科专业�
 - **应用层**：DNS 域名解析过程、FTP、电子邮件(SMTP/POP3/IMAP)、万维网(HTTP 协议与状态码)。
 """
 
+STAT432_SYLLABUS = """# 04-专业课 · 自命题【432 统计学】官方核心考试大纲（应用统计 025200 通用框架）
+
+> **【AI 私教执行准则】**：本科目为应用统计专硕 432 统计学自命题通用框架（150 分）。各校在此框架下微调权重与参考书，AI 派题必须标注考点层级（掌握 / 理解 / 了解），严禁超纲，最终以目标院校当年《考试大纲》与《参考书目》为准！
+
+---
+
+## 一、试卷结构与分值（通用框架 150 分）
+- **单项选择 / 简答**：约 30-50 分，考查基本概念与公式条件
+- **计算与分析题**：约 60-80 分，须写出统计量构造、分布依据与结论判定
+- **综合应用 / 案例分析**：约 20-40 分，结合实际数据做推断与解释
+
+## 二、核心考纲模块
+
+### 1. 统计学基本概念与数据整理（掌握）
+- **掌握**：总体、样本、参数、统计量、变量类型（定类/定序/定距/定比）；频数分布表、直方图、茎叶图、箱线图；
+- **理解**：抽样方法（简单随机、分层、整群、系统抽样）与抽样误差来源。
+
+### 2. 概率基础与随机变量分布（掌握）
+- **掌握**：条件概率、全概率与贝叶斯公式；常见离散分布（二项、泊松）与连续分布（均匀、指数、正态）；
+- **掌握**：正态分布标准化、t / 卡方 / F 三大抽样分布的构造与分位数查表；
+- **理解**：大数定律与中心极限定理的直观含义与应用条件。
+
+### 3. 参数估计（掌握）
+- **掌握**：点估计（矩估计、极大似然估计）与评价标准（无偏性、有效性、一致性）；
+- **掌握**：单个总体均值/比例/方差的区间估计、样本量确定；两总体均值差与比例差的区间估计。
+
+### 4. 假设检验（掌握 · 高频采分区）
+- **掌握**：原假设与备择假设、两类错误、P 值含义与显著性水平 α 设定；
+- **掌握**：单总体 Z / t / 卡方检验、双总体均值差与比例差检验、配对样本检验；
+- **理解**：检验功效（Power）与样本量对结论的影响；规范写出“检验统计量—拒绝域—结论”三段式。
+
+### 5. 方差分析与回归分析（掌握 · 大题重灾区）
+- **掌握**：单因素方差分析（SST=SSA+SSE 分解、F 检验、方差齐性前提）；
+- **掌握**：一元线性回归最小二乘估计、拟合优度 R²、回归系数显著性 t 检验与区间预测；
+- **理解**：多元回归基本设定与多重共线性初步诊断；残差图模型检验。
+
+### 6. 时间序列与指数（理解）
+- **理解**：时间序列成分分解（趋势、季节、循环、不规则）；移动平均与指数平滑初步；
+- **了解**：综合指数编制（拉氏 / 帕氏）与常用价格指数解读。
+
+## 三、作答规范与采分红线
+- 参数估计与假设检验必须写出分布依据（如 t(n-1)、χ²(n-1)）与查表自由度，否则扣步骤分；
+- 方差分析须列出方差分析表，回归须给出估计式与检验结论，缺一扣 2-3 分；
+- 所有结论须回扣题干实际问题，单纯罗列数字无解释最多得一半分。
+"""
+
+MGMT199_SYLLABUS = """# 04-专业课 · 全国统考【199 管理类综合能力】官方核心考试大纲
+
+> **【AI 私教执行准则】**：本科目为全国管理类联考综合能力 199 (总分 200 分)。包含数学基础(75分)、逻辑推理(60分)、写作(65分)。严禁超纲，主抓条件充分性判断排除技巧、形式逻辑推导与论证有效性分析采分点！
+
+---
+
+## 一、试卷结构与分值 (总分 200 分，考试时间 180 分钟)
+- **数学基础**：25 题，共 **75 分** (问题求解 15 题每题 3 分；条件充分性判断 10 题每题 3 分)
+- **逻辑推理**：30 题，单项选择，每题 2 分，共 **60 分**
+- **写作**：2 小题，共 **65 分** (论证有效性分析 30 分，约 600 字；论说文 35 分，约 700 字)
+
+---
+
+## 二、核心考纲模块
+
+### 1. 数学基础 (75 分 · 初等数学核心盘)
+- **算术**：整数（奇偶、质合、整除与带余除法、公约数与公倍数）；分数、小数、百分数；比与比例；数轴与绝对值；
+- **代数**：整式（因式分解、乘法公式）；分式及其运算；函数（二次函数、指数对数函数）；代数方程；不等式与均值不等式极值；数列（等差等比数列）；
+- **几何**：平面几何（三角形、四边形、圆与阴影面积）；空间几何体（长方体、圆柱、球表面积与体积）；平面解析几何（直线斜率与方程、圆的方程、位置关系）；
+- **数据分析**：加法与乘法原理、排列组合；古典概率与独立事件；平均值与方差。
+
+### 2. 逻辑推理 (60 分 · 形式逻辑与批判性思维)
+- **形式逻辑**：概念；性质命题；复合命题（联言、选言、假言推理、摩根定律、逆否命题）；
+- **论证与批判性推理**：削弱质疑、支持加强、前提假设、解释矛盾、归纳推论；
+- **综合分析推理**：排序, 分组、匹配、真假话判定等结构化分析。
+
+### 3. 中文写作 (65 分 · 论据分析与批判性表达)
+- **论证有效性分析 (30 分)**：定位论证漏洞（概念混淆、偷换概念、以偏概全、类比不当、因果倒置等），分点批驳；
+- **论说文 (35 分)**：立足经管社科材料，立意准确，结构严谨，说理充分。
+"""
+
+
 # ─────────────────────────────────────────────────────────────
 # 专业课大纲一致性守卫
 # ─────────────────────────────────────────────────────────────
@@ -422,66 +530,134 @@ CS408_SYLLABUS = """# 04-专业课 · 全国统考【408 计算机学科专业�
 # 全部按错误科目出题，学员复习方向被系统性误导。
 
 # 408 统考大纲的强特征模块名：命中 2 个及以上即判定为 408 内容
-_408_MARKERS = ("数据结构", "计算机组成原理", "操作系统", "计算机网络")
+_CS408_SIGNATURE_MODULES = ("数据结构", "计算机组成原理", "操作系统", "计算机网络")
 
 
-def looks_like_408_syllabus(text):
-    """判定大纲文本是否为 408 计算机学科专业基础内容（命中 2 个及以上特征模块）。"""
-    if not text:
-        return False
-    return sum(1 for kw in _408_MARKERS if kw in text) >= 2
+def looks_like_408_syllabus(text: str) -> bool:
+    """启发式检测大纲文本是否为 408 统考大纲内容。"""
+    t = str(text or "")
+    hits = sum(1 for m in _CS408_SIGNATURE_MODULES if m in t)
+    return hits >= 2 or ("408" in t and "计算机学科专业基础" in t)
 
 
-def backup_syllabus_file(file_path):
-    """按项目惯例备份为 <stem>_backup_<日期>_<时间><suffix>，返回备份路径（失败返回 None）。"""
-    import shutil
-    from datetime import datetime
-    p = Path(file_path)
-    if not p.exists():
-        return None
-    ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    backup = p.with_name(f"{p.stem}_backup_{ts}{p.suffix}")
+def backup_syllabus_file(path: Path) -> Optional[Path]:
+    """将大纲文件备份为带时间戳的副本，返回备份文件路径（失败返回 None）。"""
     try:
-        shutil.copy2(p, backup)
-        return backup
+        from datetime import datetime
+        import shutil
+        p = Path(path)
+        if not p.exists():
+            return None
+        ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        backup_path = p.with_name(f"{p.stem}_backup_{ts}{p.suffix}")
+        shutil.copy2(p, backup_path)
+        return backup_path
     except Exception:
         return None
 
 
-def apply_syllabus_selection(math_key="math2", eng_key="eng2", pro_type="custom", pro_name="专业课", school="目标院校", major="报考专业", auto_write=True):
+def _pro_placeholder_example(pro_name: str) -> str:
+    """根据专业课科目名返回贴合学科的占位章节示例，避免哲学考生看到数据结构。"""
+    name = str(pro_name or "")
+    if any(kw in name for kw in ["信号", "811", "通信", "控制"]):
+        return "信号与系统的基本概念（连续与离散、系统性质）"
+    if any(kw in name for kw in ["哲学", "马哲", "中哲", "马克思", "政治", "思政", "法学", "法律",
+                                 "教育", "文学", "历史", "艺术", "新闻", "社会", "心理", "管理"]):
+        return "核心概念辨析与代表人物主要观点梳理"
+    if any(kw in name for kw in ["经济", "金融", "会计", "统计", "数学"]):
+        return "核心模型假设条件与典型计算题型归纳"
+    if any(kw in name for kw in ["408", "计算机", "软件", "数据结构", "操作系统"]):
+        return "数据结构基本概念与算法时空复杂度分析"
+    return "本学科核心概念与主干知识脉络梳理"
+
+
+# [P12 修复] 自命题占位大纲的稳定标识：正文命中该标记即说明「尚未填入真实考纲」，
+# 生成侧与「是否已有真实内容」的判定侧共用同一常量，避免文案一改就漏判。
+PRO_PLACEHOLDER_MARKER = "【待自填"
+
+
+def _pro_placeholder_body(pro_real_name: str, example: str) -> str:
+    """生成自命题专业课的「待自填」占位大纲正文（P12：明确标注待办而非成品）。"""
+    return (
+        f"# 04-专业课 · 【{pro_real_name}】官方考试大纲与核心考点清单\n\n"
+        f"> ⚠️ **【待自填·占位大纲】** 本文件为系统生成的占位模板，**尚未包含真实考点**。\n"
+        f"> 请前往 **目标院校研究生院官网** 下载最新自命题考试大纲，替换下方各章节内容后再按纲复习。\n"
+        f"> 在替换之前，AI 私教不得据本文件宣称「已按考纲出题」。\n\n"
+        "## 核心考查章节与重点要求（待自填）：\n"
+        f"- 第一章：【待自填】请替换为官网大纲中的真实章节与考点（参考示例：{example}） (要求：掌握)\n"
+        "- 第二章：【待自填】请替换为官网大纲中的真实章节与考点 (要求：掌握 / 理解 / 了解)\n"
+        "- 第三章：【待自填】请替换为官网大纲中的真实章节与考点 (要求：掌握 / 理解 / 了解)\n"
+    )
+
+
+def apply_syllabus_selection(
+    math_key="math2",
+    eng_key="eng2",
+    pro_type="custom",
+    pro_name="专业课",
+    pro2_name="",
+    school="目标院校",
+    major="报考专业",
+    auto_write=True,
+    workspace_root=None,
+):
     """
     应用并写入用户选定的考试大纲与科目配置
     """
     import re
+    ws = Path(workspace_root) if workspace_root else ROOT
     updated_files = []
 
     # 1. 处理数学大纲
-    math_info = MATH_SYLLABI.get(math_key, MATH_SYLLABI["math2"])
-    math_outline = ROOT / "01-数学" / "考试大纲.md"
+    # [P4 修复] 此前 MATH_SYLLABI.get(math_key, MATH_SYLLABI["math2"]) 会把
+    # 「不考数学 (none)」与「院校自主命题数学 (custom)」都静默回退成数学二 (302)，
+    # 导致文科考生拿到数二考纲 + 数二超纲禁区，与「不考数学」自相矛盾。
+    _math_key = str(math_key or "").strip().lower()
+    if _math_key in MATH_NONE_KEYS:
+        math_info = MATH_NONE_INFO
+    elif _math_key in MATH_SYLLABI:
+        math_info = MATH_SYLLABI[_math_key]
+    elif not _math_key:
+        math_info = MATH_SYLLABI["math2"]  # 未指定（空/None）：保留历史默认
+    else:
+        # 院校自主命题数学（custom）或其它无预设 key：写自命题占位大纲，不回退统考
+        math_info = MATH_CUSTOM_INFO
+    math_outline = ws / "01-数学" / "考试大纲.md"
     if auto_write:
         atomic_write_text(math_outline, math_info["content"])
         updated_files.append(math_outline)
 
         # 同步更新 01-数学/AGENTS.md 中的科目名称与超纲禁区提示
-        math_agents = ROOT / "01-数学" / "AGENTS.md"
+        math_agents = ws / "01-数学" / "AGENTS.md"
         if math_agents.exists():
             txt = math_agents.read_text(encoding="utf-8")
             txt = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{math_info['name']}`", txt)
-            if "anti_out_of_syllabus" in math_info:
-                # 替换或注入超纲警示
-                if "## 1. 超纲与题源禁区" in txt:
-                    txt = re.sub(r"- 严防超出所考科目大纲的偏题怪题；", f"- 严防超出所考科目大纲的偏题怪题（{math_info['anti_out_of_syllabus']}）；", txt)
+            # [R2-A1 修复·幂等] 超纲禁区行必须「整行重写」而不是「只替换无括注形态」。
+            # 旧实现 `re.sub(r"- 严防超出所考科目大纲的偏题怪题；", …)` 只匹配**无括注**
+            # 的行尾，而模板行首次写入后即带括注 → 第二次起永远匹配不上；且 none/custom
+            # 的 math_info 没有 anti_out_of_syllabus 键 → 既不注入也**不清洗**，模板里
+            # 硬编码的数二禁区永久残留（文科考生拿到「不考数学」却仍被警告数二超纲禁区）。
+            # 现改为：始终保留「- 严防超出所考科目大纲的偏题怪题」这一锚点前缀，
+            # 用 `[^\n]*` 吃掉整行后按当前科目重写 —— 于是 math2→none→math2 反复切换、
+            # none→custom→math2 任意序列都幂等收敛，不会出现「切回来禁区就没了」。
+            _anti_desc = math_info.get("anti_out_of_syllabus") or (
+                "本方案不考数学，无数学超纲禁区"
+                if _math_key in MATH_NONE_KEYS
+                else "院校自主命题数学：以目标院校指定范围为准，未取得院校大纲前严禁按数学一/二/三统考范围派题"
+            )
+            _anti_line = f"- 严防超出所考科目大纲的偏题怪题（{_anti_desc}）；"
+            txt = re.sub(r"- 严防超出所考科目大纲的偏题怪题[^\n]*", lambda _m: _anti_line, txt)
             atomic_write_text(math_agents, txt)
             updated_files.append(math_agents)
 
     # 2. 处理英语大纲
     eng_info = ENGLISH_SYLLABI.get(eng_key, ENGLISH_SYLLABI["eng2"])
-    eng_outline = ROOT / "02-英语" / "考试大纲.md"
+    eng_outline = ws / "02-英语" / "考试大纲.md"
     if auto_write:
         atomic_write_text(eng_outline, eng_info["content"])
         updated_files.append(eng_outline)
 
-        eng_agents = ROOT / "02-英语" / "AGENTS.md"
+        eng_agents = ws / "02-英语" / "AGENTS.md"
         if eng_agents.exists():
             txt = eng_agents.read_text(encoding="utf-8")
             txt = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{eng_info['name']}`", txt)
@@ -489,31 +665,39 @@ def apply_syllabus_selection(math_key="math2", eng_key="eng2", pro_type="custom"
             updated_files.append(eng_agents)
 
     # 3. 处理政治大纲
-    pol_outline = ROOT / "03-思想政治理论" / "考试大纲.md"
+    pol_outline = ws / "03-思想政治理论" / "考试大纲.md"
     if auto_write:
         atomic_write_text(pol_outline, POLITICS_SYLLABUS)
         updated_files.append(pol_outline)
 
     # 4. 处理专业课大纲
-    pro_outline = ROOT / "04-专业课" / "考试大纲.md"
+    pro_outline = ws / "04-专业课" / "考试大纲.md"
     if auto_write:
-        if pro_type == "408" or "408" in pro_name:
+        if pro_type == "199" or "199" in str(pro_name):
+            atomic_write_text(pro_outline, MGMT199_SYLLABUS)
+            pro_real_name = "199 管理类综合能力"
+        elif pro_type == "408" or "408" in str(pro_name):
             atomic_write_text(pro_outline, CS408_SYLLABUS)
             pro_real_name = "408 计算机学科专业基础"
+        elif "432" in str(pro_name) or "统计" in str(pro_name):
+            atomic_write_text(pro_outline, STAT432_SYLLABUS.replace("【432 统计学】", f"【{pro_name}】"))
+            pro_real_name = pro_name or "432 统计学"
         else:
             pro_real_name = pro_name or "专业课"
             has_real_content = False
             if pro_outline.exists():
                 existing_txt = pro_outline.read_text(encoding="utf-8", errors="ignore")
-                if len(existing_txt.strip()) > 200 and "请根据报考院校官网大纲填入" not in existing_txt:
+                # 兼容旧占位文案（"请根据报考院校官网大纲填入"）与新标记（【待自填）
+                _is_placeholder = (PRO_PLACEHOLDER_MARKER in existing_txt
+                                   or "请根据报考院校官网大纲填入" in existing_txt)
+                if len(existing_txt.strip()) > 200 and not _is_placeholder:
                     has_real_content = True
-                # [一致性守卫] 当前报考科目并非 408，残留内容却是 408 大纲时，
-                # 说明是上一轮选择的遗留物而非学员挂载的真实考纲：重建骨架前先备份。
                 if has_real_content and looks_like_408_syllabus(existing_txt):
                     has_real_content = False
                     backup_syllabus_file(pro_outline)
 
             if not has_real_content:
+                _pro_example = _pro_placeholder_example(pro_name)
                 if any(kw in str(pro_name) for kw in ["信号", "811", "通信", "控制"]):
                     atomic_write_text(pro_outline,
                         f"# 04-专业课 · 【{pro_real_name}】官方考试大纲与核心考点清单\n\n"
@@ -527,36 +711,39 @@ def apply_syllabus_selection(math_key="math2", eng_key="eng2", pro_type="custom"
                         "- 第六章：系统的状态变量分析（状态方程与输出方程建立、状态转移矩阵） (要求：了解)\n",
                     )
                 else:
+                    # [P12 修复] 明确标注「待自填」并给出官网指引，避免用户误把占位当成品
                     atomic_write_text(pro_outline,
-                        f"# 04-专业课 · 【{pro_real_name}】官方考试大纲与核心考点清单\n\n"
-                        f"> 本大纲为【{pro_real_name}】专业课专属复习指南。AI 私教将据此划定出题边界，不超纲，抓采分点！\n\n"
-                        "## 核心考查章节与重点要求：\n"
-                        "- 第一章：[请根据报考院校官网大纲填入，如：数据结构基本概念与算法时空复杂度分析] (要求：掌握)\n"
-                        "- 第二章：[考纲核心要点，标明：掌握 / 理解 / 了解]\n"
-                        "- 第三章：[考纲核心要点，标明：掌握 / 理解 / 了解]\n",
-                    )
+                        _pro_placeholder_body(pro_real_name, _pro_example))
         updated_files.append(pro_outline)
 
-        pro_agents = ROOT / "04-专业课" / "AGENTS.md"
+        # 若存在专业课二 (Mode B 双专业课)，生成专业课二大纲文件
+        if pro2_name:
+            pro2_outline = ws / "04-专业课" / "考试大纲_专业课二.md"
+            _pro2_example = _pro_placeholder_example(pro2_name)
+            # [P12 修复] 同样明确标注「待自填」并给出官网指引
+            atomic_write_text(pro2_outline,
+                _pro_placeholder_body(f"{pro2_name} (专业课二)", _pro2_example))
+            updated_files.append(pro2_outline)
+
+        pro_agents = ws / "04-专业课" / "AGENTS.md"
         if pro_agents.exists():
             txt = pro_agents.read_text(encoding="utf-8")
             txt = re.sub(r"- \*\*目标院校\*\*：.*", f"- **目标院校**：`{school}`", txt)
             txt = re.sub(r"- \*\*专业代码与名称\*\*：.*", f"- **专业代码与名称**：`{major}`", txt)
-            txt = re.sub(r"- \*\*专业课科目代码与名称\*\*：.*", f"- **专业课科目代码与名称**：`{pro_real_name}`", txt)
+            display_pro = f"{pro_real_name}" + (f" 与 {pro2_name}" if pro2_name else "")
+            txt = re.sub(r"- \*\*专业课科目代码与名称\*\*：.*", f"- **专业课科目代码与名称**：`{display_pro}`", txt)
             atomic_write_text(pro_agents, txt)
             updated_files.append(pro_agents)
 
     # 5. 更新根目录 AGENTS.md
-    agents_root = ROOT / "AGENTS.md"
+    agents_root = ws / "AGENTS.md"
     if auto_write and agents_root.exists():
         txt = agents_root.read_text(encoding="utf-8")
         txt = re.sub(r"- \*\*目标院校\*\*：.*", f"- **目标院校**：`{school}`", txt)
         txt = re.sub(r"- \*\*报考专业\*\*：.*", f"- **报考专业**：`{major}`", txt)
-        # 更新科目表格中的科目具体名称
-        txt = re.sub(r"\|\s*\*\*科目一：数学\*\*.*?\|", f"| **科目一：{math_info['name']}** | [待填] 分 |", txt)
-        txt = re.sub(r"\|\s*\*\*科目二：英语\*\*.*?\|", f"| **科目二：{eng_info['name']}** | [待填] 分 |", txt)
-        txt = re.sub(r"\|\s*\*\*科目四：专业课\*\*.*?\|", f"| **科目四：{pro_name}** | [待填] 分 |", txt)
         atomic_write_text(agents_root, txt)
         updated_files.append(agents_root)
+
+    return math_info, eng_info, updated_files
 
     return math_info, eng_info, updated_files

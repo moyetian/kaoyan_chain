@@ -472,10 +472,16 @@ kaoyan_chain/
     ├── ky_cli.py                        # 专有终端私教 (REPL) 与多端 IM 网关 (WeChat/QQ/DingTalk/Feishu)
     ├── study_planner.py                 # 7维度个人定制化方案设计引擎与防疲劳预警
     ├── syllabus_manager.py              # 官方考纲智能匹配与切换管理器
-    ├── test_ky_suite.py                 # 198项全自动化工程回归测试套件 (19大测试组)
+    ├── test_ky_suite.py                 # 26 组全自动化工程回归测试套件 (共 304 项断言；干净检出为 299 通过 + 5 跳过 = 304)
     ├── update_dashboard.py              # 本地编译；--push 时才提交并推送
     └── verify_health.py                 # 全科规范与关键文件健康度巡检脚本
 ```
+
+> \[!WARNING\]
+> `tools/test_ky_suite.py` 会**真实改写工作区用户数据**（备考方案 / 今日任务 / 大纲），
+> 因此内置守卫会**默认拒绝在真实考生工作区运行**（exit 2，这是设计如此、不是套件坏了）。
+> 请在干净副本里跑（`git archive HEAD | tar -x -C /tmp/ky_copy` 后进入副本执行），
+> 或先自行备份 `ky_config.json`，再设 `KY_TEST_ALLOW_REAL_WORKSPACE=1` 显式放行。
 
 ---
 

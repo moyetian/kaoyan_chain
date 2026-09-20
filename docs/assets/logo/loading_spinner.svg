@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="100%" height="100%">
+  <defs>
+    <style>
+      @keyframes ky-breathe {
+        0%, 100% { transform: scale(1.0); }
+        50% { transform: scale(1.03); }
+      }
+      @keyframes ky-ring-glow {
+        0%, 100% {
+          filter: drop-shadow(0 0 4px rgba(124, 58, 237, 0.3));
+          stroke-dashoffset: 0;
+        }
+        50% {
+          filter: drop-shadow(0 0 12px rgba(52, 211, 153, 0.6));
+          stroke-dashoffset: 180;
+        }
+      }
+      .ky-logo-body {
+        transform-origin: 128px 128px;
+        animation: ky-breathe 2.4s ease-in-out infinite;
+      }
+      .ky-orbit-arc {
+        transform-origin: 128px 128px;
+        stroke-dasharray: 90 270;
+        animation: ky-ring-glow 3s linear infinite;
+      }
+    </style>
+  </defs>
+
+  <!-- 完整无缺的主标（小猫耳朵 100% 完整） -->
+  <g class="ky-logo-body">
+    <image href="logo_transparent.png" x="16" y="16" width="224" height="224" />
+  </g>
+
+  <!-- 围绕外围的轻盈环形能量流动流光 -->
+  <circle cx="128" cy="128" r="102" fill="none" stroke="url(#ky-grad)" stroke-width="3" stroke-linecap="round" class="ky-orbit-arc" />
+
+  <linearGradient id="ky-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.8" />
+    <stop offset="100%" stop-color="#34d399" stop-opacity="0.9" />
+  </linearGradient>
+</svg>

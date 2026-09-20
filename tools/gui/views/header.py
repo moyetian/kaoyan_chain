@@ -21,9 +21,21 @@ def build(win) -> QFrame:
     header.setObjectName("HeaderBar")
     header.setFixedHeight(75)
     layout = QHBoxLayout(header)
+    layout.setContentsMargins(20, 10, 20, 10)
+    layout.setSpacing(14)
 
-    # SVG 图标 + 文字标题（替代改造前的 emoji 字符 "🎯 考研学习链"）
-    icon = icon_label("compose", 24, win._theme.color("acc") if hasattr(win, "_theme") else "")
+    # 官方品牌 Logo（精调版 C-Cat 环扣小链猫）
+    logo_path = win.workspace_root / "docs" / "assets" / "logo" / "logo_transparent.png"
+    if not logo_path.exists():
+        logo_path = win.workspace_root / "docs" / "assets" / "logo_transparent.png"
+    if logo_path.exists():
+        from PySide6.QtGui import QPixmap
+        from PySide6.QtCore import Qt
+        pm = QPixmap(str(logo_path)).scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        icon = QLabel()
+        icon.setPixmap(pm)
+    else:
+        icon = icon_label("compose", 24, win._theme.color("acc") if hasattr(win, "_theme") else "")
     title = QLabel("考研学习链")
     title.setObjectName("HeaderTitle")
 
@@ -35,12 +47,12 @@ def build(win) -> QFrame:
 
     win.theme_btn = QPushButton("")
     win.theme_btn.setObjectName("ThemeToggle")
-    win.theme_btn.setFixedWidth(64)
+    win.theme_btn.setMinimumSize(76, 32)
     win.theme_btn.clicked.connect(win._toggle_theme)
 
     win.settings_btn = QPushButton("设置")
     win.settings_btn.setObjectName("SettingsBtn")
-    win.settings_btn.setFixedWidth(64)
+    win.settings_btn.setMinimumSize(76, 32)
     win.settings_btn.clicked.connect(win._open_settings)
 
     layout.addWidget(icon)

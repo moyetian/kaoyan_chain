@@ -14,22 +14,28 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
-try:
-    from skills import pdf_extractor, error_logger
-except Exception:
-    try:
-        from tools.skills import pdf_extractor, error_logger
-    except Exception:
-        pdf_extractor = None
-        error_logger = None
+# [C2 修复·惰性导入] 此前用 ``from skills import pdf_extractor, error_logger``
+# 取兄弟模块。该写法会在本模块导入期把 pdf_extractor **重新绑定进包命名空间**，
+# 从而连带拉起 pypdf + cryptography，使包级惰性导入（skills/__init__.py）失效 ——
+# 实测 `import skills` 仍会付约 100ms 的 pypdf 导入代价。
+# 改为直接引用兄弟模块（``from . import xxx``），包命名空间不再被污染；
+# 用到 pdf_extractor 的地方改走惰性获取函数。
+from . import error_logger
 
 try:
-    from skills import get_subject_name
-except Exception:
+    from . import get_subject_name
+except Exception:                                   # 循环导入兜底
+    def get_subject_name(s, d=None):
+        return SUBJECT_NAMES.get(s, d if d is not None else s)
+
+
+def _pdf_extractor():
+    """惰性获取 PDF 抽取技能；不可用时返回 None，PDF 功能单独降级。"""
     try:
-        from tools.skills import get_subject_name
+        from . import pdf_extractor
+        return pdf_extractor
     except Exception:
-        get_subject_name = lambda s, d=None: SUBJECT_NAMES.get(s, s)
+        return None
 
 SUBJECT_DIRS = {
     "math": "01-数学",
@@ -88,6 +94,94 @@ def suggest_keyword(subject="pro"):
     return ""
 
 
+def _text_bigrams(text: str) -> list:
+    """中文字符 2-gram（-letter/digit 按空白切词），零依赖，供 BM25 用。"""
+    t = re.sub(r"[^\u4e00-\u9fffA-Za-z0-9]+", " ", str(text or "").lower())
+    out = []
+    for frag in t.split():
+        if re.search(r"[\u4e00-\u9fff]", frag):
+            if len(frag) == 1:
+                out.append(frag)
+            else:
+                out.extend(frag[i:i + 2] for i in range(len(frag) - 1))
+        elif frag:
+            out.append(frag)
+    return out
+
+
+def _bm25_block_scores(query: str, blocks: list) -> list:
+    """[P0 修复·子串包含→BM25] 对切出的题块做 BM25 打分排序（k1=1.5, b=0.75，
+    纯标准库）。此前 `kw in content` 命中即取第一段，无分词、无量化、无排序，
+    且"搜泰勒展开没命中会硬塞一道中值定理题"。现返回与 blocks 等长的分值表。"""
+    import math
+    from collections import Counter
+    k1, b = 1.5, 0.75
+    q_terms = _text_bigrams(query)
+    if not q_terms or not blocks:
+        return [0.0] * len(blocks)
+    doc_terms = [_text_bigrams(b) for b in blocks]
+    avgdl = sum(len(d) for d in doc_terms) / len(doc_terms)
+    n_docs = len(doc_terms)
+    df: dict = {}
+    for d in doc_terms:
+        for term in set(d):
+            df[term] = df.get(term, 0) + 1
+    scores = []
+    for d in doc_terms:
+        tf = Counter(d)
+        dl = len(d)
+        s = 0.0
+        for term in q_terms:
+            f = tf.get(term, 0)
+            if not f:
+                continue
+            n = df.get(term, 0)
+            idf = math.log(1 + (n_docs - n + 0.5) / (n + 0.5))
+            s += idf * f * (k1 + 1) / (f + k1 * (1 - b + b * dl / avgdl)) if avgdl else 0.0
+        scores.append(s)
+    return scores
+
+
+def _split_question_blocks(content: str, cap: int = 200) -> list:
+    """按题号标记把文件切成题块；无标记则整文件一块（上限 cap 块防爆）。"""
+    marks = [m.start() for m in _Q_START_RE.finditer(content)]
+    if len(marks) < 2:
+        return [content.strip()] if content.strip() else []
+    blocks = []
+    for i, s in enumerate(marks):
+        e = marks[i + 1] if i + 1 < len(marks) else min(len(content), s + 1500)
+        blk = content[s:e].strip()
+        if len(blk) >= 8:
+            blocks.append(blk[:1500])
+        if len(blocks) >= cap:
+            break
+    return blocks
+
+
+# 题号/题首标记：`第N题` / `N.` / `N、` / `（N）` / `【N】` / `【题号 N】` / Markdown 标题
+_Q_START_RE = re.compile(
+    r"(?m)^(?:#{1,4}\s*)?(?:(?:第\s*[0-9一二三四五六七八九十]+\s*题)"
+    r"|(?:[【\[](?:题号\s*)?\d+\s*[】\]])|(?:\d+\s*[.、])|(?:[(（]\d+[)）]))"
+)
+
+
+def _extract_question_block(content: str, idx: int, kw_len: int = 0) -> str:
+    """[变式溯源粒度修复] 命中关键词后不再取前后 ±100/300 字整段（实测会从
+    "里士多德；要求「掌握」"开始输出整块文档），而是向前找最近题号、向后找
+    下一题号，切出单题块；找不到题号才回退固定窗口。上限 1200 字防整卷倾泻。"""
+    start_probe = max(0, idx - 800)
+    starts = [m.start() for m in _Q_START_RE.finditer(content, start_probe, idx)]
+    start = starts[-1] if starts else max(0, idx - 200)
+    fwd_from = idx + max(0, kw_len)
+    ends = [m.start() for m in _Q_START_RE.finditer(content, fwd_from, fwd_from + 1200)]
+    end = ends[0] if ends else min(len(content), fwd_from + 400)
+    # 若块内不含关键词（标记错位），回退旧窗口，保证不空返回
+    block = content[start:end].strip()
+    if content[idx:idx + max(1, kw_len)] not in block:
+        block = content[max(0, idx - 100):min(len(content), idx + 300)].strip()
+    return block[:1200]
+
+
 def search_real_variant(subject="math", keyword="", limit=2, **kwargs):
     """
     优先检索本地参考资料与错题本真实题目；未命中时输出明确标注的自拟变式
@@ -109,32 +203,37 @@ def search_real_variant(subject="math", keyword="", limit=2, **kwargs):
     hits = []
 
     # 1. 检索本地参考资料库 (参考资料/*.pdf, *.md, *.txt)
+    # [P0 修复] 按题块切分 + BM25 打分全局取 Top，替代"首个子串命中即取第一段"。
     ref_dir = ROOT / subj_folder / "参考资料"
     if ref_dir.exists() and kw:
         # 扫描 Markdown / 文本
-        for txt_file in ref_dir.glob("*.*"):
+        _candidates = []  # (block, source_name)
+        for txt_file in sorted(ref_dir.glob("*.*")):
             if txt_file.suffix.lower() in (".md", ".txt"):
                 try:
                     content = txt_file.read_text(encoding="utf-8", errors="ignore")
-                    if kw in content:
-                        # 截取包含关键词的段落
-                        idx = content.find(kw)
-                        start = max(0, idx - 100)
-                        end = min(len(content), idx + 300)
-                        snippet = content[start:end].strip()
-                        # 过滤目录页 (如包含连续点号或以目录开头)
-                        if re.search(r"(\.{4,}|…{2,}|·{4,})\s*\d+", snippet) or snippet.startswith(("目 录", "目录")):
-                            continue
-                        hits.append({
-                            "source_type": "real_file",
-                            "source_name": txt_file.name,
-                            "topic": kw,
-                            "question": f"【从本地实体资料提取】\n{snippet}"
-                        })
                 except Exception:
-                    pass
+                    continue
+                for blk in _split_question_blocks(content):
+                    if re.search(r"(\.{4,}|…{2,}|·{4,})\s*\d+", blk) or blk.startswith(("目 录", "目录")):
+                        continue
+                    _candidates.append((blk, txt_file.name))
+        if _candidates:
+            _scores = _bm25_block_scores(kw, [b for b, _ in _candidates])
+            _ranked = sorted(
+                ((s, i) for i, s in enumerate(_scores) if s > 0),
+                key=lambda t: (-t[0], _candidates[t[1]][1], t[1]))
+            for _s, _i in _ranked[:max(1, limit)]:
+                _blk, _src = _candidates[_i]
+                hits.append({
+                    "source_type": "real_file",
+                    "source_name": _src,
+                    "topic": kw,
+                    "question": f"【从本地实体资料提取】\n{_blk[:1200]}"
+                })
 
         # 扫描 PDF 试卷
+        pdf_extractor = _pdf_extractor()
         if pdf_extractor and not hits:
             for pdf_file in ref_dir.glob("*.pdf"):
                 try:
@@ -192,11 +291,56 @@ def _generate_synthetic_variant(subject, keyword):
     根据考纲要求生成严格打上防虚构标签的变式题
     """
     kw = keyword or "核心考点"
-    if subject == "math":
+
+    # 若已配置大模型，优先调用 LLM 动态命制高质量同源变式试题
+    try:
+        try:
+            from tools.llm_client import is_llm_configured, chat_completion
+        except ImportError:
+            from llm_client import is_llm_configured, chat_completion
+
+        if is_llm_configured(workspace_root=ROOT):
+            subj_title = get_subject_name(subject, SUBJECT_NAMES.get(subject, subject))
+            prompt = (
+                f"你是一位资深考研命题专家兼私人教练。\n"
+                f"科目：{subj_title}。\n"
+                f"核心考点：{kw}。\n"
+                f"请围绕该考点命制一道高仿全国真题风格的经典同源变式题，要求题干完整、设问严谨有针对性。\n"
+                f"请直接输出试题正文，不要输出多余客套话。"
+            )
+            llm_q = chat_completion(prompt, workspace_root=ROOT, timeout=12.0)
+            if llm_q and len(llm_q.strip()) > 15:
+                q_text = (
+                    f"【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】\n"
+                    f"{subj_title} 同源变式练兵（考点：{kw}）：\n"
+                    f"{llm_q.strip()}"
+                )
+                return [{
+                    "source_type": "synthetic_with_watermark",
+                    "source_name": "私教自拟变式（严格遵循官方大纲防超纲红线 · LLM 动态命制）",
+                    "topic": kw,
+                    "question": q_text,
+                }]
+    except Exception:
+        pass
+
+    _STAT_KEYS = ("假设", "检验", "方差", "回归", "估计", "置信", "显著", "t检验", "卡方", "ANOVA", "相关", "概率", "分布", "期望", "贝叶斯")
+    if subject == "math" and any(k in kw for k in _STAT_KEYS):
         q = (
             f"【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】\n"
-            f"设函数 $f(x)$ 在 $[0, 1]$ 上具有连续的二阶导数，且满足 $f(0) = 0, f(1) = 1, f'(0) = 0$。\n"
-            f"证明：关于【{kw}】，在开区间 $(0, 1)$ 内至少存在一点 $\\xi$，使得 $f''(\\xi) > 2$。"
+            f"数学三概率统计变式题（考点：{kw}）：\n"
+            f"设总体 X~N(μ,σ²)，(X1,…,Xn) 为容量 n=16 的简单随机样本，测得样本均值 x_bar=5.2，样本标准差 s=1.5。\n"
+            f"围绕考点【{kw}】，请按“原假设—检验统计量(t/χ²)—拒绝域—P值结论”四段式完成显著性水平 α=0.05 下的规范推导，并说明两类错误含义。"
+        )
+    elif subject == "math":
+        # [P0 修复·硬编码兜底题] 此前无论 kw 是什么都输出同一道中值定理题：
+        # 搜"泰勒展开"没命中会拿到中值定理题，比"没找到"更伤信任。
+        # 现改为考点驱动的开放式变式框架（仍明确标注自拟）。
+        q = (
+            f"【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】\n"
+            f"高等数学/线性代数变式题（考点：{kw}）：\n"
+            f"围绕考点【{kw}】，请写出其核心定义与定理成立条件，完成一道典型题目的"
+            f"规范推导，并列出该考点最常见的两个失分陷阱与规避方法。"
         )
     elif subject == "eng":
         q = (

@@ -97,16 +97,49 @@ ENG = resolve_dir("02-英语", r"02-英语")
 POL = resolve_dir("03-思想政治理论", r"03-思想政治理论")
 PRO = resolve_dir("04-专业课", r"04-专业课")
 
-SUBJECTS = [
-    {"key": "math", "name": "数学", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>", "color": "#2563eb", "dark": "#60a5fa",
-     "dir": MATH, "full": 150, "target": 110, "notes": "每日笔记"},
-    {"key": "eng", "name": "英语", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>", "color": "#e11d48", "dark": "#fb7185",
-     "dir": ENG, "full": 100, "target": 60, "notes": "每日笔记"},
-    {"key": "pol", "name": "政治", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>", "color": "#d97706", "dark": "#fbbf24",
-     "dir": POL, "full": 100, "target": 70, "notes": None},
-    {"key": "pro", "name": "专业课", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>", "color": "#059669", "dark": "#34d399",
-     "dir": PRO, "full": 150, "target": 120, "notes": "每日作业"},
-]
+_sp = _CONFIG.get("study_plan") if isinstance(_CONFIG.get("study_plan"), dict) else {}
+_exam_mode = _sp.get("exam_mode") or _CONFIG.get("exam_mode")
+_pro2_name = (_sp.get("pro2_name") or _CONFIG.get("pro2_name") or "").strip()
+_is_mode_c = _exam_mode == "mode_c" or _sp.get("pol_disabled") or _CONFIG.get("pol_disabled") or ("199" in str(_sp.get("pro_name", "")))
+_is_mode_b = _exam_mode == "mode_b" or bool(_pro2_name)
+_math_none = _is_mode_b or _is_mode_c or _sp.get("math_key") == "none" or _sp.get("math_name") == "不考数学"
+
+if _is_mode_c:
+    SUBJECTS = [
+        {"key": "pro", "name": _sp.get("pro_name") or "199管综", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>", "color": "#059669", "dark": "#34d399",
+         "dir": PRO, "full": 200, "target": 140, "notes": "每日作业"},
+        {"key": "eng", "name": _sp.get("eng_name") or "英语二", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>", "color": "#e11d48", "dark": "#fb7185",
+         "dir": ENG, "full": 100, "target": 70, "notes": "每日笔记"},
+    ]
+elif _is_mode_b:
+    SUBJECTS = [
+        {"key": "eng", "name": _sp.get("eng_name") or "英语", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>", "color": "#e11d48", "dark": "#fb7185",
+         "dir": ENG, "full": 100, "target": 65, "notes": "每日笔记"},
+        {"key": "pol", "name": "政治", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>", "color": "#d97706", "dark": "#fbbf24",
+         "dir": POL, "full": 100, "target": 70, "notes": None},
+        {"key": "pro", "name": _sp.get("pro_name") or "专业课一", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>", "color": "#059669", "dark": "#34d399",
+         "dir": PRO, "full": 150, "target": 125, "notes": "每日作业"},
+        {"key": "pro2", "name": _pro2_name or "专业课二", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z'/></svg>", "color": "#7c3aed", "dark": "#a78bfa",
+         "dir": PRO, "full": 150, "target": 125, "notes": "每日作业"},
+    ]
+else:
+    SUBJECTS = [
+        {"key": "math", "name": "数学", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>", "color": "#2563eb", "dark": "#60a5fa",
+         "dir": MATH, "full": 150, "target": 110, "notes": "每日笔记"},
+        {"key": "eng", "name": "英语", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>", "color": "#e11d48", "dark": "#fb7185",
+         "dir": ENG, "full": 100, "target": 60, "notes": "每日笔记"},
+        {"key": "pol", "name": "政治", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>", "color": "#d97706", "dark": "#fbbf24",
+         "dir": POL, "full": 100, "target": 70, "notes": None},
+        {"key": "pro", "name": "专业课", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>", "color": "#059669", "dark": "#34d399",
+         "dir": PRO, "full": 150, "target": 120, "notes": "每日作业"},
+    ]
+    # [P5 修复·math_key=none 贯穿] 不考数学时（math_key=none / math_name=不考数学，
+    # 或 mode_b 双专业课 / mode_c 管综），看板不得再渲染数学卡、数学雷达、数学必背
+    # 与数学指标。此前 _math_none 仅用于把数学 target 置 0，SUBJECTS/SECTIONS 里的
+    # math 条目仍在，文科看板因此保留数学卡与 52 个数学二考点。mode_b/mode_c 分支
+    # 本就不含 math 条目，此处过滤只影响纯 math_key=none 场景，不改变既有行为。
+    if _math_none:
+        SUBJECTS = [s for s in SUBJECTS if s["key"] != "math"]
 SECTIONS = {
     "math": [
         ("_状态/今日任务.md", None, "today", {}),
@@ -140,11 +173,24 @@ SECTIONS = {
     "pro": [
         ("_状态/今日任务.md", None, "today", {}),
         ("02_核心公式与考点速查模板.md", "核心概念", "memo", {"front": 0}),
+        # [P24 修复·重复抽卡] 此前同时配置「章节掌握度」与「掌握度」两条，
+        # 二者都会子串命中同一标题「二、章节掌握度雷达」，导致 weak 页签生成
+        # 两份完全相同的卡片组。保留更具体的「章节掌握度」，删除冗余短词。
         ("学情档案.md", "章节掌握度", "weak", {"front": 1}),
-        ("学情档案.md", "掌握度", "weak", {"front": 1}),
         ("学情档案.md", "错题重做队列", "weak", {"front": 1}),
         ("学情档案.md", "错因", "stat", {"label": 0, "value": 1}),
     ],
 }
+
+# [P5 修复·math_key=none 贯穿] 不考数学时一并移除数学板块，确保看板不再出现
+# 数学必背/数学雷达/数学指标（SUBJECTS 已在上面过滤掉 math）。
+if _math_none:
+    SECTIONS.pop("math", None)
+
+if _is_mode_b:
+    SECTIONS["pro2"] = [
+        ("_状态/今日任务_专业课二.md", None, "today", {}),
+        ("学情档案.md", "掌握度", "weak", {"front": 1}),
+    ]
 
 INDEX_HEADERS = {"#", "编号", "排名", "序号", "代码", "类", "no", "id"}

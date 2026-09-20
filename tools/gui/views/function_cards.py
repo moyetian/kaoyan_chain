@@ -36,12 +36,13 @@ def build(win) -> QScrollArea:
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setObjectName("CardScrollArea")
-    scroll.setMaximumHeight(200)
+    scroll.setMinimumHeight(196)
+    scroll.setMaximumHeight(224)
 
     container = QWidget()
     grid = QGridLayout(container)
-    grid.setSpacing(10)
-    grid.setContentsMargins(4, 4, 4, 4)
+    grid.setSpacing(12)
+    grid.setContentsMargins(8, 8, 8, 8)
 
     win._feature_buttons = []            # 对外契约名（自检脚本按此计数）
     win.feature_cards = []

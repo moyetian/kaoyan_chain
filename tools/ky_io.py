@@ -22,13 +22,15 @@
   这是本项目唯一引入的第三方 IO 依赖，且**不影响功能正确性**，仅影响多进程并发写同一文件时的互斥强度。
 """
 
+import hashlib
 import os
 import re
+import sys
 import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 
 PathLike = Union[str, "os.PathLike[str]", Path]
 
@@ -44,20 +46,63 @@ _ILLEGAL_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|\r\n\t\x00-\x1f]')
 # 保证任何写入路径（含未接入 PermissionManager 的旧命令）都被拦住。
 _READ_ONLY_MODE = False
 
+#: 同一份 ky_io.py 在本项目里会被加载成多个模块别名（``tools.ky_io`` 与 ``ky_io``，
+#: 取决于调用方是 ``from tools import ky_io`` 还是 ``from ky_io import ...``）。
+#: 它们是**互相独立的模块对象**，各自持有一份 ``_READ_ONLY_MODE``。
+_KY_IO_ALIASES = ("tools.ky_io", "ky_io")
+
 
 class PermissionDeniedError(RuntimeError):
     """只读模式下尝试写盘时抛出。"""
 
 
+def _sibling_modules() -> List[object]:
+    """返回当前进程中指向**同一份 ky_io.py** 的所有其它已加载模块别名。
+
+    以 ``__file__`` 而非模块名判定身份：只有真·同一份源码的别名才共享标志，
+    避免把同名但来自其它安装目录的模块误判成兄弟。
+    """
+    here = os.path.abspath(__file__)
+    self_mod = sys.modules.get(__name__)
+    out: List[object] = []
+    for name in _KY_IO_ALIASES:
+        mod = sys.modules.get(name)
+        if mod is None or mod is self_mod:
+            continue
+        f = getattr(mod, "__file__", None)
+        if f and os.path.abspath(f) == here:
+            out.append(mod)
+    return out
+
+
 def set_read_only_mode(enabled: bool) -> None:
-    """置位/取消全局严格只读模式（由 CLI 解析 --permission=safe 后调用）。"""
+    """置位/取消全局严格只读模式（由 CLI 解析 --permission=safe 后调用）。
+
+    [P0 修复·双导入] 必须**同步到同一份源码的所有模块别名**。此前只置自己那一份，
+    写入方若走另一个别名，``atomic_write_text`` 里的 ``guard_write`` 看到的仍是
+    ``False`` —— 闸门形同虚设（实测 ``ky mount`` 在 ``--permission=safe`` 下照样
+    改写 ``ky_config.json`` 与 ``AGENTS.md`` 并 exit=0）。
+    """
     global _READ_ONLY_MODE
     _READ_ONLY_MODE = bool(enabled)
+    for mod in _sibling_modules():
+        mod._READ_ONLY_MODE = bool(enabled)
 
 
 def is_read_only_mode() -> bool:
-    """当前是否处于严格只读模式。"""
-    return _READ_ONLY_MODE
+    """当前是否处于严格只读模式。
+
+    **fail-closed**：任一别名报告只读即视为只读。仅靠 ``set_read_only_mode``
+    同步一次不够 —— 若某个别名是在标志置位**之后**才首次被 import，它的
+    ``_READ_ONLY_MODE`` 会以模块初始值 ``False`` 起跑；此处跨别名判定 + 导入期
+    继承（见模块末尾的 ``_adopt_read_only_mode_from_aliases``）双重兜住。
+    """
+    if _READ_ONLY_MODE:
+        return True
+    for mod in _sibling_modules():
+        if getattr(mod, "_READ_ONLY_MODE", False):
+            return True
+    return False
 
 
 def guard_write(op: str, target: PathLike = "") -> None:
@@ -65,7 +110,7 @@ def guard_write(op: str, target: PathLike = "") -> None:
 
     op 用于在报错信息里说明被拦截的动作（如 "memory prune"、"写入报告"）。
     """
-    if _READ_ONLY_MODE:
+    if is_read_only_mode():
         where = f" -> {target}" if target else ""
         raise PermissionDeniedError(
             f"当前处于严格只读模式 (--permission=safe)，已拒绝非只读操作 [{op}]{where}")
@@ -86,6 +131,24 @@ _WINDOWS_RESERVED_NAMES = {
 # 现按路径缓存实例，使同进程嵌套写入安全通过（filelock 内部计数）。
 _LOCKS: Dict[str, object] = {}
 _LOCKS_GUARD = threading.Lock()
+
+# 锁文件必须在各进程间保持稳定，且不能在每次释放后删除：等待中的进程仍可能
+# 持有该路径的句柄。把锁集中到系统临时目录可避免在每个学习文件旁留下
+# ``*.lock``，同时不要求已安装的包目录可写。
+_LOCK_DIR = Path(tempfile.gettempdir()) / "kaoyan-study-chain" / "locks"
+
+
+def _lock_path_for(target: PathLike) -> Path:
+    """返回目标文件的稳定集中式锁路径。
+
+    Windows 路径大小写不敏感，统一 ``casefold``，确保不同写法仍争用同一把锁；
+    只把路径摘要写入临时目录，避免泄露用户目录或产生非法文件名。
+    """
+    resolved = str(Path(target).resolve(strict=False))
+    identity = resolved.casefold() if os.name == "nt" else resolved
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    _LOCK_DIR.mkdir(parents=True, exist_ok=True)
+    return _LOCK_DIR / f"{digest}.lock"
 
 
 def _get_file_lock(lock_path: Path):
@@ -196,8 +259,10 @@ def atomic_write_text(path: PathLike, text: str, *, encoding: str = "utf-8",
     parent = target.parent
     parent.mkdir(parents=True, exist_ok=True)
 
-    # 引入跨进程咨询锁（同进程同路径复用同一实例，保证可重入）
-    lock_path = target.with_suffix(target.suffix + ".lock")
+    # 引入跨进程咨询锁（同进程同路径复用同一实例，保证可重入）。
+    # FileLock 的锁文件是持久同步标识，不能在释放后主动 unlink；否则等待中的
+    # 进程可能绕过互斥。集中式摘要路径既保留同步语义，也不污染学习资料目录。
+    lock_path = _lock_path_for(target)
     lock = _get_file_lock(lock_path)
     if lock is None:
         import contextlib
@@ -313,3 +378,22 @@ def read_text_fallback(path: PathLike, encodings=("utf-8-sig", "utf-8", "gbk")) 
     if last_err is not None:
         raise last_err
     return p.read_text(encoding=encodings[0] if encodings else "utf-8")
+
+
+def _adopt_read_only_mode_from_aliases() -> None:
+    """模块导入时从已加载的兄弟别名继承只读标志。
+
+    覆盖的时序：``dispatch`` 先 ``set_read_only_mode(True)``，之后某个模块才
+    首次 ``import`` 另一个别名。新别名若以 ``False`` 起跑，它那条写入路径就会
+    绕过闸门；导入时主动继承即可闭合。
+    """
+    global _READ_ONLY_MODE
+    if _READ_ONLY_MODE:
+        return
+    for mod in _sibling_modules():
+        if getattr(mod, "_READ_ONLY_MODE", False):
+            _READ_ONLY_MODE = True
+            return
+
+
+_adopt_read_only_mode_from_aliases()

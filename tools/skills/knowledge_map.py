@@ -11,7 +11,9 @@
 
 import re
 import json
+import importlib
 from pathlib import Path
+from typing import Optional
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -22,13 +24,81 @@ except Exception:
         from tools.skills import error_logger
     except Exception:
         pass
-try:
-    from skills import get_subject_name
-except Exception:
+
+# ── 科目名解析 ────────────────────────────────────────────────────────────────
+# [P8 修复·双导入退化] 原实现在**模块导入期**执行 `from skills import get_subject_name`。
+# 本项目 tools 目录同样在 sys.path 上，于是 `skills` 与 `tools.skills` 会被当成两个
+# 不同的包各导入一份子模块；而 `skills/__init__.py` 把 `get_subject_name` 定义在
+# 子模块导入（含本模块）**之后**，本模块被先行导入时该名字尚不存在，ImportError
+# 被 except 吞掉后静默退化为返回通用名「专业课」的 lambda。
+# 后果：`ky map pro` 里 `"408" not in subj_name` 恒为真，408 考生被误报
+# 「考纲一致性告警」（实测 get_subject_name.__name__ == '<lambda>'）。
+#
+# 现改为：**调用时**惰性解析（届时两个包均已加载完成），并按权威优先级取科目名
+#   1) skills / tools.skills 的 get_subject_name（其内部读 ky_config.json 的 study_plan）
+#   2) 直接读 study_plan["{subject}_name"]（同一权威来源，不依赖包导入状态）
+#   3) 中性静态回退
+# 这样无论导入顺序如何、无论哪一个副本被使用，结果都一致且正确。
+
+
+#: 科目键别名归一（与 skills.get_subject_name 内部口径一致）
+_SUBJECT_KEY_ALIASES = {
+    "maths": "math", "数学": "math", "math1": "math", "math2": "math", "math3": "math",
+    "english": "eng", "英语": "eng", "eng1": "eng", "eng2": "eng",
+    "politics": "pol", "政治": "pol",
+    "major": "pro", "专业课": "pro",
+}
+
+
+def _subject_name_from_plan(subject: str) -> Optional[str]:
+    """直接从 ky_config.json 的 study_plan 读取科目全称（权威来源）。"""
     try:
-        from tools.skills import get_subject_name
+        cfg_file = ROOT / "ky_config.json"
+        if not cfg_file.exists():
+            return None
+        plan = (json.loads(cfg_file.read_text(encoding="utf-8")) or {}).get("study_plan") or {}
+        key = str(subject).strip().lower()
+        key = _SUBJECT_KEY_ALIASES.get(key, key)
+        for cand in (f"{key}_name", f"{subject}_name"):
+            name = str(plan.get(cand) or "").strip()
+            if name:
+                return name
+        return None
     except Exception:
-        get_subject_name = lambda s, d=None: SUBJECT_NAMES.get(s, s)
+        return None
+
+
+def _resolve_subject_name(subject: str, default: Optional[str] = None) -> str:
+    """按「权威来源优先」的顺序解析科目全称，不受双导入影响。
+
+    1) study_plan["{subject}_name"]（ky_config.json，报考科目全称的权威来源）
+    2) skills / tools.skills 的 get_subject_name（内部同样读 study_plan，作为兜底）
+    3) 中性静态回退
+    """
+    plan_name = _subject_name_from_plan(subject)
+    if plan_name:
+        return plan_name
+    for mod_name in ("skills", "tools.skills"):
+        try:
+            mod = importlib.import_module(mod_name)
+        except Exception:
+            continue
+        fn = getattr(mod, "get_subject_name", None)
+        if callable(fn):
+            try:
+                resolved = fn(subject, default)
+            except Exception:
+                continue
+            if resolved:
+                return resolved
+    if default is not None:
+        return default
+    return _SUBJECT_NAME_FALLBACK.get(subject, subject)
+
+
+def get_subject_name(subject_key: str, default: Optional[str] = None) -> str:
+    """兼容入口：惰性解析科目全称（见 _resolve_subject_name）。"""
+    return _resolve_subject_name(subject_key, default)
 
 SUBJECT_DIRS = {
     "math": "01-数学",
@@ -90,6 +160,13 @@ def _keyword_fragments(name):
 # [P3 修复·D9] 占位模板识别：新建档时生成的「考试大纲.md」含大量提示语占位行，
 # 例如「第一章：[请根据报考院校官网大纲填入…]」。旧逻辑会把占位行当成真实考点解析，
 # 于是图谱只剩 1 个考点、掌握率恒为 0%，对复习毫无指导意义且会误导考生。
+#
+# [R2-A2 修复·生成侧与判定侧标记不一致] P12 把占位文案改成全角「【待自填…】」后，
+# 下面这份**只认 ASCII 方括号**的 pattern 列表不再命中，占位大纲又被当成真实考点，
+# 重新产出「1 考点 / 0% 掌握率」的假图谱。现改为三层判定：
+#   1) 生成侧权威标记 PRO_PLACEHOLDER_MARKER（syllabus_manager，双导入两侧都试）；
+#   2) 全角/半角占位括号形态兜底；
+#   3) 既有「有效正文行数」启发式。
 _PLACEHOLDER_PATTERNS = (
     r"\[\s*请根据[^\]]*\]",
     r"\[\s*请填写[^\]]*\]",
@@ -97,21 +174,58 @@ _PLACEHOLDER_PATTERNS = (
     r"\[\s*待补充[^\]]*\]",
     r"\[\s*TODO[^\]]*\]",
     r"\[\s*示例[^\]]*\]",
+    r"\[\s*请输入[^\]]*\]",
     r"\[\s*\.\.\.[^\]]*\]",
+    # 全角方括号形态（P12 起生成侧使用的写法，如「【待自填】」「【请填写…】」）
+    r"【\s*待自填",
+    r"【\s*待填写",
+    r"【\s*待补充",
+    r"【\s*请根据",
+    r"【\s*请填写",
+    r"【\s*请输入",
+    r"【\s*示例",
+    r"【\s*\.\.\.",
 )
 _PLACEHOLDER_MIN_REAL_LINES = 5
+
+#: 取不到 syllabus_manager 时的兜底标记（与 PRO_PLACEHOLDER_MARKER 同值）
+_PLACEHOLDER_MARKER_FALLBACK = "【待自填"
+
+
+def _placeholder_marker() -> str:
+    """惰性取生成侧权威占位标记（双导入两侧都试，取不到则用内置兜底）。
+
+    生成侧 ``tools/syllabus_manager.py`` 定义 ``PRO_PLACEHOLDER_MARKER`` 作为单一事实源；
+    判定侧此前各写一份 pattern 列表，改文案就会漏判（R2-A2）。此处复用同一常量。
+    """
+    for mod_name in ("syllabus_manager", "tools.syllabus_manager"):
+        try:
+            mod = importlib.import_module(mod_name)
+        except Exception:
+            continue
+        marker = str(getattr(mod, "PRO_PLACEHOLDER_MARKER", "") or "")
+        if marker:
+            return marker
+    return _PLACEHOLDER_MARKER_FALLBACK
 
 
 def _is_placeholder_syllabus(txt):
     """判断考试大纲是否仍为未填写的占位模板（而非院校官方考纲）。
 
-    判定口径：剔除标题行、表格分隔行、空行后，统计「有效正文行」数量；
-    有效正文行 = 长度 ≥ 8 且不含任何占位括号标记。少于 5 行即视为占位模板。
+    判定口径（优先级从高到低）：
+    1. 命中生成侧显式占位标记（如「【待自填」）→ **直接判为占位**，不再被行数启发式
+       否决（占位正文常含 ≥5 行不含括号的说明行，会盖过 ``_PLACEHOLDER_MIN_REAL_LINES``）；
+    2. 剔除标题行、表格分隔行、空行后，统计「有效正文行」数量：有效正文行 = 长度 ≥ 8
+       且不含任何占位括号标记；少于 5 行即视为占位模板。
     """
     if not txt or not str(txt).strip():
         return True
+    text = str(txt)
+    marker = _placeholder_marker()
+    if marker and marker in text:
+        return True
     real_lines = 0
-    for line in str(txt).splitlines():
+    for line in text.splitlines():
         s = line.strip()
         if len(s) < 8:
             continue

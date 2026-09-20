@@ -16,6 +16,12 @@ QMainWindow, QWidget {
     font-family: {{font-family}};
 }
 
+/* 全局标签默认背景透明，彻底消除容器内的白色方块底色 */
+QLabel {
+    background-color: transparent;
+    color: {{fg}};
+}
+
 /* 键盘用户必须能看见焦点落在哪里（改造前全站 :focus 样式为 0 处） */
 *:focus {
     outline: {{focus-w}}px solid {{focus-ring}};
@@ -26,28 +32,37 @@ QMainWindow, QWidget {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {{surf}}, stop:1 {{surf2}});
     border-radius: {{radius}}px;
     border: 1px solid {{line}};
-    padding: {{pad}}px {{pad-lg}}px;
+    padding: {{pad}} {{pad-lg}};
+}
+
+#HeaderBar QLabel {
+    background-color: transparent;
 }
 
 #Countdown {
+    background-color: transparent;
     color: {{warn}};
     font-size: {{fs-lg}};
     font-weight: bold;
+    padding: 0 4px;
 }
 
 #HeaderTitle {
+    background-color: transparent;
     color: {{acc-soft}};
     font-size: {{fs-lg}};
     font-weight: bold;
 }
 
 #MetaLabel {
+    background-color: transparent;
     color: {{mut}};
     font-size: {{fs-sm}};
 }
 
 /* 次要状态文字（如微信检索对话框的状态行） */
 #StatusLabel {
+    background-color: transparent;
     color: {{mut}};
     font-size: {{fs-sm}};
 }
@@ -56,11 +71,16 @@ QMainWindow, QWidget {
     background-color: {{surf}};
     border: 1px solid {{line}};
     border-radius: {{radius-sm}}px;
+    padding: 2px;
+}
+
+#FunctionCard QLabel {
+    background-color: transparent;
 }
 
 #FunctionCard:hover {
     background-color: {{surf3}};
-    border: 1px solid {{acc}};
+    border: 1.5px solid {{acc}};
 }
 
 #FunctionCard:focus {
@@ -68,12 +88,14 @@ QMainWindow, QWidget {
 }
 
 #CardTitle {
+    background-color: transparent;
     color: {{acc-soft}};
     font-weight: bold;
     font-size: {{fs-base}};
 }
 
 #CardDesc {
+    background-color: transparent;
     color: {{mut}};
     font-size: {{fs-sm}};
 }
@@ -90,16 +112,22 @@ QMainWindow, QWidget {
     border-radius: {{radius-sm}}px;
 }
 
+#TaskRow QLabel {
+    background-color: transparent;
+}
+
 #TaskRow:hover {
     border: 1px solid {{acc}};
 }
 
 #TaskLabel {
+    background-color: transparent;
     color: {{fg}};
     font-size: {{fs-base}};
 }
 
 #TaskPct {
+    background-color: transparent;
     color: {{mut}};
     font-size: {{fs-sm}};
 }
@@ -110,8 +138,14 @@ QMainWindow, QWidget {
     color: {{acc-soft}};
     border: 1px solid {{acc-line}};
     border-radius: {{radius-sm}}px;
-    padding: {{pad-sm}}px {{pad}}px;
+    padding: {{pad-sm}} {{pad}};
     font-weight: 600;
+    font-size: {{fs-sm}};
+}
+
+#QuickPill:hover {
+    background-color: {{surf3}};
+    border: 1px solid {{acc}};
 }
 
 #ThemeToggle {
@@ -119,8 +153,47 @@ QMainWindow, QWidget {
     color: {{acc-soft}};
     border: 1px solid {{acc-line}};
     border-radius: {{radius-sm}}px;
-    padding: {{pad-sm}}px {{pad}}px;
+    padding: {{pad-sm}} {{pad}};
     font-size: {{fs-sm}};
+}
+
+#ThemeToggle:hover {
+    background-color: {{surf3}};
+    border: 1px solid {{acc}};
+}
+
+#SettingsBtn {
+    background-color: {{surf2}};
+    color: {{fg}};
+    border: 1px solid {{line}};
+    border-radius: {{radius-sm}}px;
+    padding: {{pad-sm}} {{pad}};
+    font-size: {{fs-sm}};
+}
+
+#SettingsBtn:hover {
+    background-color: {{surf3}};
+    border: 1px solid {{acc}};
+}
+
+#UploadBtn {
+    background-color: {{surf2}};
+    color: {{fg}};
+    border: 1px solid {{line}};
+    border-radius: {{radius-sm}}px;
+    padding: {{pad-sm}} {{pad}};
+    font-size: {{fs-sm}};
+    font-weight: 500;
+}
+
+#UploadBtn:hover {
+    background-color: {{surf3}};
+    color: {{acc-soft}};
+    border: 1px solid {{acc}};
+}
+
+#UploadBtn:pressed {
+    background-color: {{acc-sub}};
 }
 
 QProgressBar {
@@ -137,41 +210,68 @@ QProgressBar::chunk {
     border-radius: {{radius-sm}}px;
 }
 
+/* 标签页主体与 TabBar 隔离分层设计 */
+QTabWidget {
+    border: none;
+    background-color: transparent;
+}
+
 QTabWidget::pane {
     border: 1px solid {{line}};
     border-radius: {{radius-sm}}px;
     background-color: {{surf}};
+    top: -1px;
+    padding: 12px;
+}
+
+QTabWidget::tab-bar {
+    alignment: left;
+    left: 8px;
+}
+
+QTabBar {
+    background-color: transparent;
+    qproperty-drawBase: 0;
 }
 
 QTabBar::tab {
     background-color: {{surf2}};
     color: {{mut}};
-    padding: {{pad}}px {{pad-lg}}px;
+    padding: 9px 22px;
+    border: 1px solid {{line}};
     border-top-left-radius: {{radius-sm}}px;
     border-top-right-radius: {{radius-sm}}px;
-    margin-right: {{pad-sm}}px;
+    margin-right: 6px;
+    margin-top: 3px;
+    font-size: {{fs-base}};
     font-weight: 500;
+    min-height: 26px;
 }
 
 QTabBar::tab:selected {
-    background-color: {{acc}};
-    color: {{on-acc}};
+    background-color: {{surf}};
+    color: {{acc-soft}};
+    border: 1px solid {{line}};
+    border-bottom: 2px solid {{acc}};
     font-weight: bold;
+    margin-top: 0px;
 }
 
 QTabBar::tab:hover:!selected {
     background-color: {{surf3}};
     color: {{fg-strong}};
+    border: 1px solid {{line-strong}};
 }
 
 QPushButton {
     background-color: {{acc}};
     color: {{on-acc}};
-    border: none;
-    padding: {{pad}}px {{pad-lg}}px;
+    border: 1px solid {{acc-line}};
+    padding: {{pad}} {{pad-lg}};
     border-radius: {{radius-sm}}px;
     font-size: {{fs-base}};
     font-weight: 600;
+    min-height: 22px;
 }
 
 QPushButton:hover {
@@ -185,20 +285,34 @@ QPushButton:pressed {
 QPushButton:disabled {
     background-color: {{surf3}};
     color: {{mut}};
+    border: 1px solid {{line}};
+}
+
+/* 次要/轮廓按钮 */
+QPushButton#SecondaryBtn, QPushButton[secondary="true"] {
+    background-color: {{surf2}};
+    color: {{fg-strong}};
+    border: 1px solid {{line-strong}};
+}
+
+QPushButton#SecondaryBtn:hover, QPushButton[secondary="true"]:hover {
+    background-color: {{surf3}};
+    border: 1px solid {{acc}};
+    color: {{acc-soft}};
 }
 
 QLineEdit, QTextEdit, QPlainTextEdit {
     background-color: {{input-bg}};
     border: 1px solid {{line-strong}};
     border-radius: {{radius-sm}}px;
-    padding: {{pad}}px {{pad}}px;
+    padding: {{pad}} {{pad}};
     color: {{fg-strong}};
     font-size: {{fs-base}};
     selection-background-color: {{acc}};
 }
 
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
-    border: 1px solid {{acc}};
+    border: 1.5px solid {{acc}};
 }
 
 QTableWidget {
@@ -212,7 +326,7 @@ QTableWidget {
 QHeaderView::section {
     background-color: {{surf}};
     color: {{mut}};
-    padding: {{pad-sm}}px;
+    padding: {{pad-sm}};
     border: none;
     border-bottom: 1px solid {{line}};
     font-weight: bold;
@@ -249,5 +363,5 @@ QToolTip {
     background-color: {{surf3}};
     color: {{fg}};
     border: 1px solid {{line}};
-    padding: {{pad-sm}}px;
+    padding: {{pad-sm}};
 }

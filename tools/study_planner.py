@@ -167,13 +167,61 @@ def _brief_books(raw, max_items: int = 2) -> str:
     return "、".join(items[:max_items]) + f" 等 {len(items)} 份"
 
 
+def _material_phrase(raw, verb: str) -> str:
+    """今日任务「题源出处」短语：有真实白名单时引用，无资料时不引用白名单。
+
+    [P17 修复·无资料却派白名单刷题] 白名单为空时其默认值是一句
+    「暂未放置实体资料（私教严格按【…】官方考纲出题，严禁虚构书目）」的说明，
+    旧实现把整句塞进「精做白名单【…】20 道核心选择题自测」，读起来自相矛盾，
+    还等于让考生去刷一份不存在的资料。无资料时改为「按官方考纲{verb}」。
+    """
+    s = re.sub(r"^\[本地资料库已就绪\]:\s*", "", str(raw or "")).strip()
+    if not s or s == "不考数学" or s.startswith("暂未放置实体资料"):
+        return f"按官方考纲{verb}"
+    return f"{verb}白名单【{_brief_books(s)}】"
+
+
+def _load_existing_study_plan():
+    """读取工作区既有 ``ky_config.json`` 里的 ``study_plan``，供非交互向导作基线。
+
+    返回空字典表示「工作区尚无配置」（首次初始化），此时才允许回落内置默认值。
+    """
+    try:
+        cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    plan = cfg.get("study_plan")
+    return dict(plan) if isinstance(plan, dict) else {}
+
+
 def run_study_plan_wizard(interactive=True, preset_data=None):
     """
     运行个人定制化必考方案向导
     interactive: 是否交互式提问
     preset_data: 预填数据字典 (用于自动化测试或批量写入)
     """
-    plan = preset_data.copy() if preset_data else {}
+    _plan_from_existing = (not preset_data) and (not interactive)
+    if preset_data:
+        plan = preset_data.copy()
+    elif interactive:
+        plan = {}
+    else:
+        # [R2-D8 修复·非交互向导静默重置用户方案 · P0]
+        # 旧行为：``preset_data`` 缺省时 plan 恒为 {}，而本函数各维度的非交互分支
+        # 一律写作 ``plan.get(key, 内置默认值)``，于是「不带 preset 的非交互重跑」
+        # 等价于「把内置默认方案整份写回磁盘」—— 默认值是数学二 302 / 英语二 204 /
+        # 408 / 同济教材 / 8.5 小时，与考生真实方案毫无关系。
+        #
+        # 实锤（2026-09-19）：``tools/test_ky_suite.py:596`` 就是这条路径，且该脚本
+        # 被 README / CONTRIBUTING / CI 都写成「用户应执行的测试命令」，用户照做一次
+        # 自己的备考方案就被抹成默认模板。同一天并发跑了 4 份套件，把真实工作区的
+        # ky_config.json、根 AGENTS.md、四科 AGENTS.md / 00_*备考总规划.md /
+        # 考试大纲.md / _状态/今日任务.md 全部覆盖。
+        #
+        # 修法取舍：不在每个维度各加一次「已有值优先」判断（本仓库已因「同一件事
+        # 两处实现、只修一处」被坑两次），而是在唯一入口把基线换成工作区既有配置，
+        # 使非交互重跑天然幂等；仅当工作区尚无 ky_config.json 时才回落默认值。
+        plan = _load_existing_study_plan()
 
     print(f"""
 {C.CYAN}╭────────────────────────────────────────────────────────────────────────╮
@@ -307,6 +355,10 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
     print(colorize("【维度 3/7 · 📊 当下学情摸底与核心痛点诊断】", C.BOLD))
     print("  (让 AI 私教了解您的真实起点，从而针对性查漏，拒绝假大空)")
     if interactive:
+        # [收尾修复·编号错乱] 不考数学时跳过数学问项，后续编号动态前移
+        # （此前英语仍显示"2."、政治"3."，编号硬编码）。
+        _n_eng = 1 if m_choice == "none" else 2
+        _n_pol, _n_pro = _n_eng + 1, _n_eng + 2
         if m_choice != "none":
             math_baseline = input("  1. 数学目前摸底成绩/基础水平 [如: 50分 / 零基础 / 60分]: ").strip() or "待摸底 (零基础)"
             math_weakness = input("     数学最核心失分点/痛点 [如: 极限计算常错、证明不会、概念模糊]: ").strip() or "待首次自测诊断 (从零建立学情雷达)"
@@ -314,13 +366,13 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
             math_baseline = "不考数学"
             math_weakness = "无"
 
-        eng_baseline = input("  2. 英语目前摸底成绩/英语基础 [如: 四级450 / 六级未过 / 摸底50分]: ").strip() or "待摸底 (基础起步)"
+        eng_baseline = input(f"  {_n_eng}. 英语目前摸底成绩/英语基础 [如: 四级450 / 六级未过 / 摸底水平分]: ").strip() or "待摸底 (基础起步)"
         eng_weakness = input("     英语最核心失分点/痛点 [如: 长难句读不懂、阅读推断题失分多、作文写不出]: ").strip() or "待首次自测诊断 (从零建立长难句与题型雷达)"
 
-        pol_baseline = input("  3. 政治目前复习进度/摸底水平 [如: 未启动 / 已听网课 / 摸底40分]: ").strip() or "待摸底 (未启动)"
+        pol_baseline = input(f"  {_n_pol}. 政治目前复习进度/摸底水平 [如: 未启动 / 已听网课 / 摸底40分]: ").strip() or "待摸底 (未启动)"
         pol_weakness = input("     政治主要痛点 [如: 马原哲学原理混淆、多选常错、帽子词记不牢]: ").strip() or "待首次自测诊断 (从零建立选择题得分盘雷达)"
 
-        pro_baseline = input(f"  4. 专业课 ({pro_name}) 目前摸底水平 [如: 跨考零基础 / 摸底80分]: ").strip() or "待摸底 (基础起步)"
+        pro_baseline = input(f"  {_n_pro}. 专业课 ({pro_name}) 目前摸底水平 [如: 跨考零基础 / 摸底水平分]: ").strip() or "待摸底 (基础起步)"
         pro_weakness = input("     专业课核心失分点/痛点 [如: 核心考点未过、大题步骤不规范]: ").strip() or "待首次自测诊断 (从零建立专业课知识图谱雷达)"
     else:
         math_baseline = plan.get("math_baseline", "待摸底 (零基础)")
@@ -362,6 +414,9 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
     def_pro = make_default_book_label(local_pro_files, pro_name)
 
     if interactive:
+        # [P16 修复·向导编号跳号] 不考数学时跳过数学问项，维度 4 的编号动态前移
+        # （此前英语仍显示"2."、政治"3."、专业课"4."，缺 1 造成跳号）。
+        _n_book = 1 if m_choice == "none" else 2
         if m_choice != "none":
             hint_m = f"已扫描本地: {', '.join(local_math_files)}" if local_math_files else "本地参考资料文件夹暂未放入文件"
             print(f"  1. 数学权威资料 ({hint_m}):")
@@ -371,17 +426,17 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
             math_books = "不考数学"
 
         hint_e = f"已扫描本地: {', '.join(local_eng_files)}" if local_eng_files else "本地参考资料文件夹暂未放入文件"
-        print(f"  2. 英语权威资料 ({hint_e}):")
+        print(f"  {_n_book}. 英语权威资料 ({hint_e}):")
         in_e = input(f"     输入您手头资料 [直接回车沿用: {def_e}]: ").strip()
         eng_books = in_e or def_e
 
         hint_p = f"已扫描本地: {', '.join(local_pol_files)}" if local_pol_files else "本地参考资料文件夹暂未放入文件"
-        print(f"  3. 政治权威资料 ({hint_p}):")
+        print(f"  {_n_book + 1}. 政治权威资料 ({hint_p}):")
         in_p = input(f"     输入您手头资料 [直接回车沿用: {def_p}]: ").strip()
         pol_books = in_p or def_p
 
         hint_pro = f"已扫描本地: {', '.join(local_pro_files)}" if local_pro_files else "本地参考资料文件夹暂未放入文件"
-        print(f"  4. 专业课权威资料 ({hint_pro}):")
+        print(f"  {_n_book + 2}. 专业课权威资料 ({hint_pro}):")
         in_pro = input(f"     输入您手头资料 [直接回车沿用: {def_pro}]: ").strip()
         pro_books = in_pro or def_pro
     else:
@@ -401,26 +456,32 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
     if interactive:
         print("  请选择您日常的备考作息模式：")
         for k, p in ROUTINE_PRESETS.items():
-            print(f"    [{k}] {p['name']} (日均 {p['total_hours']}h: 数{p['math_hours']}h/英{p['eng_hours']}h/政{p['pol_hours']}h/专{p['pro_hours']}h)")
+            # [P16 修复·不考数学文案] 文科考生不应在作息菜单里看到「数3.0h」。
+            _math_seg = f"数{p['math_hours']}h/" if m_choice != "none" else ""
+            print(f"    [{k}] {p['name']} (日均 {p['total_hours']}h: {_math_seg}英{p['eng_hours']}h/政{p['pol_hours']}h/专{p['pro_hours']}h)")
         r_choice = input("  选择作息模式 (1/2/3) [默认 1]: ").strip() or "1"
         preset = ROUTINE_PRESETS.get(r_choice, ROUTINE_PRESETS["1"])
 
         tot_h_input = input(f"  1. 每日可用总时长(小时) [默认: {preset['total_hours']}]: ").strip()
         total_hours = float(tot_h_input) if tot_h_input else preset['total_hours']
 
+        # [P16 修复·向导编号跳号] 不考数学时跳过数学问项，英语/政治/专业课编号前移
+        # （此前固定为 3/4/5，缺 2 造成跳号）。
+        _n_hour = 2
         if m_choice != "none":
             m_h_input = input(f"  2. 数学每日分配小时 [默认: {preset['math_hours']}]: ").strip()
             math_hours = float(m_h_input) if m_h_input else preset['math_hours']
+            _n_hour = 3
         else:
             math_hours = 0.0
 
-        e_h_input = input(f"  3. 英语每日分配小时 [默认: {preset['eng_hours']}]: ").strip()
+        e_h_input = input(f"  {_n_hour}. 英语每日分配小时 [默认: {preset['eng_hours']}]: ").strip()
         eng_hours = float(e_h_input) if e_h_input else preset['eng_hours']
 
-        p_h_input = input(f"  4. 政治每日分配小时 [默认: {preset['pol_hours']}]: ").strip()
+        p_h_input = input(f"  {_n_hour + 1}. 政治每日分配小时 [默认: {preset['pol_hours']}]: ").strip()
         pol_hours = float(p_h_input) if p_h_input else preset['pol_hours']
 
-        pro_h_input = input(f"  5. 专业课每日分配小时 [默认: {preset['pro_hours']}]: ").strip()
+        pro_h_input = input(f"  {_n_hour + 2}. 专业课每日分配小时 [默认: {preset['pro_hours']}]: ").strip()
         pro_hours = float(pro_h_input) if pro_h_input else preset['pro_hours']
         
         default_rest_w = preset["rest_weekly"]
@@ -433,6 +494,37 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
         pro_hours = float(plan.get("pro_hours", 2.5))
         default_rest_w = plan.get("rest_weekly", "每周日晚 18:00~22:30 放松休整")
         default_rest_m = plan.get("rest_monthly", "每月最后一个周日全真闭卷模考与全科雷达复盘")
+
+    # [P9 修复·不考数学 total_hours 未重算] ROUTINE_PRESETS 三档的 total_hours 都
+    # 含数学（如全脱产 8.5h = 数3.0 + 英2.0 + 政1.0 + 专2.5）。不考数学时 math_hours
+    # 被置 0，若仍沿用含数学的预设默认总时长，就会出现「共 8.5 小时」但分科预算只有
+    # 5.5 小时的矛盾，并被写入 AGENTS.md 与看板。取舍：仅当 total_hours 仍等于某一档
+    # 含数学的预设默认值时，才重算为分科之和；用户显式输入的其它总时长一律保留，
+    # 以免覆盖考生真实的时间预算。
+    _math_disabled = (
+        plan.get("exam_mode") in ("mode_b", "no_math_dual_pro", "mode_c", "mgmt_199")
+        or bool(plan.get("pol_disabled"))
+        or bool(str(plan.get("pro2_name") or "").strip())
+        or str(plan.get("math_key", "")).lower() in {"none", "no", "不考数学"}
+        or plan.get("math_name") == "不考数学"
+    )
+    if _math_disabled:
+        # 非交互分支此前沿用 plan 里的 math_hours（可能仍是 3.0），与交互分支
+        # 不考数学时置 0 的口径不一致，此处统一归零。
+        math_hours = 0.0
+    _subj_sum = round(eng_hours + pol_hours + pro_hours, 2)
+    _preset_totals = {round(p["total_hours"], 2) for p in ROUTINE_PRESETS.values()}
+    # [R2-D8 补充·重算不得篡改既有配置] ``_plan_from_existing`` 为真表示这次
+    # 运行是「非交互重跑、基线取自工作区既有 ky_config.json」。此时 total_hours
+    # 是考生自己存下来的值（可能是「在职 6.5h 档 + 自定分科」这类合法组合），
+    # 不是预设默认残留，重算会把 6.5 悄悄改成 5.0 —— 于是「跑一次测试，每日
+    # 预算就变一次」，破坏幂等。仅当基线来自预设/显式 preset 时才重算。
+    if (not _plan_from_existing) and _math_disabled and round(total_hours, 2) in _preset_totals and abs(total_hours - _subj_sum) > 1e-9:
+        _stale_total = total_hours
+        total_hours = _subj_sum
+        print(colorize(
+            f"  [i] 不考数学：总时长已由含数学的预设 {_stale_total:g}h 重算为分科之和 {total_hours:g}h。",
+            C.YELLOW))
 
     plan["total_hours"] = total_hours
     plan["math_hours"] = math_hours
@@ -463,14 +555,17 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
         style_choice = input("  选择辅导风格 (1/2/3/4) [默认 1]: ").strip() or "1"
         style_name = STYLES.get(style_choice, STYLES["1"])[0]
 
+        # [P16 修复·向导编号跳号] 维度 7 同样存在不考数学时的编号跳号（英语仍显示
+        # "2."），此处与维度 3/4/5 统一改为动态连续编号。
+        _n_tgt = 1 if m_choice == "none" else 2
         if m_choice != "none":
             math_target = input("  1. 数学目标成绩 [默认: 110+ 分]: ").strip() or "110+ 分"
         else:
             math_target = "不考数学"
-        eng_target = input("  2. 英语目标成绩 [默认: 65+ 分]: ").strip() or "65+ 分"
-        pol_target = input("  3. 政治目标成绩 [默认: 70+ 分]: ").strip() or "70+ 分"
-        pro_target = input(f"  4. 专业课目标成绩 [默认: 120-130 分]: ").strip() or "120-130 分"
-        total_target = input("  5. 初试总分目标 [默认: 370+ 分]: ").strip() or "370+ 分"
+        eng_target = input(f"  {_n_tgt}. 英语目标成绩 [默认: 65+ 分]: ").strip() or "65+ 分"
+        pol_target = input(f"  {_n_tgt + 1}. 政治目标成绩 [默认: 70+ 分]: ").strip() or "70+ 分"
+        pro_target = input(f"  {_n_tgt + 2}. 专业课目标成绩 [默认: 120-130 分]: ").strip() or "120-130 分"
+        total_target = input(f"  {_n_tgt + 3}. 初试总分目标 [默认: 370+ 分]: ").strip() or "370+ 分"
     else:
         style_name = plan.get("style_name", STYLES["1"][0])
         math_target = plan.get("math_target", "110+ 分")
@@ -505,22 +600,37 @@ def generate_expert_diagnostic_strategy(plan):
     m_w = plan.get("math_weakness", "计算失误")
     e_w = plan.get("eng_weakness", "长难句拆解")
     p_w = plan.get("pol_weakness", "马原多选题")
-    pro_w = plan.get("pro_weakness", "核心算法设计")
+    pro_w = plan.get("pro_weakness", "核心考点掌握")
 
-    strategy_md = f"""### 1. 【{m_name}】专属痛点攻坚战术（针对：{m_w}）
+    # [文科适配·数学战术串味] 不考数学考生此前会收到一整屏数学战术
+    # （"【不考数学】专属痛点攻坚战术（针对：无）…求导验算、折半检验法"）。
+    # 现跳过数学节，英/政/专序号动态前移。
+    math_disabled = (str(plan.get("math_key", "")).lower()
+                     in {"none", "no", "不考数学"}
+                     or plan.get("math_name") == "不考数学")
+    if math_disabled:
+        # 数学节替换为一句话说明，英/政/专序号前移为 1/2/3
+        _n_math, _n_eng, _n_pol, _n_pro = 0, 1, 2, 3
+        math_section = ("### 特别说明：本方案【不考数学】（math_key=none），"
+                        "不安排任何数学复习战术，请将精力集中于英语、政治与专业课。\n\n")
+    else:
+        _n_math, _n_eng, _n_pol, _n_pro = 1, 2, 3, 4
+        math_section = f"""### {_n_math}. 【{m_name}】专属痛点攻坚战术（针对：{m_w}）
 - **核心病因诊断**：该失分点通常源于基本定理适用条件理解不透彻或草稿推导未分步验证，导致推导卡壳或非智力因素丢分。
 - **阶段攻坚处方**：
   1. 梳理核心公式与定理成立边界，强化几何直观与物理背景理解；
   2. 解答题推行「采分点分步书写规范」，关键推导必须标明定理依据，杜绝跳步；
   3. 草稿纸建立「折半检验法」，关键求导与化简实时反向求导验算，将计算失误率压缩至 0。
 
-### 2. 【{e_name}】专属痛点攻坚战术（针对：{e_w}）
+"""
+
+    strategy_md = f"""{math_section}### {_n_eng}. 【{e_name}】专属痛点攻坚战术（针对：{e_w}）
 - **核心病因诊断**：长难句阅读与阅读理解失分主因是语法骨架不清晰、被修饰成分干扰主干抓取，以及受命题人三大典型干扰陷阱（偷换概念、因果倒置、主观过度推断）影响。
 - **阶段攻坚处方**：
   1. 执行「四步搭积木拆解法」：先找核心谓语动词，再划从句引导词，括号括起非谓语与介词短语修饰成分，直击主谓宾；
   2. 精析历年真题阅读原文对应句，建立选项「同义替换」与「反向排除」双重证据链，做到选有据、排有理。
 
-### 3. 【思想政治理论】专属痛点攻坚战术（针对：{p_w}）
+### {_n_pol}. 【思想政治理论】专属痛点攻坚战术（针对：{p_w}）
 - **核心病因诊断**：多选题得分率低往往由于马原哲学概念边界模糊、混淆不同帽子词（根本原因/根本保证/直接原因/首要前提）与时政核心提法。
 - **阶段攻坚处方**：
   1. 梳理唯物辩证法与认识论核心框架图，彻底吃透矛盾同一性与斗争性、真理与价值对立统一；
@@ -537,7 +647,8 @@ def generate_expert_diagnostic_strategy(plan):
         pro_diag = "专业课核心系统时域/频域/复频域变换（傅里叶变换、拉普拉斯变换、Z变换）与微分/差分方程解算时，概念理解不透或代数推导跳步，导致采分点流失。"
         pro_sol = """  1. 严格遵循自命题大纲核心推导与阅卷采分规范：① 规范写出对应变换公式或微分/差分系统方程；② 详细展开代数化简与收敛域/收敛边界条件判定；③ 最终给出清晰指标或系统响应函数并复核因果稳定性；
   2. 紧扣高校自命题真题风格，吃透高频大题模型，规范专业术语与推导步骤，杜绝计算失误。"""
-    elif any(k in p_lower for k in ("法硕", "管理", "经济", "教育", "心理", "中文", "新闻", "历史")):
+    elif any(k in p_lower for k in ("法硕", "管理", "经济", "教育", "心理", "中文", "新闻", "历史",
+                                        "哲学", "马克思", "政治", "思政", "法学", "文学", "艺术")):
         pro_diag = "专业课论述大题缺乏学科经典理论框架支撑，分析流于表面，缺少学术前沿观点与踩分关键词。"
         pro_sol = """  1. 严格训练高分论述题框架三步法：① 核心概念精准界定；② 多维度理论模型与现实案例结合展开；③ 归纳总结并引申学科前沿发展；
   2. 紧扣目标院校自命题历年真题脉络，熟记专业术语，拒绝空泛口语表达。"""
@@ -548,7 +659,7 @@ def generate_expert_diagnostic_strategy(plan):
 
     strategy_md += f"""
 
-### 4. 【{pro_name}】专属痛点攻坚战术（针对：{pro_w}）
+### {_n_pro}. 【{pro_name}】专属痛点攻坚战术（针对：{pro_w}）
 - **核心病因诊断**：{pro_diag}
 - **阶段攻坚处方**：
 {pro_sol}"""
@@ -567,6 +678,24 @@ def run_ai_study_plan_generation(plan, interactive=True):
 
     api_key = cfg.get("api_key", "").strip()
 
+    # [文科适配·AI 提示词数学串味] 不考数学时，提示词里的数学预算/白名单/
+    # 痛点行全部替换为不考数学声明，并追加硬约束（否则 LLM 照样输出数学战术）。
+    _math_off = (str(plan.get("math_key", "")).lower()
+                 in {"none", "no", "不考数学"}
+                 or plan.get("math_name") == "不考数学")
+    if _math_off:
+        _math_budget = "数学: 不考数学（0h）"
+        _math_books_line = "  * 数学: 不考数学"
+        _math_gap_line = "  * 数学：不考数学"
+        _math_guide = "（考生不考数学，严禁输出任何数学复习战术与数学时间分配）"
+        _step1_text = "正在跳过【数学】（本方案不考数学），聚焦英语/政治/专业课..."
+    else:
+        _math_budget = f"数学: {plan.get('math_hours')}h"
+        _math_books_line = f"  * 数学: {plan.get('math_books')}"
+        _math_gap_line = f"  * 数学：摸底 {plan.get('math_baseline')}，核心痛点【{plan.get('math_weakness')}】"
+        _math_guide = ""
+        _step1_text = f"正在对【数学】薄弱点「{plan.get('math_weakness')}」进行命题归因与提分战术设计..."
+
     if interactive:
         print(colorize("""
 ╭────────────────────────────────────────────────────────────────────────╮
@@ -575,7 +704,7 @@ def run_ai_study_plan_generation(plan, interactive=True):
 ╰────────────────────────────────────────────────────────────────────────╯
 """, C.CYAN))
         import time
-        print(colorize(f"  [1/3] 正在对【数学】薄弱点「{plan.get('math_weakness')}」进行命题归因与提分战术设计...", C.CYAN))
+        print(colorize(f"  [1/3] {_step1_text}", C.CYAN))
         time.sleep(0.2)
         print(colorize(f"  [2/3] 正在对【英语/政治/专业课】核心失分盲区进行靶向突破与时间切分...", C.CYAN))
         time.sleep(0.2)
@@ -591,21 +720,21 @@ def run_ai_study_plan_generation(plan, interactive=True):
 - 初试日期：{plan.get('exam_date')} (倒计时 {plan.get('days_left')} 天)
 - 当前阶段：{plan.get('stage_name')}
 - 辅导风格：{plan.get('style_name')}
-- 每日时间预算：{plan.get('total_hours')} 小时 (数学: {plan.get('math_hours')}h / 英语: {plan.get('eng_hours')}h / 政治: {plan.get('pol_hours')}h / 专业课: {plan.get('pro_hours')}h)
+- 每日时间预算：{plan.get('total_hours')} 小时 ({_math_budget} / 英语: {plan.get('eng_hours')}h / 政治: {plan.get('pol_hours')}h / 专业课: {plan.get('pro_hours')}h)
 - 科学作息：每周 {plan.get('rest_weekly')}；每月 {plan.get('rest_monthly')}
 - 真实备考资料白名单（严禁虚构）：
-  * 数学: {plan.get('math_books')}
+{_math_books_line}
   * 英语: {plan.get('eng_books')}
   * 政治: {plan.get('pol_books')}
   * 专业课: {plan.get('pro_books')}
 - 核心学情与薄弱痛点：
-  * 数学：摸底 {plan.get('math_baseline')}，核心痛点【{plan.get('math_weakness')}】
+{_math_gap_line}
   * 英语：摸底 {plan.get('eng_baseline')}，核心痛点【{plan.get('eng_weakness')}】
   * 政治：摸底 {plan.get('pol_baseline')}，核心痛点【{plan.get('pol_weakness')}】
   * 专业课：摸底 {plan.get('pro_baseline')}，核心痛点【{plan.get('pro_weakness')}】
 
-请为该学员输出严谨务实、直击痛点的《个人专属考研备考方案与首日突破任务单》：
-1. 【全科提分战略定位与痛点攻坚指南】：针对数学【{plan.get('math_weakness')}】、英语【{plan.get('eng_weakness')}】、政治【{plan.get('pol_weakness')}】、专业课【{plan.get('pro_weakness')}】逐一给出实操破局战术与步骤规范；
+请为该学员输出严谨务实、直击痛点的《个人专属考研备考方案与首日突破任务单》{_math_guide}：
+1. 【全科提分战略定位与痛点攻坚指南】：针对{('数学【' + str(plan.get('math_weakness')) + '】、') if not _math_off else ''}英语【{plan.get('eng_weakness')}】、政治【{plan.get('pol_weakness')}】、专业课【{plan.get('pro_weakness')}】逐一给出实操破局战术与步骤规范；
 2. 【各科阶段推进里程碑与每日时间切分指导】：结合倒计时 {plan.get('days_left')} 天与当前阶段，明确各科在当前阶段的核心突破重点；
 3. 【今日（Day 1）四科针对性任务清单】：精确到具体攻坚知识点、练习题型、预计分钟数与自测动作。
 要求：逻辑严密、直击痛点，严禁空泛套话！"""
@@ -620,7 +749,8 @@ def run_ai_study_plan_generation(plan, interactive=True):
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}",
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Kaoyan-Study-Chain/1.0",
-                "Accept": "application/json"
+                "Accept": "application/json",
+                "Connection": "close"
             }
             messages = [
                 {"role": "system", "content": "你是一位深谙中国研究生入学考试命题规律、提分导向的考研全科专属总教练。请根据学员给出的 7 大维度个性化学情，输出严密、求真务实、直击薄弱项痛点的深度备考战略与任务清单。严禁虚构书籍或空泛套话。"},
@@ -665,6 +795,28 @@ def run_ai_study_plan_generation(plan, interactive=True):
             print()
 
     return ai_generated_text
+
+def _default_active_subject_for_plan(plan):
+    """不考数学时给出应默认激活的科目；考数学则返回 None（不改动）。
+
+    [P4 修复·不考数学默认激活数学私教] ``apply_study_plan`` 此前不写
+    ``active_subject``，全仓 10+ 处 ``cfg.get("active_subject", "math")`` 都会回退
+    成 math，导致文科（不考数学）考生一启动就进入「数学专属私教 · 不考数学 冲刺」，
+    还被提示 ``/calc 验算数学``。此处按分科预算取第一个有安排的科目（通常为英语）。
+    只改写入端，不动那 10+ 处读取点的默认值。
+    """
+    math_off = (str(plan.get("math_key", "")).lower() in {"none", "no", "不考数学"}
+                or plan.get("math_name") == "不考数学")
+    if not math_off:
+        return None
+    for key in ("eng", "pol", "pro"):
+        try:
+            if float(plan.get(f"{key}_hours", 0) or 0) > 0:
+                return key
+        except (TypeError, ValueError):
+            continue
+    return "eng"
+
 
 def apply_study_plan(plan, interactive=True):
     """将定制化方案持久化到 AGENTS.md、各科文件与配置文件中"""
@@ -741,7 +893,7 @@ def apply_study_plan(plan, interactive=True):
   - 专业课: `{plan.get('pro_books')}`
 - **核心薄弱诊断与攻坚防线**:
   - 数学薄弱点: `{plan.get('math_weakness', '导数中值定理、计算失误')}`
-  - 英语薄弱点: `{plan.get('eng_weakness', '长难句主干速抓、细节定位')}`
+  - 英语薄弱点: `{plan.get('eng_weakness', '待诊断薄弱点、细节定位')}`
   - 政治薄弱点: `{plan.get('pol_weakness', '马原唯物辩证法、多选题漏选')}`
   - 专业课薄弱点: `{plan.get('pro_weakness', '核心算法设计与证明步骤')}`
 """
@@ -767,6 +919,13 @@ def apply_study_plan(plan, interactive=True):
     # [P0 修复·风格单一真源] coaching_style 与 study_plan.style_name 必须同步写入。
     # 此前向导只写 style_name，而 TUI/CLI 读顶层 coaching_style，三端显示互相矛盾。
     cfg["coaching_style"] = plan.get("style_name", cfg.get("coaching_style", ""))
+    # [P4 修复·不考数学默认激活数学私教] 仅在当前未指定 active_subject（或仍停留在
+    # math）时兜底为第一个有安排的科目，避免覆盖考生此前手动选定的科目。
+    _cur_active = str(cfg.get("active_subject") or "").strip().lower()
+    if _cur_active in ("", "math"):
+        _fallback_subject = _default_active_subject_for_plan(plan)
+        if _fallback_subject:
+            cfg["active_subject"] = _fallback_subject
     cfg["relief_mode_active"] = False
     atomic_write_text(CONFIG_FILE, json.dumps(cfg, ensure_ascii=False, indent=2))
 
@@ -828,8 +987,50 @@ def _safe_write_today_task(task_file: Path, today_str: str, content: str) -> str
     return "已覆盖（非同日任务）"
 
 
-def generate_plan_and_today_files(plan, ai_strategy=None):
+def _generate_subject_task_content(subject_key: str, subject_display: str, plan: dict, today_str: str, default_template: str, workspace_root=None) -> str:
+    """如果配置了大模型，调用 LLM 结合学员考研目标院校、专业与痛点生成深度定制的今日任务清单；未配置或调用失败则优雅降级为内置模板"""
+    try:
+        try:
+            from tools.llm_client import is_llm_configured, chat_completion
+        except ImportError:
+            from llm_client import is_llm_configured, chat_completion
+
+        ws = Path(workspace_root) if workspace_root else ROOT
+        if is_llm_configured(workspace_root=ws):
+            stage = plan.get("stage_name", "强化题型攻坚阶段")
+            days_left = plan.get("days_left", 90)
+            school = plan.get("school", "目标院校")
+            major = plan.get("major", "目标专业")
+            weakness = plan.get(f"{subject_key}_weakness", "基础薄弱与综合题推导")
+            hours = float(plan.get(f"{subject_key}_hours", 2.0))
+            minutes = max(15, int(hours * 60))
+
+            prompt = (
+                f"你是一位资深中国研究生入学考试专属私教总教练。\n"
+                f"学员报考院校：{school}，报考专业：{major}。\n"
+                f"初试倒计时：{days_left} 天，当前备考阶段：{stage}。\n"
+                f"当前科目：{subject_display}，今日精力预算：{minutes} 分钟。\n"
+                f"该科目当前核心薄弱痛点：{weakness}。\n\n"
+                f"请为该学员生成今日该科目的专业学习任务 Markdown 内容。\n"
+                f"格式规范：\n"
+                f"1. 首行必须为：# 今日{subject_display}任务 ({today_str})\n"
+                f"2. 次行引用块：> 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage} ｜ 今日目标用时：{minutes} 分钟\n"
+                f"3. 任务表格必须为标准 4 列：| 模块 | 任务内容 | 预计用时 | 完成状态 |\n"
+                f"4. 包含 3 到 4 个具体任务行（针对该痛点的拆解、精练与反思），预计用时之和约为 {minutes} 分钟，状态为 [ ]。\n"
+                f"5. 末尾附一两句私教提示与终端口令建议。\n"
+                f"请直接输出 Markdown 内容，勿添加其他外层废话。"
+            )
+            resp = chat_completion(prompt, workspace_root=ws, timeout=12.0)
+            if resp and ("# 今日" in resp or "# " in resp) and "| 模块 |" in resp:
+                return resp.strip()
+    except Exception:
+        pass
+    return default_template
+
+
+def generate_plan_and_today_files(plan, ai_strategy=None, workspace_root=None):
     """根据向导结果全自动生成各科总规划文件与今日真实任务清单"""
+    ws = Path(workspace_root) if workspace_root else ROOT
     today_str = datetime.now().strftime("%Y-%m-%d")
     days_left = plan.get("days_left", 0)
     stage_name = plan.get("stage_name", "强化题型攻坚阶段")
@@ -840,88 +1041,112 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
     m_n = plan.get("math_name", "数学")
     e_n = plan.get("eng_name", "英语")
     pro_n = plan.get("pro_name", "专业课")
+    pro2_n = plan.get("pro2_name", "").strip()
 
-    m_h = float(plan.get("math_hours", 3.0))
+    exam_mode = plan.get("exam_mode")
+    is_mode_c = exam_mode in ("mode_c", "mgmt_199") or plan.get("pol_disabled") or ("199" in str(pro_n))
+    is_mode_b = exam_mode in ("mode_b", "no_math_dual_pro") or bool(pro2_n)
+
+    math_disabled = is_mode_b or is_mode_c or str(plan.get("math_key", "")).lower() in {"none", "no", "不考数学"} or m_n == "不考数学"
+    m_h = 0.0 if math_disabled else float(plan.get("math_hours", 3.0))
     e_h = float(plan.get("eng_hours", 2.0))
-    p_h = float(plan.get("pol_hours", 1.0))
+    p_h = 0.0 if is_mode_c else float(plan.get("pol_hours", 1.0))
     pro_h = float(plan.get("pro_hours", 2.5))
+    pro2_h = float(plan.get("pro2_hours", 2.0))
+
+    school_name = plan.get('school', '目标院校')
+    major_name = plan.get('major', '报考专业')
 
     # 1. 生成 00_考研全科总战役规划.md
-    root_plan_file = ROOT / "00_考研全科总战役规划.md"
-    root_plan_content = f"""# 🎓 考研全科总战役规划书 · 个人定制专属版
+    root_plan_file = ws / "00_考研全科总战役规划.md"
 
-> **生成时间**：{datetime.now().strftime("%Y-%m-%d %H:%M")} ｜ **初试倒计时**：{days_left} 天 ｜ **当前战役阶段**：{stage_name}
+    if is_mode_c:
+        table_rows = f"""| **{pro_n}** | {plan.get('pro_baseline', '120分')} | **{plan.get('pro_target', '140+ 分')}** | {pro_h} 小时 ({int(pro_h*60)}m) | 攻克【{plan.get('pro_weakness', '初数与逻辑综合')}】，199联考三合一综合能力 |
+| **{e_n}** | {plan.get('eng_baseline', '50分')} | **{plan.get('eng_target', '70+ 分')}** | {e_h} 小时 ({int(e_h*60)}m) | 攻克【{plan.get('eng_weakness', '长难句主干拆解')}】，搭积木拆解，定位阅读选项逻辑 |
+| **合计** | [摸底总分] | **{plan.get('total_target', '215+ 分')}** | {plan.get('total_hours', 6.0)} 小时 | **199联考总分300分，初试不考政治与统考数学** |"""
+        books_rows = f"""- **199管综权威资料**：`{plan.get('pro_books')}`\n- **英语权威资料**：`{plan.get('eng_books')}`"""
+        budget_row = f"- **每日精力预算**：{plan.get('total_hours', 6.0)} 小时 (199管综 {pro_h}h / 英语 {e_h}h)"
+    elif is_mode_b:
+        table_rows = f"""| **科目一：不考数学** | 不考数学 | **不考数学** | 0.0 小时 (0m) | 攻克必考核心题型，严防超纲，规避计算失误，步骤规范化 |
+| **{e_n}** | {plan.get('eng_baseline', '50分')} | **{plan.get('eng_target', '65+ 分')}** | {e_h} 小时 ({int(e_h*60)}m) | 攻克【{plan.get('eng_weakness', '长难句主干拆解')}】，搭积木拆解，定位阅读选项逻辑 |
+| **思想政治理论** | {plan.get('pol_baseline', '50分')} | **{plan.get('pol_target', '70+ 分')}** | {p_h} 小时 ({int(p_h*60)}m) | 攻克【{plan.get('pol_weakness', '马原多选题')}】，单选拿满，帽子词秒杀 |
+| **{pro_n}** | {plan.get('pro_baseline', '80分')} | **{plan.get('pro_target', '120-130 分')}** | {pro_h} 小时 ({int(pro_h*60)}m) | 攻克【{plan.get('pro_weakness', '专业课一核心重点')}】，权威教材体系+真题深度解剖 |
+| **{pro2_n or '专业课二'}** | {plan.get('pro2_baseline', '80分')} | **{plan.get('pro2_target', '120-130 分')}** | {pro2_h} 小时 ({int(pro2_h*60)}m) | 攻克【{plan.get('pro2_weakness', '专业课二论述框架')}】，第二门自命题考纲深化推导与背诵闭环 |
+| **合计** | [摸底总分] | **{plan.get('total_target', '375+ 分')}** | {plan.get('total_hours', 7.0)} 小时 | **稳扎稳打拿牢核心得分盘，拒绝偏难怪题** |"""
+        books_rows = f"""- **英语权威资料**：`{plan.get('eng_books')}`\n- **政治权威资料**：`{plan.get('pol_books')}`\n- **专业课一权威资料**：`{plan.get('pro_books')}`\n- **专业课二权威资料**：`{plan.get('pro2_books') or plan.get('pro_books')}`"""
+        budget_row = f"- **每日精力预算**：{plan.get('total_hours', 7.0)} 小时 (英语 {e_h}h / 政治 {p_h}h / 专业课一 {pro_h}h / 专业课二 {pro2_h}h)"
+    else:
+        m_part = f"| **{m_n}** | {plan.get('math_baseline', '60分')} | **{plan.get('math_target', '110+ 分')}** | {m_h} 小时 ({int(m_h*60)}m) | 重点攻克【{plan.get('math_weakness', '计算失误')}】，规避失误，步骤规范化 |\n" if not math_disabled else ""
+        table_rows = f"""{m_part}| **{e_n}** | {plan.get('eng_baseline', '50分')} | **{plan.get('eng_target', '65+ 分')}** | {e_h} 小时 ({int(e_h*60)}m) | 攻克【{plan.get('eng_weakness', '长难句主干拆解')}】，搭积木拆解，定位阅读选项逻辑 |
+| **思想政治理论** | {plan.get('pol_baseline', '40分')} | **{plan.get('pol_target', '70+ 分')}** | {p_h} 小时 ({int(p_h*60)}m) | 攻克【{plan.get('pol_weakness', '马原多选题')}】，单选拿满，帽子词秒杀 |
+| **{pro_n}** | {plan.get('pro_baseline', '80分')} | **{plan.get('pro_target', '120-130 分')}** | {pro_h} 小时 ({int(pro_h*60)}m) | 攻克【{plan.get('pro_weakness', '核心算法设计')}】，权威教材体系+真题深度解剖 |
+| **合计** | [摸底总分] | **{plan.get('total_target', '370+ 分')}** | {plan.get('total_hours', 8.5)} 小时 | **稳扎稳打拿牢核心得分盘，拒绝偏难怪题** |"""
+        m_b = f"- **数学权威资料**：`{plan.get('math_books')}`\n" if not math_disabled else ""
+        books_rows = f"""{m_b}- **英语权威资料**：`{plan.get('eng_books')}`\n- **政治权威资料**：`{plan.get('pol_books')}`\n- **专业课权威资料**：`{plan.get('pro_books')}`"""
+        budget_row = f"- **每日精力预算**：{plan.get('total_hours', 8.5)} 小时 (英语 {e_h}h / 政治 {p_h}h / 专业课 {pro_h}h)" if math_disabled else f"- **每日精力预算**：{plan.get('total_hours', 8.5)} 小时 (数学 {m_h}h / 英语 {e_h}h / 政治 {p_h}h / 专业课 {pro_h}h)"
+
+    root_plan_content = f"""# {school_name} {major_name} · 考研全科总战役规划与提分矩阵
+
+> 本方案由 AI 私教中枢依据你的学情摸底、权威参考书白名单与备考作息全自动推演生成。
+> 严防超纲，白名单出题，数据已同步至各科 AGENTS.md 与看板。
 
 ---
 
-## 🎯 一、战役总目标与提分矩阵
+## 🎯 一、战役目标与提分矩阵
 
-- **目标院校与专业**：`{plan.get('school', '目标院校')}` · `{plan.get('major', '报考专业')}`
+- **目标院校**：`{school_name}`
+- **报考专业**：`{major_name}`
+- **备考阶段**：`{stage_name}` (倒计时约 {days_left} 天)
 - **研考初试日期**：`{plan.get('exam_date') or _FALLBACK_EXAM_DATE}`
 - **初试总分目标**：`{plan.get('total_target', '370+ 分')}`
 - **当前激活辅导风格**：`{plan.get('style_name', STYLES['1'][0])}`
 
 | 科目 | 摸底/基准分 | 目标成绩 | 每日时间预算 | 核心薄弱防线与攻坚策略 |
 |---|---|---|---|---|
-| **{m_n}** | {plan.get('math_baseline', '60分')} | **{plan.get('math_target', '110+ 分')}** | {m_h} 小时 ({int(m_h*60)}m) | 重点攻克【{plan.get('math_weakness', '计算失误')}】，规避失误，步骤规范化 |
-| **{e_n}** | {plan.get('eng_baseline', '50分')} | **{plan.get('eng_target', '65+ 分')}** | {e_h} 小时 ({int(e_h*60)}m) | 攻克【{plan.get('eng_weakness', '长难句主干拆解')}】，搭积木拆解，定位阅读选项逻辑 |
-| **思想政治理论** | {plan.get('pol_baseline', '40分')} | **{plan.get('pol_target', '70+ 分')}** | {p_h} 小时 ({int(p_h*60)}m) | 攻克【{plan.get('pol_weakness', '马原多选题')}】，单选拿满，帽子词秒杀 |
-| **{pro_n}** | {plan.get('pro_baseline', '80分')} | **{plan.get('pro_target', '120-130 分')}** | {pro_h} 小时 ({int(pro_h*60)}m) | 攻克【{plan.get('pro_weakness', '核心算法设计')}】，权威教材体系+真题深度解剖 |
-| **合计** | [摸底总分] | **{plan.get('total_target', '370+ 分')}** | {plan.get('total_hours', 8.5)} 小时 | **稳扎稳打拿牢核心得分盘，拒绝偏难怪题** |
+{table_rows}
 
 ---
 
 ## 📚 二、手头已有备考资料白名单（真实锁定题源，严禁 AI 虚构）
 
-- **数学权威资料**：`{plan.get('math_books')}`
-- **英语权威资料**：`{plan.get('eng_books')}`
-- **政治权威资料**：`{plan.get('pol_books')}`
-- **专业课权威资料**：`{plan.get('pro_books')}`
+{books_rows}
 
 ---
 
 ## 🌿 三、科学作息与防内耗调节机制
 
-- **每日精力预算**：{plan.get('total_hours', 8.5)} 小时 (数学 {m_h}h / 英语 {e_h}h / 政治 {p_h}h / 专业课 {pro_h}h)
-- **每周休整窗口**：`{plan.get('rest_weekly', '每周日晚 18:00~22:30 放松休整')}`
-- **每月模考复盘**：`{plan.get('rest_monthly', '每月最后一个周日全天闭卷模考与全科雷达复盘')}`
-- **防疲劳保障**：连续两日完成率低于 60% 时，系统自动启动温和减负模式，优先保住核心高频题。
+{budget_row}
+- **每周放风休整**：`{plan.get('rest_weekly', '每周六晚或周日半天放风，调节身心')}`
+- **每月复盘测试**：`{plan.get('rest_monthly', '每月最后周日进行一次全科阶段性复盘测试')}`
+- **防内耗预警线**：若连续 3 天某科用时严重超标或正确率持续走低，自动触发【私教减负疏导】，削减偏难怪题，重回基本盘。
 
 ---
 
-## 🧠 四、AI 私教个人专属全科薄弱项突破战略指南
+## 🤖 四、专属 AI 私教执行战略
 
 {ai_strategy}
 """
     atomic_write_text(root_plan_file, root_plan_content)
 
-    # 2. 生成各科备考总规划
-    math_plan_file = ROOT / "01-数学" / "00_数学备考总规划.md"
-    atomic_write_text(math_plan_file, f"""# {m_n} · 备考总规划与阶段蓝图
+    # 2. 生成各科目根目录 00_备考总规划.md
+    if not math_disabled:
+        math_plan_file = ws / "01-数学" / "00_数学备考总规划.md"
+        atomic_write_text(math_plan_file, f"""# {m_n} · 备考总规划与命题得分图谱
 
 - **目标成绩**：`{plan.get('math_target', '110+ 分')}` ｜ **摸底基准**：`{plan.get('math_baseline', '60分')}`
 - **每日投入**：`{m_h} 小时 ({int(m_h*60)} 分钟)`
 - **核心白名单资料**：`{plan.get('math_books')}`
-- **专属薄弱项攻坚**：`{plan.get('math_weakness', '导数中值定理、计算失误')}`
+- **专属薄弱项攻坚**：`{plan.get('math_weakness', '计算失误与综合大题证明')}`
 
-## 一、薄弱项突破靶向处方
-- **重点攻坚目标**：聚焦【{plan.get('math_weakness', '核心难点')}】，建立专题错题档案与分步验算习惯；
-- **答题步骤赋分规范**：每一大题按阅卷采分点完整推导，写出关键依据定理与中间结论，严防跳步失分。
-
-## 二、阶段攻坚路线 (当前处于: {stage_name})
-1. **基础夯实期**：地毯式过教材定理推导与基本计算，保证基础题正确率 80%+；
-2. **强化攻坚期**：专题突破，聚焦【{plan.get('math_weakness', '核心难点')}】，解答题步骤赋分规范化；
-3. **真题冲刺期**：近 15 年真题闭卷限时模考，按考研阅卷人尺度逐点扣分，稳步达到 {plan.get('math_target', '110+ 分')}；
-4. **查漏补缺期**：公式遮罩默写自测，错题队列全部清零。
-
-## 三、每日复习黄金切分 ({int(m_h*60)} 分钟)
-- **概念方法精讲**：{int(m_h*60*0.2)} 分钟 (吃透定理推导与防陷阱技巧)
-- **核心习题精练**：{int(m_h*60*0.55)} 分钟 (紧扣白名单与真题专题精练)
-- **AI 批改与错题归档**：{int(m_h*60*0.25)} 分钟 (输入「交作业」，AI 分步采分与归因)
+## 一、阶段攻坚路线 (当前处于: {stage_name})
+1. **基础地毯式扫盲**：严格依据官方考纲，掌握每一个定理的适用条件；
+2. **高频题型模块突破**：攻坚【{plan.get('math_weakness', '计算失误')}】，固化解题套路与步骤采分点；
+3. **历年真题全真推演**：近 15 年真题闭卷自测，阅卷人尺度批改；
+4. **错题清零与公式默写**：错题彻底归因消灭，公式遮罩自测闭环。
 """)
 
-    eng_plan_file = ROOT / "02-英语" / "00_英语备考总规划.md"
-    atomic_write_text(eng_plan_file, f"""# {e_n} · 备考总规划与阶段蓝图
+    eng_plan_file = ws / "02-英语" / "00_英语备考总规划.md"
+    atomic_write_text(eng_plan_file, f"""# {e_n} · 备考总规划与提分路线图
 
 - **目标成绩**：`{plan.get('eng_target', '65+ 分')}` ｜ **摸底基准**：`{plan.get('eng_baseline', '50分')}`
 - **每日投入**：`{e_h} 小时 ({int(e_h*60)} 分钟)`
@@ -929,14 +1154,20 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 - **专属薄弱项攻坚**：`{plan.get('eng_weakness', '长难句拆解')}`
 
 ## 一、阶段攻坚路线 (当前处于: {stage_name})
-1. **基础期**：核心 5500 词汇高频词背诵，长难句意群切分与搭积木拆解；
-2. **强化期**：历年真题阅读精读，吃透微观长难句与宏观段落逻辑，阅读错题控制在 1 题/篇；
-3. **突破期**：小作文与大作文功能句型固化，翻译精准意群转换；
-4. **冲刺期**：全真 3 小时闭卷模考，合理分配答题节奏。
+1. **基础词汇与语法突破**：5500 词汇高频变形，长难句意群切分；
+2. **真题阅读精读期**：吃透微观长难句与宏观段落逻辑，错题控制在 1 题/篇；
+3. **写作与翻译提分**：固化大、小作文功能句型模板；
+4. **全真模考冲刺**：3 小时闭卷全真模拟，演练答题节奏。
 """)
 
-    pol_plan_file = ROOT / "03-思想政治理论" / "00_政治备考总规划.md"
-    atomic_write_text(pol_plan_file, f"""# 思想政治理论 · 备考总规划与高分策略
+    pol_plan_file = ws / "03-思想政治理论" / "00_政治备考总规划.md"
+    if is_mode_c:
+        atomic_write_text(pol_plan_file, f"""# 思想政治理论 · 规划说明
+
+> 当前报考方案为 199 管理类综合能力，初试不考思想政治理论（无需备考政治）。
+""")
+    else:
+        atomic_write_text(pol_plan_file, f"""# 思想政治理论 · 备考总规划与高分策略
 
 - **目标成绩**：`{plan.get('pol_target', '70+ 分')}` ｜ **摸底基准**：`{plan.get('pol_baseline', '40分')}`
 - **每日投入**：`{p_h} 小时 ({int(p_h*60)} 分钟)`
@@ -949,7 +1180,7 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 - **分析大题**：30-34 分，原理帽子词对应到位 + 结合材料规范分点答题。
 """)
 
-    pro_plan_file = ROOT / "04-专业课" / "00_专业课备考总规划.md"
+    pro_plan_file = ws / "04-专业课" / "00_专业课备考总规划.md"
     atomic_write_text(pro_plan_file, f"""# {pro_n} · 备考总规划与专业课高分图谱
 
 - **目标成绩**：`{plan.get('pro_target', '120-130 分')}` ｜ **摸底基准**：`{plan.get('pro_baseline', '80分')}`
@@ -964,30 +1195,56 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 4. **押题回归期**：回归知识图谱骨架，消除一切薄弱项盲区。
 """)
 
-    # 3. 自动生成四科真实今日任务文件
+    if is_mode_b and pro2_n:
+        pro2_plan_file = ws / "04-专业课" / "00_专业课二备考总规划.md"
+        atomic_write_text(pro2_plan_file, f"""# {pro2_n} · 备考总规划与专业课二高分图谱
+
+- **目标成绩**：`{plan.get('pro2_target', '120-130 分')}` ｜ **摸底基准**：`{plan.get('pro2_baseline', '80分')}`
+- **每日投入**：`{pro2_h} 小时 ({int(pro2_h*60)} 分钟)`
+- **核心白名单资料**：`{plan.get('pro2_books') or plan.get('pro_books')}`
+- **专属薄弱项攻坚**：`{plan.get('pro2_weakness', '核心考点记不牢、论述题缺乏框架')}`
+
+## 一、阶段攻坚路线 (当前处于: {stage_name})
+1. **基础构建期**：通读第二门自命题考纲与参考书，梳理框架概念；
+2. **专题突破期**：深挖高频论述大题与核心定理，规范推导与答题采分点；
+3. **真题演练期**：历年真题全真模拟，构建答题模板与知识图谱；
+4. **背诵清零期**：精准背诵核心考点，做到提笔成文、条理清晰。
+""")
+
+    # 3. 自动生成各科真实今日任务文件
+    is_mode_b = plan.get("exam_mode") in ("mode_b", "no_math_dual_pro") or bool(plan.get("pro2_name"))
+    is_mode_c = plan.get("exam_mode") in ("mode_c", "mgmt_199") or plan.get("pol_disabled")
+
+    # 3.1 数学
     m_w = plan.get('math_weakness', '')
-    m_task_desc = "梳理考纲核心高频考点与必背公式，开展首日基础摸底自测" if (not m_w or '待首次自测' in m_w or '从零' in m_w or '无' in m_w) else f"攻坚薄弱项【{m_w}】定理条件与构造技巧"
-    m_task_file = ROOT / "01-数学" / "_状态" / "今日任务.md"
+    m_task_desc = "本次报考不考数学，无需安排数学任务" if math_disabled else ("梳理考纲核心高频考点与必背公式，开展首日基础摸底自测" if (not m_w or '待首次自测' in m_w or '从零' in m_w or '无' in m_w) else f"攻坚薄弱项【{m_w}】定理条件与构造技巧")
+    m_task_file = ws / "01-数学" / "_状态" / "今日任务.md"
     m_task_file.parent.mkdir(parents=True, exist_ok=True)
-    m_status = _safe_write_today_task(m_task_file, today_str, f"""# 今日数学任务 ({today_str})
+    m_tpl = f"""# 今日数学任务 ({today_str})
 
 > 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{int(m_h*60)} 分钟
 
 | 模块 | 任务内容 | 预计用时 | 完成状态 |
 |---|---|---|---|
 | 概念精讲 | {m_task_desc} | {int(m_h*60*0.2)} 分钟 | [ ] |
-| 习题精练 | 精选白名单【{_brief_books(plan.get('math_books'))}】对应专题典型真题动笔演练 | {int(m_h*60*0.55)} 分钟 | [ ] |
+| 习题精练 | {_material_phrase(plan.get('math_books'), '精选')}对应专题典型真题动笔演练 | {int(m_h*60*0.55)} 分钟 | [ ] |
 | 订正归档 | 在 CLI 输入「交作业」，AI 按步骤采分并自动录入错题队列 | {int(m_h*60*0.25)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/math` 或 `数学报到`，私教即可根据今日任务派发第一道针对性试题！
-""")
+""" if not math_disabled else f"""# 数学任务 ({today_str})
+
+> 当前方案标记为「不考数学」，本日不安排数学学习任务。
+"""
+    m_content = m_tpl if math_disabled else _generate_subject_task_content("math", m_n, plan, today_str, m_tpl, workspace_root=ws)
+    m_status = _safe_write_today_task(m_task_file, today_str, m_content)
     print(f"  - 数学今日任务: {m_status}")
 
+    # 3.2 英语
     e_w = plan.get('eng_weakness', '')
     e_task_desc = "精读真题高频长难句语法骨架，开展首日主干拆解摸底 (输入 /dissect 实战)" if (not e_w or '待首次自测' in e_w or '从零' in e_w) else f"攻坚薄弱项【{e_w}】(输入 /dissect 实战)"
-    e_task_file = ROOT / "02-英语" / "_状态" / "今日任务.md"
+    e_task_file = ws / "02-英语" / "_状态" / "今日任务.md"
     e_task_file.parent.mkdir(parents=True, exist_ok=True)
-    e_status = _safe_write_today_task(e_task_file, today_str, f"""# 今日英语任务 ({today_str})
+    e_tpl = f"""# 今日英语任务 ({today_str})
 
 > 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{int(e_h*60)} 分钟
 
@@ -998,54 +1255,101 @@ def generate_plan_and_today_files(plan, ai_strategy=None):
 | 真题阅读 | 精读 1 篇历年真题阅读并定位干扰项逻辑 | {int(e_h*60*0.4)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/eng` 或 `英语报到` 开始今日英语专项训练！
-""")
+"""
+    e_content = _generate_subject_task_content("eng", e_n, plan, today_str, e_tpl, workspace_root=ws)
+    e_status = _safe_write_today_task(e_task_file, today_str, e_content)
     print(f"  - 英语今日任务: {e_status}")
 
+    # 3.3 政治
     p_w = plan.get('pol_weakness', '')
     p_task_desc = "梳理考纲核心考点与帽子词框架，精选高频选择题摸底" if (not p_w or '待首次自测' in p_w or '从零' in p_w) else f"梳理【{p_w}】知识框架"
-    p_task_file = ROOT / "03-思想政治理论" / "_状态" / "今日任务.md"
+    p_task_file = ws / "03-思想政治理论" / "_状态" / "今日任务.md"
     p_task_file.parent.mkdir(parents=True, exist_ok=True)
-    p_status = _safe_write_today_task(p_task_file, today_str, f"""# 今日政治任务 ({today_str})
+    p_tpl = f"""# 今日政治任务 ({today_str})
 
 > 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{int(p_h*60)} 分钟
 
 | 模块 | 任务内容 | 预计用时 | 完成状态 |
 |---|---|---|---|
 | 核心考点 | {p_task_desc} | {int(p_h*60*0.4)} 分钟 | [ ] |
-| 选择刷题 | 精做白名单【{_brief_books(plan.get('pol_books'))}】20 道核心选择题自测 | {int(p_h*60*0.4)} 分钟 | [ ] |
+| 选择刷题 | {_material_phrase(plan.get('pol_books'), '精做')} 20 道核心选择题自测 | {int(p_h*60*0.4)} 分钟 | [ ] |
 | 易混归纳 | 记录做错的帽子词与混淆概念，固化到记忆卡 | {int(p_h*60*0.2)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/pol` 或 `政治报到` 启动今日政治考点抽查！
-""")
+""" if not is_mode_c else f"""# 政治任务 ({today_str})
+
+> 当前方案为管理类联考 199 模式，初试不考思想政治理论，本日不安排政治学习任务。
+"""
+    p_content = p_tpl if is_mode_c else _generate_subject_task_content("pol", "思想政治理论", plan, today_str, p_tpl, workspace_root=ws)
+    p_status = _safe_write_today_task(p_task_file, today_str, p_content)
     print(f"  - 政治今日任务: {p_status}")
 
+    # 3.4 专业课
     pro_w = plan.get('pro_weakness', '')
     pro_task_desc = "聚焦专业课官方考纲核心知识体系，完成首日题型规范度摸底" if (not pro_w or '待首次自测' in pro_w or '从零' in pro_w) else f"聚焦专业课考纲与【{pro_w}】推导"
-    pro_task_file = ROOT / "04-专业课" / "_状态" / "今日任务.md"
+    pro_task_file = ws / "04-专业课" / "_状态" / "今日任务.md"
     pro_task_file.parent.mkdir(parents=True, exist_ok=True)
-    pro_status = _safe_write_today_task(pro_task_file, today_str, f"""# 今日专业课任务 ({today_str})
+    pro_label = "专业课一" if is_mode_b else "专业课"
+    pro_tpl = f"""# 今日{pro_label}任务 ({today_str})
 
 > 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{int(pro_h*60)} 分钟
 
 | 模块 | 任务内容 | 预计用时 | 完成状态 |
 |---|---|---|---|
 | 核心知识点 | {pro_task_desc} | {int(pro_h*60*0.3)} 分钟 | [ ] |
-| 习题精练 | 选取白名单【{_brief_books(plan.get('pro_books'))}】经典大题 2~3 道动笔完整书写 | {int(pro_h*60*0.5)} 分钟 | [ ] |
+| 习题精练 | {_material_phrase(plan.get('pro_books'), '选取')}经典大题 2~3 道动笔完整书写 | {int(pro_h*60*0.5)} 分钟 | [ ] |
 | AI 阅卷批改 | 将草稿或解答输入 CLI (可用 /img 上传草稿照片)，逐行诊断丢分点 | {int(pro_h*60*0.2)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/pro` 或 `专业课报到` 开始今日专业课攻坚！
-""")
+"""
+    pro_content = _generate_subject_task_content("pro", pro_n, plan, today_str, pro_tpl, workspace_root=ws)
+    pro_status = _safe_write_today_task(pro_task_file, today_str, pro_content)
     print(f"  - 专业课今日任务: {pro_status}")
 
-def update_subject_agents(plan):
+    # 3.5 专业课二 (用于双自命题模式)
+    if is_mode_b:
+        pro2_name_eff = pro2_n or "专业课二"
+        pro2_w = plan.get("pro2_weakness", "论述题缺乏框架与深度")
+        pro2_task_file = ws / "04-专业课" / "_状态" / "今日任务_专业课二.md"
+        pro2_tpl = f"""# 今日专业课二任务 ({today_str})
+
+> 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{int(pro2_h*60)} 分钟
+
+| 模块 | 任务内容 | 预计用时 | 完成状态 |
+|---|---|---|---|
+| 框架构建 | 聚焦【{pro2_name_eff}】核心考点，攻坚薄弱点【{pro2_w}】 | {int(pro2_h*60*0.35)} 分钟 | [ ] |
+| 真题深挖 | 研读并书写历年代表性综合论述大题 1~2 道 | {int(pro2_h*60*0.45)} 分钟 | [ ] |
+| 错因复盘 | 总结采分失分点，固化答题逻辑模块 | {int(pro2_h*60*0.2)} 分钟 | [ ] |
+
+> **私教提示**：双自命题专业课复习权重极高，请务必每天按时完成论述框架演练！
+"""
+        pro2_content = _generate_subject_task_content("pro2", pro2_name_eff, plan, today_str, pro2_tpl, workspace_root=ws)
+        pro2_status = _safe_write_today_task(pro2_task_file, today_str, pro2_content)
+        print(f"  - 专业课二今日任务: {pro2_status}")
+
+
+def update_subject_agents(plan, workspace_root=None):
     """将真实白名单与薄弱项同步写入 01~04 各科专属 AGENTS.md (杜绝虚构书目)"""
+    ws = Path(workspace_root) if workspace_root else ROOT
+    exam_mode = plan.get("exam_mode")
+    pro_n = plan.get("pro_name", "专业课")
+    is_mode_c = exam_mode in ("mode_c", "mgmt_199") or plan.get("pol_disabled") or ("199" in str(pro_n))
+    pro2_n = plan.get("pro2_name", "").strip()
+    is_mode_b = exam_mode in ("mode_b", "no_math_dual_pro") or bool(pro2_n)
+    math_disabled = is_mode_b or is_mode_c or str(plan.get("math_key", "")).lower() in {"none", "no", "不考数学"} or plan.get("math_name") == "不考数学"
+
     # 数学
-    m_file = ROOT / "01-数学" / "AGENTS.md"
+    m_file = ws / "01-数学" / "AGENTS.md"
     if m_file.exists():
         t = m_file.read_text(encoding="utf-8")
-        t = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{plan.get('math_name', '数学')}`", t)
-        t = re.sub(r"- \*\*目标分数\*\*：.*", f"- **目标分数**：`{plan.get('math_target', '110+ 分')}` (摸底: {plan.get('math_baseline', '60分')})", t)
-        t = re.sub(r"- \*\*每日投入\*\*：.*", f"- **每日投入**：`{plan.get('math_hours', 2.5)} 小时`", t)
+        if math_disabled:
+            t = re.sub(r"- \*\*考试科目\*\*：.*", "- **考试科目**：`不考数学`", t)
+            t = re.sub(r"- \*\*目标分数\*\*：.*", "- **目标分数**：`不考数学`", t)
+            t = re.sub(r"- \*\*每日投入\*\*：.*", "- **每日投入**：`0.0 小时`", t)
+        else:
+            t = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{plan.get('math_name', '数学')}`", t)
+            t = re.sub(r"- \*\*目标分数\*\*：.*", f"- **目标分数**：`{plan.get('math_target', '110+ 分')}` (摸底: {plan.get('math_baseline', '60分')})", t)
+            t = re.sub(r"- \*\*每日投入\*\*：.*", f"- **每日投入**：`{plan.get('math_hours', 2.5)} 小时`", t)
         t = re.sub(r"- \*\*核心教材.*", f"- **核心教材与白名单**：`{plan.get('math_books')}` (严禁虚构未有资料！)", t)
         if "- **核心薄弱点**：" in t:
             t = re.sub(r"- \*\*核心薄弱点\*\*：.*", f"- **核心薄弱点**：`{plan.get('math_weakness', '待首次自测诊断 (从零建立学情雷达)')}`", t)
@@ -1054,7 +1358,7 @@ def update_subject_agents(plan):
         atomic_write_text(m_file, t)
 
     # 英语
-    e_file = ROOT / "02-英语" / "AGENTS.md"
+    e_file = ws / "02-英语" / "AGENTS.md"
     if e_file.exists():
         t = e_file.read_text(encoding="utf-8")
         t = re.sub(r"- \*\*考试科目\*\*：.*", f"- **考试科目**：`{plan.get('eng_name', '英语')}`", t)
@@ -1068,25 +1372,33 @@ def update_subject_agents(plan):
         atomic_write_text(e_file, t)
 
     # 政治
-    p_file = ROOT / "03-思想政治理论" / "AGENTS.md"
+    p_file = ws / "03-思想政治理论" / "AGENTS.md"
     if p_file.exists():
         t = p_file.read_text(encoding="utf-8")
-        if "### 学员配置区" not in t:
-            t += f"\n### 学员配置区\n- **目标分数**：`{plan.get('pol_target', '70+ 分')}` (摸底: {plan.get('pol_baseline', '40分')})\n- **每日投入**：`{plan.get('pol_hours', 1.0)} 小时`\n- **核心书目**：`{plan.get('pol_books')}`\n- **核心薄弱点**：`{plan.get('pol_weakness', '马原哲学原理')}`\n"
+        if is_mode_c:
+            t = re.sub(r"- \*\*目标分数\*\*：.*", "- **目标分数**：`不考政治（199联考模式）`", t)
+            t = re.sub(r"- \*\*核心薄弱点\*\*：.*", "- **核心薄弱点**：`不考政治`", t)
         else:
-            t = re.sub(r"- \*\*核心书目\*\*：.*", f"- **核心书目**：`{plan.get('pol_books')}`", t)
-            t = re.sub(r"- \*\*核心薄弱点\*\*：.*", f"- **核心薄弱点**：`{plan.get('pol_weakness')}`", t)
+            if "### 学员配置区" not in t:
+                t += f"\n### 学员配置区\n- **目标分数**：`{plan.get('pol_target', '70+ 分')}` (摸底: {plan.get('pol_baseline', '40分')})\n- **每日投入**：`{plan.get('pol_hours', 1.0)} 小时`\n- **核心书目**：`{plan.get('pol_books')}`\n- **核心薄弱点**：`{plan.get('pol_weakness', '马原哲学原理')}`\n"
+            else:
+                t = re.sub(r"- \*\*核心书目\*\*：.*", f"- **核心书目**：`{plan.get('pol_books')}`", t)
+                t = re.sub(r"- \*\*核心薄弱点\*\*：.*", f"- **核心薄弱点**：`{plan.get('pol_weakness')}`", t)
         atomic_write_text(p_file, t)
 
     # 专业课
-    pro_file = ROOT / "04-专业课" / "AGENTS.md"
+    pro_file = ws / "04-专业课" / "AGENTS.md"
     if pro_file.exists():
         t = pro_file.read_text(encoding="utf-8")
         t = re.sub(r"- \*\*目标院校\*\*：.*", f"- **目标院校**：`{plan.get('school', '目标院校')}`", t)
         t = re.sub(r"- \*\*专业代码与名称\*\*：.*", f"- **专业代码与名称**：`{plan.get('major', '报考专业')}`", t)
-        t = re.sub(r"- \*\*专业课科目代码与名称\*\*：.*", f"- **专业课科目代码与名称**：`{plan.get('pro_name', '专业课')}`", t)
+        disp_pro = f"{pro_n} 与 {pro2_n}" if pro2_n else pro_n
+        t = re.sub(r"- \*\*专业课科目代码与名称\*\*：.*", f"- **专业课科目代码与名称**：`{disp_pro}`", t)
         t = re.sub(r"- \*\*满分与目标成绩\*\*：.*", f"- **满分与目标成绩**：`目标 {plan.get('pro_target', '120-130 分')}` (摸底: {plan.get('pro_baseline', '80分')})", t)
-        t = re.sub(r"- \*\*指定.*白名单.*", f"- **指定白名单资料**：`{plan.get('pro_books')}`", t)
+        books_str = plan.get('pro_books', '')
+        if pro2_n and plan.get('pro2_books'):
+            books_str += f" ｜ 专业课二: {plan.get('pro2_books')}"
+        t = re.sub(r"- \*\*指定.*白名单.*", f"- **指定白名单资料**：`{books_str}`", t)
         atomic_write_text(pro_file, t)
 
 def print_study_plan_summary(plan):
@@ -1098,8 +1410,9 @@ def print_study_plan_summary(plan):
     e_h = float(plan.get("eng_hours", 2.0))
     p_h = float(plan.get("pol_hours", 1.0))
     pro_h = float(plan.get("pro_hours", 2.5))
+    math_disabled = (plan.get("math_key") == "none")
 
-    print(f"""
+    summary_text = f"""
 {C.GREEN}╭────────────────────────────────────────────────────────────────────────╮
 │  🎉 恭喜！您的考研必考专属战役方案已全量设计并锁定完毕！              │
 ╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
@@ -1110,36 +1423,58 @@ def print_study_plan_summary(plan):
   • 私教辅导风格:    {C.GREEN}{plan.get('style_name', STYLES['1'][0])}{C.RESET}
   • 初试总分目标:    {C.RED}{C.BOLD}{plan.get('total_target', '370+ 分')}{C.RESET} (每日总精力预算: {C.CYAN}{plan.get('total_hours', 8.5)} 小时{C.RESET})
 
-{C.BOLD}【四科提分矩阵与薄弱项雷达】{C.RESET}
-  1. {C.BOLD}{m_n}{C.RESET}:
+{C.BOLD}【四科提分矩阵与薄弱项雷达】{C.RESET}"""
+
+    # [P1 修复·math_key=none 贯穿] 不考数学时跳过数学科目显示
+    subject_index = 1
+    if not math_disabled:
+        summary_text += f"""
+  {subject_index}. {C.BOLD}{m_n}{C.RESET}:
      - 目标分 / 摸底分: {C.GREEN}{plan.get('math_target', '110+ 分')}{C.RESET} / {C.DIM}{plan.get('math_baseline', '60分')}{C.RESET}  (每日投入: {plan.get('math_hours', 3.0)}h)
      - 痛点防线: {C.YELLOW}{plan.get('math_weakness', '导数中值定理、计算失误')}{C.RESET}
-     - 白名单书目: {plan.get('math_books', '同济教材+基础讲义+真题')}
-  2. {C.BOLD}{e_n}{C.RESET}:
+     - 白名单书目: {plan.get('math_books', '同济教材+基础讲义+真题')}"""
+        subject_index += 1
+
+    summary_text += f"""
+  {subject_index}. {C.BOLD}{e_n}{C.RESET}:
      - 目标分 / 摸底分: {C.GREEN}{plan.get('eng_target', '65+ 分')}{C.RESET} / {C.DIM}{plan.get('eng_baseline', '50分')}{C.RESET}  (每日投入: {plan.get('eng_hours', 2.0)}h)
-     - 痛点防线: {C.YELLOW}{plan.get('eng_weakness', '长难句主干速抓、细节定位')}{C.RESET}
+     - 痛点防线: {C.YELLOW}{plan.get('eng_weakness', '待诊断薄弱点、细节定位')}{C.RESET}
      - 白名单书目: {plan.get('eng_books', '黄皮书历年真题+必考词汇')}
-  3. {C.BOLD}思想政治理论{C.RESET}:
+  {subject_index + 1}. {C.BOLD}思想政治理论{C.RESET}:
      - 目标分 / 摸底分: {C.GREEN}{plan.get('pol_target', '70+ 分')}{C.RESET} / {C.DIM}{plan.get('pol_baseline', '40分')}{C.RESET}  (每日投入: {plan.get('pol_hours', 1.0)}h)
      - 痛点防线: {C.YELLOW}{plan.get('pol_weakness', '马原唯物辩证法、多选题漏选')}{C.RESET}
      - 白名单书目: {plan.get('pol_books', '核心考案+精选1000题+冲刺卷')}
-  4. {C.BOLD}{pro_n}{C.RESET}:
+  {subject_index + 2}. {C.BOLD}{pro_n}{C.RESET}:
      - 目标分 / 摸底分: {C.GREEN}{plan.get('pro_target', '120-130 分')}{C.RESET} / {C.DIM}{plan.get('pro_baseline', '80分')}{C.RESET}  (每日投入: {plan.get('pro_hours', 2.5)}h)
      - 痛点防线: {C.YELLOW}{plan.get('pro_weakness', '核心算法设计、解答题推导步骤')}{C.RESET}
-     - 白名单书目: {plan.get('pro_books', '官方教材+历年真题')}
+     - 白名单书目: {plan.get('pro_books', '官方教材+历年真题')}"""
+
+    summary_text += f"""
 
 {C.BOLD}【科学作息与防疲劳减压机制】{C.RESET}
   • 每周放风休整: {C.CYAN}{plan.get('rest_weekly', '每周日晚放松休整')}{C.RESET}
   • 每月模考复盘: {C.CYAN}{plan.get('rest_monthly', '每月最后一个周日全真模考')}{C.RESET}
-{C.CYAN}╭── 📋 今日首日四科任务清单 (已全自动写入各科 _状态/今日任务.md) ───────╮{C.RESET}
-{C.CYAN}│{C.RESET}  • {C.BOLD}{m_n:<18}{C.RESET} ({int(m_h*60)}分钟) : 攻克【{plan.get('math_weakness','导数中值定理')}】定理与核心题型
+{C.CYAN}╭── 📋 今日首日四科任务清单 (已全自动写入各科 _状态/今日任务.md) ───────╮{C.RESET}"""
+
+    # [P1 修复·math_key=none 贯穿] 不考数学时不显示数学任务行
+    if not math_disabled:
+        summary_text += f"""
+{C.CYAN}│{C.RESET}  • {C.BOLD}{m_n:<18}{C.RESET} ({int(m_h*60)}分钟) : 攻克【{plan.get('math_weakness','导数中值定理')}】定理与核心题型"""
+
+    summary_text += f"""
 {C.CYAN}│{C.RESET}  • {C.BOLD}{e_n:<18}{C.RESET} ({int(e_h*60)}分钟) : 拆解【{plan.get('eng_weakness','真题长难句')}】与阅读定位
 {C.CYAN}│{C.RESET}  • {C.BOLD}思想政治理论       {C.RESET} ({int(p_h*60)}分钟) : 攻坚【{plan.get('pol_weakness','马原哲学与帽子词')}】框架梳理
 {C.CYAN}│{C.RESET}  • {C.BOLD}{pro_n:<18}{C.RESET} ({int(pro_h*60)}分钟) : 突破【{plan.get('pro_weakness','核心算法推导')}】与解答规范
 {C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
 
-👉 {C.BOLD}下一步直接在终端输入指令开始学习：{C.RESET}
-   - {C.GREEN}/math{C.RESET} 或 {C.GREEN}数学报到{C.RESET}  ➔ 启动数学私教今日精选真题训练
+👉 {C.BOLD}下一步直接在终端输入指令开始学习：{C.RESET}"""
+
+    # [P1 修复·math_key=none 贯穿] 不考数学时不显示数学报到指令
+    if not math_disabled:
+        summary_text += f"""
+   - {C.GREEN}/math{C.RESET} 或 {C.GREEN}数学报到{C.RESET}  ➔ 启动数学私教今日精选真题训练"""
+
+    summary_text += f"""
    - {C.GREEN}/eng{C.RESET}  或 {C.GREEN}英语报到{C.RESET}  ➔ 启动英语长难句与阅读精析
    - {C.GREEN}/pol{C.RESET}  或 {C.GREEN}政治报到{C.RESET}  ➔ 启动政治考点与帽子词自测
    - {C.GREEN}/pro{C.RESET}  或 {C.GREEN}专业课报到{C.RESET}➔ 启动专业课高频大题推导演练
@@ -1147,7 +1482,35 @@ def print_study_plan_summary(plan):
    - {C.YELLOW}/plan{C.RESET}                 ➔ 随时动态调整备考方案与作息
 
 ✨ 所有规划文件已在各科目目录下生成完毕！
-""")
+"""
+
+    print(summary_text)
+
+def _guard_config_write(op: str, target) -> None:
+    """对 ``ky_config.json`` 的写入前，统一过一遍既有的写权限闸门 ``ky_io.guard_write``。
+
+    [R2-D1 修复] **为什么选这一层**：``record_daily_completion`` 是「写
+    ky_config.json」这件事的唯一归属点（调用方有 SessionEnd 钩子、test_ky_suite
+    等），把闸门放在函数内部，任何现在与未来的调用方都自动受保护，不必在每个
+    调用点各写一遍 mode 判断 —— 本仓库已经因为「同一件事两处实现、只修一处」
+    被坑过两次（P25 隐私策略、R2-C1 打包路径）。
+
+    **为什么不能只靠本模块导入的 ``atomic_write_text``**：本项目存在双导入 ——
+    ``ky_io`` 与 ``tools.ky_io`` 是两个独立模块对象，各自持有一份
+    ``_READ_ONLY_MODE``。``tools/cli/dispatch.py:189`` 用 ``from tools import
+    ky_io`` 设标志，而本模块历史上 ``from ky_io import atomic_write_text`` 取的
+    是另一个别名，两者不互通，于是 safe 模式下本函数的写盘闸门形同虚设。
+    这里**不重写 mode 判断**，只保证任一别名报告只读都会被拦住 —— 只读判定的
+    单一事实源仍然是 ky_io 自己的全局标志。
+
+    只读时抛 ``PermissionDeniedError``（与 ky_io.guard_write 一致），
+    调用方必须显式处理，不得静默吞掉。
+    """
+    for _name in ("tools.ky_io", "ky_io"):
+        _mod = sys.modules.get(_name)
+        _fn = getattr(_mod, "guard_write", None) if _mod is not None else None
+        if callable(_fn):
+            _fn(op, target)
 
 def record_daily_completion(rate: float, total: int = 0, completed: int = 0, date_str: str = None):
     """记录指定日期的任务完成率到 ky_config.json"""
@@ -1155,6 +1518,8 @@ def record_daily_completion(rate: float, total: int = 0, completed: int = 0, dat
     cfg_path = ROOT / "ky_config.json"
     if not cfg_path.exists():
         return
+    # [R2-D1] 严格只读模式下拒绝写盘，异常冒泡给调用方显式处理（不得静默跳过）
+    _guard_config_write("记录今日完成度", cfg_path)
     try:
         cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
     except Exception:
@@ -1235,10 +1600,12 @@ def check_fatigue_alert(cfg: dict = None) -> dict:
         "message": "复习节奏健康稳健！"
     }
 
-def apply_relief_mode(scale: float = 0.75) -> dict:
+def apply_relief_mode(scale: float = 0.75, keep_style: bool = False) -> dict:
     """
     一键启动减负模式：下调每日各科复习投入时间，并将辅导风格切换为「温和启发·减负鼓励型」
     具有幂等保护，防止多次调用累积下调时间。
+
+    :param keep_style: 为 True 时只降时长、不碰辅导风格（P2-7：`ky relieve --keep-style`）。
     """
     cfg_path = ROOT / "ky_config.json"
     if not cfg_path.exists():
@@ -1251,6 +1618,10 @@ def apply_relief_mode(scale: float = 0.75) -> dict:
     plan = cfg.get("study_plan", {})
     relief_style = "温和启发·减负鼓励型 (Encouraging Mentor)"
 
+    # [P2-7 修复·取值顺序] 原风格必须在覆盖前读取：旧实现先写 plan["style_name"]
+    # 再读它，导致 style_before_relief 记的永远是新风格，恢复入口形同虚设。
+    prev_style = cfg.get("coaching_style") or plan.get("style_name") or "(未记录)"
+
     # 幂等检查：若减负模式已处于激活状态，避免重复按 scale 比例递归缩小时间
     if cfg.get("relief_mode_active"):
         curr_hours = plan.get("total_hours", 8.5)
@@ -1258,7 +1629,7 @@ def apply_relief_mode(scale: float = 0.75) -> dict:
             "success": True,
             "old_hours": plan.get("baseline_total_hours", curr_hours),
             "new_hours": curr_hours,
-            "style": plan.get("style_name", relief_style),
+            "style": cfg.get("coaching_style", plan.get("style_name", relief_style)),
             "message": f"减负模式已处于激活状态（每日投入 {curr_hours}h），无需重复启动。"
         }
 
@@ -1277,16 +1648,18 @@ def apply_relief_mode(scale: float = 0.75) -> dict:
     plan["pol_hours"] = round(plan.get("baseline_pol_hours", 1.0) * scale, 1)
     plan["pro_hours"] = round(plan.get("baseline_pro_hours", 2.5) * scale, 1)
 
-    plan["style_name"] = relief_style
+    if not keep_style:
+        plan["style_name"] = relief_style
     # [P3 修复·D12] 减负模式会连带改写辅导风格（coaching_style / AGENTS.md）。
     # 旧实现静默覆盖，考生在 ky status 里发现风格被改却不知何时被改、如何改回。
-    # 现在：① 留存原风格供回滚；② 返回值显式声明「风格已被修改」及原风格名称。
-    prev_style = cfg.get("coaching_style") or plan.get("style_name") or "(未记录)"
-    style_changed = (str(prev_style) != relief_style)
+    # 现在：① 留存原风格供回滚；② 返回值显式声明「风格已被修改」及原风格名称；
+    # ③ --keep-style 只降时长不碰风格；④ restore_relief_mode() 可一键恢复。
+    # [P2-7 修复] prev_style 已在覆盖前读取（见函数顶部），此处不再重读。
+    style_changed = (str(prev_style) != relief_style) and not keep_style
     if style_changed:
         # 仅记录首次被减负覆盖前的风格，避免二次覆盖把「原风格」冲成减负风格
         cfg.setdefault("style_before_relief", prev_style)
-    cfg["coaching_style"] = relief_style
+        cfg["coaching_style"] = relief_style
     cfg["study_plan"] = plan
     cfg["relief_mode_active"] = True
     atomic_write_text(cfg_path, json.dumps(cfg, ensure_ascii=False, indent=2))
@@ -1294,24 +1667,79 @@ def apply_relief_mode(scale: float = 0.75) -> dict:
     agents_file = ROOT / "AGENTS.md"
     if agents_file.exists():
         content = agents_file.read_text(encoding="utf-8", errors="ignore")
-        content = re.sub(r"- \*\*当前激活辅导风格\*\*：.*", f"- **当前激活辅导风格**：`{relief_style}`", content)
+        if style_changed:
+            content = re.sub(r"- \*\*当前激活辅导风格\*\*：.*", f"- **当前激活辅导风格**：`{relief_style}`", content)
         content = re.sub(r"每日投入 `[\d\.]+ 小时`", f"每日投入 `{new_hours} 小时`", content)
         atomic_write_text(agents_file, content)
 
-    style_notice = (
-        f"（已连带将辅导风格由「{prev_style}」改为「{relief_style}」，如需改回请运行 ky style）"
-        if style_changed else
-        f"（辅导风格已是「{relief_style}」，未发生变更）"
-    )
+    if keep_style:
+        shown_style = plan.get("style_name", prev_style)
+        style_notice = f"（辅导风格保持「{shown_style}」不变，未切换）"
+    else:
+        style_notice = (
+            f"（已连带将辅导风格由「{prev_style}」改为「{relief_style}」，"
+            f"改回请运行 ky style，或 ky relieve --off 一键恢复时长+风格）"
+            if style_changed else
+            f"（辅导风格已是「{relief_style}」，未发生变更）"
+        )
+        shown_style = relief_style
     return {
         "success": True,
         "old_hours": old_hours,
         "new_hours": new_hours,
-        "style": relief_style,
+        "style": shown_style,
         "previous_style": prev_style,
         "style_changed": style_changed,
         "message": (f"减负模式已成功启动！每日总投入已调整为 {new_hours}h (原 {old_hours}h)。"
-                    f"私教辅导风格：{relief_style} {style_notice} 保持好心情，轻装上阵！")
+                    f"私教辅导风格：{shown_style} {style_notice} 保持好心情，轻装上阵！")
+    }
+
+
+def restore_relief_mode() -> dict:
+    """[P2-7 修复·撤销入口] 一键退出减负模式：按 baseline_* 恢复各科时长，
+    按 style_before_relief 恢复辅导风格（含 AGENTS.md），清除激活标记。"""
+    cfg_path = ROOT / "ky_config.json"
+    if not cfg_path.exists():
+        return {"success": False, "message": "未找到配置文件"}
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+    if not cfg.get("relief_mode_active"):
+        return {"success": False, "message": "减负模式未激活，无需恢复。"}
+
+    plan = cfg.get("study_plan", {})
+    plan["total_hours"] = plan.get("baseline_total_hours", plan.get("total_hours", 8.5))
+    plan["math_hours"] = plan.get("baseline_math_hours", plan.get("math_hours", 3.0))
+    plan["eng_hours"] = plan.get("baseline_eng_hours", plan.get("eng_hours", 2.0))
+    plan["pol_hours"] = plan.get("baseline_pol_hours", plan.get("pol_hours", 1.0))
+    plan["pro_hours"] = plan.get("baseline_pro_hours", plan.get("pro_hours", 2.5))
+
+    restored_style = cfg.pop("style_before_relief", None)
+    if restored_style:
+        plan["style_name"] = restored_style
+        cfg["coaching_style"] = restored_style
+    cfg["study_plan"] = plan
+    cfg["relief_mode_active"] = False
+    for k in ("baseline_total_hours", "baseline_math_hours", "baseline_eng_hours",
+              "baseline_pol_hours", "baseline_pro_hours"):
+        plan.pop(k, None)
+    atomic_write_text(cfg_path, json.dumps(cfg, ensure_ascii=False, indent=2))
+
+    agents_file = ROOT / "AGENTS.md"
+    if agents_file.exists() and restored_style:
+        content = agents_file.read_text(encoding="utf-8", errors="ignore")
+        content = re.sub(r"- \*\*当前激活辅导风格\*\*：.*",
+                         f"- **当前激活辅导风格**：`{restored_style}`", content)
+        content = re.sub(r"每日投入 `[\d\.]+ 小时`",
+                         f"每日投入 `{plan['total_hours']} 小时`", content)
+        atomic_write_text(agents_file, content)
+    return {
+        "success": True,
+        "new_hours": plan["total_hours"],
+        "style": plan.get("style_name", ""),
+        "message": (f"已退出减负模式，每日投入恢复为 {plan['total_hours']}h"
+                    + (f"，辅导风格恢复为「{restored_style}」。" if restored_style else "。"))
     }
 
 if __name__ == "__main__":

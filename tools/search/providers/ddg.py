@@ -62,7 +62,8 @@ class DuckDuckGoProvider(SearchProvider):
     description = "DuckDuckGo HTML 检索（默认主力源，实测中文考研查询相关性最好）"
 
     def search(self, query: str, *, limit: int = 10,
-               time_range: Optional[str] = None) -> List[SearchResult]:
+               time_range: Optional[str] = None,
+               safe: bool = False) -> List[SearchResult]:
         params = {"q": str(query)}
         df = _TIME_MAP.get(str(time_range or "").lower())
         if df:
@@ -72,7 +73,11 @@ class DuckDuckGoProvider(SearchProvider):
         html_text = ""
         titles: List = []
         for endpoint in (_ENDPOINT, _LITE_ENDPOINT):
-            html_text = get_text(f"{endpoint}?{query_str}", timeout=12)
+            try:
+                html_text = get_text(f"{endpoint}?{query_str}", timeout=12)
+            except Exception as exc:
+                _LOG.debug("DDG 端点 %s 请求异常: %s", endpoint, exc)
+                continue
             anti_bot = looks_like_anti_bot(html_text)
             if anti_bot:
                 last_anti_bot = anti_bot
@@ -81,6 +86,9 @@ class DuckDuckGoProvider(SearchProvider):
             if titles:
                 break
         if not titles:
+            if safe:
+                _LOG.warning("DDG 未获取到有效结果，优雅降级为空列表: 反爬=%s", last_anti_bot or "无结果")
+                return []
             if last_anti_bot:
                 # 说清楚「是被挡了」而不是「没有结果」——两者对用户的处置完全不同
                 raise ProviderError(
@@ -100,8 +108,15 @@ class DuckDuckGoProvider(SearchProvider):
                 "snippet": clean_text(snippets[i]) if i < len(snippets) else "",
             })
         if not items:
+            if safe:
+                return []
             raise ProviderError("解析到结果块，但无可用链接")
         return self.normalize(items)
+
+    def safe_search(self, query: str, *, limit: int = 10,
+                    time_range: Optional[str] = None) -> List[SearchResult]:
+        """安全检索：遇到网络异常或反爬验证码时优雅降级为空列表，绝不抛出异常。"""
+        return self.search(query, limit=limit, time_range=time_range, safe=True)
 
 
 __all__ = ["DuckDuckGoProvider"]

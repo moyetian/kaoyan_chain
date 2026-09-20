@@ -139,9 +139,13 @@ def choose_exam_subjects_and_syllabi(interactive=True):
     print("    [2] 数学一 (301) [高数56% + 线代22% + 概率22%，考查范围最广/全套微积分] (学硕为主)")
     print("    [3] 数学三 (303) [微积分56% + 线代22% + 概率22%，偏重经济应用/差分方程] (经管类)")
     print("    [4] 396 经济类综合能力数学 [微积分+线代+概率，单项选择题与计算题]")
-    print("    [5] 院校自主命题数学 / 不考数学")
-    m_c = input("  请选择数学科目 (1~5) [默认 1]: ").strip() or "1"
-    math_map = {"1": "math2", "2": "math1", "3": "math3", "4": "math396", "5": "custom"}
+    print("    [5] 院校自主命题数学 [以目标院校研究生院官网自命题大纲为准]")
+    print("    [6] 不考数学 [哲学/法学/教育/文学/历史/艺术等，数学任务与报到自动隐藏]")
+    m_c = input("  请选择数学科目 (1~6) [默认 1]: ").strip() or "1"
+    # [P4 修复] 此前把「院校自主命题数学」与「不考数学」塞进同一选项 "5"->custom，
+    # 而 custom 无预设大纲 → 又静默回退成数学二。现拆为两个选项：5=自命题、6=不考数学。
+    math_map = {"1": "math2", "2": "math1", "3": "math3", "4": "math396",
+                "5": "custom", "6": "none"}
     math_key = math_map.get(m_c, "math2")
 
     # 2. 英语科目选择
@@ -263,7 +267,16 @@ def configure_profile(interactive=True, math_key="math2", eng_key="eng2", pro_ty
     e_name = eng_info.get("name", "英语")
     # [根因修复·时间预算错位] 科目一/科目四的每日时长此前写成 2.5h / 3.0h，
     # 与 AGENTS.md 与 ky_config.json 的既定配置（数学 3.0h、专业课 2.5h）正好对调。
-    content = re.sub(r"\|\s*\*\*科目一.*", f"| **科目一：{m_name}** | [摸底] 分 | **{math_target}** | 3.0 小时 (180分) | 攻克必考核心题型，严防超纲，规避计算失误，步骤规范化 |", content)
+    # [P4 修复] 不考数学时科目一行必须写成 0.0 小时，不能再用数学的目标分/时长，
+    # 否则根 AGENTS.md 会与「不考数学」自相矛盾。
+    if str(math_key or "").strip().lower() in {"none", "no", "不考数学"}:
+        content = re.sub(
+            r"\|\s*\*\*科目一.*",
+            "| **科目一：不考数学** | 不考数学 | **不考数学** | 0.0 小时 (0m) | 本方案不考数学，不安排数学学习任务 |",
+            content,
+        )
+    else:
+        content = re.sub(r"\|\s*\*\*科目一.*", f"| **科目一：{m_name}** | [摸底] 分 | **{math_target}** | 3.0 小时 (180分) | 攻克必考核心题型，严防超纲，规避计算失误，步骤规范化 |", content)
     content = re.sub(r"\|\s*\*\*科目二.*", f"| **科目二：{e_name}** | [摸底] 分 | **{eng_target}** | 2.0 小时 (120分) | 搭积木拆解长难句，定位阅读选项逻辑，固化作文功能句模板 |", content)
     content = re.sub(r"\|\s*\*\*科目三.*", f"| **科目三：思想政治理论** | [摸底] 分 | **{pol_target}** | 1.0 小时 (60分) | 单选+多选得分盘（38~42分），帽子词秒杀，后期背诵闭环 |", content)
     content = re.sub(r"\|\s*\*\*科目四.*", f"| **科目四：{pro_name}** | [摸底] 分 | **{pro_target}** | 2.5 小时 (150分) | 权威教材体系+历年真题深度解剖，白名单题源抽题门禁 |", content)
@@ -351,6 +364,16 @@ def ensure_syllabi_written(plan):
         print(f"  [!] 考纲校验失败: {e}")
 
 
+def _start_command_for(math_key) -> str:
+    """[P14 修复] 按所选数学科目生成建议的报到口令（不考数学时改用「英语报到」）。
+
+    此前结束指引硬编码「数学报到」，不考数学的考生照着发只会被拒绝。
+    """
+    if str(math_key or "").strip().lower() in {"none", "no", "不考数学"}:
+        return "英语报到"
+    return "数学报到"
+
+
 def main():
     print_banner()
     interactive = True
@@ -362,9 +385,12 @@ def main():
     
     # 步骤 3 & 4: 启动 7 维度个人定制化必考方案向导 (时间/考纲/资料白名单/学情摸底/时间预算/作息)
     plan = None
+    math_key = None
     try:
         import study_planner
         plan = study_planner.run_study_plan_wizard(interactive=interactive)
+        if isinstance(plan, dict):
+            math_key = plan.get("math_key")
     except Exception as e:
         print(f"  [!] 方案设计提示: {e}，使用默认配置。")
         math_key, eng_key, pro_type, pro_name = choose_exam_subjects_and_syllabi(interactive=interactive)
@@ -401,7 +427,8 @@ def main():
     print(" 快速操作指引：")
     print(" 1. 查阅官方考纲: 打开 各科目/考试大纲.md (已自动注入选考科目的权威考点清单)")
     print(" 2. 放入学习资料: 将参考教材/真题放入对应科目的「参考资料/」文件夹")
-    print(" 3. 启动私教学习: 在终端运行 ky 或在所选 Agent 中发送「数学报到」")
+    # [P14 修复] 按所选数学科目生成口令，不考数学时改为「英语报到」
+    print(f" 3. 启动私教学习: 在终端运行 ky 或在所选 Agent 中发送「{_start_command_for(math_key)}」")
     print(" 4. 预览自测看板: 双击打开 docs/index.html (支持手机添加到主屏幕)")
     print("=" * 68 + "\n")
 

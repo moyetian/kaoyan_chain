@@ -36,7 +36,7 @@ except ImportError:
 class QuestionChunk:
     """切片题目数据模型"""
     number: int
-    q_type: str                         # choice / blank / essay
+    q_type: str                         # choice / blank / essay / term / short / discuss
     score: int                          # 题目分值
     stem: str                           # 题干
     options: List[str] = field(default_factory=list)      # 选项 [A. ..., B. ...]
@@ -45,6 +45,32 @@ class QuestionChunk:
     rubric: List[str] = field(default_factory=list)        # 步骤采分点清单
     points: List[str] = field(default_factory=list)        # 涉及核心考点
     source: str = ""                    # 题源出处
+
+
+# 文科题型判定规则：(q_type, 关键词, 无显式分值时的默认分)
+# [文科适配] 自命题文科卷（名词解释/简答/论述）此前全落进 essay → 统一按
+# "综合应用与解答题（10 分）"入库。默认分仅为无分值标注时的回退，题面自带
+# "（本题满分 X 分）/（X 分）"时以显式分值为准。
+_WENKE_TYPE_RULES = (
+    ("term", ("名词解释",), 5),
+    ("short", ("简答", "简述"), 10),
+    ("discuss", ("论述", "材料分析", "辨析"), 15),
+)
+
+_WENKE_TYPE_NAMES = {
+    "term": "名词解释题",
+    "short": "简答题",
+    "discuss": "论述题",
+}
+
+
+def _detect_wenke_type(hint_text: str):
+    """从分段标题/题干首行判定文科题型，返回 (q_type, 默认分)，无命中返回 (None, 0)。"""
+    hint = str(hint_text or "")
+    for q_type, keywords, default_score in _WENKE_TYPE_RULES:
+        if any(kw in hint for kw in keywords):
+            return q_type, default_score
+    return None, 0
 
 
 class MaterialIngestionPipeline:
@@ -218,10 +244,14 @@ class MaterialIngestionPipeline:
         return out
 
     # 修正版大题分段词表：覆盖「综合计算题」「计算分析题」「算法设计题」等组合写法
+    # [文科适配] 追加名词解释 / 论述 / 材料分析 / 辨析分段，否则文科卷整节落到
+    # else 分支被判为"综合应用与解答题（10 分）"（名词解释 6 题变 10 分大题）。
+    _WENKE_SEC_ALTS = r"名词解释|论述题|材料分析题|辨析题"
     _SEC_LINE_PATTERN = re.compile(
         r'^[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?'
         r'(?P<sec_title>(?:单[项]?选择题|多[项]?选择题|不定项选择题|选择题|填空题|判断题|解答题|'
-        r'综合(?:应用|计算|分析|论述)?题|计算(?:分析)?题|证明题|算法(?:设计)?题|简(?:答|述)题|分析题|应用题|大题)[^\n]*)$',
+        r'综合(?:应用|计算|分析|论述)?题|计算(?:分析)?题|证明题|算法(?:设计)?题|简(?:答|述)题|分析题|应用题|大题|'
+        + _WENKE_SEC_ALTS + r')[^\n]*)$',
         re.MULTILINE
     )
 
@@ -270,7 +300,10 @@ class MaterialIngestionPipeline:
             elif "填空" in sec_title:
                 c.q_type = "blank"
             else:
-                c.q_type = "essay"
+                _wt, _ws = _detect_wenke_type(sec_title)
+                c.q_type = _wt if _wt else "essay"
+                if _wt and not c.score:
+                    c.score = _ws
         return chunks
 
     def _rust_to_chunk(self, d: dict) -> QuestionChunk:
@@ -296,12 +329,21 @@ class MaterialIngestionPipeline:
 
         text = raw_text.replace("\r\n", "\n").replace("\r", "\n")
 
-        # 识别大题分段 (Sections, 如 一、单项选择题)
+        # 识别大题分段 (Sections, 如 一、单项选择题；文科如 一、名词解释)
         sec_pattern = re.compile(
-            r'^[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?(?P<sec_title>(?:单[项]?选择题|多[项]?选择题|不定项选择题|选择题|填空题|判断题|解答题|综合(?:应用|计算|分析|论述)?题|计算(?:分析)?题|证明题|算法(?:设计)?题|简(?:答|述)题|分析题|应用题|大题)[^\n]*)$',
+            r'^[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?(?P<sec_title>(?:单[项]?选择题|多[项]?选择题|不定项选择题|选择题|填空题|判断题|解答题|综合(?:应用|计算|分析|论述)?题|计算(?:分析)?题|证明题|算法(?:设计)?题|简(?:答|述)题|分析题|应用题|大题|名词解释|论述题|材料分析题|辨析题)[^\n]*)$',
             re.MULTILINE
         )
-        sections = list(sec_pattern.finditer(text))
+        # [文科适配·答案区误切] "我的答案/参考答案"小节本身不是题型分段，其下编号行
+        # 此前继承上一分段被当成新题切出（实测 12 题变 18 题）。将其识别为特殊分段，
+        # 下游按 sec_hint 直接跳过。要求整行标题，避免误伤块内"【答案】"标记。
+        answer_sec_pattern = re.compile(
+            r'^[#*\s]*(?P<sec_title>(?:我的答案|参考答案|答案解析|试题解析|答案与解析))[^\n]*$',
+            re.MULTILINE
+        )
+        sections = sorted(
+            list(sec_pattern.finditer(text)) + list(answer_sec_pattern.finditer(text)),
+            key=lambda m: m.start())
 
         # 主题目编号行首严格匹配: 1. 或 1、 或 【1】 或 [题1] 等 (不误伤解答题内的 (1) 或 (2))
         q_pattern = re.compile(
@@ -328,6 +370,11 @@ class MaterialIngestionPipeline:
                 if s.start() <= start_pos:
                     sec_hint = s.group("sec_title")
 
+            # [文科适配·答案区误切] "我的答案/参考答案"小节里的编号行（如"1. 我的理解…"）
+            # 此前会被当成新题切出（实测 12 题变 18 题，多出的 6 条来自答案区）。
+            if any(k in sec_hint for k in ("参考答案", "我的答案", "答案解析", "试题解析", "答案与解析")):
+                continue
+
             num_val = int(m.group("num") or m.group("num2") or (i + 1))
             chunk = self._parse_single_block(block, num_val, default_source, sec_hint=sec_hint)
             if chunk.stem:
@@ -338,7 +385,7 @@ class MaterialIngestionPipeline:
     def _parse_single_block(self, block: str, num: int, source: str, sec_hint: str = "") -> QuestionChunk:
         """解析单个题块"""
         # 剥离题块末尾可能粘连的下一个大题标题
-        block = re.sub(r"\n+[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?(?:单[项]?选择题|多[项]?选择题|不定项选择题|选择题|填空题|判断题|解答题|综合(?:应用|计算|分析|论述)?题|计算(?:分析)?题|证明题|算法(?:设计)?题|简(?:答|述)题|分析题|应用题|大题)[^\n]*$", "", block).strip()
+        block = re.sub(r"\n+[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?(?:单[项]?选择题|多[项]?选择题|不定项选择题|选择题|填空题|判断题|解答题|综合(?:应用|计算|分析|论述)?题|计算(?:分析)?题|证明题|算法(?:设计)?题|简(?:答|述)题|分析题|应用题|大题|名词解释|论述题|材料分析题|辨析题)[^\n]*$", "", block).strip()
 
         # 提取分值：如 (本题满分 10 分) / (12分) / [5分]
         score = 0
@@ -411,6 +458,13 @@ class MaterialIngestionPipeline:
             if opt_matches:
                 first_opt_idx = opt_matches[0].start()
                 stem_clean = stem_clean[:first_opt_idx].strip()
+        # [文科适配] 先判文科题型（分段标题优先，题干首行兜底），再走理科 essay 逻辑
+        _wenke_hint = f"{sec_hint}\n{stem_clean.splitlines()[0] if stem_clean else ''}"
+        _wenke_type, _wenke_score = _detect_wenke_type(_wenke_hint)
+        if _wenke_type:
+            q_type = _wenke_type
+            if not score:
+                score = _wenke_score
         elif is_essay_sec:
             q_type = "essay"
             if not score:
@@ -476,11 +530,51 @@ class MaterialIngestionPipeline:
             source=source
         )
 
+    def enrich_rubric_with_llm(self, chunk: QuestionChunk, subject: str = "pro") -> None:
+        """若配置了 LLM 且试题缺失详细采分点或考点时，调用大模型推演采分点与核心考点"""
+        if chunk.rubric and chunk.points and chunk.analysis:
+            return
+        try:
+            try:
+                from tools.llm_client import is_llm_configured, chat_completion
+            except ImportError:
+                from llm_client import is_llm_configured, chat_completion
+
+            if is_llm_configured(workspace_root=self.workspace_root):
+                stem = chunk.stem[:300]
+                ans = (chunk.answer or "")[:300]
+                prompt = (
+                    f"你是一位考研阅卷专家。请针对以下试题（满分 {chunk.score} 分）分析并补充步骤采分点与核心考点：\n"
+                    f"【试题】：{stem}\n"
+                    f"【参考解答】：{ans}\n\n"
+                    f"请以合法 JSON 格式输出：\n"
+                    f'{{\n  "rubric": ["[+2分] 步骤1", "[+3分] 步骤2"],\n  "points": ["考点1", "考点2"],\n  "analysis": "简明解析"\n}}'
+                )
+                res = chat_completion(prompt, workspace_root=self.workspace_root, timeout=10.0)
+                if res:
+                    raw_json = re.sub(r"^```(?:json)?\s*", "", res.strip(), flags=re.IGNORECASE)
+                    raw_json = re.sub(r"\s*```$", "", raw_json)
+                    import json
+                    data = json.loads(raw_json)
+                    if isinstance(data, dict):
+                        if not chunk.rubric and isinstance(data.get("rubric"), list):
+                            chunk.rubric = [str(x) for x in data["rubric"] if x]
+                        if not chunk.points and isinstance(data.get("points"), list):
+                            chunk.points = [str(x) for x in data["points"] if x]
+                        if not chunk.analysis and data.get("analysis"):
+                            chunk.analysis = str(data["analysis"])
+        except Exception:
+            pass
+
     def format_question_card(self, chunk: QuestionChunk, subject: str = "pro") -> str:
         """
         生成规范的考研白名单题目 Markdown 卡片
         """
-        type_names = {"choice": "单项选择题", "blank": "填空题", "essay": "综合应用与解答题"}
+        if chunk.score >= 5 and (not chunk.rubric or not chunk.points):
+            self.enrich_rubric_with_llm(chunk, subject=subject)
+
+        type_names = {"choice": "单项选择题", "blank": "填空题", "essay": "综合应用与解答题",
+                      **_WENKE_TYPE_NAMES}
         t_name = type_names.get(chunk.q_type, "综合题")
         # [缺陷修复·虚假认证] 旧实现仅凭**文件名**是否含「真题/统考/大纲/官方/教育部」
         # 就盖上 `[VERIFIED 官方考纲真题/统考原题]`。实测一份名为「…真题逐题转录」的
@@ -715,4 +809,57 @@ def chunk_text(raw_text: str, default_source: str = "外部真题资料") -> Lis
 def _chunk_text_python(raw_text: str, default_source: str = "外部真题资料") -> List[QuestionChunk]:
     """模块级降级函数：纯 Python 题目切片实现"""
     return get_material_ingestion_pipeline()._chunk_text_python(raw_text, default_source)
+
+
+def extract_text_from_pdf(pdf_path: Any, max_chars: int = 3500) -> str:
+    """从真题或参考资料 PDF 中安全抽取纯文本内容（优雅降级处理缺失依赖与纯扫描件）"""
+    path = Path(pdf_path)
+    if not path.exists():
+        return f"[未找到文件: {path.name}]"
+
+    # 1. 优先尝试 tools.skills.pdf_extractor 模块化抽取
+    try:
+        try:
+            from .pdf_extractor import extract_pdf_pages
+        except (ImportError, ValueError):
+            try:
+                from tools.skills.pdf_extractor import extract_pdf_pages
+            except ImportError:
+                from skills.pdf_extractor import extract_pdf_pages
+        res = extract_pdf_pages(path, max_pages=8)
+        if res.get("success"):
+            full = "\n".join(p.get("text", "") for p in res.get("pages", []) if p.get("text"))
+            extracted = full.strip()
+            if extracted:
+                return extracted[:max_chars]
+    except Exception:
+        pass
+
+    # 2. 备选方案：直接尝试 pypdf.PdfReader
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(str(path))
+        texts = [p.extract_text() or "" for p in reader.pages[:8]]
+        extracted = "\n".join(texts).strip()
+        if extracted:
+            return extracted[:max_chars]
+    except Exception:
+        pass
+
+    # 3. 备选方案：直接尝试 PyMuPDF (fitz)
+    try:
+        import fitz
+        doc = fitz.open(str(path))
+        try:
+            texts = [page.get_text() or "" for page in doc[:8]]
+        finally:
+            doc.close()
+        extracted = "\n".join(texts).strip()
+        if extracted:
+            return extracted[:max_chars]
+    except Exception:
+        pass
+
+    return f"[PDF 文件: {path.name}, 提取结果: 未能提取到文本（可能为纯扫描图片版）]"
+
 

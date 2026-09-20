@@ -22,7 +22,7 @@ from typing import Optional, Tuple
 _LOG = logging.getLogger(__name__)
 
 
-def run_action_capture(alias: str, interactive: bool = False) -> str:
+def run_action_capture(alias: str, interactive: bool = False, extra: Optional[dict] = None) -> str:
     """执行 TUI 中枢的某个动作并捕获其标准输出。
 
     GUI 复用 TUI 的动作分发（单实现），而不是另写一套后端调用 ——
@@ -36,7 +36,7 @@ def run_action_capture(alias: str, interactive: bool = False) -> str:
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            execute_action(alias, interactive=interactive)
+            execute_action(alias, interactive=interactive, extra=extra)
         return buf.getvalue().strip()
     except Exception as exc:
         _LOG.warning("动作执行失败: %s -> %s", alias, exc)
@@ -102,9 +102,20 @@ def compare_schools(workspace_root: Path, school1: str, school2: str,
         except ImportError:  # pragma: no cover
             from tools.intelligence import get_school_comparator  # type: ignore
 
+        # 读取工作区配置以传递大模型与搜索 API 设置
+        api_config = None
+        cfg_path = workspace_root / "ky_config.json"
+        if cfg_path.exists():
+            try:
+                import json as _js
+                api_config = _js.loads(cfg_path.read_text(encoding="utf-8"))
+            except Exception:
+                api_config = None
+
         comp = get_school_comparator().compare(
             school1_query=school1, school2_query=school2,
             major_keyword=major, save_report=True,
+            api_config=api_config
         )
         return str(comp.get("terminal_report", "")), str(comp.get("saved_path") or "")
     except Exception as exc:

@@ -14,6 +14,7 @@
 import sys
 import re
 import html
+import inspect
 import time
 import random
 import urllib.request
@@ -41,6 +42,24 @@ USER_AGENT = (
 # 统一由下方 label 函数给出可解释文案，避免"同一份数据三种说法"。
 UNKNOWN_ACCOUNT_LABEL = "未识别（平台未公开）"
 UNKNOWN_DATE_LABEL = "未标注日期"
+
+
+def _invoke_search(fn, keyword: str, max_results: int, time_range: str):
+    """调用搜索函数，**仅当其签名接受 time_range 时才传入**。
+
+    历史写法是 `try: fn(..., time_range=t) except TypeError: fn(...)` —— 那会把
+    fn 内部真实的 TypeError 一并吞掉并静默重发一次请求。改为显式签名探测后，
+    既兼容旧签名/测试替身，又不会掩盖内部异常。
+    """
+    try:
+        params = inspect.signature(fn).parameters
+        accepts = ("time_range" in params
+                   or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()))
+    except (TypeError, ValueError):
+        accepts = False
+    if accepts:
+        return fn(keyword, max_results, time_range=time_range)
+    return fn(keyword, max_results)
 
 
 def account_label(raw: str) -> str:
@@ -164,13 +183,15 @@ class WeChatSearchEngine(_AccountNameResolver):
         self,
         keyword: str,
         max_results: int = 10,
-        source: str = "auto"
+        source: str = "auto",
+        time_range: str = "year"
     ) -> List[WeChatArticleItem]:
         """
         统一检索入口
         :param keyword: 检索关键词 (如 "408计算机考研经验")
         :param max_results: 最大结果数
         :param source: "sogou" / "bing" / "auto" (自动降级) / "local"
+        :param time_range: "year" (近一年) / "half_year" (近半年) / "three_years" (近三年) / "all" (全部)
         """
         keyword = keyword.strip()
         if not keyword:
@@ -179,65 +200,157 @@ class WeChatSearchEngine(_AccountNameResolver):
         if source == "local":
             return self.search_local_cache(keyword, max_results)
 
+        raw_results: List[WeChatArticleItem] = []
         if source == "auto":
             # 优先搜狗，少于3条时降级 Bing，仍不足则补充本地缓存
-            results = self._search_sogou(keyword, max_results)
-            if len(results) < 3:
-                bing_results = self._search_bing(keyword, max_results - len(results))
-                # 依据 url 去重
-                existing_urls = {r.url for r in results}
+            raw_results = _invoke_search(self._search_sogou, keyword, max_results * 2, time_range)
+            if len(raw_results) < 3:
+                bing_results = _invoke_search(self._search_bing, keyword, max_results * 2, time_range)
+                existing_urls = {r.url for r in raw_results}
                 for br in bing_results:
                     if br.url not in existing_urls:
-                        results.append(br)
+                        raw_results.append(br)
                         existing_urls.add(br.url)
 
-            if len(results) < 2:
-                local_results = self.search_local_cache(keyword, max_results - len(results))
-                existing_urls = {r.url for r in results}
+            if len(raw_results) < 2:
+                local_results = self.search_local_cache(keyword, max_results)
+                existing_urls = {r.url for r in raw_results}
                 for lr in local_results:
                     if lr.url not in existing_urls:
-                        results.append(lr)
+                        raw_results.append(lr)
                         existing_urls.add(lr.url)
-
-            return results[:max_results]
         elif source == "sogou":
-            return self._search_sogou(keyword, max_results)
+            raw_results = _invoke_search(self._search_sogou, keyword, max_results * 2, time_range)
         elif source == "bing":
-            return self._search_bing(keyword, max_results)
+            raw_results = _invoke_search(self._search_bing, keyword, max_results * 2, time_range)
 
-        return []
+        # 智能重排：多因子时效性 + 考研相关度重排序
+        ranked = self._rank_and_filter_results(raw_results, keyword, time_range)
+        return ranked[:max_results]
 
-    def _search_sogou(self, keyword: str, max_results: int) -> List[WeChatArticleItem]:
-        """搜狗微信搜索"""
-        params = {
-            "type": "2",  # 2 = 搜文章
-            "query": keyword,
-            "ie": "utf-8"
-        }
-        url = f"{self.SOGOU_WX_URL}?{urllib.parse.urlencode(params)}"
-
-        try:
-            req = urllib.request.Request(url, headers={
-                "User-Agent": USER_AGENT,
-                "Referer": "https://weixin.sogou.com/",
-                "Accept-Language": "zh-CN,zh;q=0.9",
-            })
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                html_content = resp.read().decode("utf-8", errors="replace")
-
-            items = self._parse_sogou_results(html_content)[:max_results]
-            if not items:
-                # [P3 修复·D8] 反爬验证页/改版页会 200 + 0 结果块，静默即等于「没有文章」
-                self._note_source_empty("搜狗微信", len(html_content))
-            return items
-        # [P3 修复·D8] 去掉静默吞异常：失败必须留痕，否则「检索源崩了」会被伪装成「没有文章」
-        except Exception as e:
-            self._note_source_error("搜狗微信", e)
+    def _rank_and_filter_results(
+        self, items: List[WeChatArticleItem], keyword: str, time_range: str
+    ) -> List[WeChatArticleItem]:
+        """按发布时效、标题语义匹配度与噪声词惩罚综合重排。"""
+        if not items:
             return []
 
-    def _search_bing(self, keyword: str, max_results: int) -> List[WeChatArticleItem]:
-        """Bing 搜索微信文章 (限定 mp.weixin.qq.com 域名)"""
-        query = f"site:mp.weixin.qq.com {keyword}"
+        now_year = datetime.now().year
+
+        def _calc_score(item: WeChatArticleItem) -> float:
+            score = 0.0
+            # 1. 时效性评分 (近 1-2 年高分，3 年前扣分)
+            if item.publish_date:
+                try:
+                    d = datetime.strptime(item.publish_date[:10], "%Y-%m-%d")
+                    days_ago = (datetime.now() - d).days
+                    if days_ago <= 180:
+                        score += 60.0
+                    elif days_ago <= 365:
+                        score += 45.0
+                    elif days_ago <= 730:
+                        score += 25.0
+                    elif days_ago <= 1095:
+                        score += 5.0
+                    else:
+                        score -= 40.0  # 超过3年的老旧文章重罚
+                except Exception:
+                    pass
+
+            # 2. 考研关键词与标题匹配度
+            t_low = (item.title or "").lower()
+            s_low = (item.summary or "").lower()
+            kw_terms = [t.lower() for t in re.split(r"[\s+·/]+", keyword) if len(t) >= 2]
+            for term in kw_terms:
+                if term in t_low:
+                    score += 30.0
+                elif term in s_low:
+                    score += 15.0
+
+            # 3. 考研核心特征词加权
+            for hot in ("经验", "复试", "考情", "分数线", "报录比", "真题", "划重点", "上岸", "考研"):
+                if hot in t_low:
+                    score += 10.0
+
+            # 4. 无关营销/图书广告/陈旧新闻降权
+            for junk in ("图书", "教材征订", "热点分析", "招聘", "通知公告", "开班", "培训班"):
+                if junk in t_low:
+                    score -= 20.0
+            return score
+
+        # 针对近一年/近半年筛选：过滤掉明确标注为 3 年前（如 2020/2021/2022）的过期文章
+        filtered = []
+        for it in items:
+            if time_range in ("year", "half_year") and it.publish_date:
+                try:
+                    yr = int(it.publish_date[:4])
+                    if yr < now_year - 2:  # 比如当前 2026，过滤 2023 及更早
+                        continue
+                except Exception:
+                    pass
+            filtered.append(it)
+
+        # [缺陷修复] 此前 `filtered if filtered else items`：当命中的全部是过期文章时，
+        # filtered 为空又回退到未过滤集合，时效过滤在最该生效时反而失效。
+        # 现区分「无结果」与「全过期」：请求了时效过滤就只返回过滤后的结果。
+        target_pool = filtered if time_range in ("year", "half_year") else items
+        target_pool.sort(key=_calc_score, reverse=True)
+        return target_pool
+
+    def _search_sogou(self, keyword: str, max_results: int, time_range: str = "year") -> List[WeChatArticleItem]:
+        """搜狗微信搜索 (支持多页合并与鲁棒容错)"""
+        # 注意：sogou 携带 tsn=4 时非浏览器访问极易触发验证码，因此统一请求标准列表并通过客户端高精度时间与关键词多因子重排
+        pages_to_fetch = 2 if time_range in ("year", "half_year") else 1
+        all_items: List[WeChatArticleItem] = []
+
+        for p in range(1, pages_to_fetch + 1):
+            params = {
+                "type": "2",  # 2 = 搜文章
+                "query": keyword,
+                "ie": "utf-8",
+                "page": str(p),
+            }
+            url = f"{self.SOGOU_WX_URL}?{urllib.parse.urlencode(params)}"
+
+            html_content = ""
+            try:
+                try:
+                    from tools.search.providers._http import get_text
+                except ImportError:
+                    from search.providers._http import get_text  # type: ignore
+                html_content = get_text(url, timeout=10)
+            except Exception as http_exc:
+                try:
+                    req = urllib.request.Request(url, headers={
+                        "User-Agent": USER_AGENT,
+                        "Referer": "https://weixin.sogou.com/",
+                        "Accept-Language": "zh-CN,zh;q=0.9",
+                    })
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        html_content = resp.read().decode("utf-8", errors="replace")
+                except Exception as e:
+                    self._note_source_error("搜狗微信", e)
+                    break
+
+            try:
+                items = self._parse_sogou_results(html_content)
+                if not items and p == 1:
+                    self._note_source_empty("搜狗微信", len(html_content))
+                all_items.extend(items)
+            except Exception as e:
+                self._note_source_error("搜狗微信", e)
+                break
+
+        return all_items[:max_results]
+
+    def _search_bing(self, keyword: str, max_results: int, time_range: str = "year") -> List[WeChatArticleItem]:
+        """Bing 搜索微信文章 (限定 mp.weixin.qq.com 域名并注入年份时效词)"""
+        now_y = datetime.now().year
+        if time_range in ("year", "half_year"):
+            query = f"site:mp.weixin.qq.com {keyword} {now_y} OR {now_y - 1}"
+        else:
+            query = f"site:mp.weixin.qq.com {keyword}"
+
         params = {"q": query, "count": str(max(max_results * 2, 10))}
         url = f"{self.BING_URL}?{urllib.parse.urlencode(params)}"
 
@@ -251,10 +364,8 @@ class WeChatSearchEngine(_AccountNameResolver):
 
             items = self._parse_bing_results(html_content)[:max_results]
             if not items:
-                # [P3 修复·D8] 同上：解析 0 条同样留痕
                 self._note_source_empty("Bing", len(html_content))
             return items
-        # [P3 修复·D8] 同上：Bing 源失败同样留痕，不再静默返回空列表
         except Exception as e:
             self._note_source_error("Bing", e)
             return []
@@ -313,72 +424,76 @@ class WeChatSearchEngine(_AccountNameResolver):
 
 
     def _parse_sogou_results(self, html_text: str) -> List[WeChatArticleItem]:
-        """解析搜狗搜索结果页
-
-        [P3 修复·D8] 两级修正：
-        ① 结果块此前只按 `<div class="txt-box">...</div></div>` 非贪婪切片，
-           公众号/时间节点位于同级兄弟节点（`div.s-p`）时被截断 → 账号字段整列丢失；
-           改为按 `<li ...news-item|sogou_vr...>` 整块切分（账号、时间都在块内），
-           取不到再回退 txt-box 切片。
-        ② 结果块内首个 `<a>` 实际是缩略图链接（`div.img-box`），旧逻辑直接取首个锚点
-           → 标题被剥成空串，条目在 `if title and raw_url` 处被整体丢弃，
-           真实结果页（实测 10 条）因此恒返回 0 条。
-           现改为优先取 `<h3>` 内的标题锚点，并回退到首个「锚文本非空」的链接。
-        """
+        """解析搜狗搜索结果页并提取文章结构。"""
         items = []
         result_blocks = re.findall(
-            r'<li[^>]*(?:news-item|sogou_vr)[^>]*>(.*?)</li>',
-            html_text, re.DOTALL
+            r'<li[^>]*(?:news-item|sogou_vr|id=["\']sogou_vr)[^>]*>(.*?)</li>',
+            html_text, re.DOTALL | re.IGNORECASE
         )
         if not result_blocks:
             result_blocks = re.findall(
-                r'<div class="txt-box"[^>]*>(.*?)</div>\s*</div>',
-                html_text, re.DOTALL
+                r'<div class="txt-box"[^>]*>(.*?)</div>\s*(?:</div>|</li>)',
+                html_text, re.DOTALL | re.IGNORECASE
+            )
+        if not result_blocks:
+            result_blocks = re.findall(
+                r'<div class="txt-box"[^>]*>(.*?)</div>',
+                html_text, re.DOTALL | re.IGNORECASE
             )
         for block in result_blocks:
-            # [P3 修复·D8] 优先取标题锚点：<h3> 内链接；回退到首个锚文本非空的链接
             title_m = re.search(
                 r'<h3[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>',
-                block, re.DOTALL
+                block, re.DOTALL | re.IGNORECASE
             )
             if not title_m:
                 for _cand in re.finditer(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', block, re.DOTALL):
-                    if re.sub(r'<[^>]+>', '', _cand.group(2)).strip():
+                    cand_text = re.sub(r'<[^>]+>', '', _cand.group(2)).strip()
+                    if cand_text and "account" not in _cand.group(0):
                         title_m = _cand
                         break
             if not title_m:
                 continue
-            raw_url = html.unescape(title_m.group(1))
+
+            raw_url = html.unescape(title_m.group(1)).strip().replace("&amp;", "&")
             if not raw_url.startswith("http"):
                 raw_url = urllib.parse.urljoin(self.SOGOU_WX_URL, raw_url)
-            title = html.unescape(re.sub(r'<[^>]+>', '', title_m.group(2))).strip()
 
-            account_m = re.search(r'<a[^>]*class="[^"]*account[^"]*"[^>]*>(.*?)</a>', block, re.DOTALL)
+            title = html.unescape(re.sub(r'<[^>]+>', '', title_m.group(2)))
+            title = re.sub(r'\s+', ' ', title).strip()
+
+            summary_m = re.search(r'<p class="txt-info"[^>]*>(.*?)</p>', block, re.DOTALL | re.IGNORECASE)
+            summary = html.unescape(re.sub(r'<[^>]+>', '', summary_m.group(1))).strip() if summary_m else ""
+            summary = re.sub(r'\s+', ' ', summary).strip()
+
+            account_m = re.search(r'<a[^>]*class="[^"]*account[^"]*"[^>]*>(.*?)</a>', block, re.DOTALL | re.IGNORECASE)
             account = re.sub(r'<[^>]+>', '', account_m.group(1)).strip() if account_m else ""
-            # [P3 修复·D8] 新版列表页无 class="account" 锚点，账号名位于 <span class="all-time-y2">
             if not account:
                 span_m = re.search(r'<span[^>]*class="[^"]*all-time-y2[^"]*"[^>]*>(.*?)</span>',
-                                   block, re.DOTALL)
+                                   block, re.DOTALL | re.IGNORECASE)
                 if span_m:
                     account = html.unescape(re.sub(r'<[^>]+>', '', span_m.group(1))).strip()
-
-            summary_m = re.search(r'<p class="txt-info"[^>]*>(.*?)</p>', block, re.DOTALL)
-            summary = html.unescape(re.sub(r'<[^>]+>', '', summary_m.group(1))).strip() if summary_m else ""
-
-            # [P3 修复·D8] 列表页账号缺失时从摘要/标题兜底识别，避免直接落到「未知」
+            if not account:
+                sp_m = re.search(r'<div[^>]*class="s-p"[^>]*>.*?<a[^>]*>(.*?)</a>', block, re.DOTALL | re.IGNORECASE)
+                if sp_m:
+                    account = html.unescape(re.sub(r'<[^>]+>', '', sp_m.group(1))).strip()
             if not account:
                 account = self._guess_account_from_text(f"{summary} {title}")
+            account = html.unescape(re.sub(r'<[^>]+>', '', account)).strip()
 
-            time_m = re.search(r"timeConvert\(['\"](\d+)['\"]\)", block)
+            time_m = re.search(r"timeConvert\(['\"]?(\d+)['\"]?\)", block)
             pub_date = ""
             if time_m:
                 try:
                     pub_date = datetime.fromtimestamp(int(time_m.group(1))).strftime("%Y-%m-%d")
                 except Exception as exc:
-                    # 时间戳非法只丢失发布日期这一条元数据，不影响正文入库
                     import logging
                     logging.getLogger(__name__).debug(
-                        "列表页发布时间解析失败（保留空日期）: %s -> %s", time_m.group(1), exc)
+                        "列表页发布时间解析失败: %s -> %s", time_m.group(1), exc)
+            if not pub_date:
+                date_m = re.search(r'(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})', block)
+                if date_m:
+                    y, m, d = date_m.groups()
+                    pub_date = f"{y}-{int(m):02d}-{int(d):02d}"
 
             if title and raw_url:
                 items.append(WeChatArticleItem(
@@ -394,12 +509,23 @@ class WeChatSearchEngine(_AccountNameResolver):
     def _parse_bing_results(self, html_text: str) -> List[WeChatArticleItem]:
         """解析 Bing 搜索结果页"""
         items = []
+        try:
+            from tools.search.providers._http import clean_bing_url
+        except ImportError:
+            try:
+                from search.providers._http import clean_bing_url
+            except ImportError:
+                clean_bing_url = lambda u: u
+
         result_blocks = re.findall(r'<li class="b_algo"[^>]*>(.*?)</li>', html_text, re.DOTALL)
         for block in result_blocks:
-            link_m = re.search(r'<a[^>]+href="(https?://mp\.weixin\.qq\.com/[^"]+)"[^>]*>(.*?)</a>', block, re.DOTALL)
+            link_m = re.search(r'<h2[^>]*><a[^>]+href="([^"]+)"[^>]*>(.*?)</a></h2>', block, re.DOTALL | re.IGNORECASE)
+            if not link_m:
+                link_m = re.search(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', block, re.DOTALL)
             if not link_m:
                 continue
-            url = html.unescape(link_m.group(1))
+            raw_url = html.unescape(link_m.group(1))
+            url = clean_bing_url(raw_url)
             title = re.sub(r'<[^>]+>', '', link_m.group(2)).strip()
 
             summary_m = re.search(r'<p[^>]*>(.*?)</p>', block, re.DOTALL)
@@ -415,7 +541,7 @@ class WeChatSearchEngine(_AccountNameResolver):
             # 抓取正文后由 _extract_metadata 再做一次精确覆盖。
             account = self._guess_account_from_text(f"{summary} {title}")
 
-            if title and "mp.weixin.qq.com" in url:
+            if title and ("mp.weixin.qq.com" in url or "mp.weixin.qq.com" in raw_url or "weixin" in url):
                 items.append(WeChatArticleItem(
                     title=title,
                     url=url,
@@ -643,7 +769,9 @@ def denoise_keyword(keyword: str) -> str:
     if not keyword:
         return keyword
     cleaned = re.sub(r"[（(][^）)]*[）)]", " ", keyword)   # 去括号段
-    cleaned = re.sub(r"\b\d{4,6}\b", " ", cleaned)          # 去 4~6 位专业代码
+    cleaned = re.sub(r"(?<!\d)\d{4,6}(?!\d)", " ", cleaned)   # 去 4~6 位专业代码
+    # 说明：不能用 \b\d{4,6}\b —— Python 的 \w 含中日韩字符，
+    # 「085400电子信息」这类中英粘连处不存在 \b 边界，会导致去噪完全失效。
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" -·")
     # 兜底：若去噪后啥都不剩（例如关键词本身就是一长串专业代码），保留原词
     return cleaned if cleaned else keyword
@@ -655,7 +783,8 @@ def wechat_search(
     fetch_content: bool = True,
     save_to_local: bool = False,
     school_name: str = "",
-    source: str = "auto"
+    source: str = "auto",
+    time_range: str = "year"
 ) -> Dict[str, Any]:
     """
     微信公众号文章检索与抓取统一入口
@@ -666,6 +795,7 @@ def wechat_search(
     :param save_to_local: 是否沉淀到本地 .memory/experiences/
     :param school_name: 联动院校侦察引擎的目标校名
     :param source: 检索源 "sogou" / "bing" / "local" / "auto"
+    :param time_range: 时间范围 "year" (近一年) / "half_year" (近半年) / "three_years" (近三年) / "all" (全部)
     :return: 包含检索状态、结果列表与落盘路径的字典
     """
     # [根因修复] 去噪放在唯一入口，保证 CLI / TUI / GUI 三端行为一致。
@@ -678,7 +808,7 @@ def wechat_search(
     pipeline = WeChatContentPipeline()
 
     # 1. 检索
-    items = engine.search(keyword, max_results, source=source)
+    items = engine.search(keyword, max_results, source=source, time_range=time_range)
 
     # 2. 抓取正文
     if fetch_content:
@@ -710,6 +840,8 @@ def wechat_search(
             {
                 "title": i.title,
                 "url": i.url,
+                "source": i.source_account or account_label(i.source_account),
+                "date": i.publish_date or date_label(i.publish_date),
                 "source_account": i.source_account,
                 # [P3 修复·D8] 下沉到唯一入口的三端统一文案，避免各端各写一套「未知」
                 "account_display": account_label(i.source_account),
@@ -725,6 +857,45 @@ def wechat_search(
         "saved_paths": saved_paths,
         "scout_linked": scout_linked,
     }
+
+
+def parse_sogou_wechat_html(html_text: str) -> List[Dict[str, str]]:
+    """从搜狗微信 HTML 中直接提取标准文章条目列表。
+
+    :return: 包含 title, source, date, url 的标准字典列表
+    """
+    engine = WeChatSearchEngine()
+    items = engine._parse_sogou_results(html_text)
+    return [
+        {
+            "title": item.title,
+            "source": item.source_account or account_label(item.source_account),
+            "date": item.publish_date or date_label(item.publish_date),
+            "url": item.url,
+        }
+        for item in items
+    ]
+
+
+def search_wechat_articles(
+    keyword: str,
+    max_results: int = 10,
+    source: str = "auto"
+) -> List[Dict[str, str]]:
+    """快速检索微信公众号文章并返回干净的结构化列表。
+
+    :return: `[{"title": ..., "source": ..., "date": ..., "url": ...}]`
+    """
+    res = wechat_search(keyword, max_results=max_results, fetch_content=False, source=source)
+    return [
+        {
+            "title": r["title"],
+            "source": r.get("source") or r.get("account_display") or "",
+            "date": r.get("date") or r.get("date_display") or "",
+            "url": r["url"],
+        }
+        for r in res.get("results", [])
+    ]
 
 
 # 别名兼容

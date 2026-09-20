@@ -2,7 +2,8 @@
 """
 检索质量评测（Benchmark）
 
-数据集：`tools/search/benchmark/dataset.jsonl`，32 条真实考研问法，覆盖
+数据集：`tools/search/benchmark/dataset.jsonl`，40 条真实考研问法（含 8 条无空格口语
+脏输入，如"华科计算机复试线多少分"），覆盖
 简章 / 专业目录 / 初试科目 / 招生人数 / 复试线 / 拟录取 / 报录比 / 真题资料 /
 学校分析 / 考纲政策十余类。字段见文件内注释。
 
@@ -45,14 +46,17 @@ class BenchmarkResult:
     total: int = 0
     metrics: Dict[str, float] = field(default_factory=dict)
     per_query: List[Dict[str, Any]] = field(default_factory=list)
+    dataset_total: int = 0
+    missing_fixtures: List[str] = field(default_factory=list)
 
     def summary(self) -> str:
         parts = [f"{k}={v:.2f}" for k, v in self.metrics.items()]
-        return f"[{self.mode}] 样本 {self.total} · " + " · ".join(parts)
+        return f"[{self.mode}] 实测样本 {self.total}/{self.dataset_total or self.total} · " + " · ".join(parts)
 
     def to_dict(self) -> Dict[str, Any]:
         return {"mode": self.mode, "total": self.total, "metrics": self.metrics,
-                "per_query": self.per_query}
+                "per_query": self.per_query, "dataset_total": self.dataset_total,
+                "missing_fixtures": self.missing_fixtures}
 
 
 # ── 数据 ────────────────────────────────────────────────────────
@@ -104,13 +108,14 @@ def evaluate_offline(dataset: Optional[List[Dict[str, Any]]] = None,
     rows = dataset if dataset is not None else load_dataset()
     fixture_map = fixtures if fixtures is not None else load_fixtures()
 
-    result = BenchmarkResult(mode="offline")
+    result = BenchmarkResult(mode="offline", dataset_total=len(rows))
     plan_hits = dedup_total = dedup_removed = 0
     topk_relevant = topk_official_first = fact_cases = 0
 
     for row in rows:
         query_text = row["query"]
         if query_text not in fixture_map:
+            result.missing_fixtures.append(query_text)
             continue
         result.total += 1
         domains = row.get("acceptable_domains") or []
@@ -136,15 +141,14 @@ def evaluate_offline(dataset: Optional[List[Dict[str, Any]]] = None,
         ranked = rank_mod.Ranker().rank(kept, SearchQuery(text=query_text, year=year or None))
 
         top = ranked[:k]
+        if intent == "fact":
+            fact_cases += 1
         if top:
             good = sum(1 for r in top if _terms_ok(r, terms))
             topk_relevant += good / len(top)
             if intent == "fact":
-                fact_cases += 1
                 if top[0].is_official:
                     topk_official_first += 1
-            elif top[0].is_official:
-                topk_official_first += 1
 
         result.per_query.append({
             "query": query_text, "plan_queries": len(plan.queries),
@@ -158,6 +162,7 @@ def evaluate_offline(dataset: Optional[List[Dict[str, Any]]] = None,
         "topk_relevant": topk_relevant / n,
         "official_first": (topk_official_first / max(1, fact_cases)) if fact_cases else topk_official_first / n,
         "dedup_effectiveness": (dedup_removed / dedup_total) if dedup_total else 0.0,
+        "fixture_coverage": result.total / max(1, len(rows)),
     }
     return result
 

@@ -254,12 +254,32 @@ class OpenAICompatClient:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
             "User-Agent": "Mozilla/5.0 Kaoyan-Study-Chain-OpenGrader/1.0",
+            "Connection": "close",
+            "Accept-Encoding": "gzip, deflate, identity",
         }
         req = urllib.request.Request(
             url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                text = resp.read().decode("utf-8", errors="ignore").strip()
+                raw_bytes = resp.read()
+                headers_obj = getattr(resp, "headers", None)
+                enc = headers_obj.get("Content-Encoding", "").lower() if headers_obj and hasattr(headers_obj, "get") else ""
+                if enc == "gzip":
+                    import gzip
+                    try:
+                        raw_bytes = gzip.decompress(raw_bytes)
+                    except Exception:
+                        pass
+                elif enc == "deflate":
+                    import zlib
+                    try:
+                        raw_bytes = zlib.decompress(raw_bytes)
+                    except Exception:
+                        try:
+                            raw_bytes = zlib.decompress(raw_bytes, -zlib.MAX_WBITS)
+                        except Exception:
+                            pass
+                text = raw_bytes.decode("utf-8", errors="ignore").strip()
         except urllib.error.HTTPError as e:
             # 4xx 为配置/请求问题，重试无意义，交由上层记为弃权
             raise RuntimeError(f"HTTP {e.code}") from e
@@ -815,7 +835,7 @@ def grade_open_question(
 
     # ── Stage 4：汇总裁决（确定性）──
     finalized = _finalize(result, valid, judge_result, cfg,
-                          derived_from_question, divergence)
+                          derived_from_question, divergence, rubric)
 
     if arbitration_unavailable and finalized.match_level == 2:
         finalized.reason += "；⚠ 本次结论未获主审交叉仲裁，如需严格把关可转人工复核"
@@ -883,9 +903,58 @@ def _review_one(question: str, answer: str, rubric: List[Dict[str, Any]],
     return parsed
 
 
+def _recompute_total(rubric, hits):
+    """按 rubric 明细重算总分：Σ hit_fraction × point_score，再归一到 10 分制。
+
+    [准确度修复·rubric 硬校验] 此前 `_parse_review` 直接采信模型自报 total，
+    `_finalize` 加权平均，rubric 与总分自相矛盾无人发现。现重算并比对，
+    偏差超容忍即转人工。hit 取值见评审提示词：full / partial / none。
+
+    [P1 修复·空明细被误判为 0 分] 原实现在「rubric 非空、rubric_hits 为空」时，
+    把**未提供明细**当成**逐条全部未命中**，重算出 0 分再与自报分比对 —— 于是
+    几乎每一份模型评分都会被判成「偏差满分」（自报 9.0 → 偏差 9.0），整题一律
+    转人工，开放题自动判分等于永久失效；更糟的是学员看到的理由是"判分自检未通过"，
+    会误以为自己的作答有问题。这属于**无依据地**降级，与本模块「宁可转人工，也绝不
+    虚高给分」的初衷相反（那里是就证据降级，这里是因缺字段误伤）。
+
+    现按「明细是否可用于重算」区分三态：
+      · 无 rubric                          → None（无从校验）
+      · 有 rubric 但完全未给 rubric_hits    → None（明细缺失，跳过比对，不降级）
+      · 有 rubric 且给了明细                → 重算比对（保留原硬校验能力）
+          - 明细全为 none：重算 0.0 是**有效结论**，照常比对
+          - 明细非空但无一命中 rubric 的 id：明细与 rubric 对不上，仍按 0 分
+            重算比对（这确属「自相矛盾」，应当被抓住）
+    """
+    rubric = rubric or []
+    if not rubric:
+        return None
+    hits = [h for h in (hits or []) if isinstance(h, dict)]
+    if not hits:
+        return None
+    by_id = {}
+    for h in hits:
+        if h.get("id") is not None:
+            by_id[h.get("id")] = h
+    fractions = {"full": 1.0, "partial": 0.5, "half": 0.5, "none": 0.0}
+    got = 0.0
+    full = 0.0
+    for i, r in enumerate(rubric, 1):
+        if not isinstance(r, dict):
+            continue
+        pts = _coerce_float(r.get("score"), 0.0)
+        full += pts
+        h = by_id.get(r.get("id", i), {})
+        frac = fractions.get(str(h.get("hit", "") or "").strip().lower(), 0.0)
+        got += frac * pts
+    if full <= 0:
+        return None
+    return round(got / full * 10.0, 2)
+
+
 def _finalize(result: OpenGradeResult, valid: List[ReviewResult],
               judge: Optional[ReviewResult], cfg: Dict[str, Any],
-              derived_from_question: bool, divergence: float) -> OpenGradeResult:
+              derived_from_question: bool, divergence: float,
+              rubric: Optional[List[Dict[str, Any]]] = None) -> OpenGradeResult:
     """Stage 4：确定性汇总与判定。"""
     # 防御：无有效评审时不得进入聚合计算（max/min 会在空序列上抛 ValueError）。
     # 正常路径已在 grade_open_question 中提前拦截，此处兜底以防未来调用方绕过。
@@ -945,6 +1014,23 @@ def _finalize(result: OpenGradeResult, valid: List[ReviewResult],
         result.error = f"评审分歧 {divergence:.1f} 分但未获仲裁结果"
         result.reason += "；⚠ 评审分歧较大且未获仲裁，建议人工复核"
         result.match_level = 1
+
+    # [准确度修复·rubric 硬校验] 模型自报 total 与按 rubric_hits 重算的总分
+    # 偏差超过容忍即转人工（软约束变硬校验）。
+    tol = float(cfg.get("rubric_tolerance", 2.0) or 2.0)
+    worst_dev = 0.0
+    _all_reviews = list(valid) + ([judge] if judge is not None else [])
+    for r in _all_reviews:
+        rec = _recompute_total(rubric, r.rubric_hits)
+        if rec is None:
+            continue
+        worst_dev = max(worst_dev, abs(float(r.total) - rec))
+    if worst_dev > tol:
+        result.match_level = 1
+        result.degraded = True
+        result.reason = (f"⚠ 判分自检未通过：模型自报总分与采分点重算偏差 "
+                         f"{worst_dev:.1f} 分（容忍 {tol} 分），已转人工复核"
+                         f"（本次不计分，不代表作答错误）")
     return result
 
 

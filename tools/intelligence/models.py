@@ -72,6 +72,16 @@ class UniversityEntity:
     graduate_domain: str              # 研究生院/招生网
     admission_domain: str             # 研招办/硕士招生入口
     departments: Dict[str, Any] = field(default_factory=dict) # 核心学科与院系映射
+    # --- 以下为全国高校数据库（研招网院校库）扩充的结构化事实字段，均带默认值保持向后兼容 ---
+    province: str = ""                # 省级行政区，如 "湖北"
+    city: str = ""                    # 城市，如 "武汉"
+    zone: str = ""                    # 国家线分区："A区" / "B区"
+    authority: str = ""               # 主管部门，如 "教育部" / "湖北省"
+    school_type: str = ""             # 办学类型，如 "综合" / "理工" / "师范"
+    name_eng: str = ""                # 英文校名
+    chsi_sch_id: str = ""             # 研招网院校库内部 ID（用于拼直达页）
+    chsi_url: str = ""                # 研招网院校库该校直达页
+    intro: str = ""                   # 由已核验结构化事实拼装的学校简介（非模型生成）
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

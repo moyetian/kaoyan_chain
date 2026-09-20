@@ -113,7 +113,8 @@ def extract_text_with_local_ocr(image_path):
     try:
         import pytesseract
         from PIL import Image
-        text = pytesseract.image_to_string(Image.open(str(p)), lang="chi_sim+eng")
+        with Image.open(str(p)) as im:
+            text = pytesseract.image_to_string(im, lang="chi_sim+eng")
         if text.strip():
             return text.strip()
     except Exception:
@@ -121,10 +122,47 @@ def extract_text_with_local_ocr(image_path):
 
     return None
 
+def _read_and_decompress(resp) -> str:
+    raw = resp.read()
+    headers = getattr(resp, "headers", None)
+    enc = headers.get("Content-Encoding", "").lower() if headers and hasattr(headers, "get") else ""
+    if enc == "gzip":
+        try:
+            import gzip
+            raw = gzip.decompress(raw)
+        except Exception:
+            pass
+    elif enc == "deflate":
+        try:
+            import zlib
+            raw = zlib.decompress(raw)
+        except Exception:
+            try:
+                raw = zlib.decompress(raw, -zlib.MAX_WBITS)
+            except Exception:
+                pass
+    return raw.decode("utf-8", errors="ignore").strip()
+
+def _get_normalized_chat_url(base_url: str) -> str:
+    try:
+        from tools.agent.loop import normalize_openai_url
+        return normalize_openai_url(base_url, "chat/completions")
+    except ImportError:
+        try:
+            from agent.loop import normalize_openai_url
+            return normalize_openai_url(base_url, "chat/completions")
+        except ImportError:
+            b = (base_url or "https://api.deepseek.com/v1").strip().rstrip("/")
+            if b.endswith("/chat/completions"):
+                return b
+            if b.endswith("/v1") or "/v1/" in b:
+                return f"{b}/chat/completions"
+            return f"{b}/v1/chat/completions"
+
 def call_text_llm(messages, config, stream=True):
     """通用文本大模型调用 (支持流式与非流式)"""
-    base_url = config.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
-    url = f"{base_url}/chat/completions"
+    base_url = config.get("base_url", "https://api.deepseek.com/v1")
+    url = _get_normalized_chat_url(base_url)
     api_key = config.get("api_key", "").strip()
     model = config.get("model", "deepseek-chat")
 
@@ -145,7 +183,9 @@ def call_text_llm(messages, config, stream=True):
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
-        "User-Agent": "Kaoyan-Vision-Solver/1.0"
+        "User-Agent": "Kaoyan-Vision-Solver/1.0",
+        "Connection": "close",
+        "Accept-Encoding": "gzip, deflate, identity"
     }
     payload = {
         "model": model,
@@ -157,7 +197,8 @@ def call_text_llm(messages, config, stream=True):
     try:
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=120) as resp:
-            res = json.loads(resp.read().decode("utf-8"))
+            text = _read_and_decompress(resp)
+            res = json.loads(text)
             return res["choices"][0]["message"]["content"]
     except urllib.error.HTTPError as e:
         err_msg = e.read().decode("utf-8", errors="ignore")
@@ -200,11 +241,13 @@ def solve_image_with_model(image_path, user_prompt="", config=None, stream=True)
             data_url, mime, filename = encode_image_to_base64(p)
             prompt_text = build_vision_prompt(user_prompt, config.get("active_subject", "math"), pre_extracted_text=ocr_text or "")
 
-            url = f"{base_url}/chat/completions"
+            url = _get_normalized_chat_url(base_url)
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}",
-                "User-Agent": "Kaoyan-Vision-Solver/1.0"
+                "User-Agent": "Kaoyan-Vision-Solver/1.0",
+                "Connection": "close",
+                "Accept-Encoding": "gzip, deflate, identity"
             }
             messages = [
                 {
@@ -233,7 +276,8 @@ def solve_image_with_model(image_path, user_prompt="", config=None, stream=True)
 
             if not stream:
                 with urllib.request.urlopen(req, timeout=120) as resp:
-                    res = json.loads(resp.read().decode("utf-8"))
+                    text = _read_and_decompress(resp)
+                    res = json.loads(text)
                     return res["choices"][0]["message"]["content"]
 
             # 流式读取

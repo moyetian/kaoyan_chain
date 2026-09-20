@@ -24,6 +24,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from .models import SearchQuery, SearchResult
 from .relevance import significant_tokens
+from .segment import normalize_text, canonical
 
 _LOG = logging.getLogger(__name__)
 
@@ -171,9 +172,10 @@ class Ranker:
         """关键词覆盖度：标题命中权重高于摘要。"""
         if not tokens:
             return 0.0
-        low_title, low_snippet = title.lower(), snippet.lower()
+        low_title, low_snippet = normalize_text(title), normalize_text(snippet)
         hits = 0.0
         for tok in tokens:
+            tok = canonical(tok)
             if tok in low_title:
                 hits += 1.0
             elif tok in low_snippet:

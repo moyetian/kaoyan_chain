@@ -27,6 +27,11 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .models import SearchResult
 
+try:  # 双导入路径兼容
+    from tools.ky_io import guard_write
+except ImportError:  # pragma: no cover
+    from ky_io import guard_write
+
 _LOG = logging.getLogger(__name__)
 
 #: 默认 TTL（秒）：按来源类型
@@ -194,6 +199,12 @@ class SearchCache:
 
     def _save(self) -> None:
         try:
+            # [safe 模式收口] 这里原先是裸 ``write_text``，绕开了 ky_io 的统一写闸门：
+            # 实测 ``ky scout``（不带 --save）在 ``--permission=safe`` 下仍会落盘
+            # ``.memory/search_cache.json``。先过 ``guard_write`` 再建目录，
+            # 只读模式下连目录都不创建；异常由本方法既有的 except 兜住，
+            # 表现为「缓存不落盘、检索照常返回」，与模块既有语义一致。
+            guard_write("写入检索缓存", self.path)
             self.path.parent.mkdir(parents=True, exist_ok=True)
             payload = {"version": 1, "entries": [e.to_json() for e in self._entries.values()]}
             self.path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")

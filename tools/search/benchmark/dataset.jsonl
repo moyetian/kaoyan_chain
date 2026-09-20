@@ -30,3 +30,11 @@
 {"query": "电子科技大学 软件工程 招生人数", "intent": "fact", "acceptable_domains": ["uestc.edu.cn", "yz.chsi.com.cn"], "must_terms": ["招生"], "year": 2027}
 {"query": "清华大学 计算机 推免 名额", "intent": "fact", "acceptable_domains": ["tsinghua.edu.cn", "yz.chsi.com.cn"], "must_terms": ["推免"], "year": 2027}
 {"query": "浙江大学 软件学院 专业目录", "intent": "fact", "acceptable_domains": ["zju.edu.cn", "yz.chsi.com.cn"], "must_terms": ["专业目录"], "year": 2027}
+{"query": "华科计算机复试线多少分", "intent": "fact", "acceptable_domains": ["hust.edu.cn", "gszs.hust.edu.cn"], "must_terms": ["复试"], "year": 2027}
+{"query": "华中科技大学计算机学院考研复试分数线2027", "intent": "fact", "acceptable_domains": ["hust.edu.cn", "gszs.hust.edu.cn"], "must_terms": ["复试"], "year": 2027}
+{"query": "浙大软院今年招多少人", "intent": "fact", "acceptable_domains": ["zju.edu.cn", "yz.chsi.com.cn"], "must_terms": ["招生"], "year": 2027}
+{"query": "南医大085409专业课真题有没有", "intent": "resource", "acceptable_domains": ["smu.edu.cn", "mp.weixin.qq.com", "zhihu.com"], "must_terms": ["真题"], "year": null}
+{"query": "北大计算机报录比是多少", "intent": "fact", "acceptable_domains": ["pku.edu.cn", "yz.chsi.com.cn"], "must_terms": ["报录比"], "year": 2027}
+{"query": "武大软件工程拟招生人数", "intent": "fact", "acceptable_domains": ["whu.edu.cn", "yz.chsi.com.cn"], "must_terms": ["招生"], "year": 2027}
+{"query": "清华推免名额怎么查", "intent": "fact", "acceptable_domains": ["tsinghua.edu.cn", "yz.chsi.com.cn"], "must_terms": ["推免"], "year": 2027}
+{"query": "电子科大408真题回忆版", "intent": "resource", "acceptable_domains": ["uestc.edu.cn", "zhihu.com", "mp.weixin.qq.com"], "must_terms": ["真题"], "year": null}

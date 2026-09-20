@@ -115,21 +115,43 @@ def infer_general_school_intel(school: str, major: str = "") -> Dict[str, Any]:
     通用高校考研情报智能推断器：对未在预置库中的高校进行画像推导
     """
     school = school.strip()
-    major = major.strip() or "计算机/热门专业"
+    major = (major or "").strip()
 
     # 判断办学层次推断
     level = "教育部直属 / 省属重点本科院校"
+    region = "全国"
+    official_site = f"https://yz.chsi.com.cn/sch/search.do?xxmc={urllib.parse.quote(school)}"
+    try:
+        from tools.intelligence.registry import get_registry
+        ent = get_registry().resolve(school)
+        if ent:
+            level = " / ".join(ent.level) if isinstance(ent.level, list) else str(ent.level)
+            region = ent.region
+            official_site = ent.official_domain or ent.graduate_domain or official_site
+    except Exception:
+        pass
+
     top_985 = ["清华", "北大", "浙大", "复旦", "上交", "南大", "中科大", "人大学", "北航", "北理", "哈工大", "同济", "南开", "天津大学", "大连理工", "吉林大学", "东北大学", "华东师大", "东南大学", "中南大学", "湖南大学", "华南理工", "四川大学", "重庆大学", "电子科大", "西安交大", "西北工大", "兰州大学", "中国农大", "国防科大", "中山大学", "厦门大学", "山东大学", "海洋大学", "中国地大", "矿大", "石油大"]
     for k in top_985:
         if k in school:
             level = "985工程 / 211工程 / 双一流建设重点高校"
             break
-    if "大学" in school and "211" not in level:
+    if "大学" in school and "211" not in level and "双一流" not in level and "骨干" not in level:
         level += "（硕士学位授权重点高校）"
 
     # 初试科目特征启发推导
     subjects = []
-    if any(w in major for w in ("计算机", "软件", "网络", "信息安全", "人工智能", "大数据", "物联网")):
+    if any(w in major for w in ("马克思主义理论", "0305", "思想政治", "马理论")):
+        if "河南" in school:
+            subjects.append("统考科目：101思想政治理论、201英语(一)")
+            subjects.append("专业课：自命题科目1、自命题科目2（院校自命题）")
+        elif "湖南" in school:
+            subjects.append("统考科目：101思想政治理论、201英语(一)")
+            subjects.append("专业课：622马克思主义基本原理、826中国化马克思主义理论与实践（院校自命题）")
+        else:
+            subjects.append("统考科目：101思想政治理论、201英语(一)")
+            subjects.append("专业课：自命题业务课一(马克思主义基本原理)、自命题业务课二(中国化马克思主义理论与实践)")
+    elif any(w in major for w in ("计算机", "软件", "网络", "信息安全", "人工智能", "大数据", "物联网")):
         subjects.append("统考科目：101思想政治理论、201英语(一)或204英语(二)、301数学(一)或302数学(二)")
         subjects.append("专业课：408计算机学科专业基础（全国统考）或院校自命题（如数据结构、操作系统、C/C++）")
     elif any(w in major for w in ("金融", "应用统计", "国际商务", "保险", "资产评估")):
@@ -137,14 +159,14 @@ def infer_general_school_intel(school: str, major: str = "") -> Dict[str, Any]:
     elif any(w in major for w in ("机械", "自动化", "电气", "通信", "土木")):
         subjects.append("初试科目：政治、英语(一/二)、数学(一/二)、专业课自命题 (如控制工程、电路、理论力学)")
     else:
-        subjects.append("常规科目：思想政治理论、外国语、业务课一（数学或统考专业课）、业务课二（自命题专业课）")
+        subjects.append("【待核验】未命中国家统考或大类专业特征，请核验该校研究生院当期公布的《硕士研究生招生专业目录》以锁定准确科目。")
 
     return {
         "level": level,
-        "region": "全国",
-        "official_site": f"https://yz.chsi.com.cn/sch/search.do?xxmc={urllib.parse.quote(school)}",
+        "region": region,
+        "official_site": official_site,
         "subjects": subjects,
-        "reputation_summary": f"该校在【{major}】方向具备扎实培养体系，历年毕业生主要面向本省及周边区域高新技术产业与企事业单位。",
+        "reputation_summary": f"该校在【{major or '相关学科'}】方向具备扎实培养体系，历年毕业生主要面向本省及周边区域企事业单位。",
         "protect_first": "复试录取通常按教育部统一规程执行，建议密切关注目标院系官方复试细则中是否有校外调剂前科。",
         "pitfalls": [
             f"⚠️ 及时核对大纲变动：每年 9 月初务必第一时间核实 {school} 研究生院最新公布的《专业目录》，警惕自命题改考统考或参考书更换。",
@@ -270,13 +292,11 @@ def extract_key_metrics(school: str, major: str, official_items: List[Dict], soc
         pro_deps = s_data.get("pro_departments", {})
         # 查找匹配的专业方向
         dep_data = None
-        for k, v in pro_deps.items():
-            if k in major or major in k:
-                dep_data = v
-                break
-        if not dep_data and pro_deps:
-            # 取第一个默认热门专业
-            dep_data = list(pro_deps.values())[0]
+        if major:
+            for k, v in pro_deps.items():
+                if k in major or major in k:
+                    dep_data = v
+                    break
 
         if dep_data:
             metrics["quota_hint"] = dep_data.get("ratio_quota", "")
@@ -285,6 +305,12 @@ def extract_key_metrics(school: str, major: str, official_items: List[Dict], soc
             metrics["positive_signals"].append("复试公开透明、不歧视双非")
             metrics["risk_signals"].append("初试408/统考高分竞争激烈")
             metrics["risk_signals"].append("复试机试或专业面试有硬淘汰率")
+        else:
+            inferred = infer_general_school_intel(school, major)
+            metrics["subjects_hint"] = inferred["subjects"]
+            metrics["positive_signals"].append("正规教育部备案招生单位")
+            metrics["risk_signals"].append("需在9月前防范自命题大纲更换")
+            metrics["risk_signals"].append("需警惕复试差额过高或调剂占用")
     else:
         inferred = infer_general_school_intel(school, major)
         metrics["level"] = inferred["level"]
@@ -352,6 +378,13 @@ def synthesize_report_with_llm(school: str, major: str, official_items: List[Dic
         "注意：切忌捏造虚假未核验的数据，缺失处应指导学员如何精准核实。"
     )
 
+    study_plan = (cfg or {}).get("study_plan", {})
+    if study_plan.get("math_key") == "none" or "不考数学" in study_plan.get("math_name", ""):
+        system_prompt += (
+            "\n【学员学情约束】：学员当前备考科目为【不考数学】，"
+            "严禁推荐高等数学、线性代数、概率论等数学复习计划或 408/算法题库刷题，应聚焦专业课与政英提分。"
+        )
+
     user_prompt = f"""【目标院校】: {school}
 【报考专业】: {major if major else "计算机/软件工程/主流方向"}
 
@@ -371,17 +404,46 @@ def synthesize_report_with_llm(school: str, major: str, official_items: List[Dic
     }
 
     try:
+        try:
+            from tools.agent.loop import normalize_openai_url
+        except ImportError:
+            from agent.loop import normalize_openai_url
+    except ImportError:
+        def normalize_openai_url(b: str, endpoint: str = "chat/completions") -> str:
+            b = (b or "").strip().rstrip("/")
+            if b.endswith("/chat/completions"):
+                return b
+            if b.endswith("/v1") or "/v1/" in b:
+                return f"{b}/{endpoint.lstrip('/')}"
+            return f"{b}/v1/{endpoint.lstrip('/')}"
+
+    try:
         req = urllib.request.Request(
-            f"{base_url}/chat/completions",
+            normalize_openai_url(base_url, "chat/completions"),
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}",
-                "User-Agent": USER_AGENT
+                "User-Agent": USER_AGENT,
+                "Connection": "close",
+                "Accept-Encoding": "gzip, deflate, identity"
             },
             data=json.dumps(req_body).encode("utf-8")
         )
-        with urllib.request.urlopen(req, timeout=25) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            raw = resp.read()
+            headers = getattr(resp, "headers", None)
+            enc = headers.get("Content-Encoding", "").lower() if headers and hasattr(headers, "get") else ""
+            if enc == "gzip":
+                import gzip
+                try: raw = gzip.decompress(raw)
+                except Exception: pass
+            elif enc == "deflate":
+                import zlib
+                try: raw = zlib.decompress(raw)
+                except Exception:
+                    try: raw = zlib.decompress(raw, -zlib.MAX_WBITS)
+                    except Exception: pass
+            data = json.loads(raw.decode("utf-8", errors="ignore"))
             return data["choices"][0]["message"]["content"].strip()
     except Exception:
         return None
@@ -491,6 +553,18 @@ def format_scout_report(data: Dict[str, Any], use_color: bool = False) -> str:
 
     # 若已由大模型提炼出完整研报，优先呈现高密度研报并附上直达信源
     if llm_report:
+        _auth_level = ""
+        try:
+            from tools.intelligence.registry import get_registry
+            _ent = get_registry().resolve(school)
+            if _ent:
+                _lv = " / ".join(_ent.level) if isinstance(_ent.level, list) else str(_ent.level)
+                _code = _ent.chsi_code if (_ent.chsi_code and _ent.chsi_code != "待查") else f"UNLISTED_{school}"
+                _region = _ent.region
+                if _lv:
+                    _auth_level = f"> ✅ **权威核验（高校名录库）**：`{school}` 教育部代码 `{_code}`，办学层次 `{_lv}`，地区 `{_region}`。下文 LLM 研报中若出现不一致的层次表述，请以本行为准。\n\n"
+        except Exception:
+            _auth_level = ""
         links_block = [
             "\n---\n### 🔗 权威官方与实名社媒直通车",
             f"- 🏛️ [中国研究生招生信息网目录查询]({official_data[1]['url'] if len(official_data)>1 else 'https://yz.chsi.com.cn/zsml/queryAction.do'})",
@@ -498,7 +572,7 @@ def format_scout_report(data: Dict[str, Any], use_color: bool = False) -> str:
             f"- 📺 [B站 {school} {major} 高分备考经验贴]({direct_links.get('bili_topic', 'https://www.bilibili.com')})",
             f"- 📕 [小红书 {school} {major} 考研避坑专区]({direct_links.get('xhs_topic', 'https://www.xiaohongshu.com')})"
         ]
-        return llm_report + "\n" + "\n".join(links_block)
+        return _auth_level + llm_report + "\n" + "\n".join(links_block)
 
     # 深度离线/无 API 架构卡片模式：绝不留空，全维度呈现干货
     lines = []

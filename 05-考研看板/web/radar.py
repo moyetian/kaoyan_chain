@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import html
+import json
 import pathlib
 import re
 
@@ -39,8 +40,16 @@ def build_radar_html(root_path: pathlib.Path) -> str:
         except Exception:
             pass
 
+    # [H-0b 隐私修复] 脱敏模式（默认开启）下，监控院校名、研究生院官网 URL 与简章标题
+    # 均来自隐私目录 .memory/admission_watch.json，而本产物会随 GitHub Pages 公开发布
+    # （实测曾把 `https://gra.henau.edu.cn` 写进 docs/index.html）——
+    # 故只输出「已配置 N 所」的聚合状态，不回显任何可识别信息。
+    # 该开关同时供下方「考纲异动」与「社媒经验」两节复用。
+    sanitize = snapshot_opt_in()
+
     # 若未建立独立监控库但已配置目标院校，自动合成目标院校动态监控卡片
-    if not watch_items and target_school:
+    # （脱敏模式下不得合成：目标院校名本身就是报考意向）
+    if not watch_items and target_school and not sanitize:
         watch_items.append({
             "school": target_school,
             "status": "WATCHING",
@@ -51,7 +60,20 @@ def build_radar_html(root_path: pathlib.Path) -> str:
 
     w_html = []
     w_html.append("<section class='radar-sec'><h3><span><svg viewBox='0 0 24 24' width='16' height='16' stroke='currentColor' stroke-width='2' fill='none'><path d='M12 2v20M2 12h20M12 7a5 5 0 0 0-5 5M12 3a9 9 0 0 0-9 9'/></svg></span>目标院校简章监控雷达 (Admission Watcher)</h3>")
-    if watch_items:
+    if watch_items and sanitize:
+        n = len(watch_items)
+        w_html.append(
+            "<div style='font-size:12px;color:var(--mut);margin-bottom:8px'>"
+            f"已配置 <b>{n}</b> 所监控院校，系统自动轮询其研究生院公告并比对哈希指纹变动：</div>"
+        )
+        w_html.append(
+            "<div class='radar-card'><div class='radar-card-h'>"
+            "<span>监控中院校（已脱敏）</span>"
+            "<span class='radar-badge del'>指纹轮询正常</span></div>"
+            "<div style='font-size:12px;color:var(--mut);'>院校名称、研究生院官网与简章标题仅保留在本机 "
+            "<code>.memory/admission_watch.json</code>，不随公开看板发布。</div></div>"
+        )
+    elif watch_items:
         w_html.append("<div style='font-size:12px;color:var(--mut);margin-bottom:8px'>系统自动每隔周期轮询目标高校研究生院公告，比对哈希指纹变动：</div>")
         for it in watch_items:
             st = it.get("status", "UNCHANGED")
@@ -92,13 +114,19 @@ def build_radar_html(root_path: pathlib.Path) -> str:
             c_mod = mod_match.group(1) if mod_match else "0"
 
             diff_html.append("<div class='radar-card'>")
-            diff_html.append(f"<div class='radar-card-h'><span>{html.escape(df.stem)}</span><span class='radar-badge mod'>动荡率 {vol}%</span></div>")
+            # 报告文件名形如「考纲变动分析_<目标院校>_<科目>.md」，脱敏模式下需抹去院校名
+            diff_title = df.stem
+            diff_name = df.name
+            if sanitize and target_school:
+                diff_title = diff_title.replace(target_school, "目标院校")
+                diff_name = diff_name.replace(target_school, "目标院校")
+            diff_html.append(f"<div class='radar-card-h'><span>{html.escape(diff_title)}</span><span class='radar-badge mod'>动荡率 {vol}%</span></div>")
             diff_html.append("<div class='radar-stat'>")
             diff_html.append(f"<span class='radar-badge add'>+ 新增必考 {c_add} 处</span>")
             diff_html.append(f"<span class='radar-badge del'>- 彻底剔除 {c_del} 处</span>")
             diff_html.append(f"<span class='radar-badge mod'>~ 考查微调 {c_mod} 处</span>")
             diff_html.append("</div>")
-            diff_html.append("<div style='font-size:11.5px;color:var(--mut);'>详见本地报告: <code>04-专业课/" + html.escape(df.name) + "</code></div>")
+            diff_html.append("<div style='font-size:11.5px;color:var(--mut);'>详见本地报告: <code>04-专业课/" + html.escape(diff_name) + "</code></div>")
             diff_html.append("</div>")
     else:
         diff_html.append("<div class='empty' style='padding:16px;'><div class='ei'>📑</div>暂无大纲对比研报<br><small>在终端输入 <code>ky fetch diff --school 目标院校</code> 即可生成逐级 AST 差异透视与突破处方</small></div>")
@@ -114,7 +142,6 @@ def build_radar_html(root_path: pathlib.Path) -> str:
         exp_dir = root_path / "docs" / "experiences"
     exp_files = sorted(list(exp_dir.glob("*.md")), key=lambda p: (0 if target_school and target_school in p.name else 1, -p.stat().st_mtime)) if exp_dir.exists() else []
     # [审查修复] 脱敏模式（默认开启）：隐私目录中的院校名与本地路径不得写入公开看板
-    sanitize = snapshot_opt_in()
     if exp_files:
         exp_html.append("<div style='font-size:12px;color:var(--mut);margin-bottom:8px'>聚合知乎、B站、小红书实名学长学姐真实就读体验与避坑指南 (AI 置信度降噪清洗)：</div>")
         for ef in exp_files[:4]:

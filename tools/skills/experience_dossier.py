@@ -62,7 +62,13 @@ def apply_scout_to_config(school: str, major: str, metrics: Dict[str, Any] = Non
                     cfg["pro_name"] = clean_name
                     study_plan["pro_name"] = clean_name
 
-        atomic_write_text(CONFIG_FILE, json.dumps(cfg, ensure_ascii=False, indent=2))
+        # [R2-D7 修复·config_path 只隔离读、不隔离写 · 高危]
+        # 旧代码在这里写的是模块级 ``CONFIG_FILE``（= 真实工作区 ky_config.json），
+        # 而上面第 43/47 行读的是 ``target``。于是任何调用方传 ``config_path=<沙箱
+        # 文件>`` 想隔离写入，结果都是「读沙箱、写真实」—— 真实备考方案被整份覆盖。
+        # 实锤触发者：``tools/test_ky_suite.py:1358-1366``，该脚本每次运行都会把
+        # 用户的 ky_config.json 冲成 ``{浙江大学/人工智能/408}``。
+        atomic_write_text(target, json.dumps(cfg, ensure_ascii=False, indent=2))
         return True
     except Exception:
         return False
@@ -252,6 +258,8 @@ def save_experience_dossier(
     """
     school = (school or "通用院校").strip()
     major = (major or "").strip()
+    # [缺陷修复] metrics 形参默认 None，此前函数体直接 metrics.get(...) 会 AttributeError
+    metrics = metrics or {}
     # [P0 修复] 默认落地到 .memory/experiences/ 目录，避免学员考情隐私泄露至 Pages
     out_dir = output_dir or (ROOT / ".memory" / "experiences")
     out_dir.mkdir(parents=True, exist_ok=True)

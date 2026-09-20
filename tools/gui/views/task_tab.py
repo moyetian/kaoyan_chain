@@ -22,7 +22,8 @@ except ImportError:  # pragma: no cover
 def build(win) -> QWidget:
     widget = QWidget()
     layout = QVBoxLayout(widget)
-    layout.setSpacing(12)
+    layout.setSpacing(14)
+    layout.setContentsMargins(14, 14, 14, 14)
 
     win.task_progress_bars = {}
     win.task_count_labels = {}

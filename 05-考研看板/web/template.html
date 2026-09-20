@@ -756,14 +756,16 @@ function animate(){
 
 /* ── 知识图谱渲染 (S3-4) ── */
 (function(){
-  var subjs = [
-    {key:'math', name:'数学', color:'#2563eb'},
-    {key:'eng', name:'英语', color:'#e11d48'},
-    {key:'pol', name:'政治', color:'#d97706'},
-    {key:'pro', name:'专业课', color:'#059669'}
-  ];
-  var currSubj = 'math';
+  /* [P5 残留修复·图谱 tab 数据驱动] 改造前这里硬编码了 4 个 tab
+     （数学/英语/政治/专业课）且默认选中数学：不考数学的文科考生
+     （math_key=none / mode_b 双专业课 / mode_c 管综）打开看板，仍会看到
+     「数学」页签、甚至默认展示数学知识图谱。
+     现改为由内联数据驱动：D.subjects 已由 web/config.py 按考生实际报考科目
+     过滤（math_key=none 时不含 math），再与 D.maps 取交集，避免为没有图谱
+     数据的科目渲染空 tab；默认选中第一门可用科目。 */
   var maps = D.maps || {};
+  var subjs = (D.subjects || []).filter(function(s){ return maps[s.key]; }).map(function(s){ return {key:s.key, name:s.name, color:s.color}; });
+  var currSubj = subjs.length ? subjs[0].key : '';
 
   function renderMap(subjKey){
     var m = maps[subjKey];

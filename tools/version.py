@@ -3,7 +3,7 @@
 项目版本号 · 单一事实来源 (Single Source of Truth)
 
 [缺陷修复·版本号多源漂移] 修复前项目版本在四处各写一份且互不相同：
-  - pyproject.toml          version = "2.7.0"   ← 打包元数据（真源）
+  - pyproject.toml          version = "2.8.0"   ← 打包元数据（真源）
   - tools/ky_cli.py:3938    打印 "ky-cli) v2.6.0"
   - tools/gui/__init__.py   __version__ = "2.5.0"
   - tools/tui_navigator.py  Banner 写死 "终端全景智能中枢 v2.5"
@@ -81,7 +81,7 @@ def _version_from_pyproject() -> Optional[str]:
 
 @lru_cache(maxsize=1)
 def get_version() -> str:
-    """返回项目版本号（如 "2.7.0"）。
+    """返回项目版本号（如 "2.8.0"）。
 
     解析优先级：
       1. 已安装分发版的元数据（wheel / pip install -e 后的权威值）

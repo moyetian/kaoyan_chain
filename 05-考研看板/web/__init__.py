@@ -27,7 +27,10 @@ from .vendor import (
     MARKED_VERSION,
     asset_map,
     download_vendor_assets,
+    is_offline_default,
     load_fallback_math_js,
+    strip_non_woff2_font_sources,
+    vendor_mode,
 )
 
 __all__ = [
@@ -36,8 +39,11 @@ __all__ = [
     "asset_map",
     "build_theme_css",
     "download_vendor_assets",
+    "is_offline_default",
     "load_fallback_math_js",
+    "strip_non_woff2_font_sources",
     "theme_presets_json",
     "theme_rhythm_json",
     "theme_preset_gallery",
+    "vendor_mode",
 ]

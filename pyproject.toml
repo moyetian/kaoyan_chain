@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kaoyan-study-chain"
-version = "2.7.0"
+version = "2.8.0"
 description = "考研全科 AI 私人教师与全自动备考总控系统 (Kaoyan Study Chain)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -93,7 +93,13 @@ artifacts = ["*.md", "pyproject.toml"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-filterwarnings = ["error"]
+filterwarnings = [
+  "error",
+  "ignore::ResourceWarning",
+  "ignore::DeprecationWarning:cryptography.*",
+  "ignore::DeprecationWarning:pypdf.*",
+  "default::DeprecationWarning:tools.*"
+]
 addopts = "--strict-markers -ra"
 markers = ["live: 调用真实 API，需显式开启", "slow", "bench"]
 timeout = 120

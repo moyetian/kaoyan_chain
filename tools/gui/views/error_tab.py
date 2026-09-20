@@ -12,7 +12,8 @@ from PySide6.QtWidgets import QHBoxLayout, QPushButton, QTextEdit, QVBoxLayout, 
 def build(win) -> QWidget:
     widget = QWidget()
     layout = QVBoxLayout(widget)
-    layout.setSpacing(10)
+    layout.setSpacing(12)
+    layout.setContentsMargins(12, 12, 12, 12)
 
     win.error_info = QTextEdit()
     win.error_info.setReadOnly(True)
@@ -20,9 +21,11 @@ def build(win) -> QWidget:
     layout.addWidget(win.error_info, stretch=1)
 
     btn_bar = QHBoxLayout()
+    btn_bar.setSpacing(10)
     quiz_btn = QPushButton("一键组装错题盲盒自测卷")
     quiz_btn.clicked.connect(win._generate_error_quiz)
     refresh_err_btn = QPushButton("刷新待复测队列")
+    refresh_err_btn.setObjectName("SecondaryBtn")
     refresh_err_btn.clicked.connect(win._refresh_error_tab)
     btn_bar.addWidget(quiz_btn)
     btn_bar.addWidget(refresh_err_btn)

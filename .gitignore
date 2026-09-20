@@ -14,7 +14,11 @@ scripts/gui_shots/
 env/
 build/
 develop-eggs/
-dist/
+# [C7 修复] 锚定为**仓库根**的构建产物目录。原写法 `dist/` 会匹配任意层级的
+# dist 目录，把 docs/assets/vendor/katex/<ver>/dist/（KaTeX 的 npm 包内部结构，
+# 里面正是 katex.min.css/js 与字体）一并忽略掉 —— 于是"本地 vendor 随仓库分发"
+# 静默失效，断网时公式照样退化成 LaTeX 源码串。改为根锚定后互不干扰。
+/dist/
 downloads/
 eggs/
 .eggs/
@@ -56,9 +60,12 @@ README优化方案*.md
 # 曾占仓库体积的一半（各约 2.8MB）。
 05-考研看板/docs/
 
-# --offline 构建下本地化的第三方前端资源（KaTeX / marked 及字体），
-# 属可弃构建产物：几百 KB 且可随时用 `py 05-考研看板/build.py --offline` 重新生成。
-docs/assets/vendor/
+# [C7 修复·默认离线] 第三方前端资源（KaTeX / marked 及 woff2 字体）现随仓库分发：
+# 看板默认走本地 vendor（断网也能渲染公式），克隆即用、无需先联网构建一次。
+# 体积约 740KB，换取「手机端在破网环境下公式不再退化成 LaTeX 源码串」。
+# 如确需回到 CDN：设 KY_VENDOR_MODE=cdn 或运行 build.py --cdn。
+!docs/assets/vendor/
+docs/assets/vendor/**/*.js.map
 05-考研看板/docs/assets/vendor/
 
 # 个人界面主题配置（tokens 见 tools/theme/）：由用户在本机定制，
@@ -133,6 +140,10 @@ desktop.ini
 .claude/
 .agents/
 
+# 全量自检沙箱：每轮自检会在这里铺开成百上千个临时工作区副本，
+# 其中包含各份 ky_config.json / _状态 快照，属本机调试残留，绝不上传。
+.codex_full_check_*/
+
 # 三级分层记忆 (学员个人学情与决策，本地独占)
 .memory/
 
@@ -153,6 +164,8 @@ rust_ext/target/
 !docs/state_snapshot.json
 !05-考研看板/docs/state_snapshot.json
 *.log
+/logs/
+logs/
 
 # ── 学员隐私：目标院校/专业社媒档案（绝不入库、绝不发布）──
 docs/experiences/
@@ -200,3 +213,14 @@ scripts/legacy/
 # 814 为某校自命题科目代码），公开即泄露报考意向 —— 仅本地保留，不入库。
 # 通配只匹配「年份考纲_」前缀的生成文件，不影响随仓库公开的「考试大纲.md」。
 /04-专业课/20*考纲_*.md
+
+# ── 全国高校库：原始快照与抓取中间产物不入库（2026-09-19）──
+# 只提交派生库 data/universities/national_institutions.json（可由快照复现）。
+# 原始快照共约 3.5MB，且其中 fjw345/zsts119 两个上游仓库**未声明任何许可**，
+# 原样提交到公开仓库属再分发他人未授权汇编数据 —— 故仅本机留存。
+data/universities/_sources/
+# exam_subjects.json 是 _sources/chsi_408_offerings.json 的消费者视图（1.8MB），
+# 408 科目已内嵌进 national_institutions.json 的 departments，本地留存即可。
+data/universities/exam_subjects.json
+# 抓取过程的临时落盘目录
+.tmp_unidata/

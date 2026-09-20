@@ -120,7 +120,12 @@ def capabilities(names: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """
     module = native()
     if names is None:
-        names = sorted(n for n in dir(module) if not n.startswith("_")) if module else []
+        # [缺陷修复] dir(module) 会把模块自身名（如 'ky_rust_ext'）等非能力属性也算进来，
+        # 污染 doctor 报告。此处只保留可调用（真正的函数）的顶层属性。
+        names = sorted(
+            n for n in dir(module)
+            if not n.startswith("_") and callable(getattr(module, n, None))
+        ) if module else []
         # 黑名单里的能力即使扩展存在也要出现在报告里（否则用户看不到"被禁用"这一事实）
         names = sorted(set(names) | set(KNOWN_RUST_DEFECTS))
 

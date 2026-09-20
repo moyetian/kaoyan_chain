@@ -83,7 +83,8 @@ class SchoolComparator:
         school1_query: str,
         school2_query: str,
         major_keyword: str = "计算机",
-        save_report: bool = False
+        save_report: bool = False,
+        api_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         对比两所高校在目标专业方向下的关键指标
@@ -95,8 +96,8 @@ class SchoolComparator:
         name2 = entity2.name if entity2 else school2_query
 
         # 尝试从内置权威数据库提取深度招考指标 (若有)
-        info1 = self._get_school_profile(name1, entity1, major_keyword)
-        info2 = self._get_school_profile(name2, entity2, major_keyword)
+        info1 = self._get_school_profile(name1, entity1, major_keyword, api_config=api_config)
+        info2 = self._get_school_profile(name2, entity2, major_keyword, api_config=api_config)
 
         # 自动对比分析
         diff_analysis = self._analyze_differences(name1, info1, name2, info2, major_keyword)
@@ -113,32 +114,38 @@ class SchoolComparator:
             # [根因修复·导出文件名非法字符] 旧实现只把 "/" 和 "\" 换成 "_"，
             # 未处理 Windows 其余非法字符 ( : * ? " < > | ) 与控制字符：一旦专业名
             # 里含这些字符（如 "085400: 电子信息"），open() 会直接抛 OSError，
-            # 且会把异常冒泡到调用方。现复用 ky_io.safe_filename 做全平台安全清洗。
-            fname = safe_filename(
-                f"双校考情对比_{name1}_VS_{name2}_{major_keyword}",
-                fallback=f"双校考情对比_{name1}_VS_{name2}",
-            )
-            out_path = out_dir / f"{fname}.md"
+            # 导致批量对标或自命题对标时进程崩溃退出。现统一清洗。
+            safe_major = safe_filename(major_keyword)
+            out_file = out_dir / f"双校对标_{name1}_VS_{name2}_{safe_major}.md"
 
-            # [P3 修复·D11] 幂等判重：本次研报与此前归档的同任务研报指纹一致时，
-            # 不再新增文件，直接复用既有路径（避免同一任务堆积 4 份重复研报）。
-            dup = find_duplicate_report(out_dir, markdown_report)
-            if dup is not None:
-                saved_path = str(dup)
-                reused_existing = True
-            else:
-                # 写入前落快照备份由 ky_io 统一负责（safe 模式会在此拦截）
-                with open(out_path, "w", encoding="utf-8") as f:
-                    f.write(markdown_report)
-                saved_path = str(out_path)
+            # [幂等与消重] 若已存在同名研报且内容指纹一致，直接复用，不重复写盘
+            # （避免刷变动时间戳与触发文件监控器）。若内容发生变化则覆盖写。
+            fp_new = report_fingerprint(markdown_report)
+            if out_file.exists():
+                try:
+                    fp_old = report_fingerprint(out_file.read_text(encoding="utf-8", errors="ignore"))
+                    if fp_old == fp_new:
+                        saved_path = str(out_file)
+                        reused_existing = True
+                except Exception:
+                    pass
+
+            if not reused_existing:
+                out_file.write_text(markdown_report, encoding="utf-8")
+                saved_path = str(out_file)
 
         return {
             "school1": name1,
             "school2": name2,
-            "major": major_keyword,
+            "name1": name1,
+            "name2": name2,
+            "info1": info1,
+            "info2": info2,
             "profile1": info1,
             "profile2": info2,
+            "major": major_keyword,
             "analysis": diff_analysis,
+            "differences": diff_analysis,
             "terminal_report": terminal_report,
             "markdown_report": markdown_report,
             "saved_path": saved_path,
@@ -153,7 +160,8 @@ class SchoolComparator:
         self,
         school_name: str,
         entity: Optional[UniversityEntity],
-        major_keyword: str
+        major_keyword: str,
+        api_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """提取高校综合考情画像"""
         try:
@@ -163,12 +171,6 @@ class SchoolComparator:
                 from tools.skills.school_scout import TARGET_SCHOOLS_DB
             except ImportError:
                 TARGET_SCHOOLS_DB = {}
-
-        level = " / ".join(entity.level) if entity else "全国研招单位"
-        region = entity.region if entity else "待查"
-        chsi_code = entity.chsi_code if entity else "待查"
-        official = entity.official_domain if entity else ""
-        graduate = entity.graduate_domain if entity else ""
 
         # 检查是否命中内置 30+ 权威数据库
         db_item = TARGET_SCHOOLS_DB.get(school_name, {})
@@ -180,37 +182,42 @@ class SchoolComparator:
                     break
 
         if dept_info:
+            level = " / ".join(entity.level) if entity else "全国研招单位"
+            region = entity.region if entity else "全国"
+            chsi_code = entity.chsi_code if entity else "待查"
+            official = entity.official_domain if entity else ""
+            graduate = entity.graduate_domain if entity else ""
             majors = dept_info.get("majors", [])
-            catalog_source = "[OFFICIAL_VERIFIED 院校专栏实录]"
+            # [诚信修复] 该分支数据来自 school_db.py 的**人工整理考情专栏**（8 校），
+            # 其中的复试线/报录比/一志愿保护/口碑属人工评述，并非官方原文，
+            # 旧标签「OFFICIAL_VERIFIED 院校专栏实录」属来源夸大，现如实改标。
+            catalog_source = "[CURATED_NOTES 人工整理考情专栏]"
             score_trend = dept_info.get("score_trend", "参照国家线与校自划线")
             ratio = dept_info.get("ratio_quota", "以官方最终报录公示为准")
             protect = dept_info.get("protect_first", "遵循教育部统一录取规范")
             reputation = "；".join(dept_info.get("reputation", []))
             pitfalls = "；".join(dept_info.get("pitfalls", []))
-        else:
-            catalog_source = "[OFFLINE_BASELINE 离线通用基准]"
-            majors = [f"[OFFLINE_BASELINE 离线通用基准] 以教育部 {major_keyword} 统考目录及自命题大纲为准"]
-            score_trend = "未核验：请以该校当年研究生院复试线公示为准"
-            ratio = "未核验：请以该校当年招生简章与录取公示为准"
-            protect = "未核验：请以该校当年复试与录取细则为准"
-            reputation = "未核验：当前仅生成院校查询入口，不代表学校或专业评价。"
-            pitfalls = "请先核验官方招生简章、专业目录、复试细则与录取名单。"
 
-        return {
-            "name": school_name,
-            "code": chsi_code,
-            "level": level,
-            "region": region,
-            "official": official,
-            "graduate": graduate,
-            "majors": majors,
-            "catalog_source": catalog_source,
-            "score_trend": score_trend,
-            "ratio": ratio,
-            "protect": protect,
-            "reputation": reputation,
-            "pitfalls": pitfalls
-        }
+            return {
+                "name": school_name,
+                "code": chsi_code,
+                "level": level,
+                "region": region,
+                "official": official,
+                "graduate": graduate,
+                "majors": majors,
+                "catalog_source": catalog_source,
+                "score_trend": score_trend,
+                "ratio": ratio,
+                "protect": protect,
+                "reputation": reputation,
+                "pitfalls": pitfalls
+            }
+
+        # 未在内置 TARGET_SCHOOLS_DB 命中的高校/专业，调用 Agentic 深度研究引擎获取真实画像（绝不使用离线虚假数据）
+        from tools.intelligence.agentic_research import research_university_profile
+        profile = research_university_profile(school_name, major_keyword, api_config=api_config)
+        return profile
 
     def _analyze_differences(
         self,
@@ -222,15 +229,34 @@ class SchoolComparator:
     ) -> Dict[str, Any]:
         """提炼两校竞争差异与决策建议"""
         # 1. 科目差异
-        m1_str = " ".join(info1["majors"])
-        m2_str = " ".join(info2["majors"])
-        subject_diff = "两校初试科目相似"
+        m1_str = " ".join(info1.get("majors", []))
+        m2_str = " ".join(info2.get("majors", []))
         if "408" in m1_str and "408" not in m2_str:
-            subject_diff = f"【{name1}】采用全国统考 408，【{name2}】包含专业自主命题"
+            subject_diff = f"【{name1}】采用全国统考 408，【{name2}】包含专业自主命题或待核验"
         elif "408" in m2_str and "408" not in m1_str:
-            subject_diff = f"【{name2}】采用全国统考 408，【{name1}】包含专业自主命题"
+            subject_diff = f"【{name2}】采用全国统考 408，【{name1}】包含专业自主命题或待核验"
         elif "408" in m1_str and "408" in m2_str:
             subject_diff = "两校主流专硕/学硕均统一采用国家统考 408（复习通用度极高）"
+        else:
+            # 只有画像确实携带已核验的科目来源时，才敢逐条列出初试科目。
+            # [LOCAL_DB_VERIFIED] 表示科目来自本地全国高校库（研招网 408 逐校核验数据
+            # 与人工核验条目），同样是可追溯来源，故与联网核验同级。
+            verified = all(("OFFICIAL_VERIFIED" in str(info.get("catalog_source", "")) or
+                            "RESEARCH_VERIFIED" in str(info.get("catalog_source", "")) or
+                            "CHSI_VERIFIED" in str(info.get("catalog_source", "")) or
+                            "LOCAL_DB_VERIFIED" in str(info.get("catalog_source", "")) or
+                            "CURATED_NOTES" in str(info.get("catalog_source", "")))
+                           for info in (info1, info2))
+            if verified:
+                s1_subjs = "、".join(info1.get("majors", []))
+                s2_subjs = "、".join(info2.get("majors", []))
+                if s1_subjs and s2_subjs:
+                    subject_diff = f"【{name1}】初试科目：{s1_subjs} ｜ 【{name2}】初试科目：{s2_subjs}"
+                else:
+                    # 来源已核验但科目列表为空 → 只能说"本库未收录"，不得断言"符合指导标准"
+                    subject_diff = "当前证据不足，无法判定两校初试科目是否相似；请核验同年度、同专业及方向的招生目录。"
+            else:
+                subject_diff = "当前证据不足，无法判定两校初试科目是否相似；请核验同年度、同专业及方向的招生目录。"
 
         # 2. 地区与资源
         region_diff = f"【{name1}】位于 {info1['region']} ｜ 【{name2}】位于 {info2['region']}"
@@ -247,10 +273,16 @@ class SchoolComparator:
             _exam_tip = "若求备战通用性与规避自命题风险，可优先参考两校统考 408 对应方向"
         else:
             _exam_tip = f"学员专业课为「{_pro_name_cfg or '院校自命题'}」，请分别核验两校该科目大纲与参考书差异"
-        recommendation = (
-            f"{_exam_tip}；"
-            f"若看重一志愿公平性，可结合两校保护机制（{name1}: {info1['protect']} ｜ {name2}: {info2['protect']}）做终极取舍。"
-        )
+        # 一志愿保护机制若未核验，不得写成"可结合两校保护机制做取舍"（等于暗示已有结论）
+        _prot_verified = all("未核验" not in str(info.get("protect", "")) for info in (info1, info2))
+        if _prot_verified:
+            _prot_tip = (f"若看重一志愿公平性，可结合两校保护机制（{name1}: {info1['protect']} ｜ "
+                         f"{name2}: {info2['protect']}）做终极取舍。")
+        else:
+            _prot_tip = (f"两校一志愿保护机制尚未核验（{name1}: {info1['protect']} ｜ "
+                         f"{name2}: {info2['protect']}），"
+                         "建议查阅两校近三年复试录取细则与拟录取名单后再自行判断。")
+        recommendation = f"{_exam_tip}；{_prot_tip}"
 
         return {
             "subject_diff": subject_diff,

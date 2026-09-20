@@ -37,6 +37,70 @@ class C:
 def color(text, code):
     return f"{code}{text}{C.RESET}"
 
+
+def _read_upstream_error(err) -> str:
+    """从 HTTPError 的响应体里尽力提取上游 ``error.message``（拿不到就返回空串）。
+
+    [R2-D2] 上游经常用 400 明确说出原因，例如 kuaipao.ai 返回
+    ``{"error":{"message":"max_tokens must be greater than 2"}}``。旧实现把响应体
+    直接吞掉，用户只能看到笼统的「参数/路由不兼容」，排查方向被带偏。
+    """
+    try:
+        raw = err.read().decode("utf-8", errors="ignore")
+    except Exception:
+        return ""
+    msg = ""
+    try:
+        data = json.loads(raw)
+        err_obj = data.get("error")
+        if isinstance(err_obj, dict):
+            msg = err_obj.get("message") or ""
+        elif err_obj:
+            msg = str(err_obj)
+        if not msg:
+            msg = data.get("message") or ""
+    except Exception:
+        msg = raw
+    return " ".join(str(msg).split())[:200]
+
+
+def _build_chat_probe_body(model_name: str) -> bytes:
+    """构造「对话探活」的请求体（纯函数，便于回归测试锁定参数）。
+
+    [R2-D2 修复] ``max_tokens`` 不能是 1：部分上游会直接回 HTTP 400
+    ``{"error":{"message":"max_tokens must be greater than 2"}}``（实测
+    kuaipao.ai），于是「探活参数本身不合法」被误报成「模型/路由不兼容」，
+    把用户引向「换模型」。探活只需 1 个 token 的语义，取 16 兼顾兼容与成本。
+    """
+    return json.dumps({
+        "model": model_name,
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 16,
+        "stream": False,
+    }).encode("utf-8")
+
+
+def _classify_chat_error(code: int, upstream_msg: str = "") -> tuple:
+    """把对话探活的 HTTP 状态码映射为 ``(chat_ok, chat_status, chat_detail)``。
+
+    分类语义（与历史实现逐条一致，不得改动）：
+      429            → 接口是通的，仅限流，**不算故障**（chat_ok=True）
+      401 / 403      → 鉴权失败（应检查 API Key）
+      400 / 404      → 参数或路由不兼容，无法判定，提示人工确认（chat_ok=None）
+      其余（5xx 等） → 接口确实不可用
+    [R2-D2] 一律把上游 ``error.message`` 附在 detail 末尾 —— 上游常常已经说清
+    原因（例如 "max_tokens must be greater than 2"），旧实现把它吞掉。
+    """
+    suffix = f"：{upstream_msg}" if upstream_msg else ""
+    if code == 429:
+        return True, "ratelimit", "HTTP 429 限流"
+    if code in (401, 403):
+        return False, "auth", f"HTTP {code} 鉴权失败{suffix}"
+    if code in (400, 404):
+        return None, "incompatible", f"HTTP {code} 参数/路由不兼容{suffix}"
+    return False, "unavailable", f"HTTP {code}{suffix}"
+
+
 def check_item(title, ok, detail_ok="", detail_fail="", warn=False):
     status_tag = color("[√ 通过]", C.GREEN) if ok else (color("[! 提示]", C.YELLOW) if warn else color("[× 异常]", C.RED))
     detail = detail_ok if ok else detail_fail
@@ -213,17 +277,34 @@ def run_doctor(return_summary=False):
         else:
             check_item(f"学科规范 [{subj_dir}]", True, "核心协议与状态文件齐全")
 
-    # ── 3.5 本地真实考研资料库与白名单挂载 ──
-    print(color("\n【3.5 本地真实考研资料库与白名单挂载】", C.BOLD))
+    # ── 3.5 本地真实考研资料库（只读盘点）──
+    # [P6 修复·只读承诺] doctor 是纯诊断命令，此前却调用了
+    # material_scanner.scan_and_mount_materials() —— 它会原子重写 ky_config.json 与
+    # AGENTS.md 的资料白名单，并在 .memory/agents_backups/ 落备份。实测在
+    # `--permission=safe` 下照样把哨兵内容改回，与"只读体检"的语义完全相反，
+    # 也让 safe 模式的安全承诺在真实入口上失效。
+    # 挂载写回属于显式的 `ky mount` / `ky scan`（material.py 中的 write 命令），
+    # 此处仅做只读盘点，绝不写盘。
+    print(color("\n【3.5 本地真实考研资料库（只读盘点）】", C.BOLD))
     try:
-        from skills import material_scanner
-        m_res = material_scanner.scan_and_mount_materials()
-        if m_res.get("success"):
-            check_item("本地参考资料库扫描与挂载", True, f"已核验挂载 {m_res['total_files']} 份真实试卷/教材资料")
-        else:
-            check_item("本地参考资料库扫描与挂载", False, "", m_res.get("msg", "扫描异常"), warn=True)
+        try:
+            from skills import material_scanner
+        except ImportError:
+            from tools.skills import material_scanner
+        total_files = 0
+        per_subject = []
+        for folder in ("01-数学", "02-英语", "03-思想政治理论", "04-专业课"):
+            n = len(material_scanner.scan_subject_materials(ROOT, folder))
+            total_files += n
+            per_subject.append(f"{folder.split('-', 1)[-1]} {n} 份")
+        check_item(
+            "本地参考资料库盘点（只读）",
+            True,
+            f"共发现 {total_files} 份真实试卷/教材资料（{'、'.join(per_subject)}）；"
+            f"如需写入白名单请运行 ky mount",
+        )
     except Exception as e:
-        check_item("本地参考资料库扫描与挂载", False, "", str(e), warn=True)
+        check_item("本地参考资料库盘点（只读）", False, "", str(e), warn=True)
 
     # ── 4. 配置文件与模型状态 ──
     print(color("\n【4. 配置参数与大模型连通性】", C.BOLD))
@@ -282,7 +363,7 @@ def run_doctor(return_summary=False):
             # [P1 修复·假绿] 仅凭 /v1/models 列表命中就判「通过」是不够的：
             # 上游可能列出模型但 chat/completions 端点持续 502（见 2026-09-10 验收，
             # gpt-5.4-mini 在列表中却对对话接口返回 HTTP 502）。此处追加一次
-            # 极轻量的对话探活（max_tokens=1），只有真正拿到合法响应才算通过。
+            # 极轻量的对话探活（max_tokens=16），只有真正拿到合法响应才算通过。
             # [审查精化] 不同 HTTP 码含义不同，不能一律报「接口挂掉」：
             #   5xx / 502 / 超时      → 接口确实不可用（应换模型或稍后重试）
             #   401 / 403            → 鉴权失败（应检查 Key）
@@ -295,18 +376,14 @@ def run_doctor(return_summary=False):
                 try:
                     import urllib.request
                     import urllib.error
-                    body = json.dumps({
-                        "model": model_name,
-                        "messages": [{"role": "user", "content": "ping"}],
-                        "max_tokens": 1,
-                        "stream": False,
-                    }).encode("utf-8")
+                    body = _build_chat_probe_body(model_name)
                     creq = urllib.request.Request(
                         chat_url,
                         data=body,
                         headers={
                             "Authorization": "Bearer " + api_key,
                             "Content-Type": "application/json",
+                            "Connection": "close",
                         },
                         method="POST",
                     )
@@ -317,23 +394,10 @@ def run_doctor(return_summary=False):
                     chat_ok = True
                     chat_status = "ok"
                 except urllib.error.HTTPError as e:
-                    code = e.code
-                    if code == 429:
-                        chat_ok = True                 # 接口是通的，仅限流，不算故障
-                        chat_status = "ratelimit"
-                        chat_detail = "HTTP 429 限流"
-                    elif code in (401, 403):
-                        chat_ok = False
-                        chat_status = "auth"
-                        chat_detail = f"HTTP {code} 鉴权失败"
-                    elif code in (400, 404):
-                        chat_ok = None                 # 无法判定，提示人工确认
-                        chat_status = "incompatible"
-                        chat_detail = f"HTTP {code} 参数/路由不兼容"
-                    else:
-                        chat_ok = False
-                        chat_status = "unavailable"
-                        chat_detail = f"HTTP {code}"
+                    # [R2-D2] 状态码分类 + 上游 error.message 透传，统一收口到
+                    # _classify_chat_error（便于回归测试逐档锁定，别再散在这里）
+                    chat_ok, chat_status, chat_detail = _classify_chat_error(
+                        e.code, _read_upstream_error(e))
                 except (TimeoutError, socket.timeout):
                     # [根因修复·假红] 超时 ≠ 不可用。旧代码在 except Exception 里把超时
                     # 一律归为 chat_status="unavailable"，进而输出「对话接口不可用，

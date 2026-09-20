@@ -28,6 +28,10 @@ _OPERATORS = re.compile(r"\b(?:site|inurl|intitle|filetype|related):\S+", re.IGN
 _STOPWORDS = frozenset({
     "考研", "招生", "专业", "大学", "学院", "研究生", "硕士", "the", "and", "for",
     "com", "www", "http", "https", "cn", "org",
+    # [回归修复] 2026-09-18："多少"是纯疑问词，零辨别力（与已有的 多少分/
+    # 多少人 同族）。若保留，"华科计算机考研复试线多少分"会比规范问法多一个
+    # 永不命中的 token，覆盖度恒被拉低（test_whitespace_and_alias_...）。
+    "多少分", "多少人", "多少", "今年", "怎么样", "请问",
 })
 
 #: 数字 token：专业代码/年份/院校代码（单独出现不足以判定相关，见 is_relevant）
@@ -37,22 +41,22 @@ _TOKEN_RE = re.compile(r"[\u4e00-\u9fff]{2,}|[A-Za-z0-9]{3,}")
 
 
 def significant_tokens(query: str) -> List[str]:
-    """从检索词里抽取「有辨别力」的 token（去掉操作符与常见噪声词）。"""
-    text = _OPERATORS.sub(" ", str(query or ""))
-    tokens: List[str] = []
-    # 先按空白/标点切片，保留「南方医科大学」这类整体
-    for chunk in re.split(r"[\s,，、。;；|]+", text):
-        chunk = chunk.strip().strip('"\'')
-        if len(chunk) >= 2 and chunk not in _STOPWORDS:
-            tokens.append(chunk.lower())
-    # 再抽子 token（供长句查询使用）
-    for m in _TOKEN_RE.findall(text):
-        low = m.lower()
-        if len(low) >= 2 and low not in _STOPWORDS and low not in tokens:
-            tokens.append(low)
-    # 数字 token 前置（专业代码等对排序/展示有用）
-    strong = [t for t in _STRONG_RE.findall(text) if t not in tokens]
-    return strong + tokens
+    """提取检索词中的有效关键词（去停用词、去操作符）。
+
+    [P0 修复·中文分词缺失] 原实现用正则 `[一-鿿]{2,}` 贪婪匹配整段中文，
+    导致「华科计算机考研复试线多少分」被当成 1 个 token（13 字），词法得分恒为 0。
+    现改用 segment.py 的最大正向匹配 + 2-gram 回退，正确切分为多个 token。
+    """
+    try:
+        from .segment import segment_and_normalize
+        text = _OPERATORS.sub(" ", str(query or ""))
+        return list(dict.fromkeys(t for t in segment_and_normalize(text)
+                                  if len(t) >= 2 and t not in _STOPWORDS))
+    except ImportError:
+        # 降级：segment 模块加载失败时回退到原有正则（保证不崩溃）
+        text = _OPERATORS.sub(" ", str(query or ""))
+        tokens = _TOKEN_RE.findall(text)
+        return [t for t in tokens if t not in _STOPWORDS]
 
 
 #: 年份形态的 4 位数字区间（考研语境下「2027」这类年份几乎没有辨别力）
@@ -62,14 +66,19 @@ _YEAR_MIN, _YEAR_MAX = 1900, 2100
 def token_kind(token: str) -> str:
     """把 token 分为三类，决定它的命中能证明多少相关性：
 
-    * ``year``  —— 4 位年份（1900~2100）：**几乎没有辨别力**。
+    * ``year``  —— 4 位年份（1900~2100，允许带 `年` 后缀）：**几乎没有辨别力**。
       实测反例：查询「华中科技大学 计算机 2027 复试线」时，Bing 返回的日文垃圾页
       `エアコン2027年問題` 里恰好含「2027年」；若年份命中就算相关，这条垃圾会被放行。
     * ``code``  —— 更长的数字（如专业代码 085409、院校代码 10487）：辨别力强，命中即可。
     * ``word``  —— 中文/英文关键词：命中即可。
+
+    [修复·回归] 2026-09-18：分词器词典含 `2027年` 形态，query 侧可能产出
+    `2027年`（`isdigit()` 为 False）。若仍按旧逻辑判为 `word`，年份守门即被
+    绕过。故先剥离 `年` 后缀再做年份判定。
     """
-    if token.isdigit():
-        if len(token) == 4 and _YEAR_MIN <= int(token) <= _YEAR_MAX:
+    core = token[:-1] if token.endswith("年") and len(token) > 1 else token
+    if core.isdigit():
+        if len(core) == 4 and _YEAR_MIN <= int(core) <= _YEAR_MAX:
             return "year"
         return "code"
     return "word"
@@ -88,11 +97,25 @@ def is_relevant(title: str, snippet: str, url: str,
         # 反爬守门针对的是「查询有明确关键词、结果却毫不相关」的情形，
         # 对无法判定的查询一律放行更安全（宁可少拦，不要错杀真实结果）。
         return True
-    haystack = f"{title or ''} {snippet or ''} {url or ''}".lower()
+
+    # 使用同样的分词和规范化处理标题/摘要
+    try:
+        from .segment import segment_and_normalize
+        haystack_tokens = segment_and_normalize(f"{title or ''} {snippet or ''} {url or ''}")
+        haystack_set = set(haystack_tokens)
+    except ImportError:
+        # 降级：使用简单的字符串包含检查
+        haystack = f"{title or ''} {snippet or ''} {url or ''}".lower()
+        haystack_set = set(haystack.split())
+
     for tok in tokens:
         if token_kind(tok) == "year":
             continue
-        if tok in haystack:
+        # 检查 token 是否在文档的 token 集合中
+        if tok in haystack_set:
+            return True
+        # 子串匹配兜底（处理词形变化）
+        if tok in str(haystack_set):
             return True
     return False
 

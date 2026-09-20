@@ -55,15 +55,24 @@ class KaoYanIntelligenceEngine:
         school_name = entity.name if entity else school_query
         
         # 2. 构建有向站点图
-        site_graph = self.registry.build_site_graph(entity, major_query) if entity else {
-            "university": school_name,
-            "chsi_code": "待查",
-            "level": "全国研招单位",
-            "region": "未知",
-            "domains": {"official": "", "graduate_school": "", "admission_office": ""},
-            "chsi_portals": {"zsml_catalog": "https://yz.chsi.com.cn/zsml/queryAction.do"},
-            "site_tree": []
-        }
+        if entity:
+            site_graph = self.registry.build_site_graph(entity, major_query)
+        else:
+            from tools.intelligence.agentic_research import research_university_profile
+            prof = research_university_profile(school_name, major_query or "")
+            site_graph = {
+                "university": school_name,
+                "chsi_code": prof.get("code") or prof.get("chsi_code") or f"UNLISTED_{school_name}",
+                "level": prof.get("level") or "全国研招单位",
+                "region": prof.get("region") or "全国",
+                "domains": {
+                    "official": prof.get("official", ""),
+                    "graduate_school": prof.get("graduate", ""),
+                    "admission_office": prof.get("graduate", "")
+                },
+                "chsi_portals": {"zsml_catalog": "https://yz.chsi.com.cn/zsml/queryAction.do"},
+                "site_tree": []
+            }
 
         all_evidences: List[EvidenceObject] = []
 
@@ -195,7 +204,10 @@ class KaoYanIntelligenceEngine:
                         if result.url in already or result.url in found:
                             continue
                         # 只收官方来源（研招网/研究生院/学校官网/官方文档）
-                        if result.is_official or result.source_type == "official_discovered":
+                        host = urllib.parse.urlparse(result.url).hostname or ""
+                        allowed = [urllib.parse.urlparse(d).hostname or d for d in domains]
+                        if ((result.is_official or result.source_type == "official_discovered")
+                                and any(host == d or host.endswith("." + d) for d in allowed)):
                             found.append(result.url)
                     if found:
                         break
@@ -335,6 +347,7 @@ class KaoYanIntelligenceEngine:
                     "ky_config.json 解析失败，将使用默认目标分: %s -> %s", cfg_path, exc)
 
         plan = cfg.get("study_plan", {})
+        math_key = plan.get("math_key", "")
         math_target = plan.get("math_target") or cfg.get("math_target", "110+")
         eng_target = plan.get("english_target") or plan.get("eng_target") or cfg.get("eng_target", "65+")
         pol_target = plan.get("politics_target") or plan.get("pol_target") or cfg.get("pol_target", "70+")
@@ -343,69 +356,38 @@ class KaoYanIntelligenceEngine:
         math_name = plan.get("math_name") or cfg.get("math_name", "数学")
         pro_name = plan.get("pro_name") or cfg.get("pro_name", "专业课")
 
-        is_top_985 = entity and any(t in entity.level for t in ["985", "C9联盟", "双一流A类", "自划线"])
+        # [P1 修复·研招情报画像一致性闸门] 根据考生画像过滤不匹配的建议
+        math_disabled = str(math_key).lower() in {"none", "no", "不考数学"} or math_name == "不考数学"
+
+        targets = [f"英语 `{eng_target}`", f"政治 `{pol_target}`", f"{pro_name} `{pro_target}`"]
+        if not math_disabled:
+            targets.insert(0, f"{math_name} `{math_target}`")
 
         lines.extend([
-            f"- **当前战役目标成绩**：总分 `{total_target}` ｜ 数学 `{math_target}` ｜ 英语 `{eng_target}` ｜ 政治 `{pol_target}` ｜ 专业课 `{pro_target}`",
+            f"- **个人目标**：总分 `{total_target}` ｜ " + " ｜ ".join(targets),
+            "- **录取风险**：个人目标分不代表院校门槛或录取保证。需核验同年度、同专业方向、"
+            "同学习方式的招生计划、复试线、单科线和录取规则后再评估。",
+            f"- **专业课准备**：围绕「{pro_name}」已核验的考试大纲与题源安排复习。",
+            "- **复试准备**：以目标学院当年复试细则为准，确认笔试、面试和实践考核内容。",
+            "- **一志愿规则**：以官方复试录取办法和录取名单为依据，不根据院校层次推断保护政策。",
         ])
 
-        sch_title = entity.name if entity else "目标院校"
-        if is_top_985:
-            lines.extend([
-                f"- **院校门槛定位**：`{sch_title}` 属 34 所自主划线 / 顶尖名校，考研竞争处于白热化高压区，通常具备以下硬性门槛：",
-                f"  1. **初试底线**：近三年专硕/学硕复试线通常在 330~355 分高位，设定的 `{total_target}` 目标分处于安全上岸区（具备约 15~25 分复试差额缓冲垫）；",
-                f"  2. **数学与专业课提分死命令**：{math_name}必须确保达到 `{math_target}`，{pro_name}必须攻坚至 `{pro_target}`，两门单科合计需贡献 230+ 分基本盘；",
-                f"  3. **复试硬实力储备**：顶尖名校极其看重编程机试与专业素养，初试后需无缝衔接算法题库训练，不可松懈。"
-            ])
-        else:
-            is_b_zone = any("二区" in l or "B区" in l for l in (entity.level if entity else []))
-            zone_desc = "教育部国家二区线 (B区，享受降分照顾)" if is_b_zone else "教育部国家一区线 (A区)"
-            # [缺陷修复·层次误判(N3)] 此前对所有非 985/自划线院校一律断言
-            # "属地方公办/行业重点高校"。对未收录院校（层次字段为空）这是无依据的定性，
-            # 且会**低估**真实层次 —— 例如收录的任一"双一流"建设高校，
-            # 却被写成"地方公办/行业重点"、"非热门院校"。
-            _lvl = "、".join([l for l in (entity.level if entity else []) if l]) or ""
-            if _lvl:
-                _level_desc = f"本地院校库收录层次：{_lvl}"
-            else:
-                _level_desc = ("**未收录于本地院校库**，本条不作层次定性，请以院校官方公示为准")
-            lines.extend([
-                f"- **院校层次**：`{sch_title}` —— {_level_desc}",
-                # [缺陷修复·国家线与复试线混用(N4)] 此前先用国家线定位门槛，
-                # 随即又断言"超出历年复试线约 70~100 分""降维打击""稳妥上岸优选"。
-                # 国家线是**最低准入线**，与院校自定的复试线是两个概念；
-                # 本次并未取得该校复试线（未联网核验），因此不能给出任何分差结论。
-                f"- **初试最低门槛（国家线，仅作下限参考）**：执行 **{zone_desc}**"
-                f"（近年工科/理科国家线总分约 `265~275 分`、单科约 `36~38 分`）。"
-                f"⚠️ 达线**仅表示具备复试与调剂资格**，不等于达到该校复试线。",
-                f"- **复试线未核验（不给出分差结论）**：本次未取得 `{sch_title}` 的历年复试线"
-                f"与报录比，故**无法判断**目标分 `{total_target}` 相对该校复试线的余量，"
-                f"也不宜据此判断「稳不稳」。建议联网条件允许时运行 "
-                f"`ky admission {sch_title} {major_query or ''}`，或直接查阅该校研究生院官网"
-                f"《复试录取工作办法》与拟录取名单，拿到真实数据后再评估。",
-                f"- **考情画像与私教攻坚处方**：",
-                f"  1. **单科死穴优先**：最危险的情形不是总分不够，而是总分很高却因英语/数学"
-                f"差 1 分未过**单科线**被一票否决。请把 {math_name} 稳在 `{math_target}`、"
-                f"英语稳在 `{eng_target}`，先保单科不失。",
-                f"  2. **自命题专业课**：{pro_name} 目标 `{pro_target}`。院校自命题通常不公布"
-                f"官方真题与参考答案，需通过直系学长学姐获取近 3 年回忆版试卷，并在每年 9 月"
-                f"核验最新《招生专业目录》，防范突然改考统考。",
-                f"  3. **一志愿保护须自行核验**：请自行检索该校目标学院是否存在"
-                f"「压一志愿、招调剂」的负面舆情；在拿到官方复试录取名单之前，"
-                f"不要假定任何学校会保护一志愿。",
-            ])
+        # [P1 修复·画像一致性闸门] 不考数学的考生不提供数学相关建议
+        if math_disabled:
+            lines.append("")
+            lines.append("> ℹ️ **备考特殊说明**：根据你的备考方案（math_key=none），"
+                        "本次不安排数学相关复习建议。若专业实际要求数学，请在 `ky plan` 中重新配置。")
 
         lines.append("")
         return lines
 
     def _save_report(self, school_name: str, major_query: Optional[str], content: str) -> Path:
-        """保存研报到 04-专业课/"""
+        """保存研报到 04-专业课/（路径走 report_paths 单一真源，与 ky scout 同函数）"""
+        from .report_paths import scout_report_path
         target_dir = ROOT / "04-专业课"
         target_dir.mkdir(parents=True, exist_ok=True)
 
-        safe_major = f"_{major_query.strip()}" if major_query else ""
-        filename = f"目标院校情报_{school_name}{safe_major}.md"
-        filepath = target_dir / filename
+        filepath = scout_report_path(ROOT, school_name, major_query)
 
         # [P0 修复] admission(证据链版) 与 scout(口碑版) 均落盘到同名文件，
         # 后写者会直接覆盖前者导致证据链/口碑研报丢失。写入前按项目惯例备份旧报告。
@@ -434,3 +416,7 @@ def get_intelligence_engine() -> KaoYanIntelligenceEngine:
     if _default_engine is None:
         _default_engine = KaoYanIntelligenceEngine()
     return _default_engine
+
+
+# 兼容别名
+ScoutEngine = KaoYanIntelligenceEngine

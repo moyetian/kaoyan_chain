@@ -174,8 +174,10 @@ class SearchService:
                 if not relevant:
                     failed.append((provider.name,
                                    relevance.anti_bot_reason(len(raw), 0)))
-                    _LOG.warning("provider %s 的结果与查询无关，已丢弃 %d 条",
-                                 provider.name, len(raw))
+                    # [doctor 静噪] 全垃圾是反爬常态且已被失败原因记录，不再用
+                    # warning 刷屏（此前 ky doctor 每次联网检查都打印"丢弃 N 条"）。
+                    _LOG.info("provider %s 的结果与查询无关，已丢弃 %d 条",
+                              provider.name, len(raw))
                     continue
                 if dropped:
                     _LOG.info("provider %s 丢弃 %d 条无关结果", provider.name, dropped)

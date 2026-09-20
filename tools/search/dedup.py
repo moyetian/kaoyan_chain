@@ -80,7 +80,11 @@ def title_similarity(a: str, b: str) -> float:
 class Deduplicator:
     """结果去重器：先按规范 URL，再按标题相似度。"""
 
-    def __init__(self, similarity_threshold: float = 0.86):
+    # [评测驱动调优] 2026-09-18：阈值 0.86 → 0.78。0.86 只有标题几乎逐字相同
+    # 才判重，同一简章被转载时（加后缀、改标点）大量近似重复被放过，离线评测
+    # dedup_effectiveness 仅 0.167。0.78 经评测集验证（见 benchmark），在去重率
+    # 与误杀率之间折中。
+    def __init__(self, similarity_threshold: float = 0.78):
         self.similarity_threshold = float(similarity_threshold)
 
     def dedup(self, results: Sequence) -> Tuple[List, int]:

@@ -23,8 +23,12 @@ def snapshot_opt_in():
     return os.environ.get("KY_SNAPSHOT_OPT_IN", "1").lower() in ("1", "true", "yes", "on")
 
 
+#: 发布用通用科目短名（与 subjects[].name 同源；仅作 subjects 缺失时的兜底）
+_GENERIC_SUBJECT_NAMES = {"math": "数学", "eng": "英语", "pol": "政治", "pro": "专业课"}
+
+
 def sanitize_public_data(data: dict) -> dict:
-    """Remove answer/detail text before embedding data in HTML or JSON."""
+    """Remove answer/detail text and identifying free text before publishing."""
     safe_memo, safe_weak = [], []
     for key in ("memo", "weak"):
         target = safe_memo if key == "memo" else safe_weak
@@ -38,15 +42,25 @@ def sanitize_public_data(data: dict) -> dict:
         g2["items"] = [{k: v for k, v in it.items() if k in ("label", "text", "pct", "count", "target", "dir")} for it in g.get("items", [])]
         safe_metrics.append(g2)
     safe_subjects = [{k: s.get(k) for k in ("key", "name", "icon", "color", "dark", "notes", "ok")} for s in data.get("subjects", [])]
+    # 通用科目短名表：maps[].subject_name 取自考纲文件标题，可能是真实自命题
+    # 科目全称（如「自命题专业课科目」），
+    # 会随 Pages 公开发布。发布前一律泛化为通用短名（与看板卡片所用名一致）。
+    generic_names = dict(_GENERIC_SUBJECT_NAMES)
+    for s in data.get("subjects", []):
+        if s.get("key") and s.get("name"):
+            generic_names[s["key"]] = s["name"]
     # [G-3 体积治理] maps.<subj>.modules 是 chapters 的**纯投影**
     # （见 skills/knowledge_map.py: {c["title"]: c["points"] for c in chapters}），
     # 而前端只读 chapters（HTML 模板中的 m.chapters），从不读 modules。
     # 发布产物里再带一份派生副本会让 4 个科目各冗余约 9KB——实测占脱敏快照 40%。
     # 此处剥离该字段（不丢信息：可由同 payload 内的 chapters 完全重建）。
+    # syllabus_warning 同属自由文本，会把真实科目全称原样带出，且前端不消费，一并剥离。
     safe_maps = {}
     for sk, m in (data.get("maps") or {}).items():
-        if isinstance(m, dict) and "modules" in m:
-            m = {k: v for k, v in m.items() if k != "modules"}
+        if isinstance(m, dict):
+            m = {k: v for k, v in m.items() if k not in ("modules", "syllabus_warning")}
+            if sk in generic_names:
+                m["subject_name"] = generic_names[sk]
         safe_maps[sk] = m
     return {"memo": safe_memo, "weak": safe_weak, "metrics": safe_metrics,
             "subjects": safe_subjects, "plan": data.get("plan", {}),

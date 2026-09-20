@@ -39,6 +39,17 @@ import threading
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+# [缺陷修复·GBK 控制台崩溃] 本脚本会打印 ✅/❌。Windows 默认控制台编码为
+# cp936/GBK，直接 print 这些字符会抛 UnicodeEncodeError 并**让门禁本身崩掉**：
+# CI 里因为显式设了 PYTHONIOENCODING=utf-8 而看不到，本地一跑就现形。
+# 与 doctor.py / ky_cli.py 等保持一致，统一在 Windows 上切到 UTF-8 输出。
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ROOT = Path(__file__).resolve().parent.parent
 BUILD_SCRIPT = ROOT / "05-考研看板" / "build.py"
 ARTIFACTS = [ROOT / "05-考研看板" / "docs" / "index.html", ROOT / "docs" / "index.html"]

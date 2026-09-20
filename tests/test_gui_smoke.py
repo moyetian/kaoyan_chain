@@ -16,6 +16,7 @@ GUI 离屏冒烟测试（不需要真实显示器，CI 可跑）
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -143,11 +144,36 @@ def test_function_card_uses_svg_not_emoji(win):
             f"图标键应为 ASCII key，非 emoji: {_icon!r}"
 
 
-def test_settings_dialog_writes_and_applies_l2(app):
-    """设置面板写入 QSettings 并即时应用主题。"""
+def test_settings_dialog_writes_and_applies_l2(app, tmp_path):
+    """设置面板写入 QSettings 并即时应用主题。
+
+    [P27 隔离修复] ``SettingsDialog`` 的落盘路径取自 ``win.workspace_root``
+    （``SettingsDialog.__init__`` 里 ``self.config_file = workspace_root /
+    "ky_config.json"``），而 ``MainWindow()`` 默认把 workspace_root 解析为
+    **真实仓库根**。因此 ``dlg._apply()`` 会直写开发者真实 ``ky_config.json``
+    —— 这正是 19:26 那次覆盖的元凶（写入内容为 DEFAULT_CONFIG 形状 + 被塞进
+    api_key/active_subject）。此处必须把 workspace_root 指到 tmp_path，
+    并预置一份配置，才能既覆盖保存路径又不动真实文件。
+    """
     from tools.gui.widgets.settings_dialog import SettingsDialog
     from tools.gui import theme_apply
-    win = MainWindow()
+    sandbox = tmp_path / "workspace"
+    sandbox.mkdir()
+    (sandbox / "ky_config.json").write_text(
+        json.dumps(
+            {
+                "api_key": "sk-sandbox",
+                "base_url": "https://api.example.test/v1",
+                "model": "deepseek-chat",
+                "active_subject": "pol",
+                "study_plan": {"school": "目标院校", "major": "目标专业 (专业代码)"},
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    win = MainWindow(workspace_root=sandbox)
     try:
         dlg = SettingsDialog(win)
         dlg.preset_combo.setCurrentIndex(

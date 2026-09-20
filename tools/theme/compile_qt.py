@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 from pathlib import Path
 from typing import Iterable, List, Set
 
@@ -36,6 +37,22 @@ class TemplateError(ValueError):
 
 
 def default_template_path() -> Path:
+    if hasattr(sys, "_MEIPASS"):
+        p = Path(sys._MEIPASS) / "tools" / "theme" / "templates" / _TEMPLATE_NAME
+        if p.exists():
+            return p
+        p_alt = Path(sys._MEIPASS) / "theme" / "templates" / _TEMPLATE_NAME
+        if p_alt.exists():
+            return p_alt
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        for candidate in (
+            exe_dir / "tools" / "theme" / "templates" / _TEMPLATE_NAME,
+            exe_dir / "_internal" / "tools" / "theme" / "templates" / _TEMPLATE_NAME,
+            exe_dir / "theme" / "templates" / _TEMPLATE_NAME,
+        ):
+            if candidate.exists():
+                return candidate
     return Path(__file__).resolve().parent / "templates" / _TEMPLATE_NAME
 
 
@@ -63,6 +80,19 @@ def render_qss(theme: Theme, template: str | None = None) -> str:
         return str(flat[match.group(1)])
 
     rendered = _PLACEHOLDER.sub(_sub, tpl)
+
+    # ── 消除单位连缀缺陷 (Defect Elimination: pxpx / ptpt) ──
+    # 1. 自动去重连续单位：例如 16pxpx -> 16px, 12ptpt -> 12pt
+    rendered = re.sub(r'(\b\d+(?:\.\d+)?)\s*(?:px){2,}', r'\1px', rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r'(\b\d+(?:\.\d+)?)\s*(?:pt){2,}', r'\1pt', rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r'(\b\d+(?:\.\d+)?)\s*px\s*px\b', r'\1px', rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r'(\b\d+(?:\.\d+)?)\s*pt\s*pt\b', r'\1pt', rendered, flags=re.IGNORECASE)
+
+    # 2. 接口契约校验门禁：确保产物中绝对无残余非法连缀语法
+    illegal_units = re.findall(r'\b\d+(?:\.\d+)?(?:px|pt){2,}', rendered, flags=re.IGNORECASE)
+    if illegal_units:
+        raise TemplateError(f"编译生成的 QSS 含有非法重复单位: {illegal_units}")
+
     # 收尾：注释里保留主题信息，便于排查"当前用的到底是哪套配色"
     header = (f"/* 由 tools/theme 编译生成 · 主题={theme.name}"
               f"（{theme.display_name}）· 来源={theme.source} —— 请勿手工编辑本文件 */\n")

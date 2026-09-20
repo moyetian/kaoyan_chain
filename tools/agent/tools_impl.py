@@ -38,23 +38,38 @@ try:
     from skills import math_verifier
     from skills import socratic_tutor
     from skills import error_logger
-    from skills import pdf_extractor
     from skills import variant_retriever
     from skills import exam_composer
     from skills import school_scout
     from skills import material_ingestion
 except ImportError:
     try:
-        from tools.skills import math_verifier, socratic_tutor, error_logger, pdf_extractor, variant_retriever, exam_composer, school_scout, material_ingestion
+        from tools.skills import math_verifier, socratic_tutor, error_logger, variant_retriever, exam_composer, school_scout, material_ingestion
     except ImportError:
         math_verifier = None
         socratic_tutor = None
         error_logger = None
-        pdf_extractor = None
         variant_retriever = None
         exam_composer = None
         school_scout = None
         material_ingestion = None
+
+
+def _get_pdf_extractor():
+    """惰性获取 PDF 抽取技能。
+
+    [C2 修复] 本模块被 `agent/__init__.py` 在 CLI 启动早期导入，此前把
+    pdf_extractor 放进上面的 eager 列表，会连带拉起 pypdf + cryptography，
+    使 skills 包的惰性导入形同虚设。改为按需获取（仅 `/pdf`、PDF 类工具用）。
+    """
+    try:
+        from skills import pdf_extractor
+    except ImportError:
+        try:
+            from tools.skills import pdf_extractor
+        except ImportError:
+            return None
+    return pdf_extractor
 
 try:
     import intelligence
@@ -157,6 +172,7 @@ class ToolRegistry:
 
             # 智能 PDF 格式处理
             if p.suffix.lower() == ".pdf":
+                pdf_extractor = _get_pdf_extractor()
                 if pdf_extractor:
                     pdf_info = pdf_extractor.extract_pdf_pages(str(p), max_pages=8)
                     if pdf_info.get("success"):
@@ -656,8 +672,9 @@ class ToolRegistry:
                 else:
                     return f"Error: 指定的真题 PDF 不存在或格式不正确 [{pdf_path}]"
 
+            pdf_extractor = _get_pdf_extractor()
             if not pdf_extractor:
-                return f"Error: 未挂载 PDF 提取技能 pdf_extractor"
+                return "Error: 未挂载 PDF 提取技能 pdf_extractor（请 pip install pypdf）"
 
             # 提取前 40 页或全量轻量扫描
             res = pdf_extractor.extract_pdf_pages(str(p), max_pages=35)
@@ -732,7 +749,7 @@ class ToolRegistry:
             params_schema={
                 "type": "object",
                 "properties": {
-                    "subject": {"type": "string", "description": "科目代码: math, eng, pol, pro"},
+                    "subject": {"type": "string", "description": "科目代码: math, eng, pol, pro（也接受中文名：数学/英语/政治/专业课）"},
                     "title": {"type": "string", "description": "错题标题 (如 2018数学二中值定理第15题)"},
                     "mistake_type": {"type": "string", "description": "错因五分类之一: 概念漏洞 / 审题偏差 / 公式记错 / 计算失误 / 书写丢分"},
                     "card_content": {"type": "string", "description": "错误点与改进处方分析"},
@@ -761,6 +778,9 @@ class ToolRegistry:
                 )
             except Exception as e:  # 笔记锁定等写前闸门：如实报错，严禁伪报成功
                 if type(e).__name__ == "NoteLockedError":
+                    return f"Error: 错题未归档 —— {e}"
+                # [P2 修复] 科目名无法识别时显式报错，绝不静默回退数学错题本
+                if isinstance(e, ValueError):
                     return f"Error: 错题未归档 —— {e}"
                 raise
             return f"Success: 错题已成功归档入库 [{fp}]"

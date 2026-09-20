@@ -17,6 +17,7 @@ cookie 才能在浏览器/抓取器里还原成真正的 `mp.weixin.qq.com` 原�
 
 from __future__ import annotations
 
+import html
 import logging
 import re
 import urllib.parse
@@ -57,18 +58,37 @@ class SogouWeixinProvider(SearchProvider):
     description = "搜狗微信文章检索（公众号经验贴/资料，覆盖「资料发现」场景）"
 
     def search(self, query: str, *, limit: int = 10,
-               time_range: Optional[str] = None) -> List[SearchResult]:
+               time_range: Optional[str] = None,
+               safe: bool = False) -> List[SearchResult]:
         params = {"type": "2", "query": str(query)}
         url = f"{_ENDPOINT}?{urllib.parse.urlencode(params)}"
-        html_text = get_text(url, timeout=12)
+        try:
+            html_text = get_text(url, timeout=12)
+        except Exception as exc:
+            if safe:
+                _LOG.warning("搜狗微信抓取网络异常，优雅降级为空列表: %s", exc)
+                return []
+            raise ProviderError(f"搜狗微信网络请求失败: {exc}") from exc
 
         if any(marker in html_text for marker in _BLOCK_MARKERS):
+            if safe:
+                _LOG.warning("搜狗微信要求验证码/限制访问（反爬），优雅降级为空列表")
+                return []
             raise ProviderError("搜狗要求验证码/限制访问（反爬），本次跳过该源")
         if any(marker in html_text for marker in _NO_RESULT_MARKERS):
             return []                    # 确实没有相关文章，属正常结果
 
         blocks = _ITEM_RE.findall(html_text)
         if not blocks:
+            # 备用容错匹配（针对部分非标准 li/div 排版）
+            blocks = re.findall(
+                r'<div class="txt-box"[^>]*>(.*?)</div>\s*(?:</div>|</li>)',
+                html_text,
+                re.DOTALL | re.IGNORECASE
+            )
+        if not blocks:
+            if safe:
+                return []
             raise ProviderError("页面结构未匹配到文章块（可能改版或被限流）")
 
         items: List[Dict[str, str]] = []
@@ -80,17 +100,25 @@ class SogouWeixinProvider(SearchProvider):
             s_match = _SNIPPET_RE.search(block)
             a_match = _ACCOUNT_RE.search(block)
             d_match = _DATE_RE.search(block)
+            clean_url = absolute(html.unescape(href).replace("&amp;", "&"), _BASE)
             items.append({
                 "title": clean_text(title_html),
-                "url": absolute(href.replace("&amp;", "&"), _BASE),
+                "url": clean_url,
                 "snippet": clean_text(s_match.group(1)) if s_match else "",
                 "source_type": "wechat",     # 链接指向公众号文章，而非搜狗自身
                 "account": clean_text(a_match.group(1)) if a_match else "",
                 "published_at": d_match.group(1) if d_match else "",
             })
         if not items:
+            if safe:
+                return []
             raise ProviderError("解析到文章块，但无可用链接")
         return self.normalize(items)
+
+    def safe_search(self, query: str, *, limit: int = 10,
+                    time_range: Optional[str] = None) -> List[SearchResult]:
+        """安全检索：遇到网络异常或反爬验证码时优雅降级为空列表，绝不抛出异常。"""
+        return self.search(query, limit=limit, time_range=time_range, safe=True)
 
 
 __all__ = ["SogouWeixinProvider"]

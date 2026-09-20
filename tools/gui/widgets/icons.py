@@ -127,7 +127,11 @@ def render_icon(key: str, size: int = 20, color: str = "") -> "QPixmap":
     无 QtSvg 或 key 不存在时返回空 pixmap（调用方应能优雅降级）。
     """
     if not _HAS_SVG:
-        return QPixmap() if _HAS_SVG else None  # type: ignore[return-value]
+        try:
+            from PySide6.QtGui import QPixmap
+            return QPixmap()
+        except ImportError:
+            return None  # type: ignore[return-value]
     from PySide6.QtGui import QPixmap  # noqa: PLC0415
     svg = _format_svg(key, color or _FALLBACK_COLOR)
     if not svg:
@@ -150,7 +154,7 @@ def icon_label(key: str, size: int = 20, color: str = "") -> "QLabel":
     lbl = QLabel()
     lbl.setObjectName("SvgIcon")
     pm = render_icon(key, size, color)
-    if not pm.isNull():
+    if pm is not None and not pm.isNull():
         lbl.setPixmap(pm)
     return lbl
 

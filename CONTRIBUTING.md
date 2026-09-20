@@ -31,15 +31,20 @@ kaoyan_chain/
 ├── 操作手册.md                          # 📘 学员专用实操全流程指南（39子命令全景）
 ├── CONTRIBUTING.md                      # 🛠️ 开发者与贡献指南（架构树、测试与规范）
 ├── SETUP.md                             # 进阶部署配置与看板开发手册
+├── CHANGELOG.md                         # 版本历史与升级方式
 ├── pyproject.toml                       # Python 打包标准与 CLI 入口声明
-├── ky.bat                               # Windows 一键启动脚本
+├── ky.bat                               # Windows 一键启动 CLI 私教
+├── GUI.bat / 启动GUI.bat                # Windows 一键启动桌面 GUI（普通 / 静默模式）
+├── 调试模式启动GUI.bat                  # 带控制台输出的 GUI 启动器（排错用）
 ├── AGENTS.md                            # 全科总教练 Agent 路由中枢与风格设定
 ├── GEMINI.md                            # Gemini / Antigravity 入口配置
 ├── 更新看板.bat                         # Windows 本地编译看板脚本
+├── installer.iss                        # Inno Setup 安装包脚本（构建生成）
+├── KaoyanStudyChain.spec                # 路径无关的 PyInstaller 打包配置
 │
 ├── data/                                # 高校研招权威数据库
 │   └── universities/                    # 全国高校研招名录与站点拓扑
-│       ├── registry.json                # 全国55+研招高校代码、别名与官网二级域名库
+│       ├── registry.json                # 57 所院校详细档案（代码、别名与官网二级域名库）
 │       ├── <省份>/<高校>.yaml           # 55+ 所重点院校分省结构化配置档案
 │       └── school_data/                 # 各高校结构化招生简章与专业目录缓存
 │
@@ -81,8 +86,8 @@ kaoyan_chain/
 │   ├── 01_考纲拆解与分值地图模板.md     # 考纲分值拆解模板
 │   ├── 02_核心公式与考点速查模板.md     # 核心结论速记模板
 │   ├── 03_题源核验与抽题协议模板.md     # 权威题源白名单门禁
-│   ├── 双校考情对比_华中科技大学_VS_武汉大学_计算机.md # ky compare 自动生成横向对标研报
-│   ├── 目标院校情报_华中科技大学_计算机.md # ky scout / admission 权威招考情报研报
+│   ├── 双校考情对比_对比院校B_VS_对比院校B_计算机.md # ky compare 自动生成横向对标研报
+│   ├── 目标院校情报_对比院校B_计算机.md # ky scout / admission 权威招考情报研报
 │   ├── 学情档案.template.md             # 章节掌握度记忆中枢模板
 │   ├── 每日作业/                        # 每日作业记录模板
 │   └── 错题本/                          # 错题记录模板与索引
@@ -140,11 +145,28 @@ kaoyan_chain/
     ├── ky_gui.py                        # [v2.6+] PySide6 GUI 启动入口 (ky gui)
     ├── doctor.py                        # 全系统健康诊断工具 (ky doctor)
     ├── init_workspace.py                # 跨平台工作区全能初始化向导
-    ├── ky_cli.py                        # 专有终端私教与多端 IM 网关入口
+    ├── ky_cli.py                        # 专有终端私教与多端 IM 网关入口（39 个子命令）
+    ├── ky_io.py                         # 原子写 + 跨进程文件锁 + 只读模式闸门（所有落盘的唯一入口）
+    ├── fsrs_scheduler.py                # FSRS 自适应复测调度器（全项目间隔计算唯一真源）
+    ├── protocol_loader.py               # 顶层协议加载器（兼容源码模式与 wheel 安装模式）
+    ├── note_lock.py                     # 笔记只读锁定（frontmatter locked: true 后禁止被自动改写）
+    ├── llm_client.py                    # OpenAI 兼容端点客户端（重试 / 超时 / gzip 解压容错）
+    ├── exam_calendar.py                 # 初试倒计时与考试日历
+    ├── privacy_policy.py                # 隐私策略与内容级脱敏规则的**单一事实源**
+    ├── sync_publish.py                  # 导出公开仓库副本（脱敏镜像，先清空再重建）
+    ├── build_package.py                 # PyInstaller 打包（默认做内容级身份脱敏）
+    ├── lint_check.py                    # 零依赖静态检查（只卡 ERROR 级问题）
+    ├── check_dashboard.py               # 看板产物守卫（JS 语法 + 前端契约 + 真浏览器运行）
+    ├── evaluate_pipeline.py             # 离线评测：FSRS 校准度 (RMSE/LogLoss) 与引文忠实度
+    ├── gui_launcher.py                  # 桌面端启动与诊断 launcher
+    ├── build_svg_assets.py              # 文档 / 看板 SVG 配图生成（开发工具）
+    ├── export_logo_and_animations.py    # Logo 与动画导出（开发工具）
+    ├── generate_perfect_loading_animations.py  # 加载动画生成（开发工具）
+    ├── simulate_workflow.py             # 工作流模拟（开发工具）
     ├── study_planner.py                 # 个人定制化方案设计引擎与防疲劳预警
     ├── syllabus_manager.py              # 官方考纲智能匹配与切换管理器
-    ├── test_ky_suite.py                 # 完整自动化回归测试与 CLI smoke test (25 组, 252 项)
-    ├── test_new_features.py             # [v2.6+] 新增功能专项测试 (WeChat + Rust + GUI + CLI)
+    ├── test_ky_suite.py                 # 完整自动化回归测试与 CLI smoke test (26 组, 304 项)
+    ├── test_new_features.py             # [v2.6+] 新增功能专项测试 (WeChat + Rust + GUI + CLI, 130 项)
     ├── update_dashboard.py              # 自动化看板生成与同步脚本
     └── verify_health.py                 # 全科规范与关键文件健康度巡检脚本
 ```
@@ -172,7 +194,7 @@ pip install -r requirements.txt
 ```
 核心功能不依赖任何三方库（纯 Python 标准库零依赖即可运行），扩展依赖仅用于数学高精符号运算 (SymPy)、PDF 提取 (pypdf)、图像批改 (Pillow) 等特定技能。
 
-### 4. 可选增强模块（v2.6.0 新增）
+### 4. 可选增强模块（v2.8.0 沿用）
 
 | 模块 | 安装方式 | 作用 | 缺失时行为 |
 |---|---|---|---|
@@ -197,9 +219,14 @@ ky doctor
 
 ### 2. 全量回归测试
 ```bash
+# ⚠️ 安全守卫：该套件会真实改写工作区用户数据（备考方案 / 今日任务 / 大纲），
+#    检测到真实考生工作区会拒绝运行（exit 2）。请在干净副本里跑：
+#      git archive HEAD | tar -x -C /tmp/ky_copy && cd /tmp/ky_copy && python tools/test_ky_suite.py
+#    或先备份 ky_config.json，再设 KY_TEST_ALLOW_REAL_WORKSPACE=1 显式放行。
 python tools/test_ky_suite.py
 ```
-该套件包含 **25 组测试项**（共计 **252 测试点**），覆盖：
+该套件包含 **26 组测试项**（共 **304 测试点**：Git 工作区内 304 通过 + 0 跳过；干净检出无 `.git` 时
+为 299 通过 + 5 跳过 = 304，差在「测试组 7 Git 隐私隔离」需 `.git`，两种环境总数一致），覆盖：
 - 配置文件解析与默认兜底
 - 四科 Prompt 与防书目幻觉门禁
 - Webhook 格式与模拟并发处理
@@ -213,11 +240,14 @@ python tools/test_ky_suite.py
 ```bash
 python tools/test_new_features.py
 ```
-独立运行 v2.6.0 新增模块的专项测试（4 组 A/B/C/D），可选依赖缺失时自动 `[SKIP]`：
+独立运行 v2.6.0 新增模块的专项测试（4 组 A/B/C/D，共 **130 测试点**，0 跳过；与是否 Git 工作区无关），可选依赖缺失时自动 `[SKIP]`：
 - **组 A**：微信公众号经验贴检索、HTML→Markdown 清洗、院校档案联动
 - **组 B**：Rust PyO3 扩展与纯 Python 双模一致性校验（需 `ky_rust_ext`，否则跳过）
 - **组 C**：PySide6 GUI 离屏实例化与 QSS 主题完整性（需 `PySide6`，否则跳过）
 - **组 D**：CLI 子命令路由（`ky gui`/`ky wechat`/`ky wx`）与 TUI 菜单挂载
+
+> **计数是环境相关的**（2026-09-20 实测）：上述数字随是否 Git 工作区、是否构建 `dist/`、
+> 是否配置 `study_plan.school` 而变。改文档计数时请连同环境前提一起写。
 
 **准入标准**：测试结果必须为 `失败 0 项`（100% 通过或跳过），不允许任何断言失败。
 
@@ -240,7 +270,16 @@ python tools/test_new_features.py
 ### 3. Local-First 隐私防泄露
 - 仓库提交中严禁携带任何个人做题草稿、错题内容、敏感 API Key 或大体积版权 PDF；
 - 所有敏感文件必须纳入 `.gitignore`；
-- 修改配置文件写入时，必须使用原子替换，禁止截断或擦除配置。
+- 修改配置文件写入时，必须使用原子替换，禁止截断或擦除配置；
+- **两条「内容离开本机」的出口必须同源**：`tools/sync_publish.py`（公开仓库副本）与
+  `tools/build_package.py`（PyInstaller 发布包）都从 `tools/privacy_policy.py` 取策略与
+  脱敏规则，不得各自维护名单 —— 历史上正是「各修一条」导致另一条长期裸奔。
+  改动 `privacy_policy` / `sync_publish` / `build_package` 时**必须配阴性验证**：
+  把修复注释掉，对应测试必须变红，否则等于没锁住。
+- 打包产物默认做**内容级身份脱敏**（`*.md/*.html/*.svg/*.py`），并在构建末尾对全树
+  （含 `_internal/`）做残留自检，检出真实身份即中止构建；给自己打「带我的方案」的包时
+  用 `--keep-identity` 跳过。规则由 `ky_config.json` 的 `study_plan` 现算，
+  没有该文件的贡献者 / CI 会自然跳过。
 
 ---
 
@@ -248,6 +287,13 @@ python tools/test_new_features.py
 
 1. **Fork** 本仓库并从 `main` 分支拉出特性分支（如 `feature/new-syllabus-ast`）；
 2. 编写功能代码与对应单测；
-3. 执行 `python tools/doctor.py` 与 `python tools/test_ky_suite.py` 确保 100% 通过；
+3. 执行 `python tools/doctor.py` 与 `python tools/test_ky_suite.py` 确保 100% 通过
+   （`test_ky_suite.py` 会改写工作区用户数据，默认拒绝在真实考生工作区运行，请在干净副本里跑，
+   或设 `KY_TEST_ALLOW_REAL_WORKSPACE=1` 显式放行并先备份 `ky_config.json`）；
 4. 提交清晰规范的 Git Commit 记录；
-5. 创建 Pull Request，详细描述变更背景、测试结果与设计决策。
+5. 若变更影响用户可见行为（新增/修改命令、配置项、打包或隐私策略），
+   请同步更新 [CHANGELOG.md](CHANGELOG.md) 与相关文档
+   （[README.md](README.md) / [操作手册.md](操作手册.md) / [SETUP.md](SETUP.md)）；
+6. 创建 Pull Request，详细描述变更背景、测试结果与设计决策。
+
+> 📝 版本历史、升级步骤与跨版本注意事项统一记录在 [CHANGELOG.md](CHANGELOG.md)。

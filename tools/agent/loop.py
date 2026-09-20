@@ -22,14 +22,17 @@ from .mcp_client import MCPClientManager
 
 
 def normalize_openai_url(base_url: str, endpoint: str = "chat/completions") -> str:
-    """智能规范化 OpenAI 兼容接口地址 (自动补齐 /v1 容错)"""
+    """智能规范化 OpenAI 兼容接口地址 (自动补齐 /v1 容错，并兼容 /v1, /v2, /v3, /v4 等多版本端点与反代)"""
+    import re
     b = (base_url or "https://api.deepseek.com/v1").strip().rstrip("/")
-    if b.endswith("/chat/completions"):
+    ep = (endpoint or "chat/completions").strip().lstrip("/")
+    if b.endswith("/" + ep) or b.endswith("/chat/completions"):
         return b
-    if b.endswith("/v1") or "/v1/" in b:
-        return f"{b}/{endpoint.lstrip('/')}"
-    # 针对未带 /v1 的中转站或自建代理，智能补齐 /v1
-    return f"{b}/v1/{endpoint.lstrip('/')}"
+    # 若已显式包含 API 版本号路径（如 /v1, /v2, /v3, /v4 等）
+    if re.search(r"/v\d+(?:/.*)?$", b):
+        return f"{b}/{ep}"
+    # 针对未带版本号的标准根代理或中转站，补充 /v1
+    return f"{b}/v1/{ep}"
 
 
 class AgentRunner:
@@ -40,6 +43,7 @@ class AgentRunner:
         permission_mode: str = "ask",
         max_steps: int = 10,
         stream_callback: Optional[Callable[[str], None]] = None,
+        step_callback: Optional[Callable[[str], None]] = None,
         live_callback: Optional[Callable[[str, str], None]] = None,
         request_timeout: Optional[float] = None,
         # GUI 场景设 True：不在 stdout 打字机输出（否则控制台与界面各刷一份）
@@ -49,6 +53,7 @@ class AgentRunner:
         self.workspace_root = workspace_root
         self.max_steps = max_steps
         self.stream_callback = stream_callback
+        self.step_callback = step_callback
         self.live_callback = live_callback
         self.quiet = bool(quiet)
         # [P2 修复·GUI 卡死] 上游对话请求此前硬编码 120s 超时，GUI 端点击一次
@@ -142,6 +147,8 @@ class AgentRunner:
 
         while step < self.max_steps:
             step += 1
+            if self.step_callback and step == 1:
+                self.step_callback("⏳ [私教审阅中] 正在分析题干要求与教学规划...")
             
             # 向 LLM 请求（带 tools 参数）
             response_data = self._call_llm(active_messages)
@@ -152,6 +159,9 @@ class AgentRunner:
             message = choice.get("message", {})
             content = message.get("content") or ""
             tool_calls = message.get("tool_calls") or []
+            reasoning = message.get("reasoning_content") or message.get("reasoning")
+            if reasoning and self.step_callback:
+                self.step_callback(f"🧠 [私教深度思考]\n{str(reasoning).strip()}")
 
             # ── 检查是否包含 XML 格式的 Fallback Tool Call ──
             if not tool_calls and "<tool_call>" in content:
@@ -167,7 +177,7 @@ class AgentRunner:
                 assistant_msg = {"role": "assistant", "content": content or None, "tool_calls": tool_calls}
                 active_messages.append(assistant_msg)
 
-                if content:
+                if content and not self.quiet:
                     print(content)
 
                 for tc in tool_calls:
@@ -186,12 +196,18 @@ class AgentRunner:
 
                     # 优雅的高科技状态行显示
                     args_summary = ", ".join(f"{k}='{v}'" if len(str(v))<40 else f"{k}='...'" for k, v in fn_args.items())
-                    print(f"\n\033[96m🛠️  [Agent Tool] 智能私教正在调用: \033[1m{fn_name}\033[0m\033[96m({args_summary})\033[0m")
+                    if not self.quiet:
+                        print(f"\n\033[96m🛠️  [Agent Tool] 智能私教正在调用: \033[1m{fn_name}\033[0m\033[96m({args_summary})\033[0m")
+                    if self.step_callback:
+                        self.step_callback(f"🛠️ [调用工具] {fn_name}({args_summary})")
 
                     # 触发 PreToolUse 钩子 (沙箱与考纲红线硬拦截)
                     allow, hook_reason, mod_args = self.hooks.trigger_pre_tool_use(fn_name, fn_args, ctx)
                     if not allow:
-                        print(f"   \033[91m↳ [考纲红线拦截]: {hook_reason}\033[0m")
+                        if not self.quiet:
+                            print(f"   \033[91m↳ [考纲红线拦截]: {hook_reason}\033[0m")
+                        if self.step_callback:
+                            self.step_callback(f"   ↳ [考纲红线拦截]: {hook_reason}")
                         exec_result = f"HookBlocked: {hook_reason}"
                     else:
                         # 执行工具
@@ -201,10 +217,14 @@ class AgentRunner:
 
                     # 简短结果提示
                     res_preview = str(exec_result)[:80].replace("\n", " ")
-                    if "Error" in exec_result or "PermissionDenied" in exec_result or "HookBlocked" in exec_result:
-                        print(f"   \033[93m↳ 结果: {res_preview}...\033[0m")
-                    else:
-                        print(f"   \033[92m↳ 完成: {res_preview}...\033[0m")
+                    is_err = "Error" in exec_result or "PermissionDenied" in exec_result or "HookBlocked" in exec_result
+                    if not self.quiet:
+                        if is_err:
+                            print(f"   \033[93m↳ 结果: {res_preview}...\033[0m")
+                        else:
+                            print(f"   \033[92m↳ 完成: {res_preview}...\033[0m")
+                    if self.step_callback:
+                        self.step_callback(f"   ↳ {'异常: ' if is_err else '完成: '}{res_preview}...")
 
                     # 追加 tool 结果回包
                     tool_msg = {
@@ -247,27 +267,45 @@ class AgentRunner:
         api_key = self.config.get("api_key", "").strip()
         model = self.config.get("model", "deepseek-chat")
 
+        accept_enc = "gzip, deflate, identity"
+        try:
+            import brotli  # noqa: F401
+            accept_enc = "gzip, deflate, br, identity"
+        except Exception:
+            pass
+
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
-            "User-Agent": "Mozilla/5.0 Kaoyan-Study-Chain-Agent/1.0"
+            "User-Agent": "Mozilla/5.0 Kaoyan-Study-Chain-Agent/1.0",
+            "Connection": "close",
+            "Accept-Encoding": accept_enc
         }
 
+        tools_list = self.tool_registry.get_openai_tools()
         payload = {
             "model": model,
             "messages": messages,
             "temperature": self.config.get("temperature", 0.3),
-            "tools": self.tool_registry.get_openai_tools(),
-            "tool_choice": "auto"
+            "max_tokens": self.config.get("max_tokens", 4096),
         }
+        if tools_list:
+            payload["tools"] = tools_list
+            payload["tool_choice"] = "auto"
 
         data_bytes = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
 
         import threading
+        import gzip
+        import zlib
+        import socket
+        import http.client
+
         stop_spinner = threading.Event()
 
         def spinner_task():
+            if self.quiet:
+                return
             if not sys.stdout.isatty():
                 sys.stdout.write("  \033[96m*\033[0m \033[2m[考研私教正在审阅题干与规划工具调用...]\033[0m\n")
                 sys.stdout.flush()
@@ -286,53 +324,159 @@ class AgentRunner:
         spinner_thread = threading.Thread(target=spinner_task, daemon=True)
         spinner_thread.start()
 
-        try:
-            with urllib.request.urlopen(req, timeout=self.request_timeout) as resp:
+        max_retries = 1
+        for attempt in range(max_retries + 1):
+            req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=self.request_timeout) as resp:
+                    stop_spinner.set()
+                    spinner_thread.join(timeout=0.2)
+                    raw_bytes = resp.read()
+                    headers_obj = getattr(resp, "headers", None)
+                    enc = headers_obj.get("Content-Encoding", "").lower() if headers_obj and hasattr(headers_obj, "get") else ""
+                    if enc == "gzip":
+                        try:
+                            raw_bytes = gzip.decompress(raw_bytes)
+                        except Exception:
+                            pass
+                    elif enc == "deflate":
+                        try:
+                            raw_bytes = zlib.decompress(raw_bytes)
+                        except Exception:
+                            try:
+                                raw_bytes = zlib.decompress(raw_bytes, -zlib.MAX_WBITS)
+                            except Exception:
+                                pass
+                    elif enc in ("br", "brotli"):
+                        try:
+                            import brotli
+                            raw_bytes = brotli.decompress(raw_bytes)
+                        except Exception:
+                            pass
+                    raw_text = raw_bytes.decode("utf-8", errors="ignore").strip()
+                    if raw_text.startswith("<!doctype html") or raw_text.startswith("<html"):
+                        raise ValueError(f"服务端返回了网页 HTML 而非 API JSON 数据 (请求地址: {url})，请检查 base_url 配置")
+                    resp_data = json.loads(raw_text)
+                    return resp_data
+            except urllib.error.HTTPError as e:
                 stop_spinner.set()
                 spinner_thread.join(timeout=0.2)
-                raw_bytes = resp.read()
-                raw_text = raw_bytes.decode("utf-8", errors="ignore").strip()
-                if raw_text.startswith("<!doctype html") or raw_text.startswith("<html"):
-                    raise ValueError(f"服务端返回了网页 HTML 而非 API JSON 数据 (请求地址: {url})，请检查 base_url 配置")
-                resp_data = json.loads(raw_text)
-                return resp_data
-        except urllib.error.HTTPError as e:
-            stop_spinner.set()
-            err_msg = e.read().decode("utf-8", errors="ignore")
-            if "tools" in err_msg.lower() or "not support" in err_msg.lower():
-                return self._call_llm_without_tools(messages)
-            print(f"\n\033[91m[API 错误 {e.code}]: {err_msg}\033[0m\n")
-            return None
-        except Exception as e:
-            stop_spinner.set()
-            print(f"\n\033[91m[连接异常]: {e}\033[0m\n")
-            return None
+                err_msg = e.read().decode("utf-8", errors="ignore")
+                err_low = err_msg.lower()
+                # 某些端点或反代对 tools、tool_choice、schema 敏感而报 400
+                if e.code == 400 and (
+                    "tool" in err_low
+                    or "function" in err_low
+                    or "support" in err_low
+                    or "param" in err_low
+                    or "extra" in err_low
+                    or "unknown" in err_low
+                    or "invalid" in err_low
+                ):
+                    if self.step_callback:
+                        self.step_callback("⚡ [自动兼容] 检测到端点对工具调用敏感 (HTTP 400)，已平滑切换为纯文本对话模式...")
+                    return self._call_llm_without_tools(messages)
+                print(f"\n\033[91m[API 错误 {e.code}]: {err_msg}\033[0m\n")
+                if self.step_callback:
+                    self.step_callback(f"❌ [API 响应异常 HTTP {e.code}]: {err_msg}")
+                return None
+            except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionResetError, http.client.RemoteDisconnected) as e:
+                if attempt < max_retries:
+                    time.sleep(1.5)
+                    continue
+                stop_spinner.set()
+                spinner_thread.join(timeout=0.2)
+                print(f"\n\033[91m[连接异常]: {e}\033[0m\n")
+                return None
+            except Exception as e:
+                stop_spinner.set()
+                spinner_thread.join(timeout=0.2)
+                print(f"\n\033[91m[连接异常]: {e}\033[0m\n")
+                return None
 
     def _call_llm_without_tools(self, messages: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        """降级纯文本请求 (针对不支持 tools 字段的轻量模型)"""
+        """降级纯文本请求 (针对不支持 tools 字段或对 payload 敏感的轻量/非标模型)"""
         raw_base_url = self.config.get("base_url", "https://api.deepseek.com/v1")
         url = normalize_openai_url(raw_base_url, "chat/completions")
         api_key = self.config.get("api_key", "").strip()
         model = self.config.get("model", "deepseek-chat")
 
+        accept_enc = "gzip, deflate, identity"
+        try:
+            import brotli  # noqa: F401
+            accept_enc = "gzip, deflate, br, identity"
+        except Exception:
+            pass
+
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
-            "User-Agent": "Mozilla/5.0 Kaoyan-Study-Chain-Agent/1.0"
+            "User-Agent": "Mozilla/5.0 Kaoyan-Study-Chain-Agent/1.0",
+            "Connection": "close",
+            "Accept-Encoding": accept_enc
         }
 
         payload = {
             "model": model,
             "messages": messages,
-            "temperature": self.config.get("temperature", 0.3)
+            "temperature": self.config.get("temperature", 0.3),
+            "max_tokens": self.config.get("max_tokens", 4096),
         }
 
-        data_bytes = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
-        try:
+        def _send(p_data):
+            data_bytes = json.dumps(p_data).encode("utf-8")
+            req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
             with urllib.request.urlopen(req, timeout=self.request_timeout) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except Exception:
+                raw_bytes = resp.read()
+                headers_obj = getattr(resp, "headers", None)
+                enc = headers_obj.get("Content-Encoding", "").lower() if headers_obj and hasattr(headers_obj, "get") else ""
+                if enc == "gzip":
+                    try:
+                        import gzip
+                        raw_bytes = gzip.decompress(raw_bytes)
+                    except Exception:
+                        pass
+                elif enc == "deflate":
+                    try:
+                        import zlib
+                        raw_bytes = zlib.decompress(raw_bytes)
+                    except Exception:
+                        try:
+                            import zlib
+                            raw_bytes = zlib.decompress(raw_bytes, -zlib.MAX_WBITS)
+                        except Exception:
+                            pass
+                elif enc in ("br", "brotli"):
+                    try:
+                        import brotli
+                        raw_bytes = brotli.decompress(raw_bytes)
+                    except Exception:
+                        pass
+                return json.loads(raw_bytes.decode("utf-8", errors="ignore"))
+
+        try:
+            return _send(payload)
+        except urllib.error.HTTPError as e2:
+            e2_err = e2.read().decode("utf-8", errors="ignore")
+            # 若某些特定模型拒绝 system 消息，将系统提示词合并进首个 user 消息重试
+            if e2.code == 400 and ("system" in e2_err.lower() or "role" in e2_err.lower()):
+                new_msgs = []
+                sys_prefix = ""
+                for m in messages:
+                    if m.get("role") == "system":
+                        sys_prefix += f"[系统指令: {m.get('content', '')}]\n\n"
+                    else:
+                        new_msgs.append(dict(m))
+                if new_msgs and sys_prefix:
+                    new_msgs[0]["content"] = sys_prefix + str(new_msgs[0].get("content", ""))
+                try:
+                    return _send({"model": model, "messages": new_msgs, "temperature": self.config.get("temperature", 0.3)})
+                except Exception:
+                    pass
+            print(f"\n\033[91m[降级纯文本请求错误 HTTP {e2.code}]: {e2_err}\033[0m\n")
+            return None
+        except Exception as exc:
+            print(f"\n\033[91m[纯文本对话异常]: {exc}\033[0m\n")
             return None
 
     def _parse_fallback_tool_calls(self, content: str) -> List[Dict[str, Any]]:

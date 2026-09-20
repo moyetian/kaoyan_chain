@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
@@ -260,12 +261,13 @@ def derive_tokens(tokens: Mapping[str, Any]) -> Dict[str, Any]:
     density = _as_float(t.get("density"), 1.0)
     radius = _as_float(t.get("radius"), 16)
     radius_sm = _as_float(t.get("radius-sm"), 8)
-    t.setdefault("fs-lg", f"{round(15 * scale, 1):g}px")
+    t.setdefault("fs-xl", f"{round(18 * scale, 1):g}px")
+    t.setdefault("fs-lg", f"{round(16 * scale, 1):g}px")
     t.setdefault("fs-base", f"{round(13 * scale, 1):g}px")
-    t.setdefault("fs-sm", f"{round(11 * scale, 1):g}px")
-    t.setdefault("pad", f"{max(2, round(8 * density)):g}px")
-    t.setdefault("pad-sm", f"{max(1, round(4 * density)):g}px")
-    t.setdefault("pad-lg", f"{max(4, round(14 * density)):g}px")
+    t.setdefault("fs-sm", f"{round(12 * scale, 1):g}px")
+    t.setdefault("pad", f"{max(4, round(9 * density)):g}px")
+    t.setdefault("pad-sm", f"{max(2, round(5 * density)):g}px")
+    t.setdefault("pad-lg", f"{max(6, round(16 * density)):g}px")
     t.setdefault("radius-px", f"{radius:g}px")
     t.setdefault("radius-sm-px", f"{radius_sm:g}px")
     return t
@@ -273,7 +275,11 @@ def derive_tokens(tokens: Mapping[str, Any]) -> Dict[str, Any]:
 
 def _as_float(value: Any, default: float) -> float:
     try:
-        out = float(value)
+        if isinstance(value, str):
+            cleaned = re.sub(r"[^\d.-]", "", value.strip())
+            out = float(cleaned) if cleaned else default
+        else:
+            out = float(value)
     except (TypeError, ValueError):
         return default
     return out if out > 0 else default

@@ -10,12 +10,14 @@
 3. **降级脚本只有一半**：`fallbackMathUnicode()` 只在看板里有，live.html 缺失，
    于是断网时两边表现还不一样。
 
-本模块把版本、地址与降级脚本收敛到一处；`--offline` 时改用本地 vendor 目录。
+本模块把版本、地址与降级脚本收敛到一处；默认使用**本地 vendor 目录**，
+需要时可用 `KY_VENDOR_MODE=cdn`（或 `build.py --cdn`）切回 CDN。
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -32,8 +34,33 @@ _KATEX_AUTORENDER_PATH = f"katex@{KATEX_VERSION}/dist/contrib/auto-render.min.js
 _MARKED_PATH = f"marked@{MARKED_VERSION}/marked.min.js"
 
 _CDN_BASE = "https://cdn.jsdelivr.net/npm"
-#: 本地 vendor 目录（相对 docs/，由 --offline 生成的产物引用）
+#: 本地 vendor 目录（相对 docs/，默认即引用这里的副本）
 VENDOR_REL = "assets/vendor"
+
+#: 默认资源来源：「local」（内联本地 vendor）或「cdn」。
+#  [C7 修复·默认离线] 本产品有**两层离线**含义，此前被混为一谈：
+#    ① 后端可离线 —— 判分/复测/考纲 Diff 等不依赖外网，早已成立；
+#    ② 前端可离线 —— 手机看板的公式渲染仍走境外 CDN。
+#  对「地铁 / 图书馆破网 / 考场自习室」这个主用场景，① 成立但 ② 不成立
+#  等于白搭：断网时 $\\int_0^1 x^2dx$ 退化成 LaTeX 源码串，遮罩自测直接失效。
+#  故默认改为 local —— vendor 资源随仓库分发（已在 .gitignore 中解除忽略），
+#  克隆即用，不需要先联网构建一次。
+_DEFAULT_MODE = "local"
+
+
+def vendor_mode() -> str:
+    """解析当前资源来源：显式环境变量 KY_VENDOR_MODE 优先，否则用默认值。"""
+    raw = (os.environ.get("KY_VENDOR_MODE") or "").strip().lower()
+    if raw in ("cdn", "online", "remote"):
+        return "cdn"
+    if raw in ("local", "offline", "vendor"):
+        return "local"
+    return _DEFAULT_MODE
+
+
+def is_offline_default() -> bool:
+    """默认构建是否走本地 vendor（供 build.py 判断是否需要预抓取资源）。"""
+    return vendor_mode() == "local"
 
 
 def _url(rel_path: str, offline: bool) -> str:
@@ -45,23 +72,23 @@ def _url(rel_path: str, offline: bool) -> str:
     return f"{_CDN_BASE}/{rel_path}"
 
 
-def katex_css_url(offline: bool = False) -> str:
+def katex_css_url(offline: bool = True) -> str:
     return _url(_KATEX_CSS_PATH, offline)
 
 
-def katex_js_url(offline: bool = False) -> str:
+def katex_js_url(offline: bool = True) -> str:
     return _url(_KATEX_JS_PATH, offline)
 
 
-def katex_autorender_url(offline: bool = False) -> str:
+def katex_autorender_url(offline: bool = True) -> str:
     return _url(_KATEX_AUTORENDER_PATH, offline)
 
 
-def marked_js_url(offline: bool = False) -> str:
+def marked_js_url(offline: bool = True) -> str:
     return _url(_MARKED_PATH, offline)
 
 
-def asset_map(offline: bool = False) -> dict:
+def asset_map(offline: bool = True) -> dict:
     """返回模板占位符 → 资源地址的映射。"""
     return {
         "{{KATEX_CSS}}": katex_css_url(offline),
@@ -85,7 +112,7 @@ def load_fallback_math_js() -> str:
         return "function fallbackMathUnicode(){}"
 
 
-def vendor_files(offline: bool = False) -> dict:
+def vendor_files(offline: bool = True) -> dict:
     """本地化时需要的资源清单：``{落盘相对路径: 远程 URL}``。"""
     if not offline:
         return {}
@@ -102,6 +129,13 @@ def font_urls_from_css(css_text: str, katex_version: str = KATEX_VERSION) -> dic
 
     只取 woff2（现代浏览器足够，体积最小）：少了字体会让公式排版走形 ——
     KaTeX 的版式依赖这些字体的度量，缺字体时上下标与分式会明显错位。
+
+    [C7 修复·字体 404] KaTeX 的 ``@font-face`` 会同时声明 woff2 / woff / ttf
+    三档来源。只下载 woff2 时，浏览器**仍会按 CSS 去请求 woff 与 ttf 作兜底**，
+    于是控制台出现 4 个 404（两个字体 × woff/ttf），恰好被
+    ``tools/check_dashboard.py`` 的真浏览器运行时校验判为阻塞级缺陷。
+    既然全部字重都已用 woff2 本地化，这里顺带把 CSS 中多余的
+    woff/ttf 来源剥掉，从根上消除这些无意义的请求。
     """
     found: dict = {}
     for rel in re.findall(r"url\(([^)]+\.woff2)\)", css_text):
@@ -111,14 +145,32 @@ def font_urls_from_css(css_text: str, katex_version: str = KATEX_VERSION) -> dic
     return found
 
 
+def strip_non_woff2_font_sources(css_text: str) -> str:
+    """把 KaTeX CSS 里的 woff/ttf 字体来源删掉，只留 woff2。
+
+    删除形如 ``,url(fonts/X.woff) format("woff")`` 与
+    ``,url(fonts/X.ttf) format("truetype")`` 的兜底项（含前置逗号，
+    避免留下 `url(a.woff2), }` 这类空尾项）。
+    """
+    return re.sub(
+        r",\s*url\([^)]+\.(?:woff|ttf)\)\s*(?:format\([^)]*\))?",
+        "",
+        css_text,
+    )
+
+
 def download_vendor_assets(docs_dir: Path, fetcher=None) -> list:
-    """`--offline` 时把第三方资源（含 KaTeX 字体）抓到 ``docs/assets/vendor/``。
+    """把第三方资源（含 KaTeX 字体）抓到 ``docs/assets/vendor/``。
+
+    默认构建即走本地 vendor（见 ``vendor_mode``），故本函数是常规路径而非
+    可选的 ``--offline`` 分支。
 
     故意不引入 requests/bs4 等第三方依赖，复用项目既有的标准库抓取器；
     下载失败只告警不中断（公式仍可走 fallbackMathUnicode 降级）。
 
-    产物是可弃构建物：已在 .gitignore 中排除，不入库（避免把几百 KB
-    第三方资源塞进仓库，与"仓库瘦身"目标相悖）。
+    [C7 调整] 产物现已**随仓库分发**（.gitignore 中已解除忽略）：看板的主用
+    场景是地铁/破网环境，只有把 vendor 资源提交进仓库，克隆后断网才能直接用，
+    不必先联网构建一次。体积约 740KB，换公式不再退化为 LaTeX 源码串。
     """
     files = vendor_files(offline=True)
     if not files:
@@ -156,9 +208,15 @@ def download_vendor_assets(docs_dir: Path, fetcher=None) -> list:
     # 字体：需先从 CSS 里解析出文件名，再逐个抓取
     css_rel = f"{VENDOR_REL}/katex/{KATEX_VERSION}/dist/katex.min.css"
     try:
-        css_text = (Path(docs_dir) / css_rel).read_text(encoding="utf-8")
+        css_path = Path(docs_dir) / css_rel
+        css_text = css_path.read_text(encoding="utf-8")
         for rel, url in font_urls_from_css(css_text).items():
             _fetch_one(rel, url)
+        # 只本地化了 woff2，就把 CSS 里声明 woff/ttf 的来源剥掉，
+        # 否则浏览器仍会去请求它们并产生 404（见 strip_non_woff2_font_sources）
+        stripped = strip_non_woff2_font_sources(css_text)
+        if stripped != css_text:
+            css_path.write_text(stripped, encoding="utf-8")
     except OSError as exc:                      # pragma: no cover
         _LOG.warning("无法读取 KaTeX CSS 以解析字体清单: %s", exc)
 
@@ -167,6 +225,7 @@ def download_vendor_assets(docs_dir: Path, fetcher=None) -> list:
 
 __all__ = [
     "font_urls_from_css",
+    "is_offline_default",
     "KATEX_VERSION",
     "MARKED_VERSION",
     "VENDOR_REL",
@@ -177,5 +236,7 @@ __all__ = [
     "katex_js_url",
     "load_fallback_math_js",
     "marked_js_url",
+    "strip_non_woff2_font_sources",
     "vendor_files",
+    "vendor_mode",
 ]

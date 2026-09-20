@@ -37,14 +37,14 @@ class FunctionCard(QFrame):
         # 样式一律由 objectName 选择器提供（#FunctionCard / #CardTitle / #CardDesc）
         self.setObjectName("FunctionCard")
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumSize(200, 84)
+        self.setMinimumSize(190, 88)
         self.setFocusPolicy(Qt.StrongFocus)          # 键盘可达
         self.setAccessibleName(f"{title}：{desc}")    # 屏幕阅读器可读
         self.setToolTip(f"{title}：{desc}")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(4)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(6)
 
         # 标题行：SVG 图标 + 文字（横向排列），替代改造前的 emoji 字符拼接。
         # emoji 跨系统字形差异大（彩色/单色、宽高不一），SVG 矢量渲染保证一致。

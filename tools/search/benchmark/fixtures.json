@@ -99,21 +99,122 @@
    "snippet": "OBS"
   }
  ],
- "天津工业大学 双一流 学科": [
-  {
-   "title": "长沙理工大学 双一流建设学科",
-   "url": "https://www.tiangong.edu.cn/syl1.htm",
-   "snippet": "长沙理工大学 双一流 学科"
-  },
-  {
-   "title": "长沙理工大学 院校库",
-   "url": "https://yz.chsi.com.cn/sch/schoolInfo--schId-100058.dhtml",
-   "snippet": "长沙理工大学 学科"
-  },
-  {
-   "title": "Atlantic Puffin - BirdForum",
-   "url": "https://www.birdforum.net/opus/Atlantic_Puffin",
-   "snippet": "puffin birds"
-  }
- ]
+  "天津工业大学 双一流 学科": [
+   {
+    "title": "长沙理工大学 双一流建设学科",
+    "url": "https://www.tiangong.edu.cn/syl1.htm",
+    "snippet": "长沙理工大学 双一流 学科"
+   },
+   {
+    "title": "长沙理工大学 院校库",
+    "url": "https://yz.chsi.com.cn/sch/schoolInfo--schId-100058.dhtml",
+    "snippet": "长沙理工大学 学科"
+   },
+   {
+    "title": "Atlantic Puffin - BirdForum",
+    "url": "https://www.birdforum.net/opus/Atlantic_Puffin",
+    "snippet": "puffin birds"
+   }
+  ],
+  "华科计算机复试线多少分": [
+   {
+    "title": "华中科技大学2027年硕士研究生各院系复试分数线",
+    "url": "https://gszs.hust.edu.cn/info/1106/4001.htm",
+    "snippet": "2027 复试分数线 计算机"
+   },
+   {
+    "title": "华中科技大学2027年硕士研究生各院系复试分数线 - 研究生院",
+    "url": "https://gszs.hust.edu.cn/info/1106/4001.htm?from=search",
+    "snippet": "2027 复试分数线 计算机"
+   },
+   {
+    "title": "エアコン2027年問題とは",
+    "url": "https://qbei.isotop.jp/archives/6643",
+    "snippet": "省エネ基準改正"
+   }
+  ],
+  "华中科技大学计算机学院考研复试分数线2027": [
+   {
+    "title": "华中科技大学计算机学院2027年复试分数线",
+    "url": "https://cs.hust.edu.cn/info/2027.htm",
+    "snippet": "2027 计算机 复试分数线"
+   },
+   {
+    "title": "Top 10 Frontend Frameworks",
+    "url": "https://webdevhub.dev/x",
+    "snippet": "frontend"
+   }
+  ],
+  "浙大软院今年招多少人": [
+   {
+    "title": "浙江大学软件学院2027年招生人数",
+    "url": "https://www.grs.zju.edu.cn/yjszs/2027/soft.htm",
+    "snippet": "2027 招生 软件学院"
+   },
+   {
+    "title": "YouTube TV Help",
+    "url": "https://support.google.com/youtubetv/?hl=en",
+    "snippet": "watch tv"
+   }
+  ],
+  "南医大085409专业课真题有没有": [
+   {
+    "title": "南方医科大学 085409 历年专业课真题（回忆版）",
+    "url": "https://mp.weixin.qq.com/s/def",
+    "snippet": "真题 085409 回忆版"
+   },
+   {
+    "title": "CAD快速看图",
+    "url": "https://cad.glodon.com/x.html",
+    "snippet": "CAD 看图"
+   }
+  ],
+  "北大计算机报录比是多少": [
+   {
+    "title": "北京大学计算机学院近年报录比",
+    "url": "https://cs.pku.edu.cn/zs/blb.htm",
+    "snippet": "报录比 计算机 北京大学"
+   },
+   {
+    "title": "Atlantic Puffin - BirdForum",
+    "url": "https://www.birdforum.net/opus/Atlantic_Puffin",
+    "snippet": "puffin birds"
+   }
+  ],
+  "武大软件工程拟招生人数": [
+   {
+    "title": "武汉大学软件工程2027年拟招生人数",
+    "url": "https://gs.whu.edu.cn/rjgc2027.htm",
+    "snippet": "2027 软件工程 招生"
+   },
+   {
+    "title": "İndir | OBS",
+    "url": "https://obsproject.com/tr/downLOAD",
+    "snippet": "OBS"
+   }
+  ],
+  "清华推免名额怎么查": [
+   {
+    "title": "清华大学2027年推免生招生办法",
+    "url": "https://yz.tsinghua.edu.cn/tm2027.htm",
+    "snippet": "2027 推免 名额 清华大学"
+   },
+   {
+    "title": "Top 10 Frontend Frameworks",
+    "url": "https://webdevhub.dev/x",
+    "snippet": "frontend"
+   }
+  ],
+  "电子科大408真题回忆版": [
+   {
+    "title": "电子科技大学408真题回忆版",
+    "url": "https://zhuanlan.zhihu.com/p/408uestc",
+    "snippet": "408 真题 回忆版 电子科大"
+   },
+   {
+    "title": "ОБС Studio 下载",
+    "url": "https://obsproject.com/tr/downLOAD",
+    "snippet": "OBS indir"
+   }
+  ]
 }
