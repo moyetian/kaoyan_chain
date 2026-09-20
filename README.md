@@ -1,68 +1,63 @@
+<div align="center">
 
-
-![考研学习chain Logo](docs/assets/logo_transparent.png)
+<img src="docs/assets/logo_transparent.png" alt="考研学习链 Logo" width="140" />
 
 # 考研学习链 (Kaoyan AI Study Chain) · 数字化备考工程
 
 **基于 AI Agent 私人教师协议、外置状态机驱动与自动化自测看板的开源考研备考工程**
 
+<p align="center">
+  <a href="https://moyetian.github.io/kaoyan_chain/"><img src="https://img.shields.io/badge/🌐_在线看板体验-Live_Demo-6366f1?style=for-the-badge&logo=githubpages&logoColor=white" alt="在线看板体验" /></a>
+  <a href="https://github.com/moyetian/kaoyan_chain/releases"><img src="https://img.shields.io/badge/📦_下载开箱即用程序包-Releases-2ea44f?style=for-the-badge&logo=github&logoColor=white" alt="下载开箱即用程序包" /></a>
+  <a href="#-用户本地化部署与快速上手流程-3-分钟开箱"><img src="https://img.shields.io/badge/🚀_快速上手-Quick_Start-10b981?style=for-the-badge&logo=rocket&logoColor=white" alt="快速上手" /></a>
+  <a href="操作手册.md"><img src="https://img.shields.io/badge/📘_学员实操手册-Handbook-3b82f6?style=for-the-badge&logo=read-the-docs&logoColor=white" alt="学员实操手册" /></a>
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/🛠️_开发与贡献-Contributing-f59e0b?style=for-the-badge&logo=git&logoColor=white" alt="开发与贡献" /></a>
+</p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
+  <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v2.8.0-blue?style=flat-square&logo=github&logoColor=white" alt="版本 v2.8.0" />
+  <img src="https://img.shields.io/badge/Tests-1279%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 1279 Passed" />
+  <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-6366f1?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
+  <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
+  <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
+  <img src="https://img.shields.io/badge/KaoYan%20Intelligence-55%2B%E6%89%80%E9%AB%98%E6%A0%A1%E6%A1%A3%E6%A1%88-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white" alt="KaoYan Intelligence" />
+  <img src="https://img.shields.io/badge/Terminal%20TUI-v2.5%20%E6%9E%81%E5%AE%A2%E6%8E%A7%E5%88%B6%E5%8F%B0-3b82f6?style=flat-square&logo=gnometerminal&logoColor=white" alt="Terminal TUI" />
+  <img src="https://img.shields.io/badge/Dashboard-6%20Tabs-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
+  <img src="https://img.shields.io/badge/Memory-3--Tier%20Pruning-f59e0b?style=flat-square&logo=speedtest&logoColor=white" alt="Memory" />
+  <img src="https://img.shields.io/badge/Privacy-Local--First-10b981?style=flat-square&logo=shield&logoColor=white" alt="Privacy" />
+  <img src="https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square" alt="License" />
+</p>
 
-[![在线看板体验](https://img.shields.io/badge/🌐_在线看板体验-Live_Demo-6366f1?style=for-the-badge&logo=githubpages&logoColor=white)](https://moyetian.github.io/kaoyan_chain/)
+<p align="center">
+  <a href="#-用户本地化部署与快速上手流程-3-分钟开箱">🚀 极速开箱</a> •
+  <a href="#1-🖥️-桌面可视化操作端-pyside6-desktop-client--ky-gui">🖥️ 桌面 GUI</a> •
+  <a href="#4-📟-终端全景智能中枢-tui-v25-极客控制台">📟 终端 TUI</a> •
+  <a href="#2-📱-微信公众号考研经验检索与爬虫-ky-wechat--ky-wx">📱 经验检索</a> •
+  <a href="#6-🏛️-kaoyan-intelligence-招考全景情报与证据链引擎">🏛️ 研招情报</a> •
+  <a href="#-常用私教交互与指令速查">⌨️ 指令速查</a> •
+  <a href="操作手册.md">📘 实操手册</a> •
+  <a href="CONTRIBUTING.md">🛠️ 开发贡献</a> •
+  <a href="CHANGELOG.md">📝 更新日志</a>
+</p>
 
-[![快速上手](https://img.shields.io/badge/🚀_快速上手-Quick_Start-10b981?style=for-the-badge&logo=rocket&logoColor=white)](#-用户本地化部署与快速上手流程-3-分钟开箱)
+<p align="center">
+  <img src="docs/assets/hero_banner.jpg" alt="考研学习链 · 功能全景" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
+</p>
 
-[![学员实操手册](https://img.shields.io/badge/📘_学员实操手册-Handbook-3b82f6?style=for-the-badge&logo=read-the-docs&logoColor=white)](操作手册.md)
-
-[![开发与贡献](https://img.shields.io/badge/🛠️_开发与贡献-Contributing-f59e0b?style=for-the-badge&logo=git&logoColor=white)](CONTRIBUTING.md)
-
-[![下载开箱即用程序包](https://img.shields.io/badge/📦_下载开箱即用程序包-Releases-2ea44f?style=for-the-badge&logo=github&logoColor=white)](https://github.com/moyetian/kaoyan_chain/releases)
-
-
-
-![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)
-
-![版本 v2.8.0](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v2.8.0-blue?style=flat-square&logo=github&logoColor=white)
-
-![Tests 1279 Passed](https://img.shields.io/badge/Tests-1279%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white)
-
-![PySide6 GUI](https://img.shields.io/badge/GUI-PySide6%20Desktop-6366f1?style=flat-square&logo=qt&logoColor=white)
-
-![Rust Native](https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white)
-
-![WeChat Searcher](https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white)
-
-![KaoYan Intelligence](https://img.shields.io/badge/KaoYan%20Intelligence-55%2B%E7%9C%81%E7%BA%A7%E9%AB%98%E6%A0%A1%E6%A1%A3%E6%A1%88-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white)
-
-![Terminal TUI](https://img.shields.io/badge/Terminal%20TUI-v2.5%20%E6%9E%81%E5%AE%A2%E6%8E%A7%E5%88%B6%E5%8F%B0-3b82f6?style=flat-square&logo=gnometerminal&logoColor=white)
-
-![Dashboard](https://img.shields.io/badge/Dashboard-6%20Tabs%20(%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE%2B%E5%9B%BE%E8%B0%B1%2B%E8%B6%8B%E5%8A%BF%E7%BA%BF)-6366f1?style=flat-square&logo=speedtest&logoColor=white)
-
-![Memory](https://img.shields.io/badge/Memory-3--Tier%20Pruning-f59e0b?style=flat-square&logo=speedtest&logoColor=white)
-
-![Privacy](https://img.shields.io/badge/Privacy-Local--First-10b981?style=flat-square&logo=shield&logoColor=white)
-
-![License](https://img.shields.io/badge/License-MIT-lightgrey.svg?style=flat-square)
-
-[🚀 极速开箱](#-用户本地化部署与快速上手流程-3-分钟开箱) • [🖥️ 桌面 GUI](#1-🖥️-桌面可视化操作端-pyside6-desktop-client--ky-gui) • [📟 终端 TUI](#4-📟-终端全景智能中枢-tui-v25-极客控制台) • [📱 经验检索](#2-📱-微信公众号考研经验检索与爬虫-ky-wechat--ky-wx) • [🏛️ 研招情报](#6-🏛️-kaoyan-intelligence-招考全景情报与证据链引擎) • [⌨️ 指令速查](#-常用私教交互与指令速查) • [📘 实操手册](操作手册.md) • [🛠️ 开发贡献](CONTRIBUTING.md) • [📝 更新日志](CHANGELOG.md)
-
-
-
-![Kaoyan AI Study Chain Banner](docs/assets/hero_banner.jpg)
-
-
+</div>
 
 ---
 
 ## 📖 这是什么？
 
+<p align="center">
+  <img src="docs/assets/readme_system_overview.svg" alt="考研学习链系统架构与工作流全景" style="max-width:100%;border-radius:10px;" />
+</p>
 
-
-![考研学习链系统架构与工作流全景](docs/assets/readme_system_overview.svg)
-
-
-
-![传统 AI 对话与考研学习链对比](docs/assets/feature_comparison.svg)
+<p align="center">
+  <img src="docs/assets/feature_comparison.svg" alt="传统 AI 对话与考研学习链对比" style="max-width:100%;border-radius:10px;" />
+</p>
 
 **考研学习链 (Kaoyan AI Study Chain)** 是一套面向考研学子的**数字化、工程化 AI 私人教师备考系统**。
 
@@ -81,7 +76,6 @@
 
 仓库里有四份文档，内容各有侧重。
 
-
 | 文档                                 | 面向         | 主要内容                                                  | 什么时候读             |
 | ---------------------------------- | ---------- | ----------------------------------------------------- | ----------------- |
 | **README.md**（本页）                  | 所有人        | 项目介绍、快速上手、目录结构、注意事项、隐私承诺、免责声明                         | **第一次接触项目时**      |
@@ -89,7 +83,6 @@
 | [SETUP.md](SETUP.md)               | 要部署 / 排障的人 | 进阶配置、看板发布（Pages / Cloudflare）、机器人接入、健康检查、**常见问题 FAQ** | **装不上或想折腾时**      |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 开发者        | 完整架构树、开发环境、测试与质量门禁、Agent 协议规范、PR 流程                   | **想改代码 / 提 PR 时** |
 | [CHANGELOG.md](CHANGELOG.md)       | 所有人        | 版本历史与升级方式                                             | **升级前后**          |
-
 
 > 快速直达：安装不上 → [SETUP 第 8 章 FAQ](SETUP.md)；不知道某条命令怎么用 → [操作手册 第 8 章「39 项子命令全景速查」](操作手册.md)；担心隐私 → 本页 [🔒 隐私优先](#-隐私优先与主流-ai-agent-接入) 与 [⚠️ 使用注意事项](#-使用注意事项) 第 7 条。
 
@@ -139,7 +132,6 @@
 
 ### 系统要求
 
-
 | 项目     | 要求                         | 说明                                                                  |
 | ------ | -------------------------- | ------------------------------------------------------------------- |
 | 操作系统   | Windows 10/11、macOS、Linux  | 三者均已验证                                                              |
@@ -148,9 +140,7 @@
 | 网络     | 可选                         | 仅情报类命令（`scout` / `admission` / `watch` / `wechat` / `fetch`）与模型调用需要 |
 | 大模型    | 任意 OpenAI 兼容端点             | DeepSeek / GLM / Qwen / Kimi / OpenAI / 本地 Ollama 均可                |
 
-
 ### 依赖矩阵：核心零依赖，增强按需安装
-
 
 | 依赖                                | 必需性    | 用途                              | 不装会怎样                |
 | --------------------------------- | ------ | ------------------------------- | -------------------- |
@@ -158,7 +148,6 @@
 | `pip install -r requirements.txt` | 可选     | PDF 抽取、数学符号验算、图像识别等增强技能         | 对应技能提示安装，其余功能照常      |
 | PySide6                           | 可选     | `ky gui` 桌面可视化界面                | `ky gui` 提示安装，测试自动跳过 |
 | `ky_rust_ext`                     | 可选     | chunk\_text / sha256 / 分词估算原生加速 | 透明回退纯 Python，功能与结果一致 |
-
 
 > 一句话：**不装任何第三方库也能跑起来**；`pip install -r requirements.txt` 只在你
 > 需要 PDF / 公式 / 图像 / GUI 这类增强能力时才执行。
@@ -213,9 +202,9 @@ ky
 
 ## 🌟 核心功能全景亮点
 
-
-
-![三类考研学生画像与差异化提分闭环矩阵](docs/assets/persona_triad_matrix.svg)
+<p align="center">
+  <img src="docs/assets/persona_triad_matrix.svg" alt="三类考研学生画像与差异化提分闭环矩阵" style="max-width:100%;border-radius:10px;" />
+</p>
 
 ### 1. 🖥️ 桌面可视化操作端 (PySide6 Desktop Client · `ky gui`)
 
@@ -274,7 +263,6 @@ ky
 
 系统提供 39 个工业级 CLI 子命令与对话交互口令，完整参数说明请参阅 [📘 学员实操手册](操作手册.md)：
 
-
 | 交互场景      | 推荐口令 / 子命令                         | 行为说明                                      |
 | --------- | ---------------------------------- | ----------------------------------------- |
 | **桌面操作**  | `ky gui` / `ky-gui`                | 启动 PySide6 桌面可视化图形操作端 (内置 5 套主题预设)        |
@@ -290,7 +278,6 @@ ky
 | **切片入库**  | `ky ingest 2024真题.md`              | 试卷智能切片与标准化题卡入库 (支持 Rust 毫秒级加速)            |
 | **刷新看板**  | `ky build`                         | 重新编译并刷新本地与移动端自测看板（默认离线构建，`--cdn` 可切回 CDN） |
 | **系统体检**  | `ky doctor`                        | 7 维度全系统健康诊断（Python/依赖/状态/API/端口/Git隐私）    |
-
 
 ---
 
