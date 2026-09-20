@@ -101,11 +101,11 @@
 
 ### 三步开始使用
 
-1. **下载**：到 [Releases 页面](https://github.com/moyetian/kaoyan_chain/releases) 下载最新版程序包
-   （Windows 推荐 `KaoyanStudyChain_Setup_v2.8.0.exe` 安装版；也提供解压即用的 `KaoyanStudyChain-v2.8.0.zip` 免装目录）。
-2. **安装 / 解压**：
-   - 安装版：双击运行，按向导下一步即可；
-   - 免装版：解压到任意文件夹，**不要放在需要管理员权限的目录**（如 `C:\Program Files`）。
+1. **下载**：到 [Releases 页面](https://github.com/moyetian/kaoyan_chain/releases) 下载最新版程序包。
+   当前提供 **`KaoyanStudyChain-v2.8.0.zip`** —— 解压即用的免装目录（压缩包约 380 MB，解压后约 1 GB）。
+   > 安装版（`KaoyanStudyChain_Setup_v2.8.0.exe`）需要用 Inno Setup 编译，当前版本暂未提供，后续补上。
+2. **解压 / 启动**：把 zip 解压到任意文件夹（**不要放在需要管理员权限的目录**，
+   如 `C:\Program Files`），运行 `KaoyanStudyChain.exe`，或双击 `启动GUI.bat`。
 3. **启动并跟随引导配置**：运行 `KaoyanStudyChain`（或双击 `启动GUI.bat`），
    首次启动会引导你完成：
    - 填写**大模型 API Key**（DeepSeek / GLM / Qwen / Kimi / OpenAI / 本地 Ollama 均可，兼容 OpenAI 接口）；
