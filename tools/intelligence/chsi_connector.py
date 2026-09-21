@@ -121,7 +121,7 @@ STANDARD_SUBJECTS_CATALOG = {
     "030500": {
         "name": "马克思主义理论",
         "degree_type": "学硕",
-        "common_subjects": ["(101)思想政治理论", "(201)英语(一)", "(618)马克思主义基本原理", "(823)中国化马克思主义理论与实践"],
+        "common_subjects": ["(101)思想政治理论", "(201)英语(一)", "自命题科目1", "自命题科目2"],
         "national_standard": True
     }
 }

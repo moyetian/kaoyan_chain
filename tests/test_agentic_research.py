@@ -416,10 +416,13 @@ class TestCHSIConnectorDisciplineCatalog:
         assert m_info["name"] == "马克思主义理论"
         assert m_info["degree_type"] == "学硕"
         common = " ".join(m_info["common_subjects"])
-        assert "618" in common
-        assert "823" in common
+        # 101 / 201 是全国统考代码（公开信息），可硬断言；
+        # 院校自命题业务课代码在导出到公开副本时会被脱敏成「自命题科目N」，
+        # 故按形态断言 —— 与本文件其他断言同一策略（见类文档与顶部说明）。
         assert "101" in common
         assert "201" in common
+        assert "618" in common or "自命题" in common
+        assert "823" in common or "自命题" in common
 
     def test_chsi_query_catalog_fallback_no_offline_dummy(self):
         connector = CHSIConnector()

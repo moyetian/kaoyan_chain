@@ -287,7 +287,7 @@ def test_tests_dir_is_immune_to_py_sanitization():
     而是让夹具本身不含真实身份 —— 本条守住这条不变量，同时也就守住了
     「夹具不被写回真实身份」。
 
-    阴性对照：把任意测试文件里的中性校名改回真实校名（如 中国人民大学 →
+    阴性对照：把任意测试文件里的中性校名改回真实校名（如 北京大学 →
     当前 ky_config 的 school），本用例必须变红。
     """
     import pathlib
@@ -296,9 +296,10 @@ def test_tests_dir_is_immune_to_py_sanitization():
     rules = pp.build_py_substitutions(root)
     #: **待办名单**：尚未中性化的测试文件。中性化完成后必须从这里删除
     #: （下面的 assert 会钉住这份名单的规模，防止它悄悄长大）。
-    #:   * tests/test_agentic_research.py —— 正被另一个并行任务追加回归用例，
-    #:     本轮刻意不动它；它里面仍有真实校名与真实自命题科目串。
-    pending = {"tests/test_agentic_research.py"}
+    #: 2026-09-21：最后一项 ``tests/test_agentic_research.py`` 已中性化
+    #: （样本院校由真实目标院校改为「北京大学」这类非身份院校），名单清空 ——
+    #: 自此 ``tests/`` 整目录对脱敏免疫，公开副本里这些测试不会再被改写而自毁。
+    pending: set = set()
     assert len(pending) <= 1, "待办名单只应保留「正在被并行任务改动」的文件"
 
     offenders = []
@@ -315,3 +316,182 @@ def test_tests_dir_is_immune_to_py_sanitization():
     assert not offenders, (
         "以下测试文件含有当前真实身份 —— 导出脱敏会改写它们，导致公开副本断言自毁："
         f"{offenders}")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# [2026-09-21 补漏] 两类漏网形态：括号包裹的代码 + 院校 pinyin 域名
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 实测缺口（推送前严格审查时发现）：``/compare`` 生成的《双校对标》研报文件名
+# 已被 ``RENAME_NAME_PATTERNS`` 改成中性名，**正文却留着**
+# ``gra.<校名拼音>.edu.cn`` 与 ``(自命题科目码)科目名`` 这类形态 ——
+# 中文校名规则与 URL 百分号编码规则都覆盖不到它们，导出后自检也只扫中文
+# token，于是全程打印「非公开库路径下无真实身份残留」。
+#
+# 注意：本文件会被 ``test_tests_dir_is_immune_to_py_sanitization`` 用**真实**规则
+# 复查，所以下面一律用 PLAN_FULL 的中性代码（610/810），不得写出真实自命题科目码。
+
+
+def _add_school_db(root, name, *, official="", graduate="", admission="", extra=None):
+    """在假仓库根里放一份最小院校库（字段名与 data/universities/*.json 一致）。"""
+    db_dir = root / "data" / "universities"
+    db_dir.mkdir(parents=True, exist_ok=True)
+    entry = {
+        "chsi_code": "10000",
+        "name": name,
+        "official_domain": official,
+        "graduate_domain": graduate,
+        "admission_domain": admission,
+    }
+    if extra:
+        entry.update(extra)
+    (db_dir / "national_institutions.json").write_text(
+        json.dumps({name: entry}, ensure_ascii=False), encoding="utf-8")
+
+
+def test_wrapped_subject_codes_are_sanitized(tmp_path):
+    """代码被括号 / 方括号包裹时，规则必须照样命中。
+
+    修复前 ``(610)法学基础`` 整条漏网：右括号让 ``\\s*`` 之后的名称匹配落空，
+    而生成物里代码几乎总被括号包着，等于这条规则在真实语料上完全失效。
+
+    阴性对照：把 ``_code_with_optional_wrap()`` 换回裸 ``(?<!\\d)code(?!\\d)``，
+    本用例必须变红。
+    """
+    root = _make_root(tmp_path, PLAN_FULL)
+    rules = pp.build_substitutions(root)
+    assert pp.sanitize_text("初试：(610)法学基础、(810)法学综合", rules) == \
+        "初试：自命题科目1、自命题科目2"
+    assert pp.sanitize_text("（610）法学基础", rules) == "自命题科目1"
+    assert pp.sanitize_text("【610】法学基础", rules) == "自命题科目1"
+    assert pp.sanitize_text("科目 [610] 法学基础", rules) == "科目 自命题科目1"
+    # 并写对（两个代码同时出现）同样允许括号包裹
+    assert pp.sanitize_text("自命题 (610)、(810) 两门", rules) == \
+        "自命题 自命题科目1、自命题科目2 两门"
+
+
+def test_wrapped_code_rule_does_not_widen_to_plain_numbers(tmp_path):
+    """放宽的**只有包裹符**：数字边界与「必须与名称/语境词相邻共现」判据一律不变。
+
+    阴性对照：若把 ``_code_with_optional_wrap()`` 改成无条件接受孤立代码
+    （去掉与名称 / 语境词的共现要求），本用例必须变红。
+    """
+    root = _make_root(tmp_path, PLAN_FULL)
+    rules = pp.build_substitutions(root)
+    for raw in ("这本书 610元", "见第 610 页", "编号 6100", "编号(610)", "编号 810"):
+        assert pp.sanitize_text(raw, rules) == raw, raw
+
+
+def test_school_pinyin_domain_becomes_placeholder(tmp_path):
+    """当前院校的注册域必须被替换，且一次覆盖 www / gra / yjsy 全部子域。
+
+    阴性对照：删掉 ``identity_substitutions()`` 里的 ``school_domains()`` 循环，
+    本用例必须变红。
+    """
+    plan = dict(PLAN_FULL)
+    plan["school"] = "甲大学"
+    root = _make_root(tmp_path, plan)
+    _add_school_db(root, "甲大学",
+                   official="https://www.jiada.edu.cn",
+                   graduate="https://gra.jiada.edu.cn",
+                   admission="https://yjsy.jiada.edu.cn")
+    assert pp.school_domains(root, "甲大学") == ["jiada.edu.cn"]
+    rules = pp.build_substitutions(root)
+    assert pp.sanitize_text("https://gra.jiada.edu.cn/zsml.html", rules) == \
+        "https://gra.example.edu.cn/zsml.html"
+    assert pp.sanitize_text("https://www.jiada.edu.cn", rules) == \
+        "https://www.example.edu.cn"
+    assert pp.sanitize_text("裸域 jiada.edu.cn", rules) == "裸域 example.edu.cn"
+    # .py 侧同样生效 —— radar.py 注释里的真实域名就是靠这条清掉的
+    py_rules = pp.build_py_substitutions(root)
+    assert pp.sanitize_text('url="https://gra.jiada.edu.cn/x"', py_rules) == \
+        'url="https://gra.example.edu.cn/x"'
+
+
+def test_school_domain_rule_ignores_non_domain_fields(tmp_path):
+    """只认 ``*_domain`` 字段：``chsi_url`` 这类**非院校自有域名字段**一律不取。
+
+    实测踩到：若按「任意 ``*_url`` / ``*_web``」收集，院校库里的 ``chsi_url``
+    （指向研招网）就会被当身份替换 —— 既改坏公开副本里的官方链接，又让导出后
+    自检把每个提到研招网的文件误报成残留。
+
+    夹具刻意用**非公共平台**的聚合站域名：这样只有「字段判据」这一道护栏在起作用，
+    变异它才必然翻红（若用 ``chsi.com.cn``，平台黑名单会替它兜住，对照失效）。
+
+    阴性对照：把 ``_collect_domain_values()`` 的字段判据放宽回 ``*_url``，
+    聚合站域名就会进入规则集，本用例必须变红。
+    """
+    plan = dict(PLAN_FULL)
+    plan["school"] = "甲大学"
+    root = _make_root(tmp_path, plan)
+    _add_school_db(root, "甲大学",
+                   official="https://www.jiada.edu.cn",
+                   extra={"chsi_url": "https://www.some-aggregator.com/sch/1.html"})
+    assert pp.school_domains(root, "甲大学") == ["jiada.edu.cn"]
+    rules = pp.build_substitutions(root)
+    for raw in ("https://www.some-aggregator.com/sch/1.html",
+                "https://yz.chsi.com.cn/sch/schoolInfo--schId-1.dhtml",
+                "https://www.chsi.com.cn/",
+                "https://www.hust.edu.cn",
+                "https://gs.whu.edu.cn",
+                "https://www.example.com/path",
+                "https://gra.example.edu.cn/x"):
+        assert pp.sanitize_text(raw, rules) == raw, raw
+
+
+def test_school_domain_rule_spares_public_platforms(tmp_path):
+    """即便某个 ``*_domain`` 字段**指向上游公共平台**，也不得当成身份替换。
+
+    为什么要这道冗余护栏：``national_institutions.json`` 由
+    ``university_db_builder.py`` 生成 / 重建，抓取回退时 ``official_domain``
+    完全可能被填成研招网页面地址；一旦如此，替换会改坏公开副本里的官方链接，
+    并让导出后自检把大量无关文件误报成残留。
+
+    阴性对照：从 ``_load_school_domains()`` 里删掉 ``_PUBLIC_PLATFORM_DOMAINS``
+    过滤，本用例必须变红。
+    """
+    plan = dict(PLAN_FULL)
+    plan["school"] = "甲大学"
+    root = _make_root(tmp_path, plan)
+    _add_school_db(root, "甲大学",
+                   official="https://yz.chsi.com.cn/sch/schoolInfo--schId-1.dhtml",
+                   graduate="https://www.jiada.edu.cn")
+    assert pp.school_domains(root, "甲大学") == ["jiada.edu.cn"]
+    rules = pp.build_substitutions(root)
+    platform = "https://yz.chsi.com.cn/sch/schoolInfo--schId-1.dhtml"
+    assert pp.sanitize_text(platform, rules) == platform
+
+
+def test_school_domain_rules_degrade_without_db(tmp_path):
+    """院校库缺失时**静默降级**：中文校名规则仍须生效，整条导出链不得失败。
+
+    阴性对照：把 ``school_domains()`` 改成「取不到就抛异常」，本用例必须变红。
+    """
+    root = _make_root(tmp_path, PLAN_FULL)
+    assert pp.school_domains(root, "中国人民大学") == []
+    rules = pp.build_substitutions(root)
+    assert pp.sanitize_text("中国人民大学", rules) == "目标院校"
+
+
+def test_residual_scan_catches_pinyin_domain(tmp_path):
+    """导出后自检必须看得见 pinyin 域名 —— 否则它永远打印「无残留」。
+
+    阴性对照：把 ``scan_residual_identity()`` 里的 ``identity_domain_tokens()``
+    并集删掉，``report.md`` 就不再被命中，本用例必须变红。
+    """
+    plan = dict(PLAN_FULL)
+    plan["school"] = "甲大学"
+    src = tmp_path / "src"
+    src.mkdir()
+    _make_root(src, plan)
+    _add_school_db(src, "甲大学", official="https://www.jiada.edu.cn",
+                   graduate="https://gra.jiada.edu.cn")
+    assert pp.identity_domain_tokens(src) == ["jiada.edu.cn"]
+
+    dst = tmp_path / "dst"
+    dst.mkdir()
+    (dst / "report.md").write_text("官网 https://gra.jiada.edu.cn/x", encoding="utf-8")
+    (dst / "clean.md").write_text("官网 https://example.edu.cn/x", encoding="utf-8")
+    hits = pp.scan_residual_identity(dst, src)
+    assert "report.md" in hits
+    assert "clean.md" not in hits

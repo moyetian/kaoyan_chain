@@ -44,6 +44,7 @@ __all__ = [
     "DEV_SCRATCH_DIRS",
     "ROOT_ONLY_EXCLUDE_DIRS",
     "NON_PUBLISH_PATH_PREFIXES",
+    "PRIVATE_WORKSPACE_ONLY_PATHS",
     "BACKUP_MARK",
     "INTERNAL_DOC_PATTERNS",
     "RENAME_NAME_PATTERNS",
@@ -55,6 +56,8 @@ __all__ = [
     "identity_substitutions",
     "identity_py_excluded_patterns",
     "identity_name_tokens",
+    "identity_domain_tokens",
+    "school_domains",
     "identity_filename_reason",
     "identity_rules_effective",
     # ── 内容级脱敏引擎（两条出口共用）────────────────────────────────────
@@ -188,6 +191,31 @@ NON_PUBLISH_PATH_PREFIXES: Tuple[Tuple[str, ...], ...] = (
     ("data", "knowledge"),
 )
 
+#: 只在**私有工作区**里才有意义的路径（相对仓库根的 parts 前缀元组）。
+#:
+#: 与 ``NON_PUBLISH_PATH_PREFIXES`` 的分工必须分清，否则会把两类东西混成一类：
+#:   * ``NON_PUBLISH_PATH_PREFIXES`` —— **隐私**上不能发：文件里有真实数据，
+#:     ``.gitignore`` 已经忽略它们，发布层只是补齐同口径（导出即泄漏）；
+#:   * 本清单 —— **工程**上不该发：文件里**没有任何身份信息**，git 也正常跟踪它，
+#:     但它依赖的东西在公开副本里被替换成了占位实现，留在副本里只会让
+#:     ``pytest tests/`` 整批报错（公开仓库 CI 恒红）。
+#:
+#: 逐条理由：
+#:   * ``tests/test_fix_publish_privacy.py`` —— 全部用例都在测
+#:     ``tools/sync_publish.py`` 与 ``tools/build_package.py`` 的隐私闸门
+#:     （``sp.SRC`` / ``sp.EXCLUDE_DIRS`` / 脱敏引擎 / ``sp.main()`` 的拒绝分支 …）。
+#:     而这两个脚本在公开副本里是**刻意保留的 4 行占位文件**
+#:     （见 ``sync_publish.neutralize_sync_script()``），于是副本里 51 个用例
+#:     全部 ``AttributeError: module 'sync_publish' has no attribute 'SRC'``
+#:     （2026-09-21 实测：公开副本 ``pytest tests/`` = 52 failed / 1097 passed，
+#:     其中 51 个出自本文件）。私有工程内部事务的测试，公开副本既不需要也无法运行。
+#:
+#: 注意：这里**只列具体文件**，不得写成 ``("tests",)`` —— 其余测试文件在公开副本
+#: 里是能跑通的，整目录排除会让公开仓库失去全部回归测试（有专门用例钉住这一点）。
+PRIVATE_WORKSPACE_ONLY_PATHS: Tuple[Tuple[str, ...], ...] = (
+    ("tests", "test_fix_publish_privacy.py"),
+)
+
 #: 备份文件标记：任何带此标记的文件都是历史快照，绝不发布（含私有目录白名单内）。
 BACKUP_MARK = "_backup_"
 
@@ -297,6 +325,12 @@ def should_publish(path: Union[str, Path]) -> bool:
     if any(parts[:len(pfx)] == pfx for pfx in NON_PUBLISH_PATH_PREFIXES):
         return False
 
+    # 3.6 只在私有工作区里有意义的文件（测试「公开副本里的占位工具」的用例）：
+    #     文件本身不含隐私，但公开副本里被测的实现已换成占位，留下只会让
+    #     公开仓库 CI 恒红（见上方常量注释）。与 3.5 同构，但理由不同故分列。
+    if any(parts[:len(pfx)] == pfx for pfx in PRIVATE_WORKSPACE_ONLY_PATHS):
+        return False
+
     # 4. 私有目录：仅放行白名单骨架
     owner = private_owner(parts)
     if owner is not None:
@@ -385,6 +419,225 @@ def _add_url_rule(rules: List[Tuple[str, str]], text: str, repl: str) -> None:
         rules.append((re.escape(enc), quote(repl, safe="")))
 
 
+# ── 院校注册域名（2026-09-21 补漏）──────────────────────────────────────────
+# 实测缺口：``build_substitutions()`` 原先只产出「中文校名 + 其 URL 百分号编码」，
+# 于是生成物（对比研报 / 考纲摘要 / 看板）里的 **pinyin 域名**原样通过 ——
+# ``https://gra.<校名拼音>.edu.cn`` 这类字符串既不含中文、也不是百分号编码，
+# 中文规则匹配不到；而导出后自检 ``scan_residual_identity()`` 只扫中文 token，
+# 对它同样无感，照样打印「非公开库路径下无真实身份残留」。
+#
+# 域名不必猜拼音：本地院校库里就有现成字段（``official_domain`` /
+# ``graduate_domain`` / ``admission_domain`` / ``departments.*.college_domain``）。
+# 取注册域（保留「公共后缀 + 1 段」）而非完整主机名，才能一次覆盖
+# ``www.`` / ``gra.`` / ``yjsy.`` 等全部子域。
+
+#: 多段公共后缀。仅用于把 ``gra.<校名拼音>.edu.cn`` 归约到 ``<校名拼音>.edu.cn``；
+#: 不需要完整 PSL —— 本模块只处理「学员自己院校的域名」，候选集来自院校库，
+#: 不面向任意公网域名。
+_PUBLIC_SUFFIXES = frozenset({
+    "edu.cn", "com.cn", "net.cn", "org.cn", "gov.cn", "ac.cn", "mil.cn",
+    "co.uk", "ac.uk", "org.uk", "gov.uk",
+    "edu.hk", "com.hk", "edu.tw", "com.tw", "edu.mo",
+})
+
+#: 域名占位符的二级标签：``<label>.<公共后缀>``（如 ``example.edu.cn``）。
+#: 保留原公共后缀，替换后的链接在语法上仍是合法 URL，不会把 Markdown 链接写坏。
+_DOMAIN_PLACEHOLDER_LABEL = "example"
+
+#: 院校库文件（相对仓库根）。两者同构：``{key: {"name":…, "official_domain":…,
+#: "graduate_domain":…, "admission_domain":…, "departments": {…: {"college_domain":…}}}}``。
+#: ``registry.json`` 是精选库（键=院校代码），``national_institutions.json``
+#: 是全国库（键=校名）。只读不写。
+_SCHOOL_DB_FILES: Tuple[str, ...] = (
+    "data/universities/registry.json",
+    "data/universities/national_institutions.json",
+)
+
+#: 公共平台域名兜底黑名单：即便某个 ``*_domain`` 字段指向上游聚合站，也不得替换。
+#: 这些站点是**所有人共用的公共设施**，把它们当身份替换既改坏链接、又让自检误报。
+_PUBLIC_PLATFORM_DOMAINS = frozenset({
+    "chsi.com.cn", "chsi.cn", "eol.cn", "gaokao.cn", "shanghairanking.cn",
+})
+
+#: 院校库解析结果缓存：``{(path, mtime_ns, size): {校名/别名: {注册域名}}}``。
+#: 全国库 1.7 MB、解析约 17 ms，而 ``build_substitutions()`` 会被测试反复调用，
+#: 不缓存会明显拖慢套件。上限 8 条，超了整体清空（键含 mtime，天然失效）。
+_SCHOOL_DOMAIN_CACHE: dict = {}
+_SCHOOL_DOMAIN_CACHE_MAX = 8
+
+
+def _normalize_domain(raw: object) -> Optional[str]:
+    """``https://Gra.Example.EDU.CN:443/x`` → ``gra.example.edu.cn``；非法输入返回 None。"""
+    text = str(raw or "").strip().lower()
+    if not text:
+        return None
+    text = re.sub(r"^[a-z][a-z0-9+.-]*://", "", text)          # 去 scheme
+    text = text.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+    text = text.split("@")[-1].split(":", 1)[0]                  # 去 userinfo / 端口
+    text = text.strip(".")
+    if not text or "." not in text or ".." in text:
+        return None
+    if not re.fullmatch(r"[a-z0-9.-]+", text):
+        return None
+    return text
+
+
+def _split_public_suffix(domain: str) -> Optional[Tuple[str, str]]:
+    """``gra.example.edu.cn`` → ``("gra.example", "edu.cn")``；``example.com`` → ``("example", "com")``。"""
+    labels = domain.split(".")
+    if len(labels) < 2:
+        return None
+    if len(labels) >= 3 and ".".join(labels[-2:]) in _PUBLIC_SUFFIXES:
+        return ".".join(labels[:-2]), ".".join(labels[-2:])
+    return ".".join(labels[:-1]), labels[-1]
+
+
+def _registrable_domain(domain: str) -> Optional[str]:
+    """``gra.<校名拼音>.edu.cn`` → ``<校名拼音>.edu.cn``（公共后缀 + 注册主体一段）。"""
+    split = _split_public_suffix(domain)
+    if not split:
+        return None
+    label, suffix = split
+    label = label.rsplit(".", 1)[-1]
+    return f"{label}.{suffix}" if label else None
+
+
+def _placeholder_domain(domain: str) -> Optional[str]:
+    """注册域 → 中性占位域；已是占位域或无法归约时返回 None。
+
+    返回 None 是**必要**的：否则会产出 ``example.edu.cn → example.edu.cn``
+    这种自指空转规则 —— 与 ``identity_rules_effective()`` 防范的
+    「规则看着生效、实际什么都没改」属同一族缺陷。
+    """
+    split = _split_public_suffix(domain)
+    if not split:
+        return None
+    label, suffix = split
+    if label == _DOMAIN_PLACEHOLDER_LABEL:
+        return None
+    return f"{_DOMAIN_PLACEHOLDER_LABEL}.{suffix}"
+
+
+def _collect_domain_values(node: object, out: set) -> None:
+    """递归收集 ``*_domain`` 字段的字符串值（含 ``departments`` 下的 ``college_domain``）。
+
+    **刻意不匹配任意 ``*_url`` / ``*_web``**：院校库里的 ``chsi_url`` 指向研招网
+    （``yz.chsi.com.cn``），那是全国公共平台、不是考生身份 —— 当成身份替换会改坏
+    公开副本里的研招网链接，并让导出后自检把每个提到研招网的文件都误报成残留
+    （2026-09-21 实测踩到）。院校自有域名在本库里一律用 ``*_domain`` 命名。
+    """
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if isinstance(value, str) and key.endswith("_domain"):
+                out.add(value)
+            else:
+                _collect_domain_values(value, out)
+    elif isinstance(node, list):
+        for item in node:
+            _collect_domain_values(item, out)
+
+
+def _load_school_domains(path: Path) -> dict:
+    """``{校名/别名: {注册域名}}``（按 path+mtime+size 缓存）。读不到时返回 ``{}``。"""
+    try:
+        stat = path.stat()
+    except OSError:
+        return {}
+    key = (str(path), stat.st_mtime_ns, stat.st_size)
+    cached = _SCHOOL_DOMAIN_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = None
+    mapping: dict = {}
+    if isinstance(data, dict):
+        for entry in data.values():
+            if not isinstance(entry, dict):
+                continue
+            raw: set = set()
+            _collect_domain_values(entry, raw)
+            domains = set()
+            for value in raw:
+                normalized = _normalize_domain(value)
+                if not normalized:
+                    continue
+                registrable = _registrable_domain(normalized)
+                if registrable and registrable not in _PUBLIC_PLATFORM_DOMAINS:
+                    domains.add(registrable)
+            if not domains:
+                continue
+            names = {str(entry.get("name") or "").strip()}
+            aliases = entry.get("aliases")
+            if isinstance(aliases, list):
+                names.update(str(alias).strip() for alias in aliases)
+            for name in names:
+                if name:
+                    mapping.setdefault(name, set()).update(domains)
+    if len(_SCHOOL_DOMAIN_CACHE) >= _SCHOOL_DOMAIN_CACHE_MAX:
+        _SCHOOL_DOMAIN_CACHE.clear()
+    _SCHOOL_DOMAIN_CACHE[key] = mapping
+    return mapping
+
+
+def school_domains(root: Union[str, Path], name: str) -> List[str]:
+    """``name`` 对应院校在**本地院校库**里的全部注册域名（去重排序）。
+
+    为什么不用「中文名转拼音」：需要额外依赖，且学校简称、多音字、历史更名都会
+    猜错；院校库里本来就有权威字段，直接取用更可靠。
+
+    取不到（库缺失 / 校名未收录 / 院校库未随包分发）时返回空列表 —— 这是
+    **刻意的降级**：中文校名规则仍然生效，不因一个增强规则让整条导出链失败。
+    """
+    target = str(name or "").strip()
+    if not target:
+        return []
+    domains: set = set()
+    for rel in _SCHOOL_DB_FILES:
+        domains.update(_load_school_domains(Path(root) / rel).get(target, ()))
+    return sorted(domains)
+
+
+def identity_domain_tokens(root: Union[str, Path]) -> List[str]:
+    """当前真实报考身份对应院校的**注册域名**（供导出后自检使用）。
+
+    为什么要单列一份：``identity_name_tokens()`` 只产出中文校名与「代码 + 名称」
+    组合，而生成物里泄漏的往往是 pinyin 域名 —— 自检对这类完全无感。
+    实测（2026-09-21）：``04-专业课/双校对标_*.md`` 正文留着
+    ``gra.<校名拼音>.edu.cn``，自检仍打印「非公开库路径下无真实身份残留」。
+    """
+    plan = load_study_plan(root)
+    tokens: List[str] = []
+    for key in ("school", "backup_school"):
+        tokens.extend(school_domains(root, str(plan.get(key) or "")))
+    seen = set()
+    out: List[str] = []
+    for tok in tokens:
+        if tok not in seen:
+            seen.add(tok)
+            out.append(tok)
+    return out
+
+
+# ── 括号包裹的代码形态（2026-09-21 补漏）───────────────────────────────────
+# 实测缺口：生成物（对比研报、考纲摘要、招生简章转录）里代码几乎总被括号包裹，
+# 形如 ``(618)某自命题科目`` / ``（030500）某专业``，而原先的规则只认
+# 「裸码 + 可选空白 + 名称」—— ``(618)`` 的右括号让 ``\s*`` 之后的名称匹配落空，
+# 整条规则静默失效。科目组合码本身就是考生指纹，漏掉等于没脱敏。
+_CODE_OPEN = r"[（(\[【]"
+_CODE_CLOSE = r"[）)\]】]"
+
+
+def _code_with_optional_wrap(code: str) -> str:
+    """把裸代码正则包装成「可被括号 / 方括号包裹」的形态，并保留数字边界。
+
+    只放宽**包裹符**，不放宽代码本身的判据 —— ``618元`` / 页码 ``618`` /
+    ``2026-06-18`` 这些普通数字依然不会命中（数字边界 + 必须与名称相邻共现）。
+    """
+    return rf"(?:{_CODE_OPEN}\s*)?(?<!\d){code}(?!\d)(?:\s*{_CODE_CLOSE})?"
+
+
 #: 学情自由文本字段的「通用值」闸门 —— 取值命中其一即**不生成**替换规则。
 #:
 #: **为什么必须有这道闸门**：同一批字段的默认取值往往是**公开的推荐值/学科通用词**，
@@ -407,7 +660,7 @@ GENERIC_VALUE_SUBSTRINGS = frozenset({"待摸底", "暂未放置实体资料"})
 _SUBJECT_FIELD_PREFIXES = ("math", "eng", "pol", "pro")
 
 
-def _personal_text_rules(plan: dict) -> List[Tuple[str, str]]:
+def _personal_text_rules(plan: dict, root: Union[str, Path]) -> List[Tuple[str, str]]:
     """学情自由文本字段（薄弱点 / 摸底水平 / 白名单资料 / 备选院校）→ 占位符。
 
     **为什么需要**：这些字段不在 ``school`` / ``major`` / ``pro_name`` 里，
@@ -428,11 +681,16 @@ def _personal_text_rules(plan: dict) -> List[Tuple[str, str]]:
         _emit(plan.get(f"{prefix}_baseline"), "摸底水平", GENERIC_BASELINE_VALUES)
         _emit(plan.get(f"{prefix}_books"), "白名单资料（已隐去）", frozenset())
 
-    # 备选院校是**院校名**，与 school 同类：除字面替换外还要覆盖 URL 编码形态。
+    # 备选院校是**院校名**，与 school 同类：除字面替换外还要覆盖 URL 编码形态与
+    # pinyin 域名（备选院校同样是选校轨迹，其官网域名不该随生成物公开）。
     backup = str(plan.get("backup_school") or "").strip()
     if len(backup) >= 3 and backup not in GENERIC_VALUE_SUBSTRINGS:
         rules.append((re.escape(backup), "备选院校"))
         _add_url_rule(rules, backup, "备选院校")
+        for domain in school_domains(root, backup):
+            placeholder = _placeholder_domain(domain)
+            if placeholder:
+                rules.append((re.escape(domain), placeholder))
     return rules
 
 
@@ -457,6 +715,14 @@ def identity_substitutions(root: Union[str, Path]) -> List[Tuple[str, str]]:
         才替换；单码仅在紧邻显式语境词（自命题/专业课/科目/大纲/考试）时才替换。
         → 因此 618元 / 页码 618 / 2026-06-18 / 单码 823 这类普通数字一律保持原样；
       * URL 百分号编码形态：分享/检索链接里的身份字面量与代码一并替换。
+      * [2026-09-21 补漏] **括号包裹形态**：生成物里代码几乎总被括号包着
+        （``(618)某自命题科目`` / ``（030500）某专业``），原规则因右括号让名称匹配
+        落空而整条静默失效。现由 ``_code_with_optional_wrap()`` 统一放宽包裹符 ——
+        只放宽包裹符，数字边界与「必须与名称相邻共现」的判据不变。
+      * [2026-09-21 补漏] **院校 pinyin 域名**：中文规则与百分号编码规则都覆盖不到
+        ``gra.<校名拼音>.edu.cn``，而它恰恰是生成物里最常泄漏的形态。现按
+        ``school`` / ``backup_school`` 查本地院校库取注册域，替换为
+        ``example.<原公共后缀>``（保留后缀，链接语法仍合法）。
     """
     plan = load_study_plan(root)
     rules: List[Tuple[str, str]] = []
@@ -465,6 +731,12 @@ def identity_substitutions(root: Union[str, Path]) -> List[Tuple[str, str]]:
     if school:
         rules.append((re.escape(school), "目标院校"))
         _add_url_rule(rules, school, "目标院校")
+        # pinyin 域名（``www.<校名拼音>.edu.cn`` / ``gra.<校名拼音>.edu.cn`` …）：
+        # 中文规则与百分号编码规则都覆盖不到，必须单独按院校库取注册域替换。
+        for domain in school_domains(root, school):
+            placeholder = _placeholder_domain(domain)
+            if placeholder:
+                rules.append((re.escape(domain), placeholder))
 
     major = str(plan.get("major") or "").strip()
     if major:
@@ -473,11 +745,12 @@ def identity_substitutions(root: Union[str, Path]) -> List[Tuple[str, str]]:
         if m:
             major_code, major_name = m.group(1), m.group(2)
             sep = r"[\s·、,，/]*"
-            # 换序 / 缩写：专业名（或简称）与专业代码相邻共现 → 整体替换。
+            # 换序 / 缩写 / 括号包裹：专业名（或简称）与专业代码相邻共现 → 整体替换。
+            wrapped_major = _code_with_optional_wrap(major_code)
             for alias in [major_name] + _major_abbreviations(major_name):
-                rules.append((rf"{re.escape(alias)}{sep}{major_code}(?!\d)",
+                rules.append((rf"{re.escape(alias)}{sep}{wrapped_major}",
                               "目标专业 (专业代码)"))
-                rules.append((rf"{major_code}(?!\d){sep}{re.escape(alias)}",
+                rules.append((rf"{wrapped_major}{sep}{re.escape(alias)}",
                               "目标专业 (专业代码)"))
             # 裸专业代码：6 位码几乎不可能是普通数字，本身就是身份指纹。
             # 数字边界 lookaround 保证不截断更长的数字串、不误伤普通数字；
@@ -500,34 +773,40 @@ def identity_substitutions(root: Union[str, Path]) -> List[Tuple[str, str]]:
         for idx, (code, name) in enumerate(pairs, 1):
             name = name.strip()
             if name:
-                rules.append((rf"{code}\s*{re.escape(name)}", f"自命题科目{idx}"))
+                # 括号包裹形态（``(618)某自命题科目``）与裸码形态都要覆盖。
+                rules.append((rf"{_code_with_optional_wrap(code)}\s*{re.escape(name)}",
+                              f"自命题科目{idx}"))
                 _add_url_rule(rules, name, f"自命题科目{idx}")
         codes = [code for code, _ in pairs]
         # 并写形式（判据：两个代码必须同时出现）：
         #   618/823 · 618 823 · 618、823 · 618,823（含反序 823/618）
+        # 代码本身允许括号包裹，故 ``(618)、(823)`` / ``（618）／（823）`` 同样命中。
         pair_sep = r"(\s*[/、,，]\s*|\s+)"
         # URL 编码形态（分隔符是 %20 / +）：占位符也必须编码，否则链接不合法
         pair_sep_url = r"(%20|\+)"
         for i in range(len(codes) - 1):
             c1, c2 = codes[i], codes[i + 1]
-            rules.append((rf"(?<!\d){c1}{pair_sep}{c2}(?!\d)",
+            w1 = _code_with_optional_wrap(c1)
+            w2 = _code_with_optional_wrap(c2)
+            rules.append((rf"{w1}{pair_sep}{w2}",
                           f"自命题科目{i + 1}\\1自命题科目{i + 2}"))
-            rules.append((rf"(?<!\d){c2}{pair_sep}{c1}(?!\d)",
+            rules.append((rf"{w2}{pair_sep}{w1}",
                           f"自命题科目{i + 2}\\1自命题科目{i + 1}"))
             e1 = quote(f"自命题科目{i + 1}", safe="")
             e2 = quote(f"自命题科目{i + 2}", safe="")
-            rules.append((rf"(?<!\d){c1}{pair_sep_url}{c2}(?!\d)", f"{e1}\\1{e2}"))
-            rules.append((rf"(?<!\d){c2}{pair_sep_url}{c1}(?!\d)", f"{e2}\\1{e1}"))
+            rules.append((rf"{w1}{pair_sep_url}{w2}", f"{e1}\\1{e2}"))
+            rules.append((rf"{w2}{pair_sep_url}{w1}", f"{e2}\\1{e1}"))
         # 单码兜底（判据：必须紧邻显式语境词），否则 618元 / 页码 618 会被误伤。
         for idx, code in enumerate(codes, 1):
-            rules.append((rf"((?:自命题|专业课)\s*)(?<!\d){code}(?!\d)",
+            wrapped = _code_with_optional_wrap(code)
+            rules.append((rf"((?:自命题|专业课)\s*){wrapped}",
                           rf"\1自命题科目{idx}"))
-            rules.append((rf"(?<!\d){code}(?!\d)(\s*(?:科目|大纲|考试))",
+            rules.append((rf"{wrapped}(\s*(?:科目|大纲|考试))",
                           rf"自命题科目{idx}\1"))
 
     # 学情自由文本字段（薄弱点 / 摸底水平 / 白名单资料 / 备选院校）——
     # 它们不在 school/major/pro_name 里，此前一条规则都没有（见 _personal_text_rules）。
-    rules.extend(_personal_text_rules(plan))
+    rules.extend(_personal_text_rules(plan, root))
     return rules
 
 
@@ -962,9 +1241,15 @@ def scan_residual_identity(dst: Union[str, Path], src_root: Union[str, Path], *,
     豁免范围（与既有隐私边界一致，避免误报）：
       * ``data/**``：1800+ 所高校的公开数据库，校名是功能数据；
       * ``PY_UNSANITIZED_FILES``：公开高校映射表（如 registry.py）。
+
+    扫描口径 = ``identity_name_tokens()``（中文校名 / 「代码 + 名称」组合）
+    **并集** ``identity_domain_tokens()``（院校 pinyin 注册域名）。后者是
+    2026-09-21 补的：只有中文 token 时，正文留着 ``gra.<校名拼音>.edu.cn``
+    的文件会被判为「干净」—— 自检与规则同时失明。
     """
     dst = Path(dst)
     tokens = [t for t in identity_name_tokens(src_root) if t]
+    tokens += [t for t in identity_domain_tokens(src_root) if t]
     if not tokens and not include_pii:
         return []
     # 纯数字 token（如专业代码）用**数字边界**匹配，而不是朴素子串：否则
