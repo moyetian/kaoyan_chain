@@ -309,7 +309,7 @@ def _official_domain(link: str) -> str:
     """把 xioajiumi 的 `official_link` 规范成根地址（scheme://host），丢弃路径与查询。
 
     实测 582 条均为根地址；此处只做防御性归一，保证与既有精品库的书写风格一致
-    （如 `https://www.henau.edu.cn`），避免同一字段出现两种形态。
+    （如 `https://www.example.edu.cn`），避免同一字段出现两种形态。
     """
     u = (link or "").strip()
     if not u:

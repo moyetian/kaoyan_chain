@@ -53,7 +53,7 @@ def build_radar_html(root_path: pathlib.Path) -> str:
 
     # [H-0b 隐私修复] 脱敏模式（默认开启）下，监控院校名、研究生院官网 URL 与简章标题
     # 均来自隐私目录 .memory/admission_watch.json，而本产物会随 GitHub Pages 公开发布
-    # （实测曾把 `https://gra.henau.edu.cn` 写进 docs/index.html）——
+    # （实测曾把 `https://gra.example.edu.cn` 写进 docs/index.html）——
     # 故只输出「已配置 N 所」的聚合状态，不回显任何可识别信息。
     # 该开关同时供下方「考纲异动」与「社媒经验」两节复用。
     sanitize = snapshot_opt_in()

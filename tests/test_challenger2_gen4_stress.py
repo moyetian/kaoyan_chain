@@ -351,7 +351,7 @@ class TestSearchProviderHTTPDecompression:
 
         with patch("urllib.request.urlopen", side_effect=mock_urlopen):
             with pytest.raises(self.http.ProviderError) as excinfo:
-                self.http.get_text("https://yz.henau.edu.cn/notice/123.html")
+                self.http.get_text("https://yz.example.edu.cn/notice/123.html")
 
         message = str(excinfo.value)
         assert "TLS 证书校验失败" in message, f"失败原因不可辨识: {message}"
@@ -392,7 +392,7 @@ class TestSearchProviderHTTPDecompression:
 
         with patch("urllib.request.urlopen", side_effect=mock_urlopen):
             with pytest.raises(self.http.ProviderError) as excinfo:
-                self.http.get_text("https://yz.henau.edu.cn/outline.html")
+                self.http.get_text("https://yz.example.edu.cn/outline.html")
 
         message = str(excinfo.value)
         assert "TLS 证书校验失败" in message, f"失败原因不可辨识: {message}"
@@ -431,7 +431,7 @@ class TestSearchProviderHTTPDecompression:
 
         with patch("urllib.request.urlopen", side_effect=mock_urlopen):
             with pytest.raises(self.http.ProviderError) as excinfo:
-                self.http.get_text("https://yz.henau.edu.cn/malformed.html")
+                self.http.get_text("https://yz.example.edu.cn/malformed.html")
 
         message = str(excinfo.value)
         assert "TLS 证书校验失败" in message, f"失败原因被掩盖: {message}"

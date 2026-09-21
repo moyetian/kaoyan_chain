@@ -2083,7 +2083,7 @@ D. 无度为2的结点
 
             # [H-0b 阴性测试] 雷达节的监控院校名/研究生院官网 URL 来自隐私目录
             # .memory/admission_watch.json，而 docs/index.html 会随 GitHub Pages 公开
-            # （实测曾泄露 https://gra.henau.edu.cn）。注入哨兵院校确认脱敏拦截。
+            # （实测曾泄露 https://gra.example.edu.cn）。注入哨兵院校确认脱敏拦截。
             import tempfile as _tf
             import shutil as _sh
             _rroot = Path(_tf.mkdtemp(prefix="ky_radar_"))
