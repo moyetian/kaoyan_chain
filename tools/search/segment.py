@@ -242,7 +242,12 @@ def segment(text: str, lexicon: Set[str] | None = None) -> list[str]:
         # 必须保持完整，否则 query/haystack 两侧切分错位即误杀。
         if ch.isascii() and ch.isalnum():
             m = re.match(r"[A-Za-z0-9]+", text[i:])
-            assert m is not None
+            # [S5 修复] 生产路径不用 assert（python -O 下被剥离后变
+            # AttributeError）；此处理论必中，防御性回退为单字推进。
+            if m is None:
+                out.append(_canonical_word(ch))
+                i += 1
+                continue
             out.append(_canonical_word(m.group(0)))
             i += len(m.group(0))
             continue
@@ -301,7 +306,7 @@ def segment_and_normalize(text: str) -> list[str]:
 
     Examples:
         >>> segment_and_normalize("华科复试线多少分")
-        ['华科', '复试分数线', '多少', '分']
+        ['华中科技大学', '复试分数线', '多少', '分']
     """
     tokens = segment(text)
     return [canonical_token(t) for t in tokens]

@@ -15,6 +15,17 @@ import re
 
 from .snapshot import snapshot_opt_in
 
+
+def _safe_href(url) -> str:
+    """外部 URL 白名单：只放行 http(s)，其余（``javascript:`` / ``data:`` / 空）回退为 ``#``。
+
+    ``.memory/admission_watch.json`` 由网络巡检写入，属于外部内容；未加白名单时
+    ``href='javascript:...'`` 会成为可点击的 XSS 载体（实测可注入）。
+    """
+    u = str(url or "").strip()
+    return u if re.match(r"^https?://", u, re.I) else "#"
+
+
 def build_radar_html(root_path: pathlib.Path) -> str:
     """构建【📡 招考与考纲变动雷达】全景 HTML 模块 (Sprint 7)"""
     sections = []
@@ -81,13 +92,25 @@ def build_radar_html(root_path: pathlib.Path) -> str:
             badge_cls = "radar-badge add" if is_new else "radar-badge del"
             st_text = "发现新简章/变动" if is_new else "指纹正常·未见变动"
             w_html.append("<div class='radar-card'>")
-            w_html.append(f"<div class='radar-card-h'><span>{html.escape(it.get('school', '高校'))}</span><span class='{badge_cls}'>{st_text}</span></div>")
-            w_html.append(f"<div style='font-size:12px;color:var(--mut);margin-bottom:4px'>最近检测: {it.get('last_check', '未巡检')} ｜ 官方通道: <a href='{it.get('url', '#')}' target='_blank' style='color:var(--acc);text-decoration:none;'>研究生院/招办官网 ↗</a></div>")
+            # [P2-6b 修复·显式 null] 这些字段来自外部巡检 JSON，默认值只对「缺键」
+            # 生效，对显式 `"school": null` 无效 —— `html.escape(None)` 直接抛
+            # AttributeError，而 build.py 调用本函数时无 try 包裹，整个看板构建失败。
+            # 故一律先 `str(it.get(k) or 默认值)` 再转义。
+            w_html.append(f"<div class='radar-card-h'><span>{html.escape(str(it.get('school') or '高校'))}</span><span class='{badge_cls}'>{st_text}</span></div>")
+            # [P2-6 修复·属性注入] last_check / url 均来自外部巡检 JSON，必须转义；
+            # url 另加协议白名单（只放行 http(s)），否则 'javascript:' 与单引号闭合可注入。
+            w_html.append(
+                "<div style='font-size:12px;color:var(--mut);margin-bottom:4px'>最近检测: "
+                f"{html.escape(str(it.get('last_check') or '未巡检'), quote=True)} ｜ 官方通道: "
+                f"<a href='{html.escape(_safe_href(it.get('url')), quote=True)}' target='_blank' "
+                "rel='noopener noreferrer' style='color:var(--acc);text-decoration:none;'>研究生院/招办官网 ↗</a></div>"
+            )
             if it.get("alert_titles"):
                 w_html.append("<div style='font-size:12px;margin-top:6px;background:var(--surf);padding:6px 10px;border-radius:6px;'>")
                 w_html.append("<b>最新简章线索:</b><ul style='margin:4px 0 0 16px;padding:0;'>")
-                for at in it.get("alert_titles", [])[:3]:
-                    w_html.append(f"<li>{html.escape(at)}</li>")
+                for at in (it.get("alert_titles") or [])[:3]:
+                    # 列表项同样可能含显式 null，先转成 str 再转义（否则同样 AttributeError）
+                    w_html.append(f"<li>{html.escape(str(at or ''))}</li>")
                 w_html.append("</ul></div>")
             w_html.append("</div>")
     else:

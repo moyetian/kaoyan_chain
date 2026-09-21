@@ -68,11 +68,11 @@ _FULL_CONFIG = {
         "target_year": "2027",
         "exam_date": "2026-12-19",
         "stage_name": "强化题型攻坚阶段",
-        "school": "目标院校",
-        "major": "目标专业 (专业代码)",
+        "school": "中国人民大学",
+        "major": "030100 法学",
         "math_key": "none",
         "math_name": "不考数学",
-        "pro_name": "自命题专业课科目",
+        "pro_name": "610 法学基础 810 法学综合",
         "total_hours": 6.5,
         "eng_target": "65+ 分",
         "pol_target": "70+ 分",
@@ -116,10 +116,10 @@ def test_partial_config_does_not_destroy_study_plan(tmp_path, monkeypatch):
 
     assert after["active_subject"] == "pol", "报到未切换当前科目"
     assert "study_plan" in after, "局部配置覆盖导致 study_plan 整份丢失"
-    assert after["study_plan"]["school"] == "目标院校"
-    assert after["study_plan"]["major"] == "目标专业 (专业代码)"
+    assert after["study_plan"]["school"] == "中国人民大学"
+    assert after["study_plan"]["major"] == "030100 法学"
     assert after["study_plan"]["total_hours"] == 6.5
-    assert after["study_plan"]["pro_name"].startswith("自命题科目1")
+    assert after["study_plan"]["pro_name"].startswith("610 法学基础")
     assert after["webhooks"]["dingtalk"] == "https://hook.example.test/ding"
     assert after["base_url"] == "https://api.example.test/v1"
     assert after["completion_history"] == {"2026-09-18": 3}
@@ -133,7 +133,7 @@ def test_partial_config_values_still_win_for_their_own_keys(tmp_path, monkeypatc
     )
     assert after["api_key"] == "sk-override"
     assert after["model"] == "mimo-v2.5"
-    assert after["study_plan"]["school"] == "目标院校"
+    assert after["study_plan"]["school"] == "中国人民大学"
 
 
 def test_empty_config_keeps_disk_values(tmp_path, monkeypatch):
@@ -141,7 +141,7 @@ def test_empty_config_keeps_disk_values(tmp_path, monkeypatch):
     after = _run_checkin(
         tmp_path / "ky_config.json", monkeypatch, worker_config={},
     )
-    assert after["study_plan"]["school"] == "目标院校"
+    assert after["study_plan"]["school"] == "中国人民大学"
     assert after["active_subject"] == "pol"
 
 
@@ -153,7 +153,7 @@ def test_all_checkin_commands_preserve_plan(tmp_path, monkeypatch, cmd):
         worker_config={"api_key": "sk-test-fake", "model": "deepseek-chat"},
         user_input=cmd,
     )
-    assert after["study_plan"]["school"] == "目标院校"
+    assert after["study_plan"]["school"] == "中国人民大学"
 
 
 def test_real_repo_config_is_never_touched(tmp_path, monkeypatch):

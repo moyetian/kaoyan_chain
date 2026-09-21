@@ -163,7 +163,7 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
     """启动交互式考研全科专属私教终端 (ky-cli)"""
     cfg = load_config()
 
-    live_port = start_background_live_server(8088, host=gateway_host) or 8088
+    live_port = start_background_live_server(8088, host=gateway_host, token=gateway_token) or 8088
     print_welcome(live_port=live_port)
 
     # [P2-8 修复·拒绝后每次仍问] 用户明确拒绝（n）后必须记住选择，否则每次启动

@@ -3,7 +3,7 @@
 
 锁定三件事，都是实测踩出来的：
 
-1. **学情自由文本字段必须生成规则** —— ``eng_weakness='待诊断薄弱点'`` 这类值
+1. **学情自由文本字段必须生成规则** —— ``eng_weakness='阅读定位不熟练'`` 这类值
    此前一条规则都没有，而 AGENTS.md 把它们明文写着，于是随发布副本 / 打包产物
    一起公开（打包产物实测 40 处身份字面量里薄弱点占两类）。
 2. **通用值必须被闸门挡住** —— ``计算失误`` 是「错因五分类」的正文词、
@@ -27,13 +27,13 @@ def _make_root(tmp_path, plan: dict):
 
 
 PLAN_FULL = {
-    "school": "目标院校",
-    "major": "目标专业 (专业代码)",
-    "pro_name": "自命题专业课科目",
-    "eng_weakness": "待诊断薄弱点",
-    "pol_weakness": "待诊断薄弱点",
-    "pro_weakness": "待诊断薄弱点",
-    "eng_baseline": "摸底水平",
+    "school": "中国人民大学",
+    "major": "030100 法学",
+    "pro_name": "610 法学基础 810 法学综合",
+    "eng_weakness": "阅读定位不熟练",
+    "pol_weakness": "多选题易漏选",
+    "pro_weakness": "知识点记忆不牢",
+    "eng_baseline": "摸底62",
     "math_baseline": "不考数学",
 }
 
@@ -41,7 +41,7 @@ PLAN_FULL = {
 def test_real_weakness_becomes_placeholder(tmp_path):
     root = _make_root(tmp_path, PLAN_FULL)
     rules = pp.build_substitutions(root)
-    for raw in ("待诊断薄弱点", "待诊断薄弱点", "待诊断薄弱点"):
+    for raw in ("阅读定位不熟练", "多选题易漏选", "知识点记忆不牢"):
         assert pp.sanitize_text(raw, rules) == "待诊断薄弱点", raw
 
 
@@ -63,28 +63,35 @@ def test_generic_baseline_and_books_are_gated(tmp_path):
     assert pp.sanitize_text("不考数学", rules) == "不考数学"
     assert "暂未放置实体资料" in pp.sanitize_text(plan["math_books"], rules)
     # 而真实摸底分仍要被脱敏
-    assert pp.sanitize_text("摸底水平", rules) == "摸底水平"
+    assert pp.sanitize_text("摸底62", rules) == "摸底水平"
 
 
 def test_backup_school_gets_url_rule(tmp_path):
     plan = dict(PLAN_FULL)
-    plan["backup_school"] = "对比院校B"
+    plan["backup_school"] = "湖南农业大学"
     root = _make_root(tmp_path, plan)
     rules = pp.build_substitutions(root)
-    assert pp.sanitize_text("对比院校B", rules) == "备选院校"
+    assert pp.sanitize_text("湖南农业大学", rules) == "备选院校"
     from urllib.parse import quote
-    assert pp.sanitize_text(quote("对比院校B", safe=""), rules) == quote("备选院校", safe="")
+    assert pp.sanitize_text(quote("湖南农业大学", safe=""), rules) == quote("备选院校", safe="")
 
 
-def test_exam_date_excluded_from_py_rules(tmp_path):
-    """日期在 *.py 里是功能默认值（日历/默认初试日期），绝不能套用到源码。"""
+def test_exam_date_is_never_rewritten_as_identity(tmp_path):
+    """[G2 修复] 初试日期不是身份，任何出口都不得改写它。
+
+    修复前 ``STATIC_IDENTITY_SUBSTITUTIONS`` 里有一条 ``(2026-12-19 → 2027-12-26)``，
+    只对 md/html/svg 生效 —— 于是公开副本的 AGENTS.md 写 2027-12-26，而
+    ``ky status`` 的「初试首日」是实时算出的 2026-12-19，**同一屏两个初试日期**。
+
+    阴性对照：把该日期规则加回 ``STATIC_IDENTITY_SUBSTITUTIONS``，本用例必须变红。
+    """
     root = _make_root(tmp_path, PLAN_FULL)
     md_rules = pp.build_substitutions(root)
     py_rules = pp.build_py_substitutions(root)
-    assert pp.sanitize_text("2026-12-19", md_rules) == "2027-12-26"
+    assert pp.sanitize_text("2026-12-19", md_rules) == "2026-12-19"
     assert pp.sanitize_text("2026-12-19", py_rules) == "2026-12-19"
-    # 裸专业代码在 *.py 里是公开学科门类代码（chsi_connector 的键名），同样排除
-    assert pp.sanitize_text("030500", py_rules) == "030500"
+    # 裸专业代码在 *.py 里是公开学科门类代码（chsi_connector 的键名），仍排除
+    assert pp.sanitize_text("030100", py_rules) == "030100"
 
 
 def test_build_substitutions_is_root_scoped(tmp_path):
@@ -108,9 +115,9 @@ def test_identity_name_tokens_not_extended_by_weakness(tmp_path):
     """薄弱点/摸底分**不进**文件名判据 —— 避免把通用词当身份大面积误判。"""
     root = _make_root(tmp_path, PLAN_FULL)
     tokens = pp.identity_name_tokens(root)
-    assert "待诊断薄弱点" not in tokens
-    assert "摸底水平" not in tokens
-    assert "目标院校" in tokens
+    assert "阅读定位不熟练" not in tokens
+    assert "摸底62" not in tokens
+    assert "中国人民大学" in tokens
 
 
 def test_policy_file_is_exempt_from_sanitizing_itself():
@@ -168,7 +175,7 @@ def test_residual_scan_exemptions_survive_internal_prefix(tmp_path):
 
 
 @pytest.mark.parametrize("weakness,expected_effective", [
-    ("待诊断薄弱点", True),
+    ("阅读定位不熟练", True),
     ("无", True),          # school 仍在，规则集非空 → 整体仍有效
 ])
 def test_rules_effective_only_depends_on_school(tmp_path, weakness, expected_effective):
@@ -177,3 +184,134 @@ def test_rules_effective_only_depends_on_school(tmp_path, weakness, expected_eff
     root = _make_root(tmp_path, plan)
     ok, _reason = pp.identity_rules_effective(root)
     assert ok is expected_effective
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# [P10] 占位符名单单一事实源
+# ══════════════════════════════════════════════════════════════════════════
+
+def test_major_placeholders_cover_all_substitution_outputs(tmp_path):
+    """[P10 回归] 规则表产出的专业占位符必须**全部**包含在 ``MAJOR_PLACEHOLDERS``。
+
+    否则 ``gui/services/settings.is_unconfigured()`` 会漏判 —— 把「已被脱敏成
+    占位符的专业」当成「已配置」。修复前它本地硬编码的名单只有
+    ``("报考专业", "目标专业 (专业代码-方向)")``，漏了规则表实际还会产出的
+    ``"目标专业 (专业代码)"`` 与 ``"目标专业"``。
+
+    阴性对照：从 ``MAJOR_PLACEHOLDERS`` 里删掉 ``"目标专业 (专业代码)"``，本用例变红。
+    """
+    static_produced = {repl for _pat, repl in pp.STATIC_IDENTITY_SUBSTITUTIONS
+                       if "专业" in repl}
+    assert static_produced, "静态表里应至少有一条专业占位符产物"
+    missing_static = static_produced - set(pp.MAJOR_PLACEHOLDERS)
+    assert not missing_static, (
+        f"静态表产物未纳入 MAJOR_PLACEHOLDERS: {sorted(missing_static)}")
+
+    root = _make_root(tmp_path, PLAN_FULL)
+    dynamic_produced = {repl for _pat, repl in pp.identity_substitutions(root)
+                        if repl.startswith("目标专业")}
+    assert dynamic_produced, "动态规则里应至少有一条专业占位符产物"
+    missing_dyn = dynamic_produced - set(pp.MAJOR_PLACEHOLDERS)
+    assert not missing_dyn, (
+        f"动态规则产物未纳入 MAJOR_PLACEHOLDERS: {sorted(missing_dyn)}")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# [P2-5] 通用 PII（手机号 / 身份证 / 带标签的准考证号）
+# ══════════════════════════════════════════════════════════════════════════
+
+def test_pii_phone_idcard_and_ticket_are_redacted(tmp_path):
+    """[P2-5] 通用 PII 必须被脱敏。
+
+    修复前规则表里**一条 PII 规则都没有**（实测原样返回）。
+    阴性对照：删掉 ``PII_SUBSTITUTIONS`` 里的对应条目，本用例变红。
+    """
+    root = _make_root(tmp_path, PLAN_FULL)
+    rules = pp.build_substitutions(root)
+    # 样本用**字符串拼接**构造而不是写成字面量：否则本文件自己就会被导出脱敏改写
+    # （test_tests_dir_is_immune_to_py_sanitization 会因此变红）。
+    phone = "138" + "12345678"
+    idcard = "110105" + "19900307" + "123X"
+    ticket = "2026" + "12345678901"
+    text = f"联系电话：{phone}\n身份证号：{idcard}\n准考证号：{ticket}\n"
+    out = pp.sanitize_text(text, rules)
+    assert phone not in out and "[手机号]" in out
+    assert idcard not in out and "[身份证号]" in out
+    assert ticket not in out and "[准考证号]" in out
+
+
+def test_pii_rules_do_not_touch_existing_numbers():
+    """[P2-5 阴性对照] 防**过度脱敏**：PII 规则不得改动仓库里合法的既有数字。
+
+    这里只用 ``PII_SUBSTITUTIONS`` 单独验证（不掺身份规则）—— 身份规则本来就该
+    替换 fixture 自己的专业代码，那是另一回事。
+    仓库里合法数字极多：专业代码 ``030100``、初试日期 ``2026-12-19``、
+    自命题科目码 ``610``/``810``、无标签的长数字串。
+    若把准考证号规则的「必须有标签」前缀去掉（改成裸 ``\\d{9,16}``），本用例变红。
+    """
+    for raw in ("030100", "2026-12-19", "610", "810",
+                "202612345678901", "1234567890123456"):
+        assert pp.sanitize_text(raw, pp.PII_SUBSTITUTIONS) == raw, raw
+    # 反向确认规则是「活的」而非空转：带标签的准考证号确实会被替换。
+    # 样本同样用拼接构造（避免本文件被导出脱敏改写）。
+    assert "[准考证号]" in pp.sanitize_text(
+        "准考证号：" + "2026" + "12345678901", pp.PII_SUBSTITUTIONS)
+
+
+def test_scan_residual_identity_flags_pii_only_when_enabled(tmp_path):
+    """[P2-5] ``include_pii=True`` 时含手机号的文件应被判为残留；默认 False 不误报。"""
+    root = _make_root(tmp_path, PLAN_FULL)
+    dst = tmp_path / "product"
+    dst.mkdir()
+    # 同样用拼接构造样本（避免本文件被导出脱敏改写）
+    (dst / "notes.md").write_text("联系电话：" + "138" + "12345678",
+                                  encoding="utf-8")
+    assert pp.scan_residual_identity(dst, root, include_pii=True) == ["notes.md"]
+    assert pp.scan_residual_identity(dst, root) == []
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# [P6 回归] tests/ 必须对导出脱敏「免疫」
+# ══════════════════════════════════════════════════════════════════════════
+
+def test_tests_dir_is_immune_to_py_sanitization():
+    """导出时的 .py 脱敏**不得改动 tests/ 下任何文件**。
+
+    为什么这条最关键：``sync_publish.sanitize_markdown_files()`` 会对发布副本里的
+    ``*.py``（含 ``tests/``）套用 ``build_py_substitutions()``。若某个测试文件里写着
+    **当前真实身份**，它就会被改成占位符 → 公开副本里的断言自毁
+    （实测 ``test_packaging_identity.py`` 的 ``assert SCHOOL not in text`` 在副本里
+    变成 ``assert "目标院校" not in text``，而同一文件的模板恰好写着「目标院校」）。
+
+    修复方向**不是**给 tests/ 开脱敏豁免（那会让真实校名直接进公开仓库），
+    而是让夹具本身不含真实身份 —— 本条守住这条不变量，同时也就守住了
+    「夹具不被写回真实身份」。
+
+    阴性对照：把任意测试文件里的中性校名改回真实校名（如 中国人民大学 →
+    当前 ky_config 的 school），本用例必须变红。
+    """
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parent.parent
+    rules = pp.build_py_substitutions(root)
+    #: **待办名单**：尚未中性化的测试文件。中性化完成后必须从这里删除
+    #: （下面的 assert 会钉住这份名单的规模，防止它悄悄长大）。
+    #:   * tests/test_agentic_research.py —— 正被另一个并行任务追加回归用例，
+    #:     本轮刻意不动它；它里面仍有真实校名与真实自命题科目串。
+    pending = {"tests/test_agentic_research.py"}
+    assert len(pending) <= 1, "待办名单只应保留「正在被并行任务改动」的文件"
+
+    offenders = []
+    for f in sorted((root / "tests").rglob("*.py")):
+        rel = f.relative_to(root).as_posix()
+        if rel in pending:
+            continue
+        try:
+            text = f.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        if pp.sanitize_text(text, rules) != text:
+            offenders.append(rel)
+    assert not offenders, (
+        "以下测试文件含有当前真实身份 —— 导出脱敏会改写它们，导致公开副本断言自毁："
+        f"{offenders}")

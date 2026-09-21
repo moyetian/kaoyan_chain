@@ -49,9 +49,9 @@ SAMPLE_AGENTS_MD = """# AGENTS.md —— 考研全科 AI 私人教师中枢 · �
 | 科目                    | 摸底/基准分     | 目标成绩          | 每日基准投入 | 核心提分盘与策略                       |
 | --------------------- | ---------- | ------------- | ------ | ------------------------------ |
 | **科目一：数学一 (301)** | 摸底60 | **110+ 分** | 2.5 小时 | 攻克必考核心题型，严防超纲，规避计算失误，步骤规范化 |
-| **科目二：英语一 (201)** | 摸底水平 | **65+ 分** | 2.0 小时 | 搭积木拆解长难句，定位阅读选项逻辑，固化作文功能句模板 |
-| **科目三：思想政治理论** | 摸底水平 | **70+ 分** | 1.0 小时 | 单选+多选得分盘（38~42分），帽子词秒杀，后期背诵闭环 |
-| **科目四：专业课** | 摸底水平 | **120-130 分** | 2.0 小时 | 权威教材体系+历年真题深度解剖，白名单题源抽题门禁 |
+| **科目二：英语一 (201)** | 摸底62 | **65+ 分** | 2.0 小时 | 搭积木拆解长难句，定位阅读选项逻辑，固化作文功能句模板 |
+| **科目三：思想政治理论** | 摸底62 | **70+ 分** | 1.0 小时 | 单选+多选得分盘（38~42分），帽子词秒杀，后期背诵闭环 |
+| **科目四：专业课** | 摸底75 | **120-130 分** | 2.0 小时 | 权威教材体系+历年真题深度解剖，白名单题源抽题门禁 |
 | **合计** | [摸底总分] | **370+ 分** | 7.5 小时 | **结构性提分，稳拿基本盘，拒绝偏难怪题** |
 
 ---
@@ -67,9 +67,9 @@ SAMPLE_AGENTS_MD = """# AGENTS.md —— 考研全科 AI 私人教师中枢 · �
   - 专业课: `官方考纲出题`
 - **核心薄弱诊断与攻坚防线**:
   - 数学薄弱点: `计算失误`
-  - 英语薄弱点: `待诊断薄弱点`
-  - 政治薄弱点: `待诊断薄弱点`
-  - 专业课薄弱点: `待诊断薄弱点`
+  - 英语薄弱点: `阅读定位不熟练`
+  - 政治薄弱点: `多选题易漏选`
+  - 专业课薄弱点: `知识点记忆不牢`
 
 ### 二、四种私教辅导风格设定（按需切换）
 """
@@ -110,21 +110,54 @@ def test_is_unconfigured_states(tmp_path):
     # 4. 院校为默认占位符 "目标院校"
     cfg_file.write_text(json.dumps({
         "onboarding_completed": True,
-        "study_plan": {"school": "目标院校", "major": "目标专业 (专业代码)"}
+        "study_plan": {"school": "目标院校", "major": "030100 法学"}
     }), encoding="utf-8")
     assert settings_svc.is_unconfigured(tmp_path) is True
 
     # 5. 专业为默认占位符 "报考专业"
     cfg_file.write_text(json.dumps({
         "onboarding_completed": True,
-        "study_plan": {"school": "目标院校", "major": "报考专业"}
+        "study_plan": {"school": "中国人民大学", "major": "报考专业"}
     }), encoding="utf-8")
     assert settings_svc.is_unconfigured(tmp_path) is True
 
     # 6. 完备合法配置
     cfg_file.write_text(json.dumps({
         "onboarding_completed": True,
-        "study_plan": {"school": "目标院校", "major": "目标专业 (专业代码)"}
+        "study_plan": {"school": "中国人民大学", "major": "030100 法学"}
+    }), encoding="utf-8")
+    assert settings_svc.is_unconfigured(tmp_path) is False
+
+
+@pytest.mark.parametrize("placeholder", [
+    "报考专业",
+    "目标专业",
+    "目标专业 (专业代码)",
+    "目标专业 (专业代码-方向)",
+])
+def test_is_unconfigured_detects_all_major_placeholders(tmp_path, placeholder):
+    """[P10 回归] 所有已知专业占位符都必须被判为「未配置」。
+
+    名单来自 ``privacy_policy.MAJOR_PLACEHOLDERS``（单一事实源）。
+    修复前 ``settings.py`` 本地硬编码的只有
+    ``("报考专业", "目标专业 (专业代码-方向)")``，而规则表实际还会产出
+    ``"目标专业 (专业代码)"`` 与 ``"目标专业"`` —— 后两者会被误判成「已配置」。
+    阴性对照：把 settings.py 的名单换回旧的硬编码两项，本用例后两个参数变红。
+    """
+    cfg_file = tmp_path / "ky_config.json"
+    cfg_file.write_text(json.dumps({
+        "onboarding_completed": True,
+        "study_plan": {"school": "中国人民大学", "major": placeholder},
+    }), encoding="utf-8")
+    assert settings_svc.is_unconfigured(tmp_path) is True, placeholder
+
+
+def test_is_unconfigured_false_for_real_major(tmp_path):
+    """反向确认（防过度拦截）：真实专业名不得被判为「未配置」。"""
+    cfg_file = tmp_path / "ky_config.json"
+    cfg_file.write_text(json.dumps({
+        "onboarding_completed": True,
+        "study_plan": {"school": "中国人民大学", "major": "030100 法学"},
     }), encoding="utf-8")
     assert settings_svc.is_unconfigured(tmp_path) is False
 
@@ -149,9 +182,9 @@ def test_onboarding_wizard_step1_school_match(app, tmp_path):
     wizard = OnboardingWizard(workspace_root=tmp_path)
     try:
         # 模糊输入并触发校名解析
-        wizard.school_edit.setText("目标院校")
+        wizard.school_edit.setText("中国人民大学")
         badge = wizard.school_badge_label.text()
-        assert "目标院校" in badge
+        assert "中国人民大学" in badge
 
         wizard.school_edit.setText("华中科技大学")
         badge2 = wizard.school_badge_label.text()
@@ -188,11 +221,11 @@ def test_onboarding_wizard_math_interlock_on_existing_config(app, tmp_path):
     cfg_path = tmp_path / "ky_config.json"
     cfg_data = {
         "onboarding_completed": True,
-        "target_school": "目标院校",
-        "target_major": "目标专业 (专业代码)",
+        "target_school": "中国人民大学",
+        "target_major": "030100 法学",
         "study_plan": {
-            "school": "目标院校",
-            "major": "目标专业 (专业代码)",
+            "school": "中国人民大学",
+            "major": "030100 法学",
             "math_key": "none",
             "math_name": "不考数学",
             "math_hours": 0.0,
@@ -220,8 +253,8 @@ def test_onboarding_wizard_math_interlock_on_existing_config(app, tmp_path):
     dirty_cfg = {
         "onboarding_completed": True,
         "study_plan": {
-            "school": "目标院校",
-            "major": "目标专业 (专业代码)",
+            "school": "中国人民大学",
+            "major": "030100 法学",
             "math_key": "none",
             "math_name": "不考数学",
             "math_hours": 2.5,
@@ -253,13 +286,13 @@ def test_onboarding_wizard_navigation_and_validation(app, tmp_path):
         assert wizard._current_step == 0
 
         # Step 0: 空专业拦截
-        wizard.school_edit.setText("目标院校")
+        wizard.school_edit.setText("中国人民大学")
         wizard.major_edit.setText("")
         wizard._on_next_step()
         assert wizard._current_step == 0
 
         # 填全 Step 0
-        wizard.major_edit.setText("目标专业 (专业代码)")
+        wizard.major_edit.setText("030100 法学")
         wizard._on_next_step()
         assert wizard._current_step == 1
 
@@ -295,11 +328,11 @@ def test_onboarding_wizard_dual_persistence(app, tmp_path):
 
     wizard = OnboardingWizard(workspace_root=tmp_path)
     try:
-        wizard.school_edit.setText("目标院校")
-        wizard.major_edit.setText("目标专业 (专业代码)")
+        wizard.school_edit.setText("中国人民大学")
+        wizard.major_edit.setText("030100 法学")
         idx_none = wizard.math_combo.findData("none")
         wizard.math_combo.setCurrentIndex(idx_none)
-        wizard.pro_name_edit.setText("自命题专业课科目")
+        wizard.pro_name_edit.setText("610 法学基础 810 法学综合")
         wizard.exam_date_edit.setText("2026-12-19")
         wizard.api_key_edit.setText("sk-mock-auth-token")
         wizard.base_url_edit.setText("https://api.deepseek.com/v1")
@@ -317,16 +350,16 @@ def test_onboarding_wizard_dual_persistence(app, tmp_path):
         # 1. 验证 ky_config.json
         cfg_on_disk = json.loads((tmp_path / "ky_config.json").read_text(encoding="utf-8"))
         assert cfg_on_disk["onboarding_completed"] is True
-        assert cfg_on_disk["target_school"] == "目标院校"
-        assert cfg_on_disk["target_major"] == "目标专业 (专业代码)"
+        assert cfg_on_disk["target_school"] == "中国人民大学"
+        assert cfg_on_disk["target_major"] == "030100 法学"
         assert cfg_on_disk["study_plan"]["math_key"] == "none"
         assert cfg_on_disk["api_key"] == "sk-mock-auth-token"
         assert "温和启发" in cfg_on_disk["coaching_style"]
 
         # 2. 验证 AGENTS.md 规范更新
         agents_text = agents_file.read_text(encoding="utf-8")
-        assert "- **目标院校**：`目标院校`" in agents_text
-        assert "- **报考专业**：`目标专业 (专业代码)`" in agents_text
+        assert "- **目标院校**：`中国人民大学`" in agents_text
+        assert "- **报考专业**：`030100 法学`" in agents_text
         assert "- **初试日期**：`2026-12-19`" in agents_text
         assert "温和启发" in agents_text
         assert "不考数学" in agents_text
@@ -344,19 +377,19 @@ def test_gui_hot_update_on_config_updated(app, tmp_path):
     cfg_file = tmp_path / "ky_config.json"
     cfg_file.write_text(json.dumps({
         "onboarding_completed": True,
-        "study_plan": {"school": "目标院校", "major": "目标专业 (专业代码)", "exam_date": "2026-12-19"}
+        "study_plan": {"school": "中国人民大学", "major": "030100 法学", "exam_date": "2026-12-19"}
     }), encoding="utf-8")
 
     win = MainWindow(workspace_root=tmp_path)
     try:
         new_config = {
             "onboarding_completed": True,
-            "target_school": "目标院校",
-            "target_major": "目标专业 (专业代码)",
+            "target_school": "中国人民大学",
+            "target_major": "030100 法学",
             "coaching_style": "温和启发·减负鼓励型 (Encouraging Mentor)",
             "study_plan": {
-                "school": "目标院校",
-                "major": "目标专业 (专业代码)",
+                "school": "中国人民大学",
+                "major": "030100 法学",
                 "exam_date": "2026-12-19",
                 "days_left": 92,
                 "style_name": "温和启发·减负鼓励型 (Encouraging Mentor)",
@@ -366,15 +399,15 @@ def test_gui_hot_update_on_config_updated(app, tmp_path):
         win.on_config_updated(new_config)
 
         # 顶栏应即刻热刷新
-        assert "目标院校" in win.meta_label.text()
-        assert "目标专业 (专业代码)" in win.meta_label.text()
+        assert "中国人民大学" in win.meta_label.text()
+        assert "030100 法学" in win.meta_label.text()
         assert "温和启发" in win.meta_label.text()
         assert "初试倒计时" in win.countdown_label.text()
 
         # 对话框应留有热生效通知记录
         chat_text = win.chat_display.toPlainText()
-        assert "目标院校" in chat_text
-        assert "目标专业 (专业代码)" in chat_text
+        assert "中国人民大学" in chat_text
+        assert "030100 法学" in chat_text
     finally:
         win.close()
 
@@ -420,7 +453,7 @@ class DummySearchProvider:
 def test_api_connectivity_mocked_success(monkeypatch):
     import urllib.request
 
-    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=10.0: DummyHTTPResponse())
+    monkeypatch.setattr(settings_svc, "safe_urlopen", lambda req, timeout=10.0: DummyHTTPResponse())
 
     try:
         from tools.search import providers
@@ -453,7 +486,7 @@ def test_api_connectivity_mocked_auth_error(monkeypatch):
             fp=io.BytesIO(b'{"error": "invalid_api_key"}')
         )
 
-    monkeypatch.setattr(urllib.request, "urlopen", raise_401)
+    monkeypatch.setattr(settings_svc, "safe_urlopen", raise_401)
 
     res = settings_svc.test_api_connectivity(
         api_key="sk-invalid-key",
@@ -472,7 +505,7 @@ def test_api_connectivity_mocked_timeout(monkeypatch):
     def raise_timeout(req, timeout=10.0):
         raise TimeoutError("The read operation timed out")
 
-    monkeypatch.setattr(urllib.request, "urlopen", raise_timeout)
+    monkeypatch.setattr(settings_svc, "safe_urlopen", raise_timeout)
 
     res = settings_svc.test_api_connectivity(
         api_key="sk-test-key",

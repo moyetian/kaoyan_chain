@@ -20,6 +20,11 @@ from .memory import MemoryManager
 from .hooks import HookManager
 from .mcp_client import MCPClientManager
 
+try:  # 网络访问安全与响应体积上限（双导入路径兼容）
+    from net_guard import MAX_HTTP_RESPONSE_BYTES, decompress_limited, safe_urlopen
+except ImportError:  # pragma: no cover
+    from tools.net_guard import MAX_HTTP_RESPONSE_BYTES, decompress_limited, safe_urlopen  # type: ignore
+
 
 def normalize_openai_url(base_url: str, endpoint: str = "chat/completions") -> str:
     """智能规范化 OpenAI 兼容接口地址 (自动补齐 /v1 容错，并兼容 /v1, /v2, /v3, /v4 等多版本端点与反代)"""
@@ -296,8 +301,6 @@ class AgentRunner:
         data_bytes = json.dumps(payload).encode("utf-8")
 
         import threading
-        import gzip
-        import zlib
         import socket
         import http.client
 
@@ -328,31 +331,22 @@ class AgentRunner:
         for attempt in range(max_retries + 1):
             req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
             try:
-                with urllib.request.urlopen(req, timeout=self.request_timeout) as resp:
+                # [B1 同类·跳转泄漏 Bearer] 经 safe_urlopen 发送：SSRF 逐跳复核 +
+                # 跨域剥离 Authorization。UnsafeURLError 由下方通用 except 收口。
+                with safe_urlopen(req, timeout=self.request_timeout) as resp:
                     stop_spinner.set()
                     spinner_thread.join(timeout=0.2)
-                    raw_bytes = resp.read()
+                    # [P2 修复] 此前 resp.read() 无上限、gzip/zlib/brotli 解压也无上限，
+                    # 恶意/被劫持的上游返回几十 KB 的「解压炸弹」即可撑爆内存。
+                    raw_bytes = resp.read(MAX_HTTP_RESPONSE_BYTES)
                     headers_obj = getattr(resp, "headers", None)
                     enc = headers_obj.get("Content-Encoding", "").lower() if headers_obj and hasattr(headers_obj, "get") else ""
-                    if enc == "gzip":
-                        try:
-                            raw_bytes = gzip.decompress(raw_bytes)
-                        except Exception:
-                            pass
-                    elif enc == "deflate":
-                        try:
-                            raw_bytes = zlib.decompress(raw_bytes)
-                        except Exception:
-                            try:
-                                raw_bytes = zlib.decompress(raw_bytes, -zlib.MAX_WBITS)
-                            except Exception:
-                                pass
-                    elif enc in ("br", "brotli"):
-                        try:
-                            import brotli
-                            raw_bytes = brotli.decompress(raw_bytes)
-                        except Exception:
-                            pass
+                    raw_bytes, _truncated = decompress_limited(raw_bytes, enc)
+                    if _truncated:
+                        print("\n\033[91m[响应过大] 上游响应解压后超过安全体积上限，已拒绝处理。\033[0m\n")
+                        if self.step_callback:
+                            self.step_callback("❌ [响应过大] 上游响应解压后超过安全体积上限，已拒绝处理。")
+                        return None
                     raw_text = raw_bytes.decode("utf-8", errors="ignore").strip()
                     if raw_text.startswith("<!doctype html") or raw_text.startswith("<html"):
                         raise ValueError(f"服务端返回了网页 HTML 而非 API JSON 数据 (请求地址: {url})，请检查 base_url 配置")
@@ -361,7 +355,7 @@ class AgentRunner:
             except urllib.error.HTTPError as e:
                 stop_spinner.set()
                 spinner_thread.join(timeout=0.2)
-                err_msg = e.read().decode("utf-8", errors="ignore")
+                err_msg = e.read(MAX_HTTP_RESPONSE_BYTES).decode("utf-8", errors="ignore")
                 err_low = err_msg.lower()
                 # 某些端点或反代对 tools、tool_choice、schema 敏感而报 400
                 if e.code == 400 and (
@@ -426,32 +420,15 @@ class AgentRunner:
         def _send(p_data):
             data_bytes = json.dumps(p_data).encode("utf-8")
             req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=self.request_timeout) as resp:
-                raw_bytes = resp.read()
+            # [B1 同类] 同 _call_llm：安全通道发送（调用方通用 except 收口）。
+            with safe_urlopen(req, timeout=self.request_timeout) as resp:
+                # [P2 修复] 同 _call_llm：读取与解压都加上体积上限。
+                raw_bytes = resp.read(MAX_HTTP_RESPONSE_BYTES)
                 headers_obj = getattr(resp, "headers", None)
                 enc = headers_obj.get("Content-Encoding", "").lower() if headers_obj and hasattr(headers_obj, "get") else ""
-                if enc == "gzip":
-                    try:
-                        import gzip
-                        raw_bytes = gzip.decompress(raw_bytes)
-                    except Exception:
-                        pass
-                elif enc == "deflate":
-                    try:
-                        import zlib
-                        raw_bytes = zlib.decompress(raw_bytes)
-                    except Exception:
-                        try:
-                            import zlib
-                            raw_bytes = zlib.decompress(raw_bytes, -zlib.MAX_WBITS)
-                        except Exception:
-                            pass
-                elif enc in ("br", "brotli"):
-                    try:
-                        import brotli
-                        raw_bytes = brotli.decompress(raw_bytes)
-                    except Exception:
-                        pass
+                raw_bytes, _truncated = decompress_limited(raw_bytes, enc)
+                if _truncated:
+                    raise ValueError("上游响应解压后超过安全体积上限，已拒绝处理")
                 return json.loads(raw_bytes.decode("utf-8", errors="ignore"))
 
         try:

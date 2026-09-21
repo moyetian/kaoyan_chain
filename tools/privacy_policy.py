@@ -43,6 +43,7 @@ __all__ = [
     "BUILD_ARTIFACT_DIRS",
     "DEV_SCRATCH_DIRS",
     "ROOT_ONLY_EXCLUDE_DIRS",
+    "NON_PUBLISH_PATH_PREFIXES",
     "BACKUP_MARK",
     "INTERNAL_DOC_PATTERNS",
     "RENAME_NAME_PATTERNS",
@@ -58,6 +59,10 @@ __all__ = [
     "identity_rules_effective",
     # ── 内容级脱敏引擎（两条出口共用）────────────────────────────────────
     "STATIC_IDENTITY_SUBSTITUTIONS",
+    "PII_SUBSTITUTIONS",
+    "PII_RESIDUAL_PATTERNS",
+    "SCHOOL_PLACEHOLDERS",
+    "MAJOR_PLACEHOLDERS",
     "PY_STATIC_EXCLUDED_PATTERNS",
     "SANITIZED_SUFFIXES",
     "PY_UNSANITIZED_FILES",
@@ -151,10 +156,37 @@ DEV_SCRATCH_DIRS = frozenset({
     # 既未被 .gitignore 覆盖，也不在旧的排除名单里，于是每次导出都被镜像进
     # 公开副本 —— 公开仓库里出现一个 .git 备份目录既无意义又容易误导。
     ".git_broken_backup",
+    # [CRITICAL 补漏] 配置写前自动备份目录（见 tools/config_guard.py 的
+    # ``auto_backup()``，由 tools/cli/shared.py 的 ``_guard_before_config_write``
+    # 触发）。里面是 ky_config.json 的**明文完整快照**：51 字符 ``sk-`` 开头的
+    # 真实 api_key 与全部顶层字段，实测本机 7 份 .json 中 6 份是 2622 字节的
+    # 完整配置。此前它**只被 .gitignore:49 忽略**（git 层），而导出副本走的是
+    # **文件系统遍历**，只认 dir_should_exclude / file_should_exclude ——
+    # 于是密钥快照被原样镜像进公开副本。故必须进本清单（= 进
+    # ROOT_ONLY_EXCLUDE_DIRS），由两条出口共用同一判据。
+    ".config_backup",
 })
 
 #: 根级整棵排除的目录（构建产物 + 开发脚手架）。
 ROOT_ONLY_EXCLUDE_DIRS = BUILD_ARTIFACT_DIRS | DEV_SCRATCH_DIRS
+
+#: 与 `.gitignore` 对齐的「不入发布物」路径（相对仓库根的 parts 前缀元组）。
+#: 这些路径在 **git 层已被忽略**，但发布副本走的是**文件系统遍历**，只认
+#: ``should_publish()`` —— 两处口径不一致时，它们会随导出进公开仓库。
+#: 逐条对应 .gitignore 的声明：
+#:   - ``data/universities/_sources/``：公开数据源原始快照。其中两个上游仓库
+#:     **未声明任何许可**，原样再分发属未授权汇编（.gitignore 明示「仅本机留存」）。
+#:   - ``data/universities/exam_subjects.json``：可由上述快照复现的消费者视图。
+#:   - ``data/knowledge/``：检索知识库（KnowledgeStore 首次使用/切片入库时
+#:     自动生成的 sqlite 向量库）。它是**运行时产物**、可由「切片入库」重建，
+#:     且一旦学员用 ``ky ingest`` 入库自己的真题资料，库内就会含资料正文。
+#: 注意：``data/universities/registry.json`` 与 ``national_institutions.json``
+#: 是**要发布**的公开派生库，**不得**加入本清单。
+NON_PUBLISH_PATH_PREFIXES: Tuple[Tuple[str, ...], ...] = (
+    ("data", "universities", "_sources"),
+    ("data", "universities", "exam_subjects.json"),
+    ("data", "knowledge"),
+)
 
 #: 备份文件标记：任何带此标记的文件都是历史快照，绝不发布（含私有目录白名单内）。
 BACKUP_MARK = "_backup_"
@@ -258,6 +290,11 @@ def should_publish(path: Union[str, Path]) -> bool:
     # 3. 根级构建产物 / 依赖目录 / 开发脚手架：整棵子树剔除
     #    只在仓库根判断，避免误伤 docs/assets/vendor/katex/<ver>/dist/ 这类第三方包内部结构
     if parts[0] in ROOT_ONLY_EXCLUDE_DIRS:
+        return False
+
+    # 3.5 与 .gitignore 对齐的受限路径（原始快照 / 运行时向量库）：
+    #     git 层已忽略，发布层必须同口径，否则导出即泄漏（见上方常量注释）。
+    if any(parts[:len(pfx)] == pfx for pfx in NON_PUBLISH_PATH_PREFIXES):
         return False
 
     # 4. 私有目录：仅放行白名单骨架
@@ -663,7 +700,13 @@ STATIC_IDENTITY_SUBSTITUTIONS: List[Tuple[str, str]] = [
     (r"人工智能 \(085400\)", "目标专业 (专业代码-方向)"),
     (r"华工", "目标院校简称"),
     (r"天工大", "目标院校简称"),
-    (r"2026-12-19", "2027-12-26"),
+    # [G2 修复] 这里原先有一条 ``(r"2026-12-19", "2027-12-26")`` —— **已删除**。
+    # 理由：初试日期不是隐私（全国统一考试日期是公开信息），把它当身份改写会
+    # 制造自相矛盾：公开副本的 AGENTS.md 被改成 2027-12-26，而 ``ky status``
+    # 的「初试首日」是**实时算**出来的 2026-12-19 —— 同一屏出现两个初试日期。
+    # 而且口径本就不一致：.py 侧一直在 PY_STATIC_EXCLUDED_PATTERNS 里豁免它，
+    # .md 侧却没有。正确做法是让日期在各处保持同一真源（exam_calendar / 配置），
+    # 而不是在脱敏层改写它。
     (r"https://www\.fhl\.mom", "https://your-api-endpoint.example.com"),
     # 密钥脱敏用通用正则：任何形态的 API Key 都不允许进入公开副本 / 发布包。
     (r"sk-[A-Za-z0-9]{20,}", "YOUR_API_KEY_HERE"),
@@ -681,12 +724,62 @@ STATIC_IDENTITY_SUBSTITUTIONS: List[Tuple[str, str]] = [
     (r"%E5%8C%BB%E5%AD%A6%E7%94%B5%E5%AD%90%E4%BF%A1%E6%81%AF%E5%B7%A5%E7%A8%8B", "%E7%9B%AE%E6%A0%87%E4%B8%93%E4%B8%9A"),
 ]
 
+#: **通用 PII 形态**（与「报考身份」无关的个人隐私）：手机号 / 身份证号 /
+#: 带显式标签的准考证号。此前规则表里**一条都没有** —— 实测 ``sanitize_text``
+#: 对含手机号与身份证号的样本文本原样返回，等于公开副本会原样带着它们出门。
+#:
+#: 设计原则：**宁少勿滥**。数字类规则极易误伤仓库里大量合法的既有数字
+#: （专业代码 ``030500``、初试日期 ``2026-12-19``、自命题科目码 ``618``/``823``、
+#: 倒计时天数、页码…），所以：
+#:   * 手机号 / 身份证：靠**长度 + 结构 + 数字边界**锁定，不需要语境；
+#:   * 准考证号：**必须**紧邻显式标签（准考证号/考生编号/报名号），裸数字一律不动。
+PII_SUBSTITUTIONS: List[Tuple[str, str]] = [
+    # 手机号：11 位、1 开头、第二位 3-9；数字边界保证不截断更长的数字串。
+    (r"(?<!\d)1[3-9]\d{9}(?!\d)", "[手机号]"),
+    # 身份证：18 位，且生日段必须落在 19xx/20xx + 合法月日，末位可为 X/x。
+    # 结构约束使「18 位随机数字」不会被误判。
+    (r"(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])"
+     r"(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d)", "[身份证号]"),
+    # 准考证号 / 考生编号 / 报名号：**必须有标签**（可带 : ：= 与空格），
+    # 9~16 位数字。无标签的裸数字绝不替换 —— 否则 030500 / 618 / 2026-12-19
+    # 这些既有数字会被成片改坏（比漏脱敏更隐蔽的缺陷）。
+    (r"((?:准考证号|考生编号|报名号)\s*[:：=]?\s*)\d{9,16}(?!\d)", r"\1[准考证号]"),
+]
+
+#: PII 的**残留自检**用正则（与 PII_SUBSTITUTIONS 同源）。
+PII_RESIDUAL_PATTERNS: Tuple["re.Pattern[str]", ...] = tuple(
+    re.compile(p) for p, _ in PII_SUBSTITUTIONS
+)
+
+#: 身份脱敏后写回配置的**中性占位符**（= 规则表的产物 + 向导/模板的默认值）。
+#:
+#: **单一事实源**：任何「配置里出现这些值 ⇒ 视作尚未配置」的判据都必须从这里取，
+#: 不得在别处再硬编码一份。历史教训（本轮 P10）：``gui/services/settings.py`` 的
+#: ``is_unconfigured()`` 自己硬编码了一份 ``("报考专业", "目标专业 (专业代码-方向)")``，
+#: 而规则表实际还会产出 ``"目标专业 (专业代码)"``（``identity_substitutions`` 的
+#: major 规则）与 ``"目标专业"``（``_add_url_rule`` 与静态表）—— 两处必然漂移，
+#: 于是「被脱敏成占位符的专业」会被误判成「已配置」。
+SCHOOL_PLACEHOLDERS: Tuple[str, ...] = (
+    "目标院校",
+    "未指定",
+)
+
+#: 专业占位符：``报考专业`` 是向导/交互默认值，其余是规则表的产物。
+MAJOR_PLACEHOLDERS: Tuple[str, ...] = (
+    "报考专业",
+    "目标专业",
+    "目标专业 (专业代码)",
+    "目标专业 (专业代码-方向)",
+    "未指定",
+)
+
 #: 静态替换表里**只对 Markdown / HTML / SVG 生效、绝不套用到 ``*.py``** 的规则。
 #: 逐条理由（依据是「全仓 *.py 实测命中 + 发布副本逐文件 diff」）：
 #:
-#: ① 日期 ``2026-12-19 → 2027-12-26``：.py 里它是**功能默认值/日历数据**
-#:    （exam_calendar / study_planner / gui settings 以及 9 个测试），替换会改变
-#:    冻结程序的默认初试日期与日历语义。
+#: ① 日期 ``2026-12-19 → 2027-12-26``：**该规则已删除（G2 修复）**，此处不再列
+#:    豁免项 —— 日期不是身份，脱敏层不应改写它；.py 与 .md 口径因此天然一致。
+#:    保留这条注释是为了说明历史理由：.py 里日期是**功能默认值/日历数据**
+#:    （exam_calendar / study_planner / gui settings 以及 9 个测试）。
 #: ② 模型名 ``gpt-5.4-mini → gpt-4o-mini``：doctor.py 里是上游模型标识，
 #:    替换会让「上游下线检测」的注释与逻辑对不上。
 #: ③ 私有接口地址：全仓 *.py 实测 0 命中，只出现在 md/配置语境。
@@ -696,7 +789,6 @@ STATIC_IDENTITY_SUBSTITUTIONS: List[Tuple[str, str]] = [
 #:    「对比院校B」后，985/211 识别直接失效。.py 脱敏只处理「当前真实报考身份」
 #:    （由 ``identity_substitutions()`` 动态提供），那才是无法从公开数据推断的信息。
 PY_STATIC_EXCLUDED_PATTERNS = frozenset({
-    r"2026-12-19",
     r"gpt-5\.4-mini",
     r"https://www\.fhl\.mom",
     r"%E5%A4%A9%E6%B4%A5%E5%B7%A5%E4%B8%9A%E5%A4%A7%E5%AD%A6",
@@ -717,6 +809,11 @@ PY_STATIC_EXCLUDED_PATTERNS = frozenset({
     r"武汉大学",
     r"天津大学",
     r"长沙理工大学",
+    # [P6 补漏] 静态表里有 ``湖南农业大学 → 对比院校B``，但本豁免清单漏了它 ——
+    # 于是同一类「历史对比院校的公开校名」在 .py 里被替换、在 .md 里不被替换，
+    # 口径自相矛盾；实测后果是 ``tests/`` 里把 湖南农业大学 当普通字符串用的
+    # 用例在发布副本中被改写（断言里的字面量一起变成「对比院校B」）。
+    r"湖南农业大学",
     r"人工智能 \(085400\)",
     r"华工",
     r"天工大",
@@ -752,8 +849,11 @@ LOCAL_WHITELIST_REPL = "[本地资料库已就绪]: 请放入本地参考资料�
 
 
 def build_substitutions(root: Union[str, Path]) -> List[Tuple[str, str]]:
-    """``root`` 对应的全量替换表：**动态当前身份在前，静态历史公开校名在后**。"""
-    return identity_substitutions(root) + STATIC_IDENTITY_SUBSTITUTIONS
+    """``root`` 对应的全量替换表：**动态当前身份在前，静态历史公开校名在后**，
+    末尾追加与身份无关的**通用 PII** 规则（手机号/身份证/准考证号）。"""
+    return (identity_substitutions(root)
+            + STATIC_IDENTITY_SUBSTITUTIONS
+            + PII_SUBSTITUTIONS)
 
 
 def build_py_excluded_patterns(root: Union[str, Path]) -> frozenset:
@@ -838,7 +938,8 @@ def verify_python_compiles(root_dir: Union[str, Path], paths: Optional[Iterable[
 
 
 def scan_residual_identity(dst: Union[str, Path], src_root: Union[str, Path], *,
-                           strip_prefixes: Sequence[str] = ()) -> List[str]:
+                           strip_prefixes: Sequence[str] = (),
+                           include_pii: bool = False) -> List[str]:
     """列出 ``dst`` 里**仍含当前真实身份字面量**的文件（相对路径，``/`` 分隔）。
 
     Args:
@@ -848,6 +949,11 @@ def scan_residual_identity(dst: Union[str, Path], src_root: Union[str, Path], *,
             ``_internal/data/universities/*.json``（1800+ 所高校公开库）与
             ``_internal/tools/intelligence/registry.py``（公开校名→代码映射）
             当成残留误报，构建会被自己的自检挡下。发布副本路径传空即可（根即仓库相对）。
+        include_pii: 是否同时把**通用 PII 形态**（手机号 / 身份证 / 带标签的准考证号，
+            见 ``PII_RESIDUAL_PATTERNS``）计入残留。默认 False ——
+            PyInstaller 产物树里有 ``_internal/PySide6/**`` 等第三方源码，
+            拿数字正则去扫它们容易误报；发布副本没有第三方树，由
+            ``sync_publish`` 显式传 True。
 
     光有脱敏规则不够 —— 规则可能为空/自指（见 ``identity_rules_effective``），
     脱敏函数照样会打印一堆 ``[sanitize] …`` 而实际什么都没改。这一步直接拿**产物**
@@ -859,7 +965,7 @@ def scan_residual_identity(dst: Union[str, Path], src_root: Union[str, Path], *,
     """
     dst = Path(dst)
     tokens = [t for t in identity_name_tokens(src_root) if t]
-    if not tokens:
+    if not tokens and not include_pii:
         return []
     # 纯数字 token（如专业代码）用**数字边界**匹配，而不是朴素子串：否则
     # ``030500`` 会被 ``1030500`` 这类无关长数字误报。
@@ -903,5 +1009,8 @@ def scan_residual_identity(dst: Union[str, Path], src_root: Union[str, Path], *,
             continue
         matchers = py_matchers if f.suffix == ".py" else md_matchers
         if any(m.search(text) for m in matchers):
+            hits.append(posix)
+            continue
+        if include_pii and any(p.search(text) for p in PII_RESIDUAL_PATTERNS):
             hits.append(posix)
     return hits

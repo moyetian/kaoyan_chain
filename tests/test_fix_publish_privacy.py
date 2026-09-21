@@ -79,6 +79,15 @@ from privacy_policy import should_publish  # noqa: E402
     ("tools/scratch/uploads/clip_1789375408728.png", False),
     # 第三方包内部的 dist/ 目录不得被误伤（.gitignore:17-21 的 C7 教训）
     ("docs/assets/vendor/katex/0.16.9/dist/katex.min.js", True),
+    # 与 .gitignore 对齐的受限路径：原始快照 / 消费者视图 / 运行时向量库
+    # 都声明「仅本机留存」，发布层必须同口径（否则导出即泄漏）
+    ("data/universities/_sources/chsi_schools.json", False),
+    ("data/universities/_sources/fjw_universities.json", False),
+    ("data/universities/exam_subjects.json", False),
+    ("data/knowledge/embeddings.db", False),
+    # 阴性对照：公开派生库**必须仍然发布**，不得被上面几条误伤
+    ("data/universities/registry.json", True),
+    ("data/universities/national_institutions.json", True),
 ])
 def test_privacy_policy_verdicts(rel, publishable):
     assert should_publish(rel) is publishable, f"策略判定错误: {rel}"
@@ -103,6 +112,9 @@ def test_privacy_policy_verdicts(rel, publishable):
     # PyInstaller 冻结产物的私有资源根（防御性排除，见 EXCLUDE_DIRS 注释）
     (["_internal"], "_internal"),
     (["dist", "KaoyanStudyChain", "_internal"], "_internal"),
+    # 受限路径的目录同样不下钻（不在副本里留下空目录）
+    (["data", "universities"], "_sources"),
+    (["data"], "knowledge"),
 ])
 def test_build_artifacts_and_secrets_excluded(parts, name):
     """构建产物与密钥目录必须整棵子树排除。"""
@@ -217,40 +229,44 @@ def test_identity_substitutions_cover_current_target(tmp_path):
         assert value not in out, f"未脱敏: {value} -> {out}"
 
     # [P25 补漏 · 缺陷 2] 老规则是**字面顺序敏感**的完整串匹配，于是报告原文里
-    #   「目标专业 (专业代码) · 自命题 自命题科目1/自命题科目2」这种换序 / 缩写 / 并写形式全部漏网 ——
+    #   「法学 030100 · 自命题 610/810」这种换序 / 缩写 / 并写形式全部漏网 ——
     #   专业代码 + 自命题科目代码的组合本身就是考生可识别指纹。
+    #
+    # 注意：这里的 plan2 用**中性示例身份**（不是学员真实报考信息）。理由见
+    # tests/README 与 test_privacy_identity_rules.test_tests_dir_is_immune_to_py_sanitization：
+    # 测试夹具一旦写入真实身份，导出脱敏就会改写本文件、令断言自毁。
     plan2 = {
         "school": "示例农业大学",
-        "major": "目标专业 (专业代码)",
-        "pro_name": "自命题专业课科目",
+        "major": "030100 法学",
+        "pro_name": "610 法学基础 810 法学综合",
     }
     (tmp_path / "ky_config.json").write_text(
         json.dumps({"study_plan": plan2}, ensure_ascii=False), encoding="utf-8")
     rules2 = identity_substitutions(tmp_path)
 
-    line = ("| **A** 小白文科跨考生 | 目标院校 · **目标专业 (专业代码)** · "
-            "**不考数学** · **自命题 自命题科目1/自命题科目2** · 英语一 |")
+    line = ("| **A** 小白文科跨考生 | 目标院校 · **法学 030100** · "
+            "**不考数学** · **自命题 610/810** · 英语一 |")
     out2 = sp.sanitize_text(line, rules2)
-    for tok in ("030500", "618", "823"):
+    for tok in ("030100", "610", "810"):
         assert tok not in out2, f"报告原文的换序/缩写形式漏网: {out2}"
 
-    for text in ("目标专业 (专业代码)", "目标专业 (专业代码)", "目标专业 (专业代码)", "030500",
-                 "自命题科目1/自命题科目2", "自命题科目1 自命题科目2", "自命题科目1、自命题科目2", "自命题科目2/自命题科目1", "自命题 自命题科目1 科目"):
+    for text in ("法学 030100", "030100 法学", "法学030100", "030100",
+                 "610/810", "610 810", "610、810", "810/610", "自命题 610 科目"):
         o = sp.sanitize_text(text, rules2)
-        assert not any(t in o for t in ("030500", "618", "823")), \
+        assert not any(t in o for t in ("030100", "610", "810")), \
             f"换序/缩写/并写形式漏网: {text!r} -> {o!r}"
 
     # 反向守卫：判据是「两码共现或紧邻语境词」—— 普通数字绝不能被误伤。
-    for text in ("1688", "618元", "页码 618", "2026-06-18", "823", "共 823 人"):
+    for text in ("1688", "610元", "页码 610", "2026-06-10", "810", "共 810 人"):
         assert sp.sanitize_text(text, rules2) == text, f"普通数字被误伤: {text!r}"
 
     # URL 百分号编码形态（分享/检索链接）：修复前导出物的链接里仍带身份字面量。
     from urllib.parse import quote
     url = (f"https://x.com/s?q={quote('示例农业大学', safe='')}%20"
-           f"030500%20{quote('马克思主义理论', safe='')}")
+           f"030100%20{quote('法学', safe='')}")
     out3 = sp.sanitize_text(url, rules2)
-    assert "030500" not in out3, out3
-    assert quote("马克思主义理论", safe="") not in out3, out3
+    assert "030100" not in out3, out3
+    assert quote("法学", safe="") not in out3, out3
 
 
 def test_dynamic_identity_rules_survive_py_exclusions():
@@ -306,7 +322,7 @@ def test_sanitize_text_handles_missing_config(tmp_path):
 def test_py_sanitize_scrubs_current_identity(tmp_path):
     """发布副本里的 .py 不得残留学员当前真实报考身份（校名 / 专业 / 科目组合）。
 
-    修复前实测：bee1474 产物的 ``*.py`` 中「目标院校」命中 15 处。
+    修复前实测：bee1474 产物的 ``*.py`` 中「中国人民大学」命中 15 处。
     与上面同理，用自造配置，避免依赖会被其它角色改写的本机 ky_config.json。
     """
     from privacy_policy import identity_substitutions
@@ -348,15 +364,27 @@ def test_py_excluded_patterns_keep_functional_data():
     # [缺陷 3b] 裸专业代码是**全国统一学科门类代码**（公开事实），在 .py 里是
     # 公开目录键名与测试常量，不得被 .py 规则集替换；但「专业名 + 代码」的
     # **组合**本身即身份，在 .py 里出现仍应替换。
+    #
+    # 探针从**运行时配置**拼出，不写死字面量 —— 写死真实身份会让导出脱敏改写
+    # 本文件本身（见 test_privacy_identity_rules.test_tests_dir_is_immune_to_py_sanitization）。
+    import privacy_policy as pp
+
+    plan_now = pp.load_study_plan(ROOT)
+    m = re.match(r"^(\d{3,6})\s+(.+)$", str(plan_now.get("major") or "").strip())
+    if not m:
+        pytest.skip("本工作区无 ky_config.json / major（无身份可验证）")
+    code_now, name_now = m.group(1), m.group(2)
+
     chsi = ROOT / "tools" / "intelligence" / "chsi_connector.py"
     if chsi.exists():
         src = chsi.read_text(encoding="utf-8")
-        if '"030500"' in src:
+        if f'"{code_now}"' in src:
             out = sp.sanitize_text(src, sp.PY_SUBSTITUTIONS)
-            assert '"030500"' in out, "公开学科目录键名被 .py 脱敏改坏（STANDARD_SUBJECTS_CATALOG）"
+            assert f'"{code_now}"' in out, (
+                "公开学科目录键名被 .py 脱敏改坏（STANDARD_SUBJECTS_CATALOG）")
             compile(out, "<chsi>", "exec")
-    combo = sp.sanitize_text("目标专业 (专业代码)", sp.PY_SUBSTITUTIONS)
-    assert "030500" not in combo, f"组合身份在 .py 里未脱敏: {combo}"
+    combo = sp.sanitize_text(f"{name_now} {code_now}", sp.PY_SUBSTITUTIONS)
+    assert code_now not in combo, f"组合身份在 .py 里未脱敏: {combo}"
 
 
 def test_py_sanitize_output_still_compiles():
@@ -475,7 +503,7 @@ def test_gui_bat_no_longer_declares_utf8_codepage():
 # ─────────── 第 8 层：身份文件名脱敏的单一事实源（R2-D5） ───────────
 # 复测发现：目录级与内容级都修好之后，**文件名本身**仍在裸奔 ——
 #   dist/KaoyanStudyChain/_internal/04-专业课/
-#     目标院校情报_目标院校_目标专业 (专业代码)_backup_2026-09-18_162147.md
+#     目标院校情报_中国人民大学_030100 法学_backup_2026-09-18_162147.md
 # 两条出口（打包 / 发布副本）曾各维护一份「哪些文件名算身份」的名单，必然漂移：
 # 打包路径漏了 双校对标_*，发布路径漏了后来新出现的身份文件名。
 
@@ -547,7 +575,7 @@ def test_publish_pipeline_scrubs_python_sources(tmp_path, monkeypatch):
 
     比「规则集里有 .py」更靠得住 —— 直接跑真实脱敏函数。若有人把 ``*.py``
     从 ``SANITIZED_SUFFIXES`` 里拿掉，发布副本的 Python 源码就会原样公开身份
-    （修复前实测：bee1474 产物的 ``*.py`` 中「目标院校」命中 15 处），
+    （修复前实测：bee1474 产物的 ``*.py`` 中「中国人民大学」命中 15 处），
     而这类回归在只看 md 的测试里完全看不见。
     """
     import privacy_policy as pp
@@ -587,7 +615,7 @@ def test_registry_py_is_exempt_from_py_sanitization(tmp_path, monkeypatch):
     『校名 → 院校代码』映射也不得脱敏」，但此前**没有任何代码执行它**。实测
     发布副本里 ``KNOWN_REGIONAL`` 的
 
-        ``"目标院校": ("10466", "河南郑州", ...)``
+        ``"中国人民大学": ("10466", "河南郑州", ...)``
 
     被替换成 ``"目标院校": ("10466", ...)`` —— 公开高校兜底索引整条改坏，
     校名解析失配，还凭空多出一个叫「目标院校」的学校。
@@ -596,7 +624,7 @@ def test_registry_py_is_exempt_from_py_sanitization(tmp_path, monkeypatch):
     if not src.exists():
         pytest.skip("本工作区没有 registry.py")
 
-    probe = "目标院校"
+    probe = "中国人民大学"
     if probe not in src.read_text(encoding="utf-8"):
         pytest.skip("registry.py 未含探测串，守卫会空转")
 

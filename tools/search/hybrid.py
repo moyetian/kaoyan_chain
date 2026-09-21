@@ -51,6 +51,8 @@ def rrf_score(ranks: List[int], k: int = 60) -> float:
         >>> rrf_score([5, -1])  # 只在词法中命中第6名
         0.015873...
     """
+    # [S3 修复] k<=0 时 1/(k+rank) 在 rank=0 处除零；钳到最小 1。
+    k = max(1, int(k))
     score = 0.0
     for rank in ranks:
         if rank >= 0:  # 跳过未命中（-1）
@@ -64,7 +66,8 @@ def hybrid_search(
     lexical_top_k: int = 20,
     vector_top_k: int = 20,
     rrf_k: int = 60,
-    enable_vector: bool = True
+    enable_vector: bool = True,
+    source_filter: Optional[str] = None
 ) -> List[SearchResult]:
     """混合检索（词法 + 向量 + RRF 融合）
 
@@ -75,18 +78,22 @@ def hybrid_search(
         vector_top_k: 向量分支召回数（候选池）
         rrf_k: RRF 平滑参数
         enable_vector: 是否启用向量检索（False 则纯词法）
+        source_filter: 源文件过滤（[G1 修复] 此前 search() 收了该参数却静默
+            丢弃；现透传给词法与向量两分支，与 search_by_vector 同口径 LIKE）
 
     Returns:
         融合后的搜索结果列表（按得分降序）
     """
     # Step 1: 词法检索分支
-    lexical_results = _lexical_search(query, top_k=lexical_top_k)
+    lexical_results = _lexical_search(query, top_k=lexical_top_k,
+                                      source_filter=source_filter)
 
     # Step 2: 向量检索分支（如果启用）
     vector_results = []
     if enable_vector:
         try:
-            vector_results = _vector_search(query, top_k=vector_top_k)
+            vector_results = _vector_search(query, top_k=vector_top_k,
+                                            source_filter=source_filter)
         except Exception as e:
             logger.warning(f"向量检索失败，降级到纯词法: {e}")
 
@@ -101,12 +108,14 @@ def hybrid_search(
     return fused_results[:top_k]
 
 
-def _lexical_search(query: str, top_k: int = 20) -> List[Tuple[str, float]]:
+def _lexical_search(query: str, top_k: int = 20,
+                    source_filter: Optional[str] = None) -> List[Tuple[str, float]]:
     """词法检索分支（复用现有代码）
 
     Args:
         query: 查询文本
         top_k: 返回结果数
+        source_filter: 源文件过滤（LIKE 口径，与 search_by_vector 一致）
 
     Returns:
         [(chunk_id, score), ...] 按得分降序
@@ -128,8 +137,16 @@ def _lexical_search(query: str, top_k: int = 20) -> List[Tuple[str, float]]:
 
         # 遍历所有片段进行匹配
         # TODO: 优化为使用 SQLite FTS5 全文索引
+        # [G7 修复] 旧实现 LIMIT 1000 使超千片段的库永久丢召回，且异常被
+        # 裸 except: pass 吞掉（表缺失也报"无结果"）。现去掉 LIMIT（游标流式
+        # 遍历，内存仍只保留命中项），异常记 warning 携带上下文。
         try:
-            cursor = store.conn.execute("SELECT id, text FROM chunks LIMIT 1000")
+            if source_filter:
+                cursor = store.conn.execute(
+                    "SELECT id, text FROM chunks WHERE source LIKE ?",
+                    (f"%{source_filter}%",))
+            else:
+                cursor = store.conn.execute("SELECT id, text FROM chunks")
             for row in cursor:
                 chunk_id = row[0]
                 text = row[1]
@@ -143,8 +160,8 @@ def _lexical_search(query: str, top_k: int = 20) -> List[Tuple[str, float]]:
 
                 if score > 0:
                     results.append((chunk_id, score))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"词法检索片段遍历失败（source_filter={source_filter!r}）: {e}")
 
         # 按得分降序排序
         results.sort(key=lambda x: x[1], reverse=True)
@@ -156,12 +173,14 @@ def _lexical_search(query: str, top_k: int = 20) -> List[Tuple[str, float]]:
         return []
 
 
-def _vector_search(query: str, top_k: int = 20) -> List[Tuple[str, float]]:
+def _vector_search(query: str, top_k: int = 20,
+                   source_filter: Optional[str] = None) -> List[Tuple[str, float]]:
     """向量检索分支
 
     Args:
         query: 查询文本
         top_k: 返回结果数
+        source_filter: 源文件过滤（透传给 search_by_vector）
 
     Returns:
         [(chunk_id, similarity), ...] 按相似度降序
@@ -180,7 +199,8 @@ def _vector_search(query: str, top_k: int = 20) -> List[Tuple[str, float]]:
         store = get_knowledge_store()
         results = store.search_by_vector(
             query_embedding=query_embedding,
-            top_k=top_k
+            top_k=top_k,
+            source_filter=source_filter
         )
 
         logger.debug(f"向量检索返回 {len(results)} 条结果")
@@ -273,7 +293,8 @@ def search(
     return hybrid_search(
         query=query,
         top_k=top_k,
-        enable_vector=enable_vector
+        enable_vector=enable_vector,
+        source_filter=source_filter
     )
 
 

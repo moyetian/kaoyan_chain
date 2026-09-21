@@ -23,6 +23,17 @@ try:
 except ImportError:
     from tools.llm_client import fetch_upstream_models, normalize_openai_url
 
+try:  # [B1 同类] 探活请求经安全通道发送（双导入路径兼容）
+    from net_guard import safe_urlopen
+except ImportError:  # pragma: no cover
+    from tools.net_guard import safe_urlopen  # type: ignore
+
+# [P10 修复] 占位符名单从隐私策略单一事实源取（避免与规则表产物漂移）。
+try:
+    from privacy_policy import MAJOR_PLACEHOLDERS, SCHOOL_PLACEHOLDERS
+except ImportError:  # pragma: no cover
+    from tools.privacy_policy import MAJOR_PLACEHOLDERS, SCHOOL_PLACEHOLDERS
+
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
@@ -64,9 +75,13 @@ def is_unconfigured(workspace_root: Optional[Path | str] = None) -> bool:
         return True
     school = str(plan.get("school", "")).strip()
     major = str(plan.get("major", "")).strip()
-    if not school or school in ("目标院校",):
+    # [P10 修复] 占位符名单收敛到 privacy_policy（单一事实源），不再本地硬编码。
+    # 原先本地那份只有 ("报考专业", "目标专业 (专业代码-方向)")，而规则表实际还会
+    # 产出 "目标专业 (专业代码)" 与 "目标专业" —— 两处漂移 → 被脱敏成占位符的
+    # 专业会被误判为「已配置」。school 同理（"未指定" 也是 renderer/cli 认定的占位）。
+    if not school or school in SCHOOL_PLACEHOLDERS:
         return True
-    if not major or major in ("报考专业", "目标专业 (专业代码-方向)"):
+    if not major or major in MAJOR_PLACEHOLDERS:
         return True
     return False
 
@@ -86,8 +101,14 @@ def update_agents_md(workspace_root: Path | str, plan: dict) -> None:
     days_left = plan.get("days_left")
     if days_left is None:
         try:
-            days_left = (date.fromisoformat(exam_date) - date.today()).days
+            # [G8 修复·倒计时负数] 与 study_planner 同口径 max(0,…)，过期不写负数。
+            days_left = max(0, (date.fromisoformat(exam_date) - date.today()).days)
         except Exception:
+            days_left = 90
+    else:
+        try:
+            days_left = max(0, int(days_left))
+        except (TypeError, ValueError):
             days_left = 90
 
     stage_name = plan.get("stage_name", "强化题型攻坚阶段")
@@ -385,7 +406,8 @@ def test_api_connectivity(
         t0 = time.perf_counter()
         try:
             req = urllib.request.Request(chat_url, data=body, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            # [B1 同类·跳转泄漏 Bearer] 安全通道发送。
+            with safe_urlopen(req, timeout=timeout) as resp:
                 raw_bytes = resp.read()
                 resp_headers = getattr(resp, "headers", None)
                 enc = (getattr(resp_headers, "get", lambda *_: "")("Content-Encoding") or "").lower() if resp_headers else ""
@@ -437,7 +459,7 @@ def test_api_connectivity(
                         "messages": [{"role": "user", "content": "ping"}],
                     }).encode("utf-8")
                     retry_req = urllib.request.Request(chat_url, data=retry_body, headers=headers, method="POST")
-                    with urllib.request.urlopen(retry_req, timeout=timeout) as retry_resp:
+                    with safe_urlopen(retry_req, timeout=timeout) as retry_resp:
                         r_code = getattr(retry_resp, "status", 200)
                         latency = max(1, int((time.perf_counter() - t0) * 1000))
                         res["llm_ok"] = True

@@ -19,7 +19,6 @@ Provider 共用的抓取与文本清洗 (Robust HTTP Layer)
 from __future__ import annotations
 
 import base64
-import gzip
 import html
 import http.client
 import logging
@@ -32,9 +31,18 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zlib
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..providers.base import ProviderError
+
+try:  # 网络访问安全与解压体积上限（双导入路径兼容）
+    from net_guard import MAX_DECOMPRESSED_BYTES, MAX_HTTP_RESPONSE_BYTES, zlib_limited
+except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
+    from tools.net_guard import (  # type: ignore
+        MAX_DECOMPRESSED_BYTES,
+        MAX_HTTP_RESPONSE_BYTES,
+        zlib_limited,
+    )
 
 _LOG = logging.getLogger(__name__)
 
@@ -124,6 +132,65 @@ def looks_like_anti_bot(html_text: str) -> str:
     return ""
 
 
+def decompress_body(raw_data: bytes,
+                    headers: Optional[Dict[str, str]] = None,
+                    resp_headers: Optional[Dict[str, str]] = None) -> bytes:
+    """处理 HTTP 响应 payload 的 gzip / deflate 解压缩 (统一处理 gzip / deflate 及 magic bytes 自动嗅探)。
+
+    [P2 修复] 解压改为**带体积上限**（``net_guard.zlib_limited``）：旧实现直接
+    ``gzip.decompress`` / ``zlib.decompress``，几十 KB 的「解压炸弹」能膨胀成几十 MB。
+    这里保留旧实现「流损坏/不完整就原样返回 raw_data」的语义（``require_eof=True``，
+    与 ``gzip.decompress`` 的严格判定一致），只有**正常收尾**的流才接受解压结果；
+    正常流解压后仍超限则截断到 ``MAX_DECOMPRESSED_BYTES``。
+    """
+    if not raw_data:
+        return raw_data
+
+    hdrs = headers if headers is not None else resp_headers
+    encoding = ""
+    if hdrs:
+        encoding = (hdrs.get("Content-Encoding") or hdrs.get("content-encoding") or "").lower().strip()
+
+    if encoding in ("gzip", "x-gzip") or raw_data.startswith(b"\x1f\x8b"):
+        try:
+            out, _truncated = zlib_limited(
+                raw_data, 16 + zlib.MAX_WBITS, MAX_DECOMPRESSED_BYTES, require_eof=True)
+            return out
+        except Exception as e:
+            _LOG.debug("gzip 解压回退: %s", e)
+    elif encoding in ("deflate", "zlib"):
+        try:
+            out, _truncated = zlib_limited(
+                raw_data, zlib.MAX_WBITS, MAX_DECOMPRESSED_BYTES, require_eof=True)
+            return out
+        except Exception:
+            try:
+                out, _truncated = zlib_limited(
+                    raw_data, -zlib.MAX_WBITS, MAX_DECOMPRESSED_BYTES, require_eof=True)
+                return out
+            except Exception as e:
+                _LOG.debug("deflate 解压回退: %s", e)
+
+    return raw_data
+
+
+def _read_capped(resp, limit: int = MAX_HTTP_RESPONSE_BYTES) -> bytes:
+    """带体积上限读取响应体。
+
+    真实 ``http.client.HTTPResponse.read(n)`` 支持上限；少数轻量响应对象（含测试
+    替身）只实现了无参 ``read()``，此时退化为整读并在此处告警 —— 上限由调用方
+    在解压阶段兜底。
+    """
+    try:
+        return resp.read(limit)
+    except TypeError:
+        _LOG.debug("响应对象不支持 read(n)，退化为无参 read()")
+        return resp.read()
+
+
+decompress_response = decompress_body  # 别名兼容
+
+
 def detect_and_decode(raw_bytes: bytes,
                       headers: Optional[Dict[str, str]] = None) -> str:
     """自适应编码嗅探与解码。
@@ -205,6 +272,8 @@ def get_text(
     max_retries: int = 3,
     backoff_base: float = 0.3,
     backoff_max: float = 3.0,
+    allow_insecure_ssl: bool = False,
+    ssl_status: Optional[Dict[str, Any]] = None,
 ) -> str:
     """安全抓取网页 HTML 文本，具备指数退避重试与编码自适应。
 
@@ -214,18 +283,31 @@ def get_text(
     :param max_retries: 最大重试次数
     :param backoff_base: 退避基数（秒）
     :param backoff_max: 最大退避时间（秒）
+    :param allow_insecure_ssl: **显式** opt-in 开关，默认 ``False``。
+        默认语义：TLS 证书校验失败即如实失败（抛 ``ProviderError``），
+        **绝不静默降级**为未验证连接。仅当调用方明确传 ``True``（例如确知
+        某高校站点使用自签名/过期证书且必须抓取）时，才会在证书错误后以
+        **未验证**连接重试一次，并把 ``ssl_verified=False`` 写入 ``ssl_status``
+        且打 WARNING 日志。
+    :param ssl_status: 可选出参字典；函数会写入 ``{"ssl_verified": bool}``，
+        调用方据此判断本次抓取是否走了未验证 TLS。
     :return: 解码清洗后的 HTML 文本
-    :raises ProviderError: 请求重试耗尽或致命错误
+    :raises ProviderError: 请求重试耗尽、证书校验失败或致命错误
     """
     url = str(url or "").strip()
     if not url.startswith(("http://", "https://")):
         raise ProviderError(f"不支持的 URL 协议: {url}")
 
     ssl_ctx = ssl.create_default_context()
-    # 对自签名或历史高校站点提供宽容 SSL 支持
-    ssl_fallback_ctx = ssl.create_default_context()
-    ssl_fallback_ctx.check_hostname = False
-    ssl_fallback_ctx.verify_mode = ssl.CERT_NONE
+    # 未验证上下文仅在调用方**显式** opt-in 时构造，绝不作为失败后的自动降级路径
+    ssl_fallback_ctx: Optional[ssl.SSLContext] = None
+    if allow_insecure_ssl:
+        ssl_fallback_ctx = ssl.create_default_context()
+        ssl_fallback_ctx.check_hostname = False
+        ssl_fallback_ctx.verify_mode = ssl.CERT_NONE
+
+    if ssl_status is not None:
+        ssl_status["ssl_verified"] = True
 
     last_error: Optional[Exception] = None
 
@@ -241,29 +323,12 @@ def get_text(
         req_headers = get_browser_headers(headers)
         req = urllib.request.Request(url, headers=req_headers)
 
-        current_ctx = ssl_ctx
         try:
-            with urllib.request.urlopen(req, timeout=timeout, context=current_ctx) as resp:
-                status_code = getattr(resp, "status", 200)
+            with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx) as resp:
+                # [S6] 删除重构残留死变量 status_code（赋值后从未使用）。
                 resp_headers = dict(resp.headers)
-                raw_data = resp.read()
-
-                # 处理 gzip / deflate 解压缩
-                encoding = resp_headers.get("Content-Encoding", "").lower()
-                if encoding == "gzip":
-                    try:
-                        raw_data = gzip.decompress(raw_data)
-                    except Exception as e:
-                        _LOG.debug("gzip 解压回退: %s", e)
-                elif encoding == "deflate":
-                    try:
-                        raw_data = zlib.decompress(raw_data)
-                    except Exception:
-                        try:
-                            raw_data = zlib.decompress(raw_data, -zlib.MAX_WBITS)
-                        except Exception as e:
-                            _LOG.debug("deflate 解压回退: %s", e)
-
+                raw_data = _read_capped(resp)
+                raw_data = decompress_body(raw_data, resp_headers)
                 return detect_and_decode(raw_data, resp_headers)
 
         except urllib.error.HTTPError as e:
@@ -278,16 +343,30 @@ def get_text(
             last_error = e
             reason_str = str(getattr(e, "reason", e)).lower()
 
-            # 尝试 SSL 降级
+            # TLS 证书错误：默认**如实失败**，不再静默降级为未验证连接。
+            # 仅当调用方显式 ``allow_insecure_ssl=True`` 时才做一次未验证重试。
             is_ssl_err = "certificate" in reason_str or "ssl" in reason_str
-            if is_ssl_err and current_ctx is ssl_ctx:
+            if is_ssl_err:
+                if ssl_fallback_ctx is None:
+                    raise ProviderError(
+                        f"TLS 证书校验失败（未降级）: {e}；如确需抓取该站点的"
+                        "自签名/过期证书，请显式传入 allow_insecure_ssl=True"
+                    ) from e
+                _LOG.warning(
+                    "TLS 证书校验失败，按调用方显式 opt-in 降级为**未验证**连接"
+                    "重试（ssl_verified=False）: %s (%s)", url, e)
                 try:
                     with urllib.request.urlopen(req, timeout=timeout, context=ssl_fallback_ctx) as resp:
                         resp_headers = dict(resp.headers)
-                        raw_data = resp.read()
+                        raw_data = _read_capped(resp)
+                        raw_data = decompress_body(raw_data, resp_headers)
+                        if ssl_status is not None:
+                            ssl_status["ssl_verified"] = False
                         return detect_and_decode(raw_data, resp_headers)
                 except Exception as ssl_e:
-                    last_error = ssl_e
+                    raise ProviderError(
+                        f"TLS 证书校验失败，且显式启用未验证连接后仍失败: {ssl_e}"
+                    ) from ssl_e
 
             # 判断是否为可重试的网络超时或连接重置
             is_timeout = isinstance(e, (socket.timeout, TimeoutError)) or "timed out" in reason_str
@@ -395,6 +474,8 @@ __all__ = [
     "clean_bing_url",
     "clean_ddg_url",
     "clean_text",
+    "decompress_body",
+    "decompress_response",
     "detect_and_decode",
     "get_browser_headers",
     "get_random_user_agent",

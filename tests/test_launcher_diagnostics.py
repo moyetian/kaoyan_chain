@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import subprocess
@@ -117,7 +118,7 @@ def test_pyside6_check_widgets_import_error():
 def test_config_check_valid(tmp_path):
     """测试合法 JSON 对象的配置文件校验通过"""
     cfg_file = tmp_path / "ky_config.json"
-    cfg_file.write_text(json.dumps({"target_school": "目标院校", "math_mode": "none"}), encoding="utf-8")
+    cfg_file.write_text(json.dumps({"target_school": "中国人民大学", "math_mode": "none"}), encoding="utf-8")
 
     ok, detail = check_config(cfg_file)
     assert ok is True
@@ -363,14 +364,53 @@ def test_ky_gui_write_crash_log(tmp_path):
         assert "测试分类" in content
 
 
+@pytest.mark.skipif(sys.platform != "win32",
+                    reason="仅 Windows 验证原生 MessageBoxW（非 Windows 上 ctypes 无 windll）")
 def test_ky_gui_show_native_error_box_safe():
-    """测试 show_native_error_box 无论在 Windows 还是非 Windows 下均安全执行不崩溃"""
+    """测试 show_native_error_box 无论在 Windows 还是非 Windows 下均安全执行不崩溃
+
+    [P8 修复] 本用例原**漏了平台守卫**：``patch("ctypes.windll.user32.MessageBoxW")``
+    在 patch 生效时就要求 ``ctypes.windll`` 存在，Linux/macOS 上直接
+    ``AttributeError: module 'ctypes' has no attribute 'windll'``（实测），
+    函数体内那个 ``if sys.platform == "win32"`` 分支根本来不及救场。
+    同文件其余 Windows 专属用例（:81/:396/:411/:427）都带守卫，这里补齐。
+
+    "非 Windows 也安全"这条语义改由 ``tools/ky_gui.show_native_error_box`` 自身的
+    实现保证（它内部对平台做了分支），无需再用一个必崩的用例去覆盖。
+    """
     with patch("ctypes.windll.user32.MessageBoxW", return_value=1) as mock_msgbox:
         if sys.platform == "win32":
             ky_gui.show_native_error_box("测试标题", "测试内容")
             assert mock_msgbox.called
         else:
             ky_gui.show_native_error_box("测试标题", "测试内容")
+
+
+def test_windows_only_cases_have_platform_guard():
+    """阴性对照：所有只能在 Windows 上跑的用例都必须带 skipif 平台守卫。
+
+    [P8 回归护栏] 把上一条用例的 ``@pytest.mark.skipif(...)`` 注释掉，本用例必须变红。
+    修复前 ``test_ky_gui_show_native_error_box_safe`` 就是漏了这道守卫，
+    在 Linux/macOS 上 ``patch("ctypes.windll...")`` 直接 AttributeError。
+    """
+    windows_only = (
+        "test_vcruntime_check_missing_detected",
+        "test_ky_gui_show_native_error_box_safe",
+        "test_batch_gui_preflight_only",
+        "test_batch_gui_help",
+        "test_batch_qi_dong_gui_preflight_only",
+    )
+    for name in windows_only:
+        fn = globals()[name]
+        # 注意：不能用 pytestmark 的 args —— skipif 的 args 存的是**求值后**的
+        # 布尔条件（Windows 上是 False），拿不到 "sys.platform" 这个字面量。
+        # 故改为看源码：装饰器行或函数体内必须出现平台判断 + skip。
+        src = inspect.getsource(fn)
+        has_decorator = "skipif" in src and "win32" in src
+        has_inline_skip = "sys.platform" in src and "pytest.skip" in src
+        assert has_decorator or has_inline_skip, (
+            f"{name} 既无 skipif 装饰器、函数体内也没有平台 skip "
+            f"→ 非 Windows 上会 AttributeError")
 
 
 def test_ky_gui_global_excepthook(tmp_path):

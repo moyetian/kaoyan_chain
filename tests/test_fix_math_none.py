@@ -99,7 +99,7 @@ def test_init_menu_option5_means_custom(monkeypatch):
 def test_pro_placeholder_body_marks_pending_and_guides_to_official_site(ws):
     sm.apply_syllabus_selection(
         math_key="math2", eng_key="eng2", pro_type="custom",
-        pro_name="自命题科目1", workspace_root=ws, auto_write=True)
+        pro_name="610 法学基础", workspace_root=ws, auto_write=True)
 
     body = (ws / "04-专业课" / "考试大纲.md").read_text(encoding="utf-8")
     assert sm.PRO_PLACEHOLDER_MARKER in body
@@ -112,7 +112,7 @@ def test_pro_placeholder_body_marks_pending_and_guides_to_official_site(ws):
 def test_pro2_placeholder_also_marked(ws):
     sm.apply_syllabus_selection(
         math_key="math2", eng_key="eng2", pro_type="custom",
-        pro_name="自命题科目1", pro2_name="823 中国化马克思主义",
+        pro_name="610 法学基础", pro2_name="810 法学综合",
         workspace_root=ws, auto_write=True)
 
     body = (ws / "04-专业课" / "考试大纲_专业课二.md").read_text(encoding="utf-8")
@@ -148,7 +148,7 @@ def test_p12_fullwidth_placeholder_is_detected(ws):
     """
     sm.apply_syllabus_selection(
         math_key="math2", eng_key="eng2", pro_type="custom",
-        pro_name="自命题科目1", workspace_root=ws, auto_write=True)
+        pro_name="610 法学基础", workspace_root=ws, auto_write=True)
     body = (ws / "04-专业课" / "考试大纲.md").read_text(encoding="utf-8")
     assert sm.PRO_PLACEHOLDER_MARKER in body
     assert _km()._is_placeholder_syllabus(body) is True
@@ -159,7 +159,7 @@ def test_marker_wins_over_line_count_heuristic():
     显式 marker 仍必须直接判为占位，不被 _PLACEHOLDER_MIN_REAL_LINES 否决。"""
     km = _km()
     txt = (
-        "# 04-专业课 · 【618】官方考试大纲与核心考点清单\n\n"
+        "# 04-专业课 · 【610】官方考试大纲与核心考点清单\n\n"
         "> ⚠️ **【待自填·占位大纲】** 本文件为系统生成的占位模板。\n"
         "> 请前往目标院校研究生院官网下载最新自命题考试大纲。\n"
         "> 在替换之前，AI 私教不得据本文件宣称已按考纲出题。\n"
@@ -207,7 +207,7 @@ def test_knowledge_map_refuses_placeholder_graph(monkeypatch, tmp_path):
     pro_dir = tmp_path / "04-专业课"
     pro_dir.mkdir(parents=True)
     (pro_dir / "考试大纲.md").write_text(
-        "# 04-专业课 · 【618】官方考试大纲与核心考点清单\n\n"
+        "# 04-专业课 · 【610】官方考试大纲与核心考点清单\n\n"
         "> ⚠️ **【待自填·占位大纲】** 本文件为系统生成的占位模板。\n"
         "> 请前往目标院校研究生院官网下载最新大纲。\n"
         "> 说明行一：足够长且不含任何括号标记的一行说明。\n"

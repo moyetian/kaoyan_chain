@@ -38,7 +38,19 @@ ENV/
 .env.*
 config.json
 ky_config.json
+# [P1-4 修复] load_config() 读坏 ky_config.json 时会生成含明文 api_key 的备份，
+# 此前未被忽略，一旦 `git add -A` 即随仓库泄露。
+ky_config.corrupted.bak
+*.corrupted.bak
 ky_history.json
+
+# 配置守卫快照目录（tools/config_guard.py）：内含含真实 api_key 的完整配置副本。
+# [2026-09-21 加固] 该目录已**移出仓库根** —— 新写入去 config_guard.default_backup_dir()
+# （Windows: %LOCALAPPDATA%/kaoyan-study-chain/config_backup，可用环境变量
+# KY_CONFIG_BACKUP_DIR 覆盖），从源头不进任何文件系统遍历范围。
+# 本行保留作为**纵深防御**：旧的历史快照目录（读取仍兼容）或用户把
+# KY_CONFIG_BACKUP_DIR 指回仓库内时，git 层仍不会入库。
+.config_backup/
 
 # 内部开发审查与优化方案报告 (不推送到远端)
 考研学习链_代码审查与改进报告*.md
@@ -224,3 +236,8 @@ data/universities/_sources/
 data/universities/exam_subjects.json
 # 抓取过程的临时落盘目录
 .tmp_unidata/
+
+# ── 检索知识库：运行时产物，不入库（2026-09-21）──
+# data/knowledge/embeddings.db 由 KnowledgeStore 首次使用/切片入库时自动创建
+# （sqlite 单文件，可由「切片入库」重建），属本机状态而非源码。
+data/knowledge/

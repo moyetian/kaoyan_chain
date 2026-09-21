@@ -7,12 +7,18 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import os
+
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
     from ky_io import atomic_write_text  # noqa: E402
 except ImportError:  # pragma: no cover
     from tools.ky_io import atomic_write_text  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent
+#: 工作区根（默认仓库根），允许 ``KY_WORKSPACE_ROOT`` 覆盖 —— 理由同
+#: ``tools/study_planner.py`` 的同名变量：独立套件在假工作区里运行、本模块却从
+#: 真实仓库导入，不覆盖就会把大纲写进真实考生工作区（P5 测试污染）。
+ROOT = Path(os.environ.get("KY_WORKSPACE_ROOT")
+            or Path(__file__).resolve().parent.parent)
 
 # ─────────────────────────────────────────────────────────────
 # 1. 数学大纲预设
@@ -698,22 +704,13 @@ def apply_syllabus_selection(
 
             if not has_real_content:
                 _pro_example = _pro_placeholder_example(pro_name)
-                if any(kw in str(pro_name) for kw in ["信号", "811", "通信", "控制"]):
-                    atomic_write_text(pro_outline,
-                        f"# 04-专业课 · 【{pro_real_name}】官方考试大纲与核心考点清单\n\n"
-                        f"> 本大纲为【{pro_real_name}】专业课专属复习指南。AI 私教将据此划定出题边界，不超纲，抓采分点！\n\n"
-                        "## 核心考查章节与重点要求：\n"
-                        "- 第一章：信号与系统的基本概念（连续与离散、线性时不变系统性质） (要求：掌握)\n"
-                        "- 第二章：连续时间系统的时域分析（卷积积分、微分方程解法、零输入与零状态响应） (要求：掌握)\n"
-                        "- 第三章：傅里叶变换与频域分析（连续时间傅里叶级数与变换、频域特性、抽样定理） (要求：掌握)\n"
-                        "- 第四章：连续时间系统的复频域分析（拉普拉斯变换、系统函数、极零点与因果稳定性） (要求：掌握)\n"
-                        "- 第五章：离散时间系统的时域与频域分析（离散卷积、DTFT、Z变换与系统函数） (要求：理解)\n"
-                        "- 第六章：系统的状态变量分析（状态方程与输出方程建立、状态转移矩阵） (要求：了解)\n",
-                    )
-                else:
-                    # [P12 修复] 明确标注「待自填」并给出官网指引，避免用户误把占位当成品
-                    atomic_write_text(pro_outline,
-                        _pro_placeholder_body(pro_real_name, _pro_example))
+                # [B7 修复·成品假考纲] 旧 811 分支写入 6 章硬编码"专属复习指南"
+                # 且无【待自填】标记：把模板伪装成官方考纲，下次还会被
+                # has_real_content 误判为真实内容而保留。一律走占位正文
+                # （学科贴合示例仍由 _pro_placeholder_example 按 信号/811 区分）。
+                # [P12 修复] 明确标注「待自填」并给出官网指引，避免用户误把占位当成品
+                atomic_write_text(pro_outline,
+                    _pro_placeholder_body(pro_real_name, _pro_example))
         updated_files.append(pro_outline)
 
         # 若存在专业课二 (Mode B 双专业课)，生成专业课二大纲文件
@@ -743,7 +740,5 @@ def apply_syllabus_selection(
         txt = re.sub(r"- \*\*报考专业\*\*：.*", f"- **报考专业**：`{major}`", txt)
         atomic_write_text(agents_root, txt)
         updated_files.append(agents_root)
-
-    return math_info, eng_info, updated_files
 
     return math_info, eng_info, updated_files

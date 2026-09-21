@@ -87,17 +87,20 @@ def _cmd_help(args: List[str]) -> None:
   subject                                     选择考研科目(数一/二/三/396、英一/二)并加载考纲
   config                                      配置大模型 API Key、视觉模型与机器人 Webhook
   serve [port]                                启动 Webhook 网关与实时 Web 伴侣
+                                              (选项: --host=IP --gateway-token= --webhook-token=)
   clawbot                                     启动微信个人号 ClawBot 扫码连接器
   bridge                                      查看各平台双向讲题网关接入指南
 """)
 
 
-def _cmd_commands(args: List[str]) -> None:
+def _cmd_commands(args: List[str]) -> int:
     if args[1:]:
         cmd = get_command(args[1])
         print_command_help(cmd.name if cmd else args[1])
-        return
+        # [低危修复] 未知子命令此前静默返回 0，脚本无法据退出码判断失败。
+        return 0 if cmd else 1
     print_commands_index()
+    return 0
 
 
 def _cmd_config(args: List[str]) -> None:

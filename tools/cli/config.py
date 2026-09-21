@@ -44,6 +44,37 @@ except ImportError:
         send_to_dingtalk, send_to_feishu, send_to_wechat, send_to_qq, broadcast_briefing
     )
 
+#: 微信 ClawBot 连接器的 npm 包（版本锁定）。
+#: [P2-7 修复] 此前用 `@latest` 无版本锁定、无完整性校验，上游一旦投毒即 RCE。
+#: 版本取自 2026-09-21 `npm view @tencent-weixin/openclaw-weixin-cli dist-tags` → latest=2.1.4。
+WECHAT_CLAWBOT_CLI_PKG = "@tencent-weixin/openclaw-weixin-cli@2.1.4"
+
+#: :func:`_mask_secret` 的下限：短于等于该长度的凭证一律只报「已设置」，不做部分回显。
+#: 与 :func:`show_config` 中 ``api_key`` 的 ``len <= 12`` 判定同口径。
+_MASK_MIN_LEN = 12
+
+
+def _mask_secret(value: Any, keep_head: int = 6, keep_tail: int = 4) -> str:
+    """把凭证/Webhook 统一打码，避免在终端提示或配置清单里明文回显。
+
+    [P1-5 修复] 此前 input() 提示语与 show_config 直接插值现存 webhook URL
+    （内含 access_token）与加签 Secret，短 API Key 还会整体原样打印。
+    统一口径：保留前 ``keep_head`` 后 ``keep_tail``，中间用 ``***``；
+    长度不足以打码时整体显示「已设置」，绝不回显原文。
+
+    [修复·短密钥泄漏] 原阈值是 ``len <= keep_head + keep_tail``（即 10），
+    于是 **11~12 字符**的密钥会走部分回显分支，暴露出 10/11 个字符 —— 等同于
+    明文。现把下限提到 ``_MASK_MIN_LEN``（12，与 :func:`show_config` 里
+    ``api_key`` 的「长度 ≤12 只报已设置」口径一致），短密钥一律只报「已设置」。
+    """
+    s = str(value or "")
+    if not s:
+        return "未设置"
+    if len(s) <= max(keep_head + keep_tail, _MASK_MIN_LEN):
+        return "已设置"
+    return f"{s[:keep_head]}***{s[-keep_tail:]}"
+
+
 def open_provider_console_and_get_key(provider_name: str, console_url: str, current_key: str = "") -> str:
     """自动打开服务商官方认证/API Key 管理页面，并支持一键套用剪贴板密钥"""
     print(colorize(f"\n🌐 正在为您自动打开 {provider_name} 官方控制台: {console_url}", C.CYAN))
@@ -66,7 +97,7 @@ def open_provider_console_and_get_key(provider_name: str, console_url: str, curr
             return clip_text
         return choice
 
-    curr_display = (current_key[:6] + "..." + current_key[-4:]) if len(current_key) > 10 else (current_key or "未设置")
+    curr_display = _mask_secret(current_key)
     user_key = input(f"请输入 API Key (直接回车保持现有: {curr_display}): ").strip()
     return user_key if user_key else current_key
 
@@ -120,7 +151,7 @@ def configure_llm(cfg: Dict[str, Any]) -> None:
         if new_url: cfg["base_url"] = new_url
         new_model = input(f"Model 模型代号 (直接回车保持现有: {cfg.get('model', '')}): ").strip()
         if new_model: cfg["model"] = new_model
-        curr_key_display = cfg['api_key'][:6] + "..." if len(cfg.get('api_key','')) > 8 else (cfg.get('api_key','') or "未设置")
+        curr_key_display = _mask_secret(cfg.get('api_key', ''))
         new_key = input(f"API Key (输入新密钥或直接回车保持现有: {curr_key_display}): ").strip()
         if new_key: cfg["api_key"] = new_key
 
@@ -136,7 +167,8 @@ def run_wechat_clawbot_install() -> None:
 ╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
 """)
     print(colorize("🔍 正在核验 Node.js 与 NPX 环境...", C.DIM))
-    if not shutil.which("npx"):
+    npx_path = shutil.which("npx")
+    if not npx_path:
         print(colorize("❌ 未检测到 npx 命令。请先安装 Node.js (https://nodejs.org) 或在终端运行: winget install OpenJS.NodeJS\n", C.RED))
         return
 
@@ -148,7 +180,7 @@ def run_wechat_clawbot_install() -> None:
 • 扫码成功后，微信接收到的考研提问会自动转发给本地私教大模型并推回微信！
 • 本地 OpenAI 兼容接口地址: {C.GREEN}http://127.0.0.1:8088/v1{C.RESET} (已自动挂载考研私教 Prompt 与技能)
 
-{C.CYAN}[执行命令]: npx -y @tencent-weixin/openclaw-weixin-cli@latest install{C.RESET}
+{C.CYAN}[执行命令]: npx -y {WECHAT_CLAWBOT_CLI_PKG} install{C.RESET}
 """)
     try:
         act = input("是否立即启动腾讯官方扫码安装程序? (y/n) [y]: ").strip().lower()
@@ -158,7 +190,17 @@ def run_wechat_clawbot_install() -> None:
     if act != "n":
         print(colorize("\n🚀 正在拉取腾讯官方微信连接器并启动二维码，请准备好手机微信扫一扫...\n", C.CYAN))
         try:
-            subprocess.run("npx -y @tencent-weixin/openclaw-weixin-cli@latest install", shell=True)
+            # [P2-7 修复] 参数列表形式（去 shell=True）+ 版本锁定，杜绝命令拼接与 @latest 漂移。
+            # [修复·Windows npx] 直接传字面量 "npx" 时 CreateProcess 只自动补 `.EXE`，
+            # 而 nvm-for-windows 装出来的是 `npx.CMD`，于是必抛
+            # FileNotFoundError [WinError 2]，`ky clawbot` 完全不可用。
+            # 用 shutil.which 解析出真实可执行文件路径再传入（仍保持 shell=False，
+            # 不引入命令注入面）；解析不到时给出可操作的错误提示。
+            subprocess.run([npx_path, "-y", WECHAT_CLAWBOT_CLI_PKG, "install"])
+        except FileNotFoundError:
+            print(colorize(
+                f"❌ 无法启动 npx（已解析路径: {npx_path}）。请确认 Node.js 安装完整，"
+                f"或改用完整路径重试。\n", C.RED))
         except Exception as e:
             print(colorize(f"执行异常: {e}", C.RED))
 
@@ -171,6 +213,7 @@ def configure_webhooks(cfg: Dict[str, Any]) -> None:
         dt_tag = colorize("已配置", C.GREEN) if hooks.get("dingtalk") else colorize("未配置", C.DIM)
         fs_tag = colorize("已配置", C.GREEN) if hooks.get("feishu") else colorize("未配置", C.DIM)
         qq_tag = colorize("已配置", C.GREEN) if hooks.get("qq_onebot") else colorize("未配置", C.DIM)
+        wt_tag = colorize("已设置", C.GREEN) if cfg.get("webhook_token") else colorize("未设置", C.DIM)
 
         print(colorize("\n--- 📱 2. 聊天机器人 / 消息推送与双向讲题配置 ---", C.CYAN))
         print("请选择您想配置或连接的机器人平台：")
@@ -181,9 +224,10 @@ def configure_webhooks(cfg: Dict[str, Any]) -> None:
         print(f"  [5] 🐧 QQ 机器人 (OneBot 11 / NapCat)      [{qq_tag}]")
         print(f"  [6] 📢 发送一条测试消息验证所有已配机器人")
         print(f"  [7] 🗑️ 清空某个平台的配置")
+        print(f"  [8] 🔑 群机器人回调密钥 (/webhook 专用)    [{wt_tag}]")
         print(f"  [0] 💾 保存并返回上级菜单")
 
-        choice = input("\n请选择平台编号 (0~7) [默认 0]: ").strip() or "0"
+        choice = input("\n请选择平台编号 (0~8) [默认 0]: ").strip() or "0"
 
         if choice == "0":
             save_config(cfg)
@@ -194,7 +238,7 @@ def configure_webhooks(cfg: Dict[str, Any]) -> None:
         elif choice == "2":
             print(colorize("\n[配置 企业微信群机器人 Webhook]", C.BOLD))
             curr = hooks.get("wechat", "")
-            val = input(f"请输入 Webhook URL (直接回车保持现有: {curr or '空'}): ").strip()
+            val = input(f"请输入 Webhook URL (直接回车保持现有: {_mask_secret(curr)}): ").strip()
             if val:
                 hooks["wechat"] = val
             save_config(cfg)
@@ -206,10 +250,10 @@ def configure_webhooks(cfg: Dict[str, Any]) -> None:
         elif choice == "3":
             print(colorize("\n[配置 钉钉群自定义机器人]", C.BOLD))
             curr = hooks.get("dingtalk", "")
-            val = input(f"请输入 Webhook URL (直接回车保持现有: {curr or '空'}): ").strip()
+            val = input(f"请输入 Webhook URL (直接回车保持现有: {_mask_secret(curr)}): ").strip()
             if val:
                 hooks["dingtalk"] = val
-            sec = input(f"请输入加签 Secret (若机器人未勾选加签直接回车，当前: {hooks.get('dingtalk_secret','') or '无'}): ").strip()
+            sec = input(f"请输入加签 Secret (若机器人未勾选加签直接回车，当前: {_mask_secret(hooks.get('dingtalk_secret',''))}): ").strip()
             if sec != "":
                 hooks["dingtalk_secret"] = sec
             save_config(cfg)
@@ -221,7 +265,7 @@ def configure_webhooks(cfg: Dict[str, Any]) -> None:
         elif choice == "4":
             print(colorize("\n[配置 飞书群自定义机器人]", C.BOLD))
             curr = hooks.get("feishu", "")
-            val = input(f"请输入 Webhook URL (直接回车保持现有: {curr or '空'}): ").strip()
+            val = input(f"请输入 Webhook URL (直接回车保持现有: {_mask_secret(curr)}): ").strip()
             if val:
                 hooks["feishu"] = val
             save_config(cfg)
@@ -233,7 +277,7 @@ def configure_webhooks(cfg: Dict[str, Any]) -> None:
         elif choice == "5":
             print(colorize("\n[配置 QQ 机器人 (OneBot 11 / NapCat / Go-CQHTTP)]", C.BOLD))
             curr = hooks.get("qq_onebot", "")
-            val = input(f"请输入 OneBot HTTP 接口 (直接回车保持现有: {curr or '空'}): ").strip()
+            val = input(f"请输入 OneBot HTTP 接口 (直接回车保持现有: {_mask_secret(curr)}): ").strip()
             if val:
                 hooks["qq_onebot"] = val
             qid = input(f"请输入目标群号或好友 QQ 号 (当前: {hooks.get('qq_target_id','') or '无'}): ").strip()
@@ -259,6 +303,26 @@ def configure_webhooks(cfg: Dict[str, Any]) -> None:
                 for k in list(hooks.keys()): hooks[k] = ""
             save_config(cfg)
             print(colorize("[√] 已清空所选平台的配置。", C.YELLOW))
+        elif choice == "8":
+            # [修复·webhook 密钥接入配置] 此前 /webhook 专用密钥只能靠环境变量
+            # KY_WEBHOOK_TOKEN，重启终端即失效。现落盘到 ky_config.json 顶层
+            # ``webhook_token``（与 ``gateway_token`` 同一约定），环境变量仍可临时覆盖。
+            print(colorize("\n[配置 群机器人回调密钥 /webhook 专用]", C.BOLD))
+            print("  • 该密钥只作用于 /webhook 回调端点（钉钉/飞书/QQ OneBot），与网关 token 相互独立；")
+            print("  • 设置后请把回调地址写成 http://<地址>/webhook?token=<该密钥>；")
+            print("  • 留空跳过（保持现有）；未设置时 /webhook 仅接受本机回环回调。")
+            new_wt = input(
+                f"请输入回调密钥 (直接回车保持现有: {_mask_secret(cfg.get('webhook_token'))}；输入 - 清空): "
+            ).strip()
+            if new_wt == "-":
+                cfg["webhook_token"] = ""
+                print(colorize("[√] 已清空回调密钥。", C.YELLOW))
+            elif new_wt:
+                cfg["webhook_token"] = new_wt
+                print(colorize("[√] 回调密钥已更新（仅显示掩码）。", C.GREEN))
+            else:
+                print(colorize("[i] 未修改回调密钥。", C.DIM))
+            save_config(cfg)
 
 def show_config(cfg: Dict[str, Any]) -> None:
     """显示当前完整配置清单"""
@@ -267,16 +331,26 @@ def show_config(cfg: Dict[str, Any]) -> None:
     print(f"  - 接口地址:   {cfg.get('base_url')}")
     print(f"  - 模型代号:   {cfg.get('model')}")
     curr_key = cfg.get('api_key', '')
-    masked_key = curr_key[:6] + "..." + curr_key[-4:] if len(curr_key) > 12 else (curr_key or "未设置")
+    # [P1-5 修复] 长度 ≤12 的 key 不再原样输出（此前 `len<=12` 分支会整体回显），
+    # 只报告长度；更长的才做 前6后4 打码。
+    if not curr_key:
+        masked_key = "未设置"
+    elif len(curr_key) <= 12:
+        masked_key = f"已设置(长度{len(curr_key)})"
+    else:
+        masked_key = _mask_secret(curr_key)
     print(f"  - API 密钥:   {masked_key}")
     print(f"  - 当前学科:   {SUBJECT_DIRS.get(cfg.get('active_subject','math'), ('',''))[1]}")
 
     hooks = cfg.get("webhooks", {})
     print(colorize("\n--- 机器人 Webhook 配置状态 ---", C.CYAN))
-    print(f"  - 微信 Webhook: {hooks.get('wechat') or '未设置'}")
-    print(f"  - 钉钉 Webhook: {hooks.get('dingtalk') or '未设置'} (加签: {'已启用' if hooks.get('dingtalk_secret') else '未启用'})")
-    print(f"  - 飞书 Webhook: {hooks.get('feishu') or '未设置'}")
-    print(f"  - QQ OneBot:    {hooks.get('qq_onebot') or '未设置'} (目标: {hooks.get('qq_target_id') or '无'})")
+    print(f"  - 微信 Webhook: {_mask_secret(hooks.get('wechat'))}")
+    print(f"  - 钉钉 Webhook: {_mask_secret(hooks.get('dingtalk'))} (加签: {'已启用' if hooks.get('dingtalk_secret') else '未启用'})")
+    print(f"  - 飞书 Webhook: {_mask_secret(hooks.get('feishu'))}")
+    print(f"  - QQ OneBot:    {_mask_secret(hooks.get('qq_onebot'))} (目标: {hooks.get('qq_target_id') or '无'})")
+    # [修复·webhook 密钥接入配置] 回调密钥属凭证，沿用 _mask_secret 口径只回显掩码，
+    # 绝不打印明文（与上方各 Webhook / API Key 一致）。
+    print(f"  - 回调密钥:     {_mask_secret(cfg.get('webhook_token'))} (/webhook 专用，环境变量 KY_WEBHOOK_TOKEN 可临时覆盖)")
 
     vis_m = cfg.get("vision_model")
     print(colorize("\n--- 视觉大模型 (Vision Model) 配置状态 ---", C.CYAN))

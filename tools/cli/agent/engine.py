@@ -16,6 +16,11 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+try:  # [B1 同类] LLM 请求经安全通道发送（双导入路径兼容）
+    from net_guard import safe_urlopen
+except ImportError:  # pragma: no cover
+    from tools.net_guard import safe_urlopen  # type: ignore
+
 try:
     from tools.cli.shared import ROOT, SUBJECT_DIRS, load_config, read_text_safe
 except ImportError:
@@ -294,7 +299,8 @@ def stream_chat(messages: List[Dict[str, Any]], config: Dict[str, Any]) -> str:
         full_reply = []
         first_token = True
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            # [B1 同类·跳转泄漏 Bearer] 安全通道：SSRF 逐跳复核 + 跨域剥离鉴权头。
+            with safe_urlopen(req, timeout=120) as resp:
                 for raw_line in resp:
                     line = raw_line.decode("utf-8", errors="ignore").strip()
                     if not line or not line.startswith("data:"):
@@ -417,7 +423,8 @@ def query_llm_reply(user_msg: str, cfg: Optional[Dict[str, Any]] = None) -> str:
             _inner_timeout = float(os.environ.get("KY_LLM_TIMEOUT", "55"))
         except (TypeError, ValueError):
             _inner_timeout = 55.0
-        with urllib.request.urlopen(req, timeout=_inner_timeout) as resp:
+        # [B1 同类] 同上：安全通道发送（异常由下方通用 except 收口为可读文本）。
+        with safe_urlopen(req, timeout=_inner_timeout) as resp:
             res_json = json.loads(resp.read().decode("utf-8"))
             return res_json["choices"][0]["message"]["content"]
     except urllib.error.HTTPError as e:

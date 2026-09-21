@@ -33,6 +33,11 @@ import urllib.error
 import urllib.request
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
+
+try:  # [B1 同类] LLM 请求经安全通道发送（双导入路径兼容）
+    from net_guard import safe_urlopen
+except ImportError:  # pragma: no cover
+    from tools.net_guard import safe_urlopen  # type: ignore
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -260,7 +265,8 @@ class OpenAICompatClient:
         req = urllib.request.Request(
             url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            # [B1 同类·跳转泄漏 Bearer] 安全通道发送。
+            with safe_urlopen(req, timeout=self.timeout) as resp:
                 raw_bytes = resp.read()
                 headers_obj = getattr(resp, "headers", None)
                 enc = headers_obj.get("Content-Encoding", "").lower() if headers_obj and hasattr(headers_obj, "get") else ""

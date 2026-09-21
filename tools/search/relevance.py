@@ -38,6 +38,8 @@ _STOPWORDS = frozenset({
 _STRONG_RE = re.compile(r"\b\d{4,}\b")
 #: 常规 token：连续中文 2 字以上，或连续英文/数字 3 字以上
 _TOKEN_RE = re.compile(r"[\u4e00-\u9fff]{2,}|[A-Za-z0-9]{3,}")
+#: 单个 CJK 汉字（用于降级分支判定「该 token 是否中文」）
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
 
 def significant_tokens(query: str) -> List[str]:
@@ -99,14 +101,23 @@ def is_relevant(title: str, snippet: str, url: str,
         return True
 
     # 使用同样的分词和规范化处理标题/摘要
+    # ``haystack_text`` 只在降级分支（segment 不可用）里赋值，用于中文子串判定。
+    haystack_text = None
     try:
         from .segment import segment_and_normalize
         haystack_tokens = segment_and_normalize(f"{title or ''} {snippet or ''} {url or ''}")
         haystack_set = set(haystack_tokens)
     except ImportError:
-        # 降级：使用简单的字符串包含检查
-        haystack = f"{title or ''} {snippet or ''} {url or ''}".lower()
-        haystack_set = set(haystack.split())
+        # [修复·降级分支中文恒不命中] 原降级分支只做 ``set(haystack.split())``
+        # 的**精确集合**匹配：中文没有空格，整段中文是「一个」token，而查询侧
+        # 是另一个切分结果，于是任何中文查询都恒不命中 → 所有 provider 都被本层
+        # 判成「反爬失败」→ 检索全空。
+        # 这里补一条**中文子串**判定：CJK 词之间没有空格，整词出现在结果里就是
+        # 正确的相关性信号。关键约束：子串判定**只对含 CJK 的 token 生效** ——
+        # 若对 ASCII 也做子串，``'ab' in 'abc'`` 会重新放行，那正是 P2-8 删掉的
+        # 「repr 子串误命中」的等价物。故 ASCII 仍只走精确集合成员判断。
+        haystack_text = f"{title or ''} {snippet or ''} {url or ''}".lower()
+        haystack_set = set(haystack_text.split())
 
     for tok in tokens:
         if token_kind(tok) == "year":
@@ -114,9 +125,15 @@ def is_relevant(title: str, snippet: str, url: str,
         # 检查 token 是否在文档的 token 集合中
         if tok in haystack_set:
             return True
-        # 子串匹配兜底（处理词形变化）
-        if tok in str(haystack_set):
+        # 降级分支专用：中文 token 按子串包含判定（不误报 ASCII 子串）
+        if haystack_text is not None and _CJK_RE.search(tok) and tok in haystack_text:
             return True
+    # [P2-8 修复·集合 repr 子串匹配] 这里原有一行 `if tok in str(haystack_set)`，
+    # 是对**集合的 repr 字符串**做子串匹配 —— 语义完全错误：
+    #   `'ab' in "{'abc', '计算机'}"` → True
+    # 于是任何「查询词是某结果词的子串」都会被判为相关，相关性守门形同虚设
+    # （反爬返回的无关页只要含一个包含该子串的词就放行）。
+    # 集合成员判断上一行已经做了，这里直接删除，不做任何子串兜底。
     return False
 
 

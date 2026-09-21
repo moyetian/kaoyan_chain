@@ -169,16 +169,13 @@ class VectorEncoder:
             except Exception as e:
                 logger.error(f"tokenizer 编码失败: {e}")
 
-        # 降级：简化版（仅用于架构测试）
-        logger.warning("使用简化版分词，结果仅供测试")
-        batch_size = len(texts)
-        input_ids = np.zeros((batch_size, self.max_length), dtype=np.int64)
-        attention_mask = np.ones((batch_size, self.max_length), dtype=np.int64)
-
-        return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask
-        }
+        # [B4 修复·假向量] 旧降级分支返回全零 input_ids + 全一 mask，
+        # 所有文本得到几乎相同的 embedding，检索排序无意义但上层无从察觉。
+        # 现显式抛错：上游 encode_text()/hybrid._vector_search() 均会捕获并
+        # 降级到纯词法检索（ honest 的"无向量"，而非"假向量"）。
+        raise RuntimeError(
+            "无可用 tokenizer（transformers 与 tokenizer.json 均缺失），"
+            "已拒绝生成占位向量；上游将自动降级为纯词法检索")
 
     def encode(
         self,

@@ -32,6 +32,18 @@ try:  # pragma: no cover - 取决于安装
 except Exception:  # pragma: no cover
     _HAS_SVG = False
 
+# [P9 修复] QLabel 只服务于 ``icon_label() -> "QLabel"`` 的返回注解。
+# 此前它**只在函数体内局部导入**，模块作用域里没有这个名字 —— 注解虽是字符串
+# （文件有 ``from __future__ import annotations``）运行时不崩，但
+# ``typing.get_type_hints(icon_label)`` 会抛 ``NameError``，静态检查（F821）也会报
+# 未定义名，且这是全仓唯一一处。这里与 QPixmap 的既有处理方式保持一致，
+# 在模块级做一次**受守卫**的导入；QtWidgets 缺失时置 None（注解退化为 None，
+# 仍不报错），函数体内的局部导入保持不变作为可靠路径。
+try:  # pragma: no cover - 取决于安装
+    from PySide6.QtWidgets import QLabel
+except Exception:  # pragma: no cover
+    QLabel = None  # type: ignore[assignment,misc]
+
 #: 描边公共属性（放在 <svg> 根上，子元素继承）
 _STROKE = 'fill="none" stroke="{COLOR}" stroke-width="2" ' \
           'stroke-linecap="round" stroke-linejoin="round"'

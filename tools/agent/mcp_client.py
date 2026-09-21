@@ -11,6 +11,7 @@ import os
 import json
 import queue
 import threading
+import time
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -26,9 +27,67 @@ class MCPProcessClient:
         self.process: Optional[subprocess.Popen] = None
         self.msg_id = 0
         self.is_initialized = False
+        # [P2 修复] 常驻 reader 线程 + 单一接收队列。
+        # 旧实现每次请求临时起一个 reader 线程：超时后该线程仍阻塞在 readline 上，
+        # 之后读到的那行被塞进一个已无人消费的 queue 而丢失，下一次请求便读到
+        # 「上一条请求的响应」—— 实测确认 id=1 的响应被当成 id=2 的返回值返回。
+        self._rx_queue: "queue.Queue" = queue.Queue()
+        self._reader_thread: Optional[threading.Thread] = None
+        self._reader_stop = threading.Event()
+
+    def _ensure_reader(self) -> None:
+        """惰性启动常驻读取线程（每个客户端最多一个）。"""
+        if self._reader_thread is not None and self._reader_thread.is_alive():
+            return
+        if not self.process or not self.process.stdout:
+            return
+        self._reader_stop.clear()
+
+        def _loop():
+            while not self._reader_stop.is_set():
+                try:
+                    line = self.process.stdout.readline()
+                except Exception as err:      # pragma: no cover - 进程异常退出
+                    self._rx_queue.put(err)
+                    return
+                if not line:                  # EOF：子进程已关闭 stdout
+                    return
+                self._rx_queue.put(line)
+
+        self._reader_thread = threading.Thread(target=_loop, daemon=True)
+        self._reader_thread.start()
+
+    def _read_response(self, timeout: float) -> Optional[Dict[str, Any]]:
+        """读取并**校验 id** 的 JSON-RPC 响应；丢弃通知与过期响应，直到匹配或超时。"""
+        deadline = time.monotonic() + max(0.0, timeout)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            try:
+                line = self._rx_queue.get(timeout=remaining)
+            except queue.Empty:
+                return None
+            if isinstance(line, Exception) or not line:
+                continue
+            try:
+                resp = json.loads(str(line).strip())
+            except Exception:
+                continue
+            if not isinstance(resp, dict):
+                continue
+            # 通知（无 id）直接跳过；id 不匹配的是上一条请求的迟到响应，同样丢弃
+            if "id" not in resp:
+                continue
+            if resp.get("id") != self.msg_id:
+                continue
+            return resp
 
     def start(self) -> bool:
         """启动 MCP Server 子进程并执行 initialize 握手"""
+        # 重启前先让旧的 reader 线程退场，避免它继续读旧进程的 stdout
+        self._reader_stop.set()
+        self._reader_thread = None
         cmd_list = [self.command] + self.args
         try:
             merged_env = os.environ.copy()
@@ -89,7 +148,8 @@ class MCPProcessClient:
         return "Error: MCP 工具无响应"
 
     def stop(self):
-        """停止子进程"""
+        """停止子进程并收敛常驻 reader 线程。"""
+        self._reader_stop.set()
         if self.process:
             try:
                 self.process.terminate()
@@ -101,6 +161,13 @@ class MCPProcessClient:
                     pass
             self.process = None
             self.is_initialized = False
+        # 丢弃残留行，避免下一个会话读到上一个进程的响应
+        while True:
+            try:
+                self._rx_queue.get_nowait()
+            except queue.Empty:
+                break
+        self._reader_thread = None
 
     def _send_request(self, method: str, params: Dict[str, Any], timeout: int = 15) -> Optional[Dict[str, Any]]:
         if not self.process or not self.process.stdin or not self.process.stdout:
@@ -114,29 +181,12 @@ class MCPProcessClient:
         }
         msg_str = json.dumps(payload, ensure_ascii=False) + "\n"
         try:
+            self._ensure_reader()
             self.process.stdin.write(msg_str)
             self.process.stdin.flush()
-            
-            # 超时保护读取一行 JSON-RPC 响应
-            resp_q: queue.Queue = queue.Queue()
-
-            def _reader():
-                try:
-                    line = self.process.stdout.readline()
-                    resp_q.put(line)
-                except Exception as err:
-                    resp_q.put(err)
-
-            t = threading.Thread(target=_reader, daemon=True)
-            t.start()
-            try:
-                resp_line = resp_q.get(timeout=timeout)
-            except queue.Empty:
-                return None
-
-            if isinstance(resp_line, Exception) or not resp_line:
-                return None
-            return json.loads(resp_line.strip())
+            # 超时保护 + **id 校验**：只有 id 与本次请求一致的响应才算数，
+            # 迟到的旧响应/通知一律丢弃（否则 tools/list 与 tools/call 会串位）。
+            return self._read_response(timeout)
         except Exception:
             return None
 

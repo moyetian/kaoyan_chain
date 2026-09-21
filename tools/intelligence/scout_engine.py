@@ -154,7 +154,20 @@ class KaoYanIntelligenceEngine:
 
         saved_path = None
         if save_report:
-            saved_path = self._save_report(school_name, major_query, markdown_content)
+            # [B6] 只读模式下拒绝落盘但保留报告文本（与 comparator 同口径）。
+            try:
+                saved_path = self._save_report(school_name, major_query, markdown_content)
+            except Exception as _save_exc:
+                try:
+                    from ky_io import PermissionDeniedError
+                except ImportError:  # pragma: no cover
+                    from tools.ky_io import PermissionDeniedError
+                if isinstance(_save_exc, PermissionDeniedError):
+                    markdown_content += (
+                        "\n\n> 🔒 当前为严格只读模式，研报未落盘，"
+                        "仅展示本次侦察结果。\n")
+                else:
+                    raise
 
         return {
             "school": school_name,
@@ -194,7 +207,9 @@ class KaoYanIntelligenceEngine:
             except ImportError:  # pragma: no cover
                 from tools.search import SearchQuery, SearchService  # type: ignore
 
-            service = SearchService()
+            # 必须走 default()：只有它会装配 Deduplicator / Ranker / SearchCache，
+            # 直连构造会让去重静默失效（发现路径会把同一官方页的多种跳转 URL 重复收下）。
+            service = SearchService.default()
             for domain in domains[:2]:
                 for query in self.discovery.build_targeted_queries(
                         school_name=school_name, domain=domain,
@@ -402,8 +417,14 @@ class KaoYanIntelligenceEngine:
             if backup_syllabus_file:
                 backup_syllabus_file(filepath)
 
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(content)
+        # [B6 修复·safe 绕过] 原裸 open(w) 不经 guard_write，
+        # --permission=safe 下仍落盘。atomic_write_text 自带守卫（只读模式抛错，
+        # 由上游 IntelTaskWorker 转为可读文本，不丢异常语义）。
+        try:
+            from ky_io import atomic_write_text
+        except ImportError:  # pragma: no cover
+            from tools.ky_io import atomic_write_text
+        atomic_write_text(filepath, content)
 
         return filepath
 

@@ -28,7 +28,8 @@ def cli_search(query: str, top_k: int = 5, source_filter: Optional[str] = None) 
         results = hybrid_search(
             query=query,
             top_k=top_k,
-            enable_vector=True
+            enable_vector=True,
+            source_filter=source_filter
         )
 
         # 转换为简单字典格式

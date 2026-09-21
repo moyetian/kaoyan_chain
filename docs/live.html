@@ -574,6 +574,30 @@ function fallbackMathUnicode(el){
     let selectedImageBase64 = null;
     let selectedImageName = "";
 
+    // [修复·网关 Token] 网关配置 KY_GATEWAY_TOKEN 后，**所有**路径（含 /api/live、
+    // /api/ask、/api/clear 等）都要过 _token_ok 校验，而手机端是用
+    // `http://<ip>:<port>/?token=xxx` 打开本页的。此前三个 fetch 都不带凭据，
+    // 配了 token 的手机端必然 401（且 /api/live 的 `if(resp.ok)` 静默吞掉错误）。
+    // 这里从 URL 取出 token，仅用于请求头 X-KY-Token，绝不写入 DOM/日志/存储，
+    // 避免泄漏到页面或历史记录之外的地方。未配 token 时为空串，请求不带任何凭据，
+    // 与修复前行为完全一致。
+    // [KY-TOKEN-LAYER-BEGIN] 本段被 tests/test_cli_security_hardening.py 抽取到
+    // node 里做单测（纯函数 + 不依赖 DOM），修改时勿改 BEGIN/END 标记。
+    const KY_TOKEN = (function () {
+      try {
+        return new URLSearchParams(window.location.search).get('token') || '';
+      } catch (e) {
+        return '';
+      }
+    })();
+
+    function authHeaders(extra) {
+      const h = Object.assign({}, extra || {});
+      if (KY_TOKEN) h['X-KY-Token'] = KY_TOKEN;
+      return h;
+    }
+    // [KY-TOKEN-LAYER-END]
+
     // 主题切换
     function toggleTheme() {
       document.body.classList.toggle('dark');
@@ -668,9 +692,70 @@ function fallbackMathUnicode(el){
       }
     });
 
+    // ─────────────────────────────────────────────────────────────
+    // [KY-SEC-LAYER-BEGIN] 本段被 tests/test_live_xss_hardening.py 抽取到 node 里做单测，
+    // 修改时请保持「纯函数 + 不依赖 DOM」的形态，勿改 BEGIN/END 标记。
+    // [P1-3 修复·XSS] 内容安全层（不引入新依赖，断网可用）
+    // 此前 marked.parse() 默认保留裸 HTML，而渲染结果直接 innerHTML 上屏；
+    // LLM 回复 / 群聊机器人原始消息（gateway.py 原样写入 LIVE_SESSION_MESSAGES）
+    // 里的 <img src=x onerror=...> 即可执行 JS。这里做两层收口：
+    //   1) 覆盖 marked 渲染器：裸 HTML 一律转义为**纯文本显示**（不丢弃，用户仍能看到原文），
+    //      并给 link/image 的 URL 加协议白名单，挡住 javascript:/data:text/html；
+    //   2) 上传图片气泡的「原始 HTML」后门单独走 sanitizeRawBubble 白名单。
+    function escapeHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
+    function safeUrl(url, allowDataImage) {
+      // 先剥掉控制字符/空白，避免 `java\nscript:` 这类混淆绕过
+      const u = String(url == null ? "" : url).replace(/[\u0000-\u0020]+/g, "");
+      if (/^https?:/i.test(u)) return u;
+      if (allowDataImage && /^data:image\//i.test(u)) return u;
+      if (/^(mailto:|tel:)/i.test(u)) return u;
+      if (/^(#|\/|\.\/|\.\.\/)/.test(u)) return u;
+      return "#";
+    }
+
+    //: marked 12 的 renderer 回调是**位置参数**（html(html)、link(href,title,text)、
+    //: image(href,title,text)），不是 token 对象 —— 写错会直接抛错，勿改签名。
+    function hardenMarked() {
+      if (!window.marked || typeof marked.use !== "function" || window.__kyMarkedHardened) return;
+      marked.use({ renderer: {
+        html: function (html) { return escapeHtml(html); },
+        link: function (href, title, text) {
+          const t = title ? ' title="' + escapeHtml(title) + '"' : "";
+          return '<a href="' + escapeHtml(safeUrl(href, false)) + '"' + t + '>' + text + '</a>';
+        },
+        image: function (href, title, text) {
+          const t = title ? ' title="' + escapeHtml(title) + '"' : "";
+          return '<img src="' + escapeHtml(safeUrl(href, true)) + '" alt="' + escapeHtml(text || "") + '"' + t + '>';
+        }
+      }});
+      window.__kyMarkedHardened = true;
+    }
+    hardenMarked();
+
+    //: 仅放行看板自身生成的上传图片气泡。服务端（gateway.py）/前端产出的形态是固定的：
+    //:   <img src="data:image/..." class="bubble-uploaded-img" alt="..." />[<div>文本</div>]
+    //: 采用**白名单正则 + deny-by-default**（不引入 DOM 解析依赖，也便于 node 单测）：
+    //: 属性顺序/取值稍有不符（例如多出 onerror=）即整体转义为纯文本，杜绝事件属性执行。
+    const RAW_BUBBLE_RE = /^<img\s+src="(data:image\/[^"<>]*)"\s+class="bubble-uploaded-img"\s+alt="([^"<>]*)"\s*\/?>(?:<div>([\s\S]*)<\/div>)?$/;
+
+    function sanitizeRawBubble(html) {
+      const m = RAW_BUBBLE_RE.exec(html || "");
+      if (!m) return escapeHtml(html || "");
+      let out = '<img src="' + escapeHtml(m[1]) + '" class="bubble-uploaded-img" alt="' + escapeHtml(m[2]) + '">';
+      if (m[3] !== undefined) out += "<div>" + escapeHtml(m[3]) + "</div>";
+      return out;
+    }
+    // [KY-SEC-LAYER-END]
+
     // 核心：Markdown + KaTeX 混合渲染器 (预保护 LaTeX，防止 Marked 转义反斜杠)
     function renderMarkdownWithKaTeX(rawText) {
       if (!rawText) return "";
+      hardenMarked();  // marked 若延迟就绪，这里再兜一次
       const mathTokens = [];
 
       // 1. 保护 display math: $$...$$ 和 \[...\]
@@ -709,7 +794,7 @@ function fallbackMathUnicode(el){
       if (window.marked && typeof marked.parse === 'function') {
         html = marked.parse(text);
       } else {
-        html = text;
+        html = escapeHtml(text);
       }
 
       // 5. 将保护标记还原为 KaTeX 渲染结果
@@ -718,12 +803,12 @@ function fallbackMathUnicode(el){
         if (!item) return "";
         if (window.katex && typeof katex.renderToString === 'function') {
           try {
-            return `<div class="katex-display">${katex.renderToString(item.math, { displayMode: true, throwOnError: false })}</div>`;
+            return `<div class="katex-display">${katex.renderToString(item.math, { displayMode: true, throwOnError: false, trust: false })}</div>`;
           } catch (e) {
-            return `<code>${item.math}</code>`;
+            return `<code>${escapeHtml(item.math)}</code>`;
           }
         }
-        return `\\[${item.math}\\]`;
+        return escapeHtml(`\\[${item.math}\\]`);
       });
 
       html = html.replace(/%%KY_MATH_INLINE_(\d+)%%/g, (_, idx) => {
@@ -731,12 +816,12 @@ function fallbackMathUnicode(el){
         if (!item) return "";
         if (window.katex && typeof katex.renderToString === 'function') {
           try {
-            return katex.renderToString(item.math, { displayMode: false, throwOnError: false });
+            return katex.renderToString(item.math, { displayMode: false, throwOnError: false, trust: false });
           } catch (e) {
-            return `<code>${item.math}</code>`;
+            return `<code>${escapeHtml(item.math)}</code>`;
           }
         }
-        return `\\(${item.math}\\)`;
+        return escapeHtml(`\\(${item.math}\\)`);
       });
 
       return html;
@@ -849,7 +934,7 @@ function fallbackMathUnicode(el){
 
         const resp = await fetch('/api/ask', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json'},
+          headers: authHeaders({'Content-Type': 'application/json'}),
           body: JSON.stringify(payload)
         });
 
@@ -884,7 +969,8 @@ function fallbackMathUnicode(el){
       bubble.className = 'msg-bubble';
       
       if (isRawHtml) {
-        bubble.innerHTML = content;
+        // [P1-3 修复·XSS] 原始 HTML 后门必须过白名单：只放行本看板自产的上传图片气泡
+        bubble.innerHTML = sanitizeRawBubble(content);
       } else {
         bubble.innerHTML = renderMarkdownWithKaTeX(content);
       }
@@ -910,7 +996,7 @@ function fallbackMathUnicode(el){
     // 轮询同步终端与后台消息流 (智能协同思考中占位符)
     async function pollLiveFeed() {
       try {
-        const resp = await fetch('/api/live');
+        const resp = await fetch('/api/live', {headers: authHeaders()});
         if (resp.ok) {
           const data = await resp.json();
           const messages = data.messages || [];
@@ -920,7 +1006,9 @@ function fallbackMathUnicode(el){
             
             container.innerHTML = '';
             messages.forEach(m => {
-              const isHtml = m.content.startsWith('<img') || m.content.startsWith('<div class="bubble');
+              // [P1-3 修复·XSS] 只把「本看板自产的上传图片气泡」当原始 HTML；
+              // 其余一律走 Markdown 渲染（裸 HTML 已被 marked 渲染器转义）。
+              const isHtml = /^<img\s+src="data:image\//i.test(m.content);
               appendMessage(m.role, m.content, m.time, isHtml);
             });
             lastMessageCount = messages.length;
@@ -936,6 +1024,11 @@ function fallbackMathUnicode(el){
               }
             }
           }
+        } else if (resp.status === 401) {
+          // [修复·网关 Token] 401 不再静默：明确提示是缺 token 还是 token 不对，
+          // 不泄露任何 token 内容。
+          document.getElementById('sync-status').textContent =
+            KY_TOKEN ? '鉴权失败：token 不正确' : '鉴权失败：请用 ?token=xxx 打开本页';
         }
       } catch (e) {
         document.getElementById('sync-status').textContent = '本地模式';
@@ -943,7 +1036,7 @@ function fallbackMathUnicode(el){
     }
 
     function clearLive() {
-      fetch('/api/clear', {method: 'POST'}).catch(() => {});
+      fetch('/api/clear', {method: 'POST', headers: authHeaders()}).catch(() => {});
       document.getElementById('chat-container').innerHTML = `
         <div class="empty-state" id="empty-state">
           <div class="empty-icon">📐</div>

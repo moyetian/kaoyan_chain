@@ -16,6 +16,11 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
+try:  # [B1 同类] LLM 请求经安全通道发送（双导入路径兼容）
+    from net_guard import safe_urlopen
+except ImportError:  # pragma: no cover
+    from tools.net_guard import safe_urlopen  # type: ignore
+
 # 确保父目录与 tools 在 sys.path 中
 tools_dir = Path(__file__).resolve().parent.parent
 if str(tools_dir) not in sys.path:
@@ -196,7 +201,8 @@ def call_text_llm(messages, config, stream=True):
 
     try:
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        # [B1 同类·跳转泄漏 Bearer] 安全通道发送。
+        with safe_urlopen(req, timeout=120) as resp:
             text = _read_and_decompress(resp)
             res = json.loads(text)
             return res["choices"][0]["message"]["content"]
@@ -275,14 +281,15 @@ def solve_image_with_model(image_path, user_prompt="", config=None, stream=True)
             req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
 
             if not stream:
-                with urllib.request.urlopen(req, timeout=120) as resp:
+                # [B1 同类] 安全通道发送。
+                with safe_urlopen(req, timeout=120) as resp:
                     text = _read_and_decompress(resp)
                     res = json.loads(text)
                     return res["choices"][0]["message"]["content"]
 
             # 流式读取
             full_text = []
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with safe_urlopen(req, timeout=120) as resp:
                 for raw_line in resp:
                     line = raw_line.decode("utf-8", errors="ignore").strip()
                     if not line or not line.startswith("data:"):

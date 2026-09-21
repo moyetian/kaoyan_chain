@@ -122,40 +122,16 @@ CHINESE_SUBJECT_MAP = {
 
 
 def build_subject_checkin_brief(cfg: dict, curr_subj: str) -> str:
-    """生成某科目的「私教报到就绪」本地播报文本 (纯展示、无副作用)。"""
-    plan = cfg.get("study_plan", {})
-    if curr_subj == "math" and (plan.get("math_key") == "none" or plan.get("math_name") == "不考数学"):
-        return "当前方案为不考数学，不派发数学任务。请使用英语报到、政治报到或专业课报到。"
-    subj_name = subject_display_name(cfg, curr_subj)
-    hours = plan.get(f"{curr_subj}_hours", 2.0)
-    target = plan.get(f"{curr_subj}_target", "高分冲刺")
-    weak = plan.get(f"{curr_subj}_weakness", "核心考点攻坚")
+    """生成某科目的「私教报到就绪」本地播报文本 (纯展示、无副作用)。
 
-    lines = [
-        f"🎓 【{subj_name} · 私教报到就绪】",
-        f"• 今日规划投入: {hours} 小时 ｜ 战役目标: {target}",
-        f"• 核心薄弱防线: 【{weak}】",
-    ]
-
-    due_count = 0
-    if error_logger:
-        try:
-            due_count = len(error_logger.get_due_reviews(curr_subj, max_count=3))
-        except Exception:
-            due_count = 0
-    if due_count:
-        lines.append(f"🔔 检测到您有 {due_count} 道 FSRS 到期错题！完成作答并输入「交作业」即可启动盲盒复测。")
-    else:
-        t_file = ROOT / SUBJECT_DIRS[curr_subj][0] / "_状态" / "今日任务.md"
-        task_lines = []
-        if t_file.exists():
-            txt = read_text_safe(t_file)
-            for l in txt.splitlines():
-                l_s = l.strip()
-                if re.match(r"^-\s*\[ \]", l_s) or ("|" in l_s and "[ ]" in l_s):
-                    task_lines.append(l_s)
-        if task_lines:
-            lines.append("📋 今日攻坚任务清单（前 2 项）：")
-            lines.extend(f"  {t}" for t in task_lines[:2])
-    lines.append("💡 私教提示：可直接输入题目或题干提问，完成后输入「交作业」按采分点批改！")
-    return "\n".join(lines)
+    [G2 修复·判定分叉] 本函数此前是 shared.build_subject_checkin_brief 的
+    副本，但数学判定用窄内联条件（仅 none/不考数学），而活路径
+    （ky_cli 重导出 → GUI agent_worker）全走本副本，导致双专业课/199 管综
+    等模式误派数学播报。现直接委托 shared 的规范实现（is_math_disabled 单源）。
+    保留本符号仅为兼容既有导入链（ky_cli/agent_worker）。
+    """
+    try:
+        from tools.cli.shared import build_subject_checkin_brief as _canonical
+    except ImportError:
+        from cli.shared import build_subject_checkin_brief as _canonical  # type: ignore
+    return _canonical(cfg, curr_subj)

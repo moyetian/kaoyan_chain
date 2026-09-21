@@ -228,6 +228,7 @@ def _cmd_serve(args: List[str]) -> None:
     port = 8088
     gateway_host = "127.0.0.1"
     gateway_token = ""
+    webhook_token = ""
     for a in args[1:]:
         if a.isdigit():
             port = int(a)
@@ -235,7 +236,14 @@ def _cmd_serve(args: List[str]) -> None:
             gateway_host = a.split("=", 1)[1].strip() or "127.0.0.1"
         elif a.startswith("--gateway-token="):
             gateway_token = a.split("=", 1)[1].strip()
-    run_server(port=port, host=gateway_host, gateway_token=gateway_token)
+        elif a.startswith("--webhook-token="):
+            # [补齐·命令行形参] /webhook 专用回调密钥（钉钉/飞书/QQ 回调 URL 的
+            # ?token=）。优先级：本形参 > KY_WEBHOOK_TOKEN > ky_config.json。
+            # 必须原样交给 run_server，不得在此吞掉（P1-8 同型缺陷：解析出来却
+            # 在传递环节被静默丢弃）。终端不回显密钥。
+            webhook_token = a.split("=", 1)[1].strip()
+    run_server(port=port, host=gateway_host, gateway_token=gateway_token,
+               webhook_token=webhook_token)
 
 
 def _cmd_view(args: List[str]) -> None:
@@ -249,7 +257,7 @@ def _cmd_view(args: List[str]) -> None:
             gateway_token = a.split("=", 1)[1].strip()
         elif a.startswith("--permission="):
             permission_mode = a.split("=", 1)[1].strip()
-    port = start_background_live_server(8088, host=gateway_host) or 8088
+    port = start_background_live_server(8088, host=gateway_host, token=gateway_token) or 8088
     webbrowser.open(f"http://localhost:{port}/live")
     print(f"已在默认浏览器打开实时 LaTeX 伴侣: http://localhost:{port}/live")
     try:
@@ -273,5 +281,5 @@ register(Command('clawbot', ("clawbot", "--clawbot"), '', '启动微信个人号
 register(Command('gui', ("gui", "--gui"), '', '启动 GUI 可视化操作端 (基于 PySide6)', handler=_cmd_gui, write=True))
 register(Command('menu', ("menu", "--menu", "tui", "--tui"), '[action] / tui', '启动终端交互中枢导航器 (TUI) 或执行指定动作', handler=_cmd_menu, write=True))
 register(Command('bridge', ("bridge", "--bridge", "tunnel", "--tunnel"), '', '查看各平台双向讲题网关接入指南', handler=_cmd_bridge))
-register(Command('serve', ("serve", "--serve"), '[port]', '启动 Webhook 网关与实时 Web 伴侣', handler=_cmd_serve))
+register(Command('serve', ("serve", "--serve"), '[port] [--host=IP] [--gateway-token=] [--webhook-token=]', '启动 Webhook 网关与实时 Web 伴侣', handler=_cmd_serve))
 register(Command('view', ("view", "--view", "--web", "live"), '', '在浏览器打开实时可视化伴侣（Web 伴侣 / Live），需网关端口空闲', handler=_cmd_view))

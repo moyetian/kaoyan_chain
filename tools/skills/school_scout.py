@@ -27,6 +27,11 @@ try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方
 except ImportError:  # pragma: no cover
     from tools.ky_io import atomic_write_text  # noqa: E402
 
+try:  # [B1 同类] LLM 请求经安全通道发送
+    from net_guard import safe_urlopen  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.net_guard import safe_urlopen  # type: ignore
+
 try:  # 双导入路径兼容：高校情报库已从本文件拆分至独立模块 school_db.py
     from .school_db import TARGET_SCHOOLS_DB  # noqa: E402
 except ImportError:  # pragma: no cover
@@ -429,7 +434,8 @@ def synthesize_report_with_llm(school: str, major: str, official_items: List[Dic
             },
             data=json.dumps(req_body).encode("utf-8")
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        # [B1 同类·跳转泄漏 Bearer] 安全通道发送。
+        with safe_urlopen(req, timeout=60) as resp:
             raw = resp.read()
             headers = getattr(resp, "headers", None)
             enc = headers.get("Content-Encoding", "").lower() if headers and hasattr(headers, "get") else ""

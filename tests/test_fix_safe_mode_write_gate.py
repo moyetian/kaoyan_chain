@@ -510,7 +510,7 @@ def sandbox_workspace(tmp_path):
         "api_provider": "deepseek",
         "active_subject": "pro",
         "study_plan": {
-            "school": "沙箱院校", "major": "目标专业 (专业代码)",
+            "school": "沙箱院校", "major": "030100 法学",
             "math_key": "none", "total_hours": 6.5, "pro_books": "沙箱原始值",
         },
         "completion_history": {},

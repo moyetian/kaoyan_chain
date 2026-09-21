@@ -4,6 +4,7 @@ Webhook 接收网关与实时 Web 伴侣 HTTP 服务 (gateway.py)
 多模型代理路由、LaTeX 实时排版、群聊双向对话与自动化验算
 """
 
+import hmac
 import html
 import json
 import os
@@ -47,37 +48,167 @@ except ImportError:
     except ImportError:
         vision_solver = None
 
-# Web 可视化伴侣会话缓存
+# Web 可视化伴侣会话缓存与并发锁
+_LIVE_SESSION_LOCK = threading.RLock()
 LIVE_SESSION_MESSAGES: List[Dict[str, Any]] = []
 
 def append_live_message(role: str, content: str) -> None:
-    """向网页可视化伴侣推送同步消息"""
-    LIVE_SESSION_MESSAGES.append({
-        "role": role,
-        "content": content,
-        "time": datetime.now().strftime("%H:%M:%S")
-    })
-    if len(LIVE_SESSION_MESSAGES) > 60:
-        LIVE_SESSION_MESSAGES.pop(0)
+    """向网页可视化伴侣推送同步消息 (线程安全)"""
+    with _LIVE_SESSION_LOCK:
+        LIVE_SESSION_MESSAGES.append({
+            "role": role,
+            "content": content,
+            "time": datetime.now().strftime("%H:%M:%S")
+        })
+        while len(LIVE_SESSION_MESSAGES) > 60:
+            LIVE_SESSION_MESSAGES.pop(0)
 
-def create_gateway_handler(token: str = ""):
+def clear_live_messages() -> None:
+    """清空可视化伴侣会话缓存 (线程安全)"""
+    with _LIVE_SESSION_LOCK:
+        LIVE_SESSION_MESSAGES.clear()
+
+def get_live_messages_snapshot(limit: int = 60) -> List[Dict[str, Any]]:
+    """获取可视化伴侣会话消息快照副本 (线程安全)"""
+    with _LIVE_SESSION_LOCK:
+        if limit is None:
+            items = LIVE_SESSION_MESSAGES[:]
+        elif limit <= 0:
+            return []
+        else:
+            items = LIVE_SESSION_MESSAGES[-limit:]
+        return [dict(m) for m in items]
+
+def _detect_lan_ip() -> str:
+    """探测本机可用于局域网访问的 IP（探测失败时回退 127.0.0.1）。"""
+    local_ip = "127.0.0.1"
+    try:
+        # [S1 修复·socket 泄漏] connect 抛异常即跳过 close；改用上下文管理。
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("223.5.5.5", 80))
+            cand_ip = s.getsockname()[0]
+        if not cand_ip.startswith(("198.18.", "198.19.", "127.")):
+            local_ip = cand_ip
+    except Exception:
+        pass
+    if local_ip == "127.0.0.1":
+        try:
+            _, _, ips = socket.gethostbyname_ex(socket.gethostname())
+            for ip in ips:
+                if (ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172.")) \
+                        and not ip.startswith(("198.18.", "198.19.")):
+                    local_ip = ip
+                    break
+        except Exception:
+            pass
+    return local_ip
+
+
+def _token_matches(candidate: str, expected: str) -> bool:
+    """恒定时间比较 token，避免逐字符比较造成的时序侧信道。
+
+    [修复·非 ASCII token] ``hmac.compare_digest`` 在两侧都是 ``str`` 时要求
+    全为 ASCII，否则抛 ``TypeError: comparing strings with non-ASCII characters
+    is not supported``。中文用户极易把 ``KY_GATEWAY_TOKEN`` 设成中文（如
+    ``我的密钥``），此时任何带非空 token 的请求都会让 ``_token_ok`` 抛出未捕获
+    异常 —— ``do_GET`` / ``do_POST`` 都没有 try 包裹，连接被直接掐断并刷
+    traceback。改为统一 UTF-8 编码成 bytes 后比较，恒定时间语义不变。
+    """
+    if not candidate or not expected:
+        return False
+    return hmac.compare_digest(
+        str(candidate).encode("utf-8"), str(expected).encode("utf-8")
+    )
+
+
+def resolve_webhook_secret(explicit: str = "", cfg: Optional[Dict[str, Any]] = None) -> str:
+    """解析 ``/webhook`` 专用回调密钥。
+
+    [修复·webhook 密钥接入配置] 此前该密钥只能靠环境变量 ``KY_WEBHOOK_TOKEN``，
+    既不在 ``ky_config.json`` 里、也没有向导入口 —— 用户重启终端或换个 shell 就
+    静默失效，群里表现为「机器人没反应」。现按 ``run_server`` 里
+    ``gateway_token`` 的既有口径补齐配置来源，优先级：
+
+      1) 显式参数（命令行/调用方传入）；
+      2) 环境变量 ``KY_WEBHOOK_TOKEN``（沿用旧名，向后兼容，临时覆盖配置用）；
+      3) ``ky_config.json`` 顶层 ``webhook_token``（向导写入，持久生效）。
+
+    注意与 ``gateway_token`` 的分工：本密钥**只**对 ``/webhook`` 生效，
+    不参与其它路径的鉴权（见 ``_webhook_authorized``）。
+    """
+    if (explicit or "").strip():
+        return explicit.strip()
+    env_secret = (os.environ.get("KY_WEBHOOK_TOKEN") or "").strip()
+    if env_secret:
+        return env_secret
+    if cfg is None:
+        cfg = load_config()
+    return str(cfg.get("webhook_token", "") or "").strip()
+
+
+def create_gateway_handler(token: str = "", webhook_token: str = ""):
     """构造网关 HTTP handler"""
     effective_token = (token or os.environ.get("KY_GATEWAY_TOKEN", "")).strip()
+    # [修复·/webhook 豁免] 独立的 webhook 密钥：钉钉/飞书/QQ OneBot 等第三方平台
+    # 无法携带我们的网关 token，但可以在回调 URL 上追加查询参数，故单列一条密钥。
+    # [修复·webhook 密钥接入配置] 取值优先级见 ``resolve_webhook_secret``。
+    webhook_secret = resolve_webhook_secret(webhook_token)
 
     class GatewayHandler(BaseHTTPRequestHandler):
-        def _is_authorized(self):
-            parsed = urllib.parse.urlparse(self.path)
-            if parsed.path in ("/live", "/", "/index.html"):
-                return True
-            if not effective_token:
-                return self.client_address[0] in ("127.0.0.1", "::1", "localhost")
-            auth_h = self.headers.get("Authorization", "")
+        def _token_ok(self, parsed, expected: str = "") -> bool:
+            """校验请求是否携带正确 token：X-KY-Token 头 / Bearer 头 / ?token= 查询参数。"""
+            want = (expected or effective_token).strip()
+            if not want:
+                return False
             x_tok = self.headers.get("X-KY-Token", "")
-            if x_tok and x_tok == effective_token:
+            if _token_matches(x_tok, want):
                 return True
-            if auth_h.startswith("Bearer ") and auth_h[7:].strip() == effective_token:
+            auth_h = self.headers.get("Authorization", "")
+            if auth_h.startswith("Bearer ") and _token_matches(auth_h[7:].strip(), want):
+                return True
+            q_tok = (urllib.parse.parse_qs(parsed.query).get("token") or [""])[0]
+            if _token_matches(q_tok, want):
                 return True
             return False
+
+        def _is_loopback(self) -> bool:
+            return self.client_address[0] in ("127.0.0.1", "::1", "localhost")
+
+        def _webhook_authorized(self, parsed) -> bool:
+            """`/webhook` 的专属鉴权（群聊机器人回调端点）。
+
+            [修复] `/webhook` 是钉钉/飞书/QQ OneBot 的**回调**端点，调用方是第三方
+            平台，天然拿不到我们的网关 token；此前它和其它路径一样被网关 token 一视
+            同仁拦截，于是用户按代码自身建议设了 ``KY_GATEWAY_TOKEN`` 后，群聊双向
+            讲题会**静默**失效。这里给出一条显式且不退化为「局域网裸奔」的通道：
+              1) 配了专用密钥 ``KY_WEBHOOK_TOKEN`` —— 一律要求携带（第三方把它写进
+                 回调 URL 的 ``?token=`` 即可），这是对外暴露时的推荐用法；
+              2) 未配专用密钥但配了网关 token —— 回环来源（本地 NapCat 直连）放行，
+                 其余来源必须携带网关 token；
+              3) 两者都没配 —— 维持既有行为，仅回环放行。
+            """
+            if webhook_secret:
+                return self._token_ok(parsed, expected=webhook_secret)
+            if effective_token:
+                return self._is_loopback() or self._token_ok(parsed)
+            return self._is_loopback()
+
+        def _is_authorized(self):
+            """统一鉴权闸门。
+
+            [P0-3 修复] 此前 `/live`、`/`、`/index.html` 无条件 `return True`，
+            于是「配了 token 也对局域网裸奔」。现改为：
+              * 未配置 token —— 所有路径仅回环（本地开发）放行；
+              * 已配置 token —— 所有路径（含静态页）都必须通过 token 校验。
+            [修复·/webhook 豁免] 群聊机器人回调端点走独立通道，见
+            ``_webhook_authorized``；其余路径策略不变。
+            """
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path == "/webhook":
+                return self._webhook_authorized(parsed)
+            if not effective_token:
+                return self._is_loopback()
+            return self._token_ok(parsed)
 
         def _deny(self):
             self.send_response(401)
@@ -128,7 +259,9 @@ def create_gateway_handler(token: str = ""):
                 self.wfile.write(json.dumps(models_data).encode("utf-8"))
                 return
             elif parsed.path == "/api/live":
-                data = json.dumps({"messages": LIVE_SESSION_MESSAGES}, ensure_ascii=False).encode("utf-8")
+                with _LIVE_SESSION_LOCK:
+                    snapshot = [dict(m) for m in LIVE_SESSION_MESSAGES]
+                data = json.dumps({"messages": snapshot}, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Access-Control-Allow-Origin", "*")
@@ -147,7 +280,8 @@ def create_gateway_handler(token: str = ""):
             post_data = self.rfile.read(content_length).decode("utf-8", errors="ignore")
 
             if parsed.path == "/api/clear":
-                LIVE_SESSION_MESSAGES.clear()
+                with _LIVE_SESSION_LOCK:
+                    LIVE_SESSION_MESSAGES.clear()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Access-Control-Allow-Origin", "*")
@@ -364,9 +498,16 @@ def create_gateway_handler(token: str = ""):
 
     return GatewayHandler
 
-def start_background_live_server(start_port: int = 8088, host: str = "127.0.0.1") -> Optional[int]:
-    """在后台静默启动 Web 实时伴侣服务器，自动处理端口占用"""
-    effective_token = os.environ.get("KY_GATEWAY_TOKEN", "").strip()
+def start_background_live_server(start_port: int = 8088, host: str = "127.0.0.1",
+                                 token: str = "") -> Optional[int]:
+    """在后台静默启动 Web 实时伴侣服务器，自动处理端口占用。
+
+    [P1-8 修复] 此前本函数**没有 token 形参**，只读环境变量 ``KY_GATEWAY_TOKEN``，
+    于是 ``ky --gateway-token=xxx`` 传进来的 token 被静默丢弃（调用方 loop.py /
+    misc.py 明明持有 gateway_token 却无处可传）。现增加 ``token`` 形参，
+    **显式传入优先于环境变量**。
+    """
+    effective_token = (token or "").strip() or os.environ.get("KY_GATEWAY_TOKEN", "").strip()
     handler_class = create_gateway_handler(token=effective_token)
     bind_host = host
     for p in range(start_port, start_port + 20):
@@ -376,7 +517,8 @@ def start_background_live_server(start_port: int = 8088, host: str = "127.0.0.1"
             t.start()
             if bind_host not in ("127.0.0.1", "localhost", "::1"):
                 if effective_token:
-                    print(colorize(f"\n[√] 网关监听于 {bind_host}:{p}，已成功启用 Token 鉴权保护。\n", C.GREEN))
+                    print(colorize(f"\n[√] 网关监听于 {bind_host}:{p}，已成功启用 Token 鉴权保护。", C.GREEN))
+                    print(colorize(f"    手机访问：http://{_detect_lan_ip()}:{p}/?token={effective_token}\n", C.CYAN))
                 else:
                     print(colorize(
                         f"\n[!] 网关监听于 {bind_host}:{p}（非本机回环）。"
@@ -390,25 +532,7 @@ def start_background_live_server(start_port: int = 8088, host: str = "127.0.0.1"
 
 def show_bridge_guide() -> None:
     """打印钉钉、飞书、QQ、微信双向对话讲题接入指南"""
-    local_ip = "127.0.0.1"
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("223.5.5.5", 80))
-        cand_ip = s.getsockname()[0]
-        s.close()
-        if not cand_ip.startswith(("198.18.", "198.19.", "127.")):
-            local_ip = cand_ip
-    except Exception:
-        pass
-    if local_ip == "127.0.0.1":
-        try:
-            _, _, ips = socket.gethostbyname_ex(socket.gethostname())
-            for ip in ips:
-                if (ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172.")) and not ip.startswith(("198.18.", "198.19.")):
-                    local_ip = ip
-                    break
-        except Exception:
-            pass
+    local_ip = _detect_lan_ip()
 
     print(f"""
 {C.CYAN}╭────────────────────────────────────────────────────────────────────────╮
@@ -422,6 +546,13 @@ def show_bridge_guide() -> None:
 {C.BOLD}【当前网关服务地址】{C.RESET}
   • 本地/同局域网回调地址: {C.GREEN}http://{local_ip}:8088/webhook{C.RESET}
   • 外网穿透参考命令: {C.CYAN}cpolar http 8088{C.RESET} 或 {C.CYAN}cloudflared tunnel --url http://localhost:8088{C.RESET}
+  • {C.YELLOW}已设 KY_GATEWAY_TOKEN 时{C.RESET}：第三方平台拿不到网关 token，
+    请另设回调密钥（推荐在 {C.GREEN}ky config{C.RESET} ➔ {C.GREEN}[3] 机器人配置{C.RESET} ➔
+    {C.GREEN}[8] 回调密钥{C.RESET} 写入 ky_config.json，也可临时用环境变量
+    {C.GREEN}KY_WEBHOOK_TOKEN=你的回调密钥{C.RESET}，或启动网关时加
+    {C.GREEN}--webhook-token=你的回调密钥{C.RESET}），并把回调地址写成
+    {C.GREEN}http://<地址>/webhook?token=你的回调密钥{C.RESET}；
+    未设该密钥时仅本机回环（本地 QQ NapCat）可直接回调。
 
 ────────────────────────────────────────────────────────────────────────
 {C.BOLD}📌 0. 微信个人号 (WeChat ClawBot 手机扫码直连，无需公网与穿透):{C.RESET}
@@ -452,7 +583,8 @@ def show_bridge_guide() -> None:
 ────────────────────────────────────────────────────────────────────────
 """)
 
-def run_server(port: int = 8088, host: str = "127.0.0.1", gateway_token: Optional[str] = None) -> None:
+def run_server(port: int = 8088, host: str = "127.0.0.1", gateway_token: Optional[str] = None,
+               webhook_token: Optional[str] = None) -> None:
     """启动轻量级 HTTP Webhook 接收网关"""
     cfg = load_config()
     print(colorize(f"\n[🚀 考研智能体 Webhook 网关与实时 Web 伴侣正在启动... 监听地址: {host}:{port}]", C.BOLD))
@@ -461,17 +593,45 @@ def run_server(port: int = 8088, host: str = "127.0.0.1", gateway_token: Optiona
     print(f"  - 当前默认学科: {SUBJECT_DIRS[cfg.get('active_subject','math')][1]}")
     print("  - 支持接收群聊提问并自动回复，按 Ctrl+C 停止服务。\n")
 
-    if host not in ("127.0.0.1", "localhost", "::1"):
-        print(colorize(
-            f"  [!] 已对外暴露 {host}:{port}。强烈建议设置环境变量 KY_GATEWAY_TOKEN 启用鉴权。\n",
-            C.RED))
+    effective_token = (gateway_token or "").strip() or os.environ.get("KY_GATEWAY_TOKEN", "").strip() \
+        or str(cfg.get("gateway_token", "") or "").strip()
 
-    effective_token = gateway_token if gateway_token else (
-        os.environ.get("KY_GATEWAY_TOKEN", "") or cfg.get("gateway_token", "")
-    )
-    handler_class = create_gateway_handler(token=effective_token)
+    # [补齐·命令行形参] 与 ``gateway_token`` 同口径解析 ``/webhook`` 专用回调密钥：
+    # 显式参数（``ky serve --webhook-token=xxx``）> 环境变量 ``KY_WEBHOOK_TOKEN``
+    # > ``ky_config.json`` 顶层 ``webhook_token``。解析结果**必须一路传到**
+    # ``create_gateway_handler``，否则形参只是摆设（本文件 P1-8 是同型缺陷：
+    # 解析出来的 token 在传递环节被静默丢弃）。密钥一律不回显。
+    effective_webhook_token = resolve_webhook_secret(webhook_token or "", cfg)
+
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        if effective_token:
+            print(colorize(f"  [√] 已启用 Token 鉴权保护。", C.GREEN))
+            print(colorize(f"      手机访问：http://{_detect_lan_ip()}:{port}/?token={effective_token}\n", C.CYAN))
+        else:
+            print(colorize(
+                f"  [!] 已对外暴露 {host}:{port}。强烈建议设置环境变量 KY_GATEWAY_TOKEN 启用鉴权。\n",
+                C.RED))
+        # [修复·webhook 密钥接入配置] 对外暴露时若没配回调密钥，群机器人回调会被挡在
+        # 回环之外（用户配了网关 token 后群里「没反应」的典型成因），此处显式提示。
+        # 只报告状态，绝不回显密钥本身。判定用**已解析的**生效值，否则
+        # ``--webhook-token=xxx`` 会被误报成「未配置回调密钥」。
+        if not effective_webhook_token:
+            print(colorize(
+                f"  [!] 未配置群机器人回调密钥：/webhook 将只接受本机回环回调。"
+                f"可在 `ky config` ➔ [3] 机器人配置 ➔ [8] 设置回调密钥，"
+                f"或临时用环境变量 KY_WEBHOOK_TOKEN。\n",
+                C.YELLOW))
+
+    handler_class = create_gateway_handler(token=effective_token,
+                                           webhook_token=effective_webhook_token)
     httpd = ThreadingHTTPServer((host, port), handler_class)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\n网关服务已平稳停止。")
+    finally:
+        # [S1 修复] 退出时释放监听 socket，否则句柄残留。
+        try:
+            httpd.server_close()
+        except Exception:
+            pass

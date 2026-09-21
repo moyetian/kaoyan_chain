@@ -384,6 +384,11 @@ ky serve
 3. 若机器人与网关在同一台电脑，可使用本地地址而无需公网穿透；实际延迟与 NapCat 配置有关。
 
 > 📖 **完整保姆级图文配置**：详见 [`docs/BOT_INTEGRATION_GUIDE.md`](docs/BOT_INTEGRATION_GUIDE.md)
+>
+> 🔐 **回调密钥（对外暴露时建议设置）**：钉钉/飞书/QQ 回调端点 `/webhook` 使用独立密钥。
+> 运行 `ky config` ➔ `[3] 机器人配置` ➔ `[8] 回调密钥` 设置（写入 `ky_config.json`，长期生效），
+> 或临时设环境变量 `KY_WEBHOOK_TOKEN`；设置后回调地址须写成
+> `http://<你的地址>/webhook?token=<你的回调密钥>`。未设置时仅本机回环回调放行。
 
 ---
 
@@ -464,7 +469,7 @@ ky serve
 ky doctor
 ```
 
-全面排查 6 大维度：
+全面排查 7 大维度：
 
 - \[√\] Python 3.10+ 版本与执行路径
 - \[√\] 考研专有依赖 (SymPy, pypdf, Pillow, rapidocr)
@@ -472,6 +477,7 @@ ky doctor
 - \[√\] 大模型 API Key 连通性
 - \[√\] 看板编译引擎与 8088 端口可用性
 - \[√\] Git 隐私安全隔离 (`ky_config.json` 与 `.memory/` 拦截校验)
+- \[√\] 系统功能可用性与降级评估（原生加速、可选依赖缺失时各技能的降级路径）
 
 ---
 
@@ -506,6 +512,12 @@ python tools/test_ky_suite.py
 21. Material Ingestion 试题智能切片入库管道与 ky ingest (9 项验证)
 22. 社媒经验降噪过滤与分省高校注册表 (Sprint 6 - 8 项验证)
 23. TUI 交互中枢与考情看板雷达 (Sprint 7 - 8 项验证)
+24. CLI 真实进程级 smoke tests
+25. 升级新功能专项集成校验 (WeChat + Rust + GUI)
+26. 全国高校数据库构建器 (反幻觉 / 合并语义 / 域名来源)
+
+> 完整清单共 **26 组 304 项断言**；断言总数已做成环境无关（Git 工作区内 304 通过，
+> 干净检出时「测试组 7 Git 隐私隔离」的 5 条转为跳过、合计仍为 304）。
 
 ---
 

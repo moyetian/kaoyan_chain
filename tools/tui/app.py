@@ -28,6 +28,8 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Footer, Header, Label, ListItem, ListView, RichLog, Static
 
+from rich.markup import escape as _rich_escape
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -36,6 +38,22 @@ try:  # pragma: no cover - 取决于运行方式
     import tui_navigator
 except ImportError:  # pragma: no cover
     from tools import tui_navigator  # type: ignore
+
+
+def escape_markup(text: object) -> str:
+    """把任意文本转成 Rich markup 的**字面量**（``[`` → ``\\[``）。
+
+    [P2-8 修复·markup 注入] 日志区 ``RichLog(markup=True)`` 与概要区 ``Static``
+    都按富文本解析写入内容，而其中的文本来自**后端 stdout / LLM 回复 / 学员配置**
+    —— 完全不受本模块控制：
+
+    * 正常标记会被误解析：后端打印 ``[red]x[/red]`` 时用户看到的是"x"而非原文；
+    * 畸形标记会直接抛 ``MarkupError``（如 ``[/unclosed]``、``[不是标签]``），
+      异常从 ``log.write()`` 冒出 → 整个 TUI 崩掉。
+
+    故：**本模块自造的装饰性标记照常写，任何外部文本写入前必须过本函数**。
+    """
+    return _rich_escape(str(text))
 
 
 class ActionItem(ListItem):
@@ -117,16 +135,25 @@ class KaoyanTUI(App):
 
             st = load_dashboard_state(self.workspace_root)
         except Exception as exc:                     # pragma: no cover
-            return f"[red]状态加载失败：{exc}[/red]"
+            # [缺陷修复·markup 注入] 异常消息是最典型的不可信文本：
+            # OSError 带 `[Errno 2]`、KeyError 带 `[key]`，未转义时会被
+            # Static(markup=True) 当富文本解析 → MarkupError 崩掉整个 TUI。
+            # 同函数内的 school/major/style_short 早已过 escape_markup，
+            # 唯独这里漏了。
+            return f"[red]状态加载失败：{escape_markup(exc)}[/red]"
 
         return (f"[b]⏳ 初试倒计时[/b]  {st.days_left} 天\n"
-                f"[b]🏛️ 目标[/b]  {st.school}\n"
-                f"[b]📚 专业[/b]  {st.major}\n"
-                f"[b]🛡️ 风格[/b]  {st.style_short}\n"
+                f"[b]🏛️ 目标[/b]  {escape_markup(st.school)}\n"
+                f"[b]📚 专业[/b]  {escape_markup(st.major)}\n"
+                f"[b]🛡️ 风格[/b]  {escape_markup(st.style_short)}\n"
                 f"[b]📋 今日打卡[/b]  {st.completed}/{st.total}（{st.rate}%）")
 
     def _refresh_summary(self) -> None:
         self.query_one("#summary", Static).update(self._summary_text())
+
+    def _log_write(self, text: str) -> None:
+        """把**外部文本**（后端 stdout / 异常信息）按字面写入日志区。"""
+        self.query_one("#log", RichLog).write(escape_markup(text))
 
     # ── 交互 ────────────────────────────────────────────────
 
@@ -157,7 +184,7 @@ class KaoyanTUI(App):
 
     def _dispatch(self, alias: str) -> None:
         log = self.query_one("#log", RichLog)
-        log.write(f"\n[b cyan]▶[/b cyan] 正在执行：[b]{alias}[/b]")
+        log.write(f"\n[b cyan]▶[/b cyan] 正在执行：[b]{escape_markup(alias)}[/b]")
         self._run_action(alias)
 
     @work(thread=True)
@@ -185,11 +212,13 @@ class KaoyanTUI(App):
         def _write() -> None:
             log = self.query_one("#log", RichLog)
             if output:
-                log.write(output)
+                # 后端 stdout 是最典型的不可信输入（可能是任意模块/LLM 打印的
+                # `[red]` / `[/unclosed]`）—— 必须转义，否则误解析或抛 MarkupError。
+                self._log_write(output)
             if error is not None:
-                log.write(f"[red]执行异常：{error}[/red]")
+                log.write(f"[red]执行异常：{escape_markup(error)}[/red]")
             else:
-                log.write(f"[green]✔ 动作 [{alias}] 执行完毕[/green]")
+                log.write(f"[green]✔ 动作 [{escape_markup(alias)}] 执行完毕[/green]")
             self._refresh_summary()
             if not keep_running:
                 self.exit()
@@ -213,4 +242,5 @@ def textual_available() -> bool:
         return False
 
 
-__all__ = ["ActionItem", "KaoyanTUI", "run_textual_app", "textual_available"]
+__all__ = ["ActionItem", "KaoyanTUI", "escape_markup", "run_textual_app",
+           "textual_available"]

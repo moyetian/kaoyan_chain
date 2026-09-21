@@ -196,3 +196,75 @@ def test_textual_menu_covers_all_action_aliases():
     known = {alias for _key, _name, _desc, alias in tui_navigator.MENU_OPTIONS}
     assert set(aliases) == known
     assert "exit" in aliases and "today" in aliases
+
+
+def test_escape_markup_is_literal_and_idempotent_for_plain_text():
+    """[P2-8] escape_markup 只转义 `[`，普通文本原样返回。"""
+    assert tui_app.escape_markup("[red]x[/red]") == "\\[red]x\\[/red]"
+    assert tui_app.escape_markup("纯文本，无标记") == "纯文本，无标记"
+    assert tui_app.escape_markup(123) == "123"
+
+
+def test_summary_failure_escapes_exception_markup(tmp_path, monkeypatch):
+    """[缺陷修复] 状态加载失败时的异常消息必须转义后再交给 Static(markup=True)。
+
+    缺陷现场：``_summary_text`` 里 ``school``/``major``/``style_short`` 都过了
+    ``escape_markup``，唯独异常分支 ``f"[red]状态加载失败：{exc}[/red]"`` 的
+    ``{exc}`` 没转义。异常消息带 Rich 认得的标记时（小写字母或 ``/`` 开头），
+    会被当富文本解析 → 正常标记被吞掉、畸形标记（``[/unclosed]``）直接抛
+    ``MarkupError`` 崩掉 TUI。
+
+    注意：Rich 的 markup 正则只认 ``[a-z#/@...]`` 开头的 tag，``[Errno 2]``
+    这种大写开头的方括号本来就是字面量 —— 故此处刻意用 ``[b]``/``[/unclosed]``。
+    """
+    try:
+        import state as state_mod
+    except ImportError:  # pragma: no cover
+        from tools import state as state_mod  # type: ignore
+
+    def _boom(_root):
+        raise OSError("[b]状态文件缺失[/unclosed]")
+
+    monkeypatch.setattr(state_mod, "load_dashboard_state", _boom)
+
+    async def scenario():
+        app = tui_app.KaoyanTUI(workspace_root=tmp_path)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app._refresh_summary()          # 修复前此处会抛 MarkupError
+            await pilot.pause()
+            rendered = str(app.query_one("#summary").render())
+            assert "[b]状态文件缺失[/unclosed]" in rendered, (
+                f"异常消息未按字面显示：{rendered!r}")
+
+    _run(scenario())
+
+
+def test_richlog_renders_backend_output_literally(tmp_path):
+    """[P2-8 回归] 后端 stdout / LLM 回复里的 markup 必须按字面显示且不抛异常。
+
+    修复前 ``RichLog(..., markup=True)`` 而写入内容直接来自后端 stdout：
+      * ``[red]x[/red]`` 会被当富文本解析 → 用户看到 "x" 而不是原文；
+      * 畸形标记 ``[/unclosed]`` 直接抛 ``rich.errors.MarkupError``
+        （"closing tag '[/unclosed]' ... doesn't match any open tag"）
+        从 ``log.write()`` 冒出 → 整个 TUI 崩掉。
+
+    这里走的是应用真实的写入路径（``_log_write``），而不是绕过它单独测转义函数。
+
+    阴性对照：把 ``tools/tui/app.py`` 里的 ``escape_markup`` 改成恒等
+    （``return str(text)``），本用例必须变红 —— ``[/unclosed]`` 那行会抛
+    MarkupError，且 ``[red]x[/red]`` 渲染出来只剩 "x"。
+    """
+    async def scenario():
+        app = tui_app.KaoyanTUI(workspace_root=tmp_path)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app._log_write("[red]x[/red]")
+            app._log_write("[/unclosed]")
+            await pilot.pause()
+            log = app.query_one("#log")
+            rendered = "".join(strip.text for strip in log.lines)
+            assert "[red]x[/red]" in rendered, f"未按字面显示，实际：{rendered!r}"
+            assert "[/unclosed]" in rendered, f"未按字面显示，实际：{rendered!r}"
+
+    _run(scenario())

@@ -17,7 +17,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v2.8.0-blue?style=flat-square&logo=github&logoColor=white" alt="版本 v2.8.0" />
-  <img src="https://img.shields.io/badge/Tests-1279%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 1279 Passed" />
+  <img src="https://img.shields.io/badge/Tests-1623%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 1623 Passed" />
   <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-6366f1?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
   <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
   <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
@@ -74,7 +74,7 @@
 
 ## 🗺️ 文档地图：我该读哪一份？
 
-仓库里有四份文档，内容各有侧重。
+仓库里有五份主要文档，内容各有侧重。
 
 | 文档                                 | 面向         | 主要内容                                                  | 什么时候读             |
 | ---------------------------------- | ---------- | ----------------------------------------------------- | ----------------- |
@@ -188,7 +188,7 @@ ky
 > [!TIP]
 > **装完先自检**：执行 `python tools/doctor.py`，一次性核对 Python 版本、可选依赖、四科协议、
 > `ky_config.json`、API 连通性与 Git 隐私隔离是否就绪；如需验证功能完整性，
-> 请在**干净副本**里跑 `python tools/test_ky_suite.py`（26 组 304 项断言，约 1 分钟）。
+> 请在**干净副本**里跑 `python tools/test_ky_suite.py`（26 组 304 项断言，数分钟）。
 
 > [!WARNING]
 > **`tools/test_ky_suite.py` 会真实改写工作区用户数据**（备考方案 / 今日任务 / 大纲等），
@@ -277,7 +277,7 @@ ky
 | **考纲比对**  | `ky fetch diff --school=示例院校A`     | 解析新旧大纲 AST，标注考点增删与考查要求跃迁，测算动荡率            |
 | **切片入库**  | `ky ingest 2024真题.md`              | 试卷智能切片与标准化题卡入库 (支持 Rust 毫秒级加速)            |
 | **刷新看板**  | `ky build`                         | 重新编译并刷新本地与移动端自测看板（默认离线构建，`--cdn` 可切回 CDN） |
-| **系统体检**  | `ky doctor`                        | 7 维度全系统健康诊断（Python/依赖/状态/API/端口/Git隐私）    |
+| **系统体检**  | `ky doctor`                        | 7 维度全系统健康诊断（Python/依赖/状态/API/端口/Git隐私/降级评估） |
 
 ---
 
@@ -292,6 +292,7 @@ ky
 ├── CONTRIBUTING.md              # 开发者与贡献指南（含完整架构树）
 ├── CHANGELOG.md                 # 版本历史与升级方式
 ├── GEMINI.md                    # Gemini / Antigravity 适配入口
+├── .cursorrules / .clinerules   # Cursor / Roo·Cline 编辑器适配规则（与 AGENTS.md 同源）
 ├── LICENSE                      # MIT 开源许可证
 ├── pyproject.toml               # 打包元数据（Python ≥3.10，当前版本 2.8.0）
 ├── requirements.txt             # 可选增强依赖清单（核心功能零依赖）
@@ -303,6 +304,8 @@ ky
 ├── 更新看板.bat                 # Windows 一键刷新手机看板
 ├── 00_考研全科总战役规划.md      # 总战役规划（由 ky plan 依据你的配置生成，仅本地）
 ├── 00_考研全科总战役规划.example.md  # 脱敏示例规划（随仓库公开的模板）
+├── .memory/                     # 三级分层记忆 session / project / decisions（仅本地）
+├── logs/                        # 运行日志（仅本地）
 │
 ├── .github/workflows/
 │   ├── deploy-pages.yml         # GitHub Actions：看板自动部署到 Pages
@@ -327,12 +330,14 @@ ky
 │   ├── state_snapshot.json      # 看板数据源（仓库内为脱敏示例快照）
 │   ├── BOT_INTEGRATION_GUIDE.md # 微信 / QQ / 钉钉 / 飞书 机器人接入说明
 │   └── assets/                  # 配图、Logo、SVG 与 KaTeX 本地副本
-├── data/                        # 内置公开高校研招档案（非个人数据，随仓库分发）
-│   └── universities/
-│       ├── registry.json        # 57 所院校详细档案索引（院校代码 → 院校信息）
-│       ├── national_institutions.json / exam_subjects.json
-│       ├── 北京/ 上海/ 天津/ …（20 个省级目录）
-│       └── _sources/            # 公开数据源原始快照与出处说明
+├── data/                        # 数据目录（均为公开数据或本地可重建产物）
+│   ├── universities/            # 内置公开高校研招档案（随仓库分发）
+│   │   ├── registry.json        # 57 所院校详细档案索引（院校代码 → 院校信息）
+│   │   ├── national_institutions.json / exam_subjects.json
+│   │   ├── 北京/ 上海/ 天津/ …（20 个省级目录）
+│   │   └── _sources/            # 公开数据源原始快照与出处说明
+│   └── knowledge/               # 检索知识库（向量索引，运行时生成，仅本地）
+├── build/ dist/                 # 构建产物（PyInstaller / 打包输出，可安全删除）
 ├── rust_ext/                    # Rust (PyO3) 原生加速扩展源码（可选构建）
 └── tools/                       # 全部 Python 源码
     ├── ky_cli.py                # 主命令行入口，39 个子命令（表驱动分发）
@@ -402,8 +407,15 @@ AI 私教只从你放入的白名单资料出题，白名单为空时仅按官�
 7. **隐私边界**
 个人学情状态（`_状态/*.md`、`学情档案.md`）、错题本、每日笔记与经验档案均在忽略名单内。
 只要不绕过 Git 强推，这些数据不会被误上传。
-8. **Rust 加速为可选**
+8. **Rust 加速为可选（需本地编译，没有 pip extra）**
 未编译 `ky_rust_ext` 原生扩展时，系统会自动降级为等价的纯 Python 实现，功能与结果一致，仅性能不同。
+该扩展**未发布到 PyPI**，因此不存在 `pip install '.[fast]'` 这类安装方式（曾经声明的 `[fast]` extra 已移除）；需要加速时请在本地用 Maturin 从 `rust_ext/` 源码构建：
+
+    pip install maturin
+    cd rust_ext
+    maturin develop --release     # 直接装进当前虚拟环境（开发用）
+    # 或： maturin build --release  → 安装 target/wheels/ 下产出的 wheel（分发用）
+
 9. **Windows 终端编码**
 中文输出建议在 Windows Terminal 下运行，或先执行 `chcp 65001` 切换到 UTF-8 代码页，避免乱码。
 10. **Python 版本**
@@ -478,26 +490,28 @@ python tools/test_ky_suite.py
 # 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、开放题判分等，共 130 项断言)
 python tools/test_new_features.py
 
-# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 845 项）
+# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 1192 项）
 python -m pytest -q
 ```
 
 > [!NOTE]
-> **测试计数已做成环境无关，但前提仍要写清**（下列数字为 2026-09-20 实测）：
+> **测试计数已做成环境无关，但前提仍要写清**（下列数字为 2026-09-21 实测）：
 >
 > - `test_ky_suite.py`：26 组共 **304 项断言**。Git 工作区内为 304 通过 / 0 跳过；
 > 干净检出（`git archive` 导出、无 `.git`）为 **299 通过 + 5 跳过 = 304** ——
 > 「测试组 7 Git 隐私隔离」的 5 条断言需 `.git`，无 `.git` 时逐条记为跳过，故**两种环境总数恒为 304**。
 > - `test_new_features.py`：**130 项断言**（0 跳过），与是否 Git 工作区无关。
-> - `pytest tests/`：共 **845 项**（完整副本、已配 `study_plan` 的 `ky_config.json`、无 `dist/`，实测 837 通过 + 8 跳过）。
-> 总数会随新增测试文件变化；跳过项来自未构建 `dist/`（6 条打包断言）与联网测试未设 `KY_LIVE_TEST=1`（2 条）。
+> - `pytest tests/`：共 **1192 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
+> **含** `dist/` 构建产物，实测 1189 通过 + 3 跳过）。跳过项为联网测试未设
+> `KY_LIVE_TEST=1`（2 条）与一条需特定 registry 探测串的守卫（1 条）。
+> 在**无** `dist/` 的副本里跑，6 条打包断言会转为跳过 —— 收集总数不变，通过数下降。
 > ⚠️ 造副本时排除目录**必须锚定根级路径**（如 `--exclude=./dist`）：写成裸 `dist` 会连
 > `docs/assets/vendor/katex/0.16.9/dist/` 一起排掉（KaTeX npm 包内部结构），导致 vendor 资产假缺失、
 > `test_web_assets.py` 假失败 —— robocopy 的 `/XD "dist"` 与 tar 的 `--exclude=dist` 同样会踩。
 >
 > 改文档里的计数时，请**把对应环境一并写上**，否则下一个人会误判为「数字漂移」。
 
-- **测试保障**：主套件 26 组测试集 **304 项断言** + 新功能专项 **130 项断言** + pytest 单元/进程层 **845 项**（合计 **1279 项**，含可选依赖缺失时自动跳过的用例），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
+- **测试保障**：主套件 26 组测试集 **304 项断言** + 新功能专项 **130 项断言** + pytest 单元/进程层 **1189 项**（合计 **1623 项通过**，另有 3 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
 - **门禁脚本**：`python tools/lint_check.py`（零依赖静态检查，只卡 ERROR 级问题）、`python tools/check_dashboard.py`（看板产物守卫）已接入 CI；
 - **CI 流水线**：内置 GitHub Actions 多平台 (Linux/Windows) 与多 Python 版本自动化测试保障；
 - **开发者文档**：如需参与贡献或了解完整项目架构树，请参阅 [🛠️ 开发者与贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。

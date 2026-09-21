@@ -77,7 +77,7 @@ def _write_cfg(path: Path) -> bytes:
         "api_key": "sk-test-fake", "model": "mimo-v2.5",
         "base_url": "https://api.example.test/v1",
         "active_subject": "pro",
-        "study_plan": {"school": "目标院校", "total_hours": 6.5},
+        "study_plan": {"school": "中国人民大学", "total_hours": 6.5},
         "webhooks": {"dingtalk": ""},
         "completion_history": {},
     }
@@ -115,7 +115,7 @@ def test_record_daily_completion_still_writes_by_default(tmp_path, monkeypatch):
     assert cfg.read_bytes() != before, "默认模式下应写入 completion_history"
     after = json.loads(cfg.read_text(encoding="utf-8"))
     assert after["completion_history"]["2026-09-19"]["completed"] == 2
-    assert after["study_plan"]["school"] == "目标院校", "写入不得丢键"
+    assert after["study_plan"]["school"] == "中国人民大学", "写入不得丢键"
 
 
 def test_session_end_hook_notice_when_read_only(tmp_path, monkeypatch, read_only, capsys):
@@ -151,7 +151,7 @@ def test_session_end_hook_writes_when_not_read_only(tmp_path, monkeypatch, capsy
     assert cfg.read_bytes() != before, "默认模式下会话结束应写入 completion_history"
     after = json.loads(cfg.read_text(encoding="utf-8"))
     assert after["completion_history"], "completion_history 不应为空"
-    assert after["study_plan"]["school"] == "目标院校"
+    assert after["study_plan"]["school"] == "中国人民大学"
 
 
 # ───────────────────────── R2-D2 ─────────────────────────

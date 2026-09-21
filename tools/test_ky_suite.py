@@ -106,6 +106,12 @@ def run_tests():
         "04-专业课/目标院校情报_*.md",
         "04-专业课/考纲变动分析_*.md",
         "data/universities/registry.json",
+        # [P5 修复] 这两类此前不在快照/还原范围，测试期间新生成的文件既不会被
+        # 还原、也不被 .gitignore 覆盖（.gitignore 只忽略 双校考情对比_* /
+        # 目标院校情报_* / data/universities/_sources/），于是会以
+        # 「未跟踪的真实校名文件」永久留在工作区。
+        "04-专业课/双校对标_*.md",
+        "data/universities/*/*.yaml",
     )
 
     tracked_restore = {}   # rel -> bytes（运行前的原始内容）

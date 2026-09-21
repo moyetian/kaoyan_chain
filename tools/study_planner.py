@@ -13,6 +13,7 @@
 
 import sys
 import re
+import os
 import json
 from pathlib import Path
 from datetime import datetime, date
@@ -32,7 +33,16 @@ except ImportError:  # pragma: no cover
 # plan 中缺失 exam_date 时的兜底初试日：按日历推算，绝不写死年份
 _FALLBACK_EXAM_DATE = exam_calendar.resolve_exam_date({})[0].isoformat()
 
-ROOT = Path(__file__).resolve().parent.parent
+#: 工作区根。默认是「本文件上两级」（即仓库根），但允许 ``KY_WORKSPACE_ROOT``
+#: 环境变量覆盖。
+#:
+#: [P5 修复] 为什么必须可覆盖：独立套件 ``tools/test_ky_suite.py`` 会把脚本拷进
+#: 一个**假工作区**再运行（它自己的 ROOT=tmp），但本模块是被 PYTHONPATH 从
+#: **真实仓库**导入的 —— 于是本模块所有写盘都会落到真实考生工作区（实测：
+#: 跑一次守卫测试就会在真实仓库留下被改写的 AGENTS.md/规划/今日任务）。
+#: 调用方（测试）把 KY_WORKSPACE_ROOT 指向自己的 tmp 工作区即可彻底隔离。
+ROOT = Path(os.environ.get("KY_WORKSPACE_ROOT")
+            or Path(__file__).resolve().parent.parent)
 CONFIG_FILE = ROOT / "ky_config.json"
 
 # 跨平台控制台 UTF-8 编码保护 (防止 Windows GBK 环境乱码或崩溃)
@@ -839,6 +849,9 @@ def apply_study_plan(plan, interactive=True):
             eng_key=plan.get("eng_key", "eng2"),
             pro_type=plan.get("pro_type", "408"),
             pro_name=plan.get("pro_name", "408 计算机学科专业基础"),
+            # [G3 修复·丢 pro2_name] 缺此参数则 Mode-B 第二大纲永不生成
+            #（GUI settings 传了，CLI/向导路径漏了）。
+            pro2_name=plan.get("pro2_name", ""),
             school=plan.get("school", "目标院校"),
             major=plan.get("major", "报考专业"),
             auto_write=True
@@ -857,7 +870,25 @@ def apply_study_plan(plan, interactive=True):
     content = agents_path.read_text(encoding="utf-8")
     content = re.sub(r"- \*\*目标院校\*\*：.*", f"- **目标院校**：`{plan.get('school', '目标院校')}`", content)
     content = re.sub(r"- \*\*报考专业\*\*：.*", f"- **报考专业**：`{plan.get('major', '报考专业')}`", content)
-    content = re.sub(r"- \*\*初试日期\*\*：.*", f"- **初试日期**：`{plan.get('exam_date') or _FALLBACK_EXAM_DATE}` (倒计时约 {plan.get('days_left', 0)} 天)", content)
+    # [G2 修复] 倒计时必须按 exam_date **实时重算**，不能取 plan 里存的 days_left：
+    # 存值是上一轮写下的快照，一旦 exam_date 被改过（或配置被占位值冲过），
+    # AGENTS.md 就会出现「初试日期：X（倒计时约 N 天）」而 N 与 X 对不上的自相矛盾。
+    _exam_date_str = plan.get("exam_date") or _FALLBACK_EXAM_DATE
+    try:
+        # [G2-b 修复·倒计时负数] 实时重算同样必须钳非负：考试当天/过期后
+        # `(exam_date - today).days` 为负，AGENTS.md 会写出「倒计时约 -3 天」，
+        # 与 calculate_countdown() / exam_calendar.countdown_days() 的 max(0, …)
+        # 口径不一致（全仓无任何地方依赖负数语义）。
+        _days_left = max(0, (date.fromisoformat(str(_exam_date_str)) - date.today()).days)
+    except (TypeError, ValueError):
+        # 存储快照同样钳非负：非法/过期日期回退到 plan["days_left"] 时也不得写负数。
+        try:
+            _days_left = max(0, int(plan.get("days_left", 0) or 0))
+        except (TypeError, ValueError):
+            _days_left = 0
+    content = re.sub(r"- \*\*初试日期\*\*：.*",
+                     f"- **初试日期**：`{_exam_date_str}` (倒计时约 {_days_left} 天)",
+                     content)
     
     # 注入备考阶段
     if "- **当前备考阶段**：" in content:

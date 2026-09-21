@@ -33,22 +33,22 @@ def test_intel_task_worker_action_execution():
     worker.log_signal.connect(logs.append)
     worker.finished_signal.connect(lambda out, saved: results.append((out, saved)))
 
-    with patch("tools.gui.services.run_action_capture", return_value="[测试侦察研报] 目标院校考情解析完成"), \
-         patch("gui.services.run_action_capture", return_value="[测试侦察研报] 目标院校考情解析完成", create=True):
+    with patch("tools.gui.services.run_action_capture", return_value="[测试侦察研报] 中国人民大学考情解析完成"), \
+         patch("gui.services.run_action_capture", return_value="[测试侦察研报] 中国人民大学考情解析完成", create=True):
         worker.run()
 
     assert len(logs) >= 1
     assert "目标院校深度侦察" in logs[0]
     assert len(results) == 1
-    assert "目标院校" in results[0][0]
+    assert "中国人民大学" in results[0][0]
 
 
 def test_intel_task_worker_compare_execution():
     from tools.gui.workers.intel_worker import IntelTaskWorker
 
     worker = IntelTaskWorker("compare", ROOT, {
-        "school1": "目标院校",
-        "school2": "对比院校B",
+        "school1": "中国人民大学",
+        "school2": "湖南农业大学",
         "major": "马克思主义理论"
     })
     logs = []
@@ -63,7 +63,7 @@ def test_intel_task_worker_compare_execution():
         worker.run()
 
     assert len(logs) >= 1
-    assert "目标院校" in logs[0] and "对比院校B" in logs[0]
+    assert "中国人民大学" in logs[0] and "湖南农业大学" in logs[0]
     assert len(results) == 1
     assert "双校深度对比研报" in results[0][0]
     assert results[0][1] == fake_path
@@ -268,7 +268,7 @@ def test_vision_solver_url_norm_and_gzip():
     mock_resp.headers = {"Content-Encoding": "gzip"}
     mock_resp.read.return_value = compressed_payload
 
-    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+    with patch("tools.skills.vision_solver.safe_urlopen", return_value=mock_resp) as mock_urlopen:
         res = vision_solver.call_text_llm(
             messages=[{"role": "user", "content": "ping"}],
             config={
@@ -335,7 +335,7 @@ def test_settings_api_connectivity_headers_and_timeout():
     mock_resp.read.return_value = b'{"status": "ok"}'
     mock_resp.status = 200
 
-    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+    with patch("tools.gui.services.settings.safe_urlopen", return_value=mock_resp) as mock_urlopen:
         res = test_api_connectivity(
             api_key="sk-test-123456",
             base_url="https://api.fastrun.cn",
@@ -371,7 +371,7 @@ def test_resp_without_headers_attribute_safety():
 
     # open_grader
     client = open_grader.OpenAICompatClient(endpoint={"base_url": "https://api.openai.com/v1", "api_key": "sk-123"})
-    with patch("urllib.request.urlopen", return_value=BareResp()):
+    with patch("tools.skills.open_grader.safe_urlopen", return_value=BareResp()):
         text = client.chat([{"role": "user", "content": "hi"}])
         assert text == "ok"
 
@@ -391,7 +391,7 @@ def test_open_grader_headers_and_gzip_support():
     mock_resp.headers = {"Content-Encoding": "gzip"}
 
     client = open_grader.OpenAICompatClient(endpoint={"base_url": "https://api.fastrun.cn", "api_key": "sk-fastrun"})
-    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+    with patch("tools.skills.open_grader.safe_urlopen", return_value=mock_resp) as mock_urlopen:
         res = client.chat([{"role": "user", "content": "ping"}])
         assert res == "open_grader_gzip_ok"
         mock_urlopen.assert_called_once()

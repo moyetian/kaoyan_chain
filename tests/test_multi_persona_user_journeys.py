@@ -3,7 +3,7 @@
 多角色多维度全链路用户场景验收测试 (Multi-Persona Verification Suite)
 ======================================================================
 覆盖角色：
-1. Persona 1: 小白文科跨考生（马理论 · 目标院校 · 不考数学）
+1. Persona 1: 小白文科跨考生（马理论 · 中国人民大学 · 不考数学）
 2. Persona 2: 统考理工生（数学二 · 408 计算机）
 3. Persona 3: 中转站 / 反代高延迟用户（5s 延迟、Gzip 压缩包、流式逐字推送）
 4. Persona 4: Windows 纯终端 / 批处理用户（GUI.bat 换行符与环境探测）
@@ -16,6 +16,8 @@ import tempfile
 import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -41,8 +43,8 @@ def test_persona_1_liberal_arts_no_math():
 
         # 2. 模拟完成新手引导配置
         study_plan = {
-            "school": "目标院校",
-            "major": "目标专业 (专业代码)",
+            "school": "中国人民大学",
+            "major": "030100 法学",
             "backup_school": "",
             "exam_date": "2026-12-19",
             "days_left": 91,
@@ -53,7 +55,7 @@ def test_persona_1_liberal_arts_no_math():
             "eng_key": "eng1",
             "eng_name": "英语一 (201)",
             "pro_type": "custom",
-            "pro_name": "自命题专业课科目",
+            "pro_name": "610 法学基础 810 法学综合",
             "math_hours": 0.0,
             "eng_hours": 2.0,
             "pol_hours": 1.0,
@@ -65,14 +67,14 @@ def test_persona_1_liberal_arts_no_math():
             "pro_target": "125+ 分",
             "total_target": "370+ 分",
             "math_weakness": "无",
-            "eng_weakness": "待诊断薄弱点",
-            "pol_weakness": "待诊断薄弱点",
-            "pro_weakness": "待诊断薄弱点",
+            "eng_weakness": "阅读定位不熟练",
+            "pol_weakness": "多选题易漏选",
+            "pro_weakness": "知识点记忆不牢",
         }
         cfg_data = {
             "onboarding_completed": True,
-            "target_school": "目标院校",
-            "target_major": "目标专业 (专业代码)",
+            "target_school": "中国人民大学",
+            "target_major": "030100 法学",
             "coaching_style": "严格把关·保姆提分型 (Strict & Disciplined)",
             "api_key": "test_api_key",
             "base_url": "https://api.deepseek.com/v1",
@@ -84,12 +86,19 @@ def test_persona_1_liberal_arts_no_math():
         # 3. 模拟在引导界面放置专业课实体讲义与真题 PDF
         pro_ref_dir = tmp_ws / "04-专业课" / "参考资料"
         pro_ref_dir.mkdir(parents=True, exist_ok=True)
-        sample_doc = pro_ref_dir / "2025年自命题科目1大纲解析.txt"
+        sample_doc = pro_ref_dir / "2025年610法学基础大纲解析.txt"
         sample_doc.write_text("第一章 物质与意识的辩证关系。世界的物质统一性原理。", encoding="utf-8")
 
         # 放置真实真题 PDF 并验证抽取
-        sample_pdf = pro_ref_dir / "2026年自命题科目1自命题真题.pdf"
-        import pymupdf
+        sample_pdf = pro_ref_dir / "2026年610法学基础自命题真题.pdf"
+        # [P7 修复] pymupdf 此前是**函数体内裸 import 且无守卫**，而它并不在
+        # requirements.txt / [dev] 里 —— CI 只装 requirements + [dev]，一执行到
+        # 这里就 ModuleNotFoundError。改用显式守卫：缺依赖时该用例 skip，
+        # 而不是让整条链路报错（本用例的目的只是"造一个真实 PDF"，非验证 pymupdf）。
+        try:
+            import pymupdf
+        except ImportError:
+            pytest.skip("pymupdf 未安装（仅测试造样本用）")
         doc = pymupdf.open()
         p = doc.new_page()
         p.insert_text((50, 72), "Kaoyan 618: Marxist Dialectics and Historical Materialism Exam.")
@@ -111,8 +120,8 @@ def test_persona_1_liberal_arts_no_math():
 
         # 5. 验证 AGENTS.md 已同步写入
         agents_content = (tmp_ws / "AGENTS.md").read_text(encoding="utf-8")
-        assert "目标院校" in agents_content
-        assert "目标专业 (专业代码)" in agents_content
+        assert "中国人民大学" in agents_content
+        assert "030100 法学" in agents_content
         assert "不考数学" in agents_content
 
         # 6. 验证专业课资料已挂载就绪
@@ -206,7 +215,7 @@ def test_persona_3_proxy_user_streaming():
     mock_resp.read.return_value = compressed
     mock_resp.headers = {"Content-Encoding": "gzip"}
 
-    with patch("urllib.request.urlopen", return_value=mock_resp):
+    with patch("agent.loop.safe_urlopen", return_value=mock_resp):
         res = runner.run("政治报到", interactive=False)
         assert res == full_text
         assert len(chunks_received) > 0, "应通过 stream_callback 分批接收到流式打字数据"
@@ -231,7 +240,7 @@ def test_persona_3_proxy_user_streaming():
             mock_resp_br.__enter__.return_value = mock_resp_br
             mock_resp_br.read.return_value = compressed_br
             mock_resp_br.headers = {"Content-Encoding": "br"}
-            with patch("urllib.request.urlopen", return_value=mock_resp_br):
+            with patch("agent.loop.safe_urlopen", return_value=mock_resp_br):
                 res_br = runner_br.run("政治报到", interactive=False)
                 assert res_br == full_text
                 assert "".join(chunks_br) == full_text

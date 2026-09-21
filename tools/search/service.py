@@ -324,18 +324,11 @@ class SearchService:
         self._fetcher = HTTPFetcher()
         return self._fetcher
 
-    @staticmethod
-    def _maybe_cooldown(provider: SearchProvider, reason: str) -> None:
-        """失败原因看起来像「被反爬/被挡」时，让该源冷却，避免继续硬试。"""
-        lowered = str(reason or "").lower()
-        if any(marker in lowered for marker in ("反爬", "验证", "captcha", "anomaly",
-                                                "频繁", "限流", "blocked")):
-            health.mark_blocked(provider.name, reason)
-
-    def _annotate(self, results: Sequence[SearchResult]) -> List[SearchResult]:
-        """补齐来源类型与权威度（统一走 source_registry，避免与服务外的调用方漂移）。"""
-        return source_registry.classify_results(list(results))
-
+    # [P2-8 修复·重复定义] 此处原先还有一组 _maybe_cooldown / _annotate 定义，
+    # 与下面那组同名 —— Python 后定义覆盖先定义，于是上面那版
+    # （_annotate 走 source_registry.classify_results）**从未生效**，
+    # 属纯死代码，且让「改了上面那版却没生效」成为下次踩坑的陷阱。
+    # 现只保留下面这一组（也是实际一直生效的那组）。
     @staticmethod
     def _maybe_cooldown(provider: SearchProvider, reason: str) -> None:
         """失败原因看起来像「被反爬/被挡」时，让该源冷却，避免继续硬试。"""
@@ -372,6 +365,10 @@ class SearchService:
     def _dedup_results(self, results: Sequence[SearchResult],
                        q: SearchQuery) -> Tuple[List[SearchResult], int]:
         if self._dedup is None:
+            # 不静默：直连 SearchService() 会跳过 default() 的装配，去重/重排/缓存
+            # 一起失效。这里必须留痕，否则调用方只看到「结果变多」而无从归因。
+            _LOG.warning("去重未启用：SearchService 未装配 Deduplicator"
+                         "（请用 SearchService.default() 构造）")
             return list(results), 0
         try:
             kept, removed = self._dedup.dedup(list(results))

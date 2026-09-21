@@ -79,16 +79,16 @@ def test_onboarding_wizard_mode_b_dual_pro(qapp, temp_workspace):
     assert wizard.math_hours_spin.value() == 0.0
 
     # 填写专业课一与专业课二
-    wizard.pro_name_edit.setText("自命题科目1")
-    wizard.pro2_name_edit.setText("自命题科目2")
+    wizard.pro_name_edit.setText("610 法学基础")
+    wizard.pro2_name_edit.setText("810 法学综合")
     wizard.pro_hours_spin.setValue(2.0)
     wizard.pro2_hours_spin.setValue(2.0)
 
     cfg = wizard.collect_config()
     plan = cfg["study_plan"]
     assert plan["exam_mode"] == "mode_b"
-    assert plan["pro_name"] == "自命题科目1"
-    assert plan["pro2_name"] == "自命题科目2"
+    assert plan["pro_name"] == "610 法学基础"
+    assert plan["pro2_name"] == "810 法学综合"
     assert plan["math_hours"] == 0.0
     assert plan["pro2_hours"] == 2.0
 
@@ -133,7 +133,7 @@ def test_fetch_upstream_models_mock():
     }
     raw_bytes = json.dumps(mock_payload).encode("utf-8")
 
-    with patch("urllib.request.urlopen") as mock_urlopen:
+    with patch("tools.llm_client.safe_urlopen") as mock_urlopen:
         mock_resp = MagicMock()
         mock_resp.read.return_value = raw_bytes
         mock_resp.headers.get.return_value = "application/json"
@@ -161,8 +161,8 @@ def test_provider_console_urls():
 def test_study_planner_llm_and_fallback(temp_workspace):
     """测试 study_planner 在 LLM 配置有效时生成定制任务，并在无效时降级"""
     plan = {
-        "school": "目标院校",
-        "major": "目标专业 (专业代码)",
+        "school": "中国人民大学",
+        "major": "030100 法学",
         "exam_date": "2026-12-19",
         "days_left": 90,
         "stage_name": "强化题型攻坚阶段",
@@ -170,8 +170,8 @@ def test_study_planner_llm_and_fallback(temp_workspace):
         "math_key": "none",
         "math_name": "不考数学",
         "eng_name": "英语一",
-        "pro_name": "自命题科目1",
-        "pro2_name": "自命题科目2",
+        "pro_name": "610 法学基础",
+        "pro2_name": "810 法学综合",
         "math_hours": 0.0,
         "eng_hours": 2.0,
         "pol_hours": 1.0,
@@ -262,8 +262,8 @@ def test_syllabus_diff_llm_advice():
     """测试考纲比对在有变动时调用 LLM 生成专属战术研报"""
     generator = syllabus_diff.SyllabusDiffGenerator()
     report_data = {
-        "school": "目标院校",
-        "major": "目标专业 (专业代码)",
+        "school": "中国人民大学",
+        "major": "030100 法学",
         "year_old": 2026,
         "year_new": 2027,
         "items": [],
@@ -351,7 +351,7 @@ def test_connectivity_400_retry_and_gzip(monkeypatch):
             mock_resp.__enter__.return_value = mock_resp
             return mock_resp
 
-    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+    monkeypatch.setattr(settings_svc, "safe_urlopen", mock_urlopen)
 
     res = settings_svc.test_api_connectivity(
         api_key="sk-test-key",

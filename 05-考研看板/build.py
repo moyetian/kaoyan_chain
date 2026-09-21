@@ -284,24 +284,36 @@ def build(offline: bool = False):
     html_data = sanitize_public_data(data) if snapshot_opt_in() else data
     payload = json.dumps(html_data, ensure_ascii=False).replace("</", "<\\/")
 
-    # 先注入主题变量/降级脚本/第三方资源地址，再注入数据
-    html = load_template()
-    for placeholder, value in render_theme_placeholders(offline=offline,
-                                                        days_left=d_day1).items():
-        html = html.replace(placeholder, value)
+    # [P2-2 修复·除零] 起跑日 ≥ 初试日（ky_config.json 自相矛盾）时 total_days<=0，
+    # 原先 `day_no / total_days` 会抛 ZeroDivisionError 中断整个看板构建
+    # （update_dashboard / ky build 直接失败）。此时进度无意义，clamp 为 0.0。
+    plan_pct = f"{day_no / total_days * 100:.1f}" if total_days > 0 else "0.0"
 
-    return (html
-            .replace("{{DMATH}}", str(d_math))
-            .replace("{{DDAY1}}", str(d_day1))
-            .replace("{{DAYNO}}", str(day_no))
-            .replace("{{TOTALDAYS}}", str(total_days))
-            .replace("{{PLANPCT}}", f"{day_no / total_days * 100:.1f}")
-            .replace("{{TODAY}}", today_out)
-            .replace("{{MEMONOTES}}", notes_out("memo"))
-            .replace("{{WEAKNOTES}}", notes_out("weak"))
-            .replace("{{RADAR}}", radar_out)
-            .replace("{{DATA}}", payload)
-            .replace("{{STAMP}}", datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))), data, parse_warnings, sections_status
+    # [P2-1 修复·占位符二次替换] 此前是「先注入 today/notes/radar 正文，最后再对整串
+    # .replace("{{DATA}}", payload)」——用户笔记正文里若出现字面量 {{DATA}}，它会被当成
+    # 模板占位符，把整份 JSON payload 塞进正文（实测复现）。现改为**单遍替换**：
+    # 用 re.sub + 一次性映射表，任何被注入的内容都不会再被当作模板扫描。
+    values = {
+        "DMATH": str(d_math),
+        "DDAY1": str(d_day1),
+        "DAYNO": str(day_no),
+        "TOTALDAYS": str(total_days),
+        "PLANPCT": plan_pct,
+        "TODAY": today_out,
+        "MEMONOTES": notes_out("memo"),
+        "WEAKNOTES": notes_out("weak"),
+        "RADAR": radar_out,
+        "DATA": payload,
+        "STAMP": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+    # 主题变量/降级脚本/第三方资源地址与数据占位符并入同一次替换（键统一为 {{NAME}}）。
+    values.update({k.strip("{}"): v
+                   for k, v in render_theme_placeholders(offline=offline,
+                                                         days_left=d_day1).items()})
+
+    html = load_template()
+    html = re.sub(r"\{\{([A-Z0-9_]+)\}\}", lambda m: values.get(m.group(1), m.group(0)), html)
+    return html, data, parse_warnings, sections_status
 
 _DIR = pathlib.Path(__file__).resolve().parent
 if str(_DIR) not in sys.path:

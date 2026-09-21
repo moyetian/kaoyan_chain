@@ -58,10 +58,26 @@ class MemoryManager:
         }
 
     def get_file_path(self, scope: str) -> Path:
+        """把作用域名解析为记忆文件路径。
+
+        [P0 修复·路径穿越] 旧实现在 scope 未命中白名单时回落成
+        ``self.project_memory_dir / f"{scope}.md"``，且 scope 只做了 lower/strip
+        —— 于是 ``scope="../../pwn"`` 会落到工作区外的 ``.memory/../../pwn.md``，
+        ``write_memory`` 真能写到工作区外（实测确认）。现在未命中白名单一律拒绝。
+        """
         norm_scope = scope.lower().strip()
-        if norm_scope in self._files:
-            return self._files[norm_scope]
-        return self.project_memory_dir / f"{norm_scope}.md"
+        if norm_scope not in self._files:
+            raise ValueError(
+                f"未知记忆作用域 [{scope}]，仅支持: {', '.join(sorted(self._files))}")
+        fp = self._files[norm_scope]
+        # 兜底断言：即便 _files 映射将来被改坏，也不允许落到记忆目录之外。
+        root = (self.global_memory_dir if norm_scope == MemoryScope.GLOBAL
+                else self.project_memory_dir)
+        try:
+            fp.resolve().relative_to(root.resolve())
+        except ValueError:
+            raise ValueError(f"记忆路径越界，已拒绝: [{scope}]")
+        return fp
 
     def read_memory(self, scope: str) -> str:
         """读取指定作用域的记忆文本"""

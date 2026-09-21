@@ -62,6 +62,11 @@ class MainWindow(QMainWindow):
         # 再次发送时被覆盖会导致运行中线程对象被 GC 销毁、进程直接崩溃。
         self.agent_worker = None
         self._worker_refs = []
+        # [轻微泄漏修复] 微信检索对话框的唯一实例（惰性创建后长期复用）。
+        # 旧实现 ``WeChatSearchDialog(self).exec()`` 用临时对象弹窗：exec() 返回后
+        # Python 引用即失效，但对话框是主窗口的 Qt 子对象 → 每打开一次就留下一个
+        # 隐藏的 QDialog 直到主窗口销毁。
+        self._wechat_dialog = None
         self._today = date.today()
         #: 本轮是否已流式输出过（决定收尾时是否补整段，避免答案打两遍）
         self._streamed = False
@@ -81,6 +86,20 @@ class MainWindow(QMainWindow):
         self._init_timer()
         self._refresh_all()
         theme_apply.restore_geometry(self)
+
+        # [P2-9 收尾·钩子位置] 退出收尾钩子必须在**启动时**就装好，而不是等
+        # 用户真的发起过一次检索（旧实现只在 WeChatSearchDialog._on_search 里
+        # 调 _install_quit_hook）。否则「开着检索对话框直接退出应用」这条路径
+        # 上 aboutToQuit 上没有收尾回调，运行中的 QThread 会随主窗口析构被销毁
+        # → "QThread: Destroyed while thread is still running" → 进程 abort。
+        try:
+            try:
+                from tools.gui.widgets.wechat_search_dialog import _install_quit_hook
+            except ImportError:  # pragma: no cover
+                from gui.widgets.wechat_search_dialog import _install_quit_hook  # type: ignore
+            _install_quit_hook()
+        except Exception:  # pragma: no cover - 钩子装不上不应阻断主界面启动
+            pass
 
         # 首次进入或配置缺失时自动唤起新手引导与学情建档向导
         if hasattr(services, "is_unconfigured") and services.is_unconfigured(self.workspace_root):
@@ -246,9 +265,8 @@ class MainWindow(QMainWindow):
     # 事件分发
     # ════════════════════════════════════════════════════════════
 
-    def _on_quick_command(self, cmd_text: str):
-        self.input_box.setText(cmd_text)
-        self._on_send_message()
+    # [S8 修复] 此处曾有一份 _on_quick_command 重复定义（后者覆盖前者，
+    # 功能一致但留死代码）。唯一实现见下方「私教工作线程」分区。
 
     def _on_upload_image(self):
         """选择答卷或错题图片并填入输入框，准备发送给视觉私教批改。"""
@@ -488,11 +506,28 @@ class MainWindow(QMainWindow):
         worker.start()
 
     def _open_wechat_search_dialog(self):
+        """弹出微信检索对话框 —— 全程复用同一个实例（不再每次新建）。
+
+        [轻微泄漏修复] 旧实现 ``WeChatSearchDialog(self).exec()``：exec() 返回后
+        临时对象失去 Python 引用，但它是主窗口的 Qt 子对象，于是每打开一次就多留
+        一个隐藏的 QDialog，直到主窗口销毁。改为持有成员引用并复用，实例数恒为 1。
+
+        [为什么不用 WA_DeleteOnClose] 该对话框的线程收尾（见
+        ``wechat_search_dialog._shutdown_worker``）依赖对话框**对象存活期间**完成：
+        超时停不掉时还要把 worker 改挂到 QApplication 上。删窗时机与线程状态耦合，
+        而复用实例不引入任何新的析构路径，风险最低。
+
+        [复用为什么安全] 每次关闭都走 ``closeEvent`` → ``_shutdown_worker``：
+        线程要么已停止（``self.worker`` 是已结束的 QThread），要么被摘出并置 None。
+        故再次 ``exec()`` 时不会出现「运行中的 QThread 被重新拉起/析构」。
+        """
         try:
             from tools.gui.widgets.wechat_search_dialog import WeChatSearchDialog
         except ImportError:  # pragma: no cover
             from gui.widgets.wechat_search_dialog import WeChatSearchDialog  # type: ignore
-        WeChatSearchDialog(self).exec()
+        if self._wechat_dialog is None:
+            self._wechat_dialog = WeChatSearchDialog(self)
+        self._wechat_dialog.exec()
 
     def _generate_error_quiz(self):
         try:
@@ -625,6 +660,22 @@ class MainWindow(QMainWindow):
             self._load_today_task_progress()
 
     def closeEvent(self, event):
+        # [B5 修复·关窗 abort] IntelTaskWorker/AgentWorker 均为无 parent 的
+        # QThread，仅靠 _worker_refs 持有。任务进行中关窗会触发
+        # "QThread: Destroyed while thread is still running" 导致进程 abort。
+        # 现先 cancel 再 quit+wait（2s 上限，不无限阻塞关窗）。
+        for w in list(getattr(self, "_worker_refs", [])):
+            try:
+                w.cancel()
+            except Exception:
+                pass
+        for w in list(getattr(self, "_worker_refs", [])):
+            try:
+                if w.isRunning():
+                    w.quit()
+                    w.wait(2000)
+            except Exception:
+                pass
         theme_apply.write_pref(theme_apply.KEY_LAST_TAB, self.tabs.currentIndex())
         theme_apply.write_geometry(self)
         super().closeEvent(event)

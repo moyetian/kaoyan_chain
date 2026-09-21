@@ -58,7 +58,7 @@ from tools.skills.wechat_searcher import (
 # ══════════════════════════════════════════════════════════════════════
 
 def test_adaptive_encoding_utf8_plain():
-    text = "目标院校马克思主义理论研究生培养方案"
+    text = "中国人民大学马克思主义理论研究生培养方案"
     raw_bytes = text.encode("utf-8")
     decoded = detect_and_decode(raw_bytes)
     assert decoded == text
@@ -228,7 +228,7 @@ def test_clean_text_strips_nested_tags_and_unescapes_entities():
         '  <script>var x = 1;</script>\n'
         '  <style>.box { color: red; }</style>\n'
         '  <!-- 内部注释 -->\n'
-        '  <h3>目标院校&nbsp;&amp;&nbsp;2027考研&lt;b&gt;马克思主义&lt;/b&gt;</h3>\n'
+        '  <h3>中国人民大学&nbsp;&amp;&nbsp;2027考研&lt;b&gt;马克思主义&lt;/b&gt;</h3>\n'
         '  <p>发布时间&#58;&nbsp;2026-09-18&#x3000;\u200b</p>\n'
         '</div>'
     )
@@ -236,7 +236,7 @@ def test_clean_text_strips_nested_tags_and_unescapes_entities():
     assert "var x = 1" not in cleaned
     assert "color: red" not in cleaned
     assert "内部注释" not in cleaned
-    assert "目标院校 & 2027考研 马克思主义" in cleaned
+    assert "中国人民大学 & 2027考研 马克思主义" in cleaned
     assert "发布时间: 2026-09-18" in cleaned
     assert "\u200b" not in cleaned
     assert "\u3000" not in cleaned
@@ -261,7 +261,7 @@ WECHAT_SOGOU_FIXTURE = """
     <div class="txt-box">
       <h3>
         <a href="/link?url=dn9a8as9df8a9sd8f&amp;query=408" target="_blank">
-          2027年<em>目标院校</em>马克思主义理论考研上岸全规划
+          2027年<em>中国人民大学</em>马克思主义理论考研上岸全规划
         </a>
       </h3>
       <p class="txt-info">
@@ -297,7 +297,7 @@ def test_wechat_sogou_article_extraction():
     assert len(parsed) == 2
 
     first = parsed[0]
-    assert first["title"] == "2027年目标院校马克思主义理论考研上岸全规划"
+    assert first["title"] == "2027年中国人民大学马克思主义理论考研上岸全规划"
     assert first["source"] == "考研前沿指南"
     assert first["url"].startswith("https://weixin.sogou.com/link?url=")
     assert first["date"] != ""
@@ -315,7 +315,7 @@ def test_wechat_search_articles_convenience_format(monkeypatch):
         "tools.skills.wechat_searcher.WeChatSearchEngine._search_sogou",
         lambda self, kw, max_r: WeChatSearchEngine()._parse_sogou_results(WECHAT_SOGOU_FIXTURE)
     )
-    articles = search_wechat_articles("目标院校 马克思主义理论", max_results=5, source="sogou")
+    articles = search_wechat_articles("中国人民大学 马克思主义理论", max_results=5, source="sogou")
     assert len(articles) == 2
     for art in articles:
         assert "title" in art
@@ -333,7 +333,7 @@ PAGE_BASE_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-  <title>目标院校研究生院 - 招生工作</title>
+  <title>中国人民大学研究生院 - 招生工作</title>
   <script>var jsessionid = "AB12CD34EF56"; var visits = 19283;</script>
 </head>
 <body>
@@ -346,8 +346,8 @@ PAGE_BASE_HTML = """
     <ul>
       <li>
         <span class="date">[2026-09-12]</span>
-        <a href="/info/1024/1.htm" title="目标院校2027年硕士研究生招生简章及专业目录">
-          目标院校2027年硕士研究生...
+        <a href="/info/1024/1.htm" title="中国人民大学2027年硕士研究生招生简章及专业目录">
+          中国人民大学2027年硕士研究生...
         </a>
       </li>
       <li>
@@ -356,7 +356,7 @@ PAGE_BASE_HTML = """
       </li>
     </ul>
   </div>
-  <div class="footer">版权所有：目标院校研究生院 网站地图 联系我们</div>
+  <div class="footer">版权所有：中国人民大学研究生院 网站地图 联系我们</div>
 </body>
 </html>
 """
@@ -365,7 +365,7 @@ PAGE_IDENTICAL_CONTENT_DYNAMIC_DRIFT = """
 <!DOCTYPE html>
 <html>
 <head>
-  <title>目标院校研究生院 - 招生工作</title>
+  <title>中国人民大学研究生院 - 招生工作</title>
   <script>var jsessionid = "ZZ99YY88XX77"; var visits = 19999;</script>
 </head>
 <body>
@@ -378,8 +378,8 @@ PAGE_IDENTICAL_CONTENT_DYNAMIC_DRIFT = """
     <ul>
       <li>
         <span class="date">[2026-09-12]</span>
-        <a href="/info/1024/1.htm?sid=88234&_t=1758240000" title="目标院校2027年硕士研究生招生简章及专业目录">
-          目标院校2027年硕士研究生...
+        <a href="/info/1024/1.htm?sid=88234&_t=1758240000" title="中国人民大学2027年硕士研究生招生简章及专业目录">
+          中国人民大学2027年硕士研究生...
         </a>
       </li>
       <li>
@@ -388,7 +388,7 @@ PAGE_IDENTICAL_CONTENT_DYNAMIC_DRIFT = """
       </li>
     </ul>
   </div>
-  <div class="footer">版权所有：目标院校研究生院 网站地图 联系我们</div>
+  <div class="footer">版权所有：中国人民大学研究生院 网站地图 联系我们</div>
 </body>
 </html>
 """
@@ -396,7 +396,7 @@ PAGE_IDENTICAL_CONTENT_DYNAMIC_DRIFT = """
 PAGE_WITH_NEW_ANNOUNCEMENT = """
 <!DOCTYPE html>
 <html>
-<head><title>目标院校研究生院 - 招生工作</title></head>
+<head><title>中国人民大学研究生院 - 招生工作</title></head>
 <body>
   <div class="content-list">
     <ul>
@@ -404,8 +404,8 @@ PAGE_WITH_NEW_ANNOUNCEMENT = """
         <a href="/info/1024/3.htm">2027年硕士研究生报考点公告与网报注意事项</a>
       </li>
       <li>
-        <a href="/info/1024/1.htm" title="目标院校2027年硕士研究生招生简章及专业目录">
-          目标院校2027年硕士研究生招生简章及专业目录
+        <a href="/info/1024/1.htm" title="中国人民大学2027年硕士研究生招生简章及专业目录">
+          中国人民大学2027年硕士研究生招生简章及专业目录
         </a>
       </li>
       <li>
@@ -443,8 +443,8 @@ def test_robust_title_extraction_from_university_markup():
 
     titles = watcher._extract_recent_titles(PAGE_BASE_HTML)
     assert len(titles) == 2
-    # 优先采用 title 属性中的完整长标题，而不是截断的 "目标院校2027年硕士研究生..."
-    assert titles[0] == "目标院校2027年硕士研究生招生简章及专业目录"
+    # 优先采用 title 属性中的完整长标题，而不是截断的 "中国人民大学2027年硕士研究生..."
+    assert titles[0] == "中国人民大学2027年硕士研究生招生简章及专业目录"
     assert titles[1] == "马克思主义学院2027年硕士研究生初试自命题大纲及参考书目"
     assert not any("版权所有" in t for t in titles)
     assert not any("网站地图" in t for t in titles)
@@ -454,8 +454,8 @@ def test_robust_title_extraction_edge_cases():
     """验证超长中文标题(>60字节)、实体转义、嵌套标签与无属性链接的抽取稳健性。"""
     html_markup = """
     <div class="announcements">
-      <a href="/1" title="目标院校2027年马克思主义学院全日制硕士研究生招生专业目录与复试参考范围汇总">
-        目标院校2027年马克思主义学院...
+      <a href="/1" title="中国人民大学2027年马克思主义学院全日制硕士研究生招生专业目录与复试参考范围汇总">
+        中国人民大学2027年马克思主义学院...
       </a>
       <a href="/2"><span>【官方通知】</span>2027年招收攻读硕士学位研究生自命题科目考试大纲<i>(09-18)</i></a>
       <a href="/3" title="关于&amp;ldquo;全国硕士研究生招生考试&amp;rdquo;河南农大考点网上确认公告">网上确认公告</a>
@@ -466,7 +466,7 @@ def test_robust_title_extraction_edge_cases():
     watcher = AdmissionWatcher()
     titles = watcher._extract_recent_titles(html_markup)
     assert len(titles) == 3
-    assert titles[0] == "目标院校2027年马克思主义学院全日制硕士研究生招生专业目录与复试参考范围汇总"
+    assert titles[0] == "中国人民大学2027年马克思主义学院全日制硕士研究生招生专业目录与复试参考范围汇总"
     assert titles[1] == "【官方通知】 2027年招收攻读硕士学位研究生自命题科目考试大纲"
     assert titles[2] == "关于“全国硕士研究生招生考试”河南农大考点网上确认公告"
     assert not any("网站地图" in t for t in titles)

@@ -34,11 +34,11 @@ SUITE_SRC = REPO_ROOT / "tools" / "test_ky_suite.py"
 
 REAL_CFG = {
     "study_plan": {
-        "school": "目标院校",
-        "major": "目标专业 (专业代码)",
+        "school": "中国人民大学",
+        "major": "030100 法学",
         "math_key": "none",
         "eng_key": "eng1",
-        "pro_name": "自命题专业课科目",
+        "pro_name": "610 法学基础 810 法学综合",
         "total_hours": 6.5,
     },
     "api_key": "sk-REAL-LOOKING-KEY-abcdef",
@@ -64,13 +64,23 @@ def _make_fake_workspace(tmp_path: Path, cfg: dict) -> Path:
     return tmp_path
 
 
-def _env() -> dict:
+def _env(workspace) -> dict:
+    """构造子进程环境变量。
+
+    [P5 修复] 必须显式设置 ``KY_WORKSPACE_ROOT`` —— 本测试把 ``test_ky_suite.py``
+    拷进 tmp 假工作区运行，但套件 import 的 ``study_planner`` / ``syllabus_manager``
+    等模块是从**真实仓库**经 PYTHONPATH 解析的，它们的 ``ROOT`` 默认推导为
+    ``Path(__file__).parent.parent`` = **真实仓库根** —— 于是套件的写盘会落到真实
+    考生工作区（实测污染）。把 KY_WORKSPACE_ROOT 指向假工作区后，这些模块的
+    ROOT 与套件自身的 ROOT 才一致，测试才真正隔离。
+    """
     env = dict(os.environ)
     env.pop("KY_TEST_ALLOW_REAL_WORKSPACE", None)
     env["PYTHONPATH"] = os.pathsep.join(
         [str(REPO_ROOT), str(REPO_ROOT / "tools"),
          env.get("PYTHONPATH", "")]).strip(os.pathsep)
     env["PYTHONIOENCODING"] = "utf-8"
+    env["KY_WORKSPACE_ROOT"] = str(workspace)
     return env
 
 
@@ -82,7 +92,8 @@ def test_real_workspace_is_refused_and_config_untouched(tmp_path):
 
     res = subprocess.run(
         [sys.executable, "-u", "tools/test_ky_suite.py"],
-        cwd=str(ws), env=_env(), capture_output=True, text=True, timeout=120,
+        cwd=str(ws), env=_env(ws), capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=120,
     )
 
     assert res.returncode == 2, f"应拒绝运行(exit 2)，实际 {res.returncode}\n{res.stdout[-2000:]}"
@@ -102,13 +113,14 @@ def test_refusal_message_shows_root_and_verdict_basis(tmp_path):
 
     res = subprocess.run(
         [sys.executable, "-u", "tools/test_ky_suite.py"],
-        cwd=str(ws), env=_env(), capture_output=True, text=True, timeout=120,
+        cwd=str(ws), env=_env(ws), capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=120,
     )
 
     assert res.returncode == 2, f"应拒绝运行(exit 2)，实际 {res.returncode}\n{res.stdout[-2000:]}"
     out = res.stdout
     assert f"ROOT = {ws}" in out, f"未输出 ROOT 绝对路径，用户无法核对是否认错地方:\n{out[:1500]}"
-    assert "判定依据" in out and "目标院校" in out, (
+    assert "判定依据" in out and "中国人民大学" in out, (
         f"判定依据必须点名命中的字段值:\n{out[:1500]}")
     assert "忠实副本" in out, "缺少「忠实副本会被同样拒跑」的说明"
     assert "git archive" in out, "缺少 git archive 副本情形的指引"
@@ -120,7 +132,7 @@ def test_template_workspace_is_not_refused(tmp_path):
     ws = _make_fake_workspace(tmp_path, TEMPLATE_CFG)
     proc = subprocess.Popen(
         [sys.executable, "-u", "tools/test_ky_suite.py"],
-        cwd=str(ws), env=_env(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        cwd=str(ws), env=_env(ws), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace",
     )
     try:
@@ -148,7 +160,7 @@ def test_workspace_without_config_is_not_refused(tmp_path):
 
     proc = subprocess.Popen(
         [sys.executable, "-u", "tools/test_ky_suite.py"],
-        cwd=str(tmp_path), env=_env(), stdout=subprocess.PIPE,
+        cwd=str(tmp_path), env=_env(tmp_path), stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
     )
     try:
@@ -191,13 +203,14 @@ def test_killed_run_is_healed_on_next_start(tmp_path):
 
     res = subprocess.run(
         [sys.executable, "-u", "tools/test_ky_suite.py"],
-        cwd=str(ws), env=_env(), capture_output=True, text=True, timeout=120,
+        cwd=str(ws), env=_env(ws), capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=120,
     )
 
     out = res.stdout
     assert "已自动还原" in out, f"未触发自愈：\n{out[:1500]}"
     restored = json.loads(cfg_path.read_text(encoding="utf-8"))
-    assert restored["study_plan"]["school"] == "目标院校"
+    assert restored["study_plan"]["school"] == "中国人民大学"
     assert restored["study_plan"]["math_key"] == "none"
     assert restored["study_plan"]["total_hours"] == 6.5
     # 还原后变成真实工作区 → 本次运行应被拒跑；守卫文件应被清空
@@ -221,7 +234,7 @@ def test_apply_scout_to_config_honors_config_path(tmp_path):
 
     real = tmp_path / "real_ky_config.json"
     real.write_text(json.dumps(
-        {"study_plan": {"school": "目标院校", "major": "目标专业 (专业代码)"},
+        {"study_plan": {"school": "中国人民大学", "major": "030100 法学"},
          "api_key": "sk-REAL-LOOKING-KEY-abcdef"},
         ensure_ascii=False, indent=2), encoding="utf-8")
     real_before = real.read_bytes()
@@ -243,5 +256,37 @@ def test_apply_scout_to_config_honors_config_path(tmp_path):
 
     assert ok is True
     assert real.read_bytes() == real_before, "真实配置被改写了 —— config_path 只隔离了读"
-    assert json.loads(real.read_text(encoding="utf-8"))["study_plan"]["school"] == "目标院校"
+    assert json.loads(real.read_text(encoding="utf-8"))["study_plan"]["school"] == "中国人民大学"
     assert json.loads(target.read_text(encoding="utf-8"))["study_plan"]["school"] == "浙江大学"
+
+
+def test_workspace_root_env_override_isolates_modules(tmp_path):
+    """[P5 回归] ``KY_WORKSPACE_ROOT`` 必须能覆盖被导入模块的工作区根。
+
+    背景：本测试把 ``test_ky_suite.py`` 拷进 tmp 假工作区运行，但套件 import 的
+    ``study_planner`` / ``syllabus_manager`` 是从**真实仓库**经 PYTHONPATH 解析的，
+    它们的 ``ROOT`` 默认 = ``Path(__file__).parent.parent`` = 真实仓库根 ——
+    套件一跑，写盘就落到真实考生工作区（实测污染）。
+
+    阴性对照：把这两个模块里的 ``os.environ.get("KY_WORKSPACE_ROOT")`` 去掉，
+    本用例必须变红（ROOT 会退回真实仓库根）。
+    """
+    fake = tmp_path / "fake_ws"
+    fake.mkdir()
+    code = (
+        "import json\n"
+        "import study_planner, syllabus_manager\n"
+        "print(json.dumps({'sp': str(study_planner.ROOT),"
+        " 'sm': str(syllabus_manager.ROOT)}))\n"
+    )
+    res = subprocess.run(
+        [sys.executable, "-c", code], cwd=str(REPO_ROOT), env=_env(fake),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=120,
+    )
+    assert res.returncode == 0, f"子进程失败：\n{res.stderr[-1500:]}"
+    data = json.loads(res.stdout.strip().splitlines()[-1])
+    assert Path(data["sp"]) == fake, (
+        f"study_planner.ROOT 未被 KY_WORKSPACE_ROOT 覆盖：{data['sp']}")
+    assert Path(data["sm"]) == fake, (
+        f"syllabus_manager.ROOT 未被 KY_WORKSPACE_ROOT 覆盖：{data['sm']}")

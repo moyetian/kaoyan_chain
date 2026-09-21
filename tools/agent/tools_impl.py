@@ -18,7 +18,7 @@ import fnmatch
 import subprocess
 import urllib.request
 from pathlib import Path
-from typing import Dict, Any, Callable, List
+from typing import Dict, Any, Callable, List, Optional
 
 from .sandbox import Sandbox, SecurityException
 from .permissions import PermissionLevel, PermissionManager
@@ -27,6 +27,20 @@ try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方
     from ky_io import atomic_write_text  # noqa: E402
 except ImportError:  # pragma: no cover
     from tools.ky_io import atomic_write_text  # noqa: E402
+
+try:  # 笔记锁定闸门：frontmatter 中 locked: true 的卡片禁止被自动改写
+    from note_lock import NoteLockedError, assert_writable  # noqa: E402
+except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
+    try:
+        from tools.note_lock import NoteLockedError, assert_writable  # type: ignore
+    except ImportError:  # pragma: no cover - 极简环境下退化为不设闸门
+        NoteLockedError = None  # type: ignore
+        assert_writable = None  # type: ignore
+
+try:  # 网络访问安全（SSRF 防护 + 安全重定向）与解压体积上限
+    from net_guard import UnsafeURLError, safe_urlopen  # noqa: E402
+except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
+    from tools.net_guard import UnsafeURLError, safe_urlopen  # type: ignore
 
 # 引入现有考研 Skills 模块
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -78,6 +92,99 @@ except ImportError:
         from tools import intelligence
     except ImportError:
         intelligence = None
+
+# ─────────────────────────────────────────────────────────────────────
+# [P0 修复] run_command 路径参数沙箱校验
+# 只读命令 (ls/cat/head/tail/wc/grep) 与 git 的位置参数此前**完全不过沙箱**：
+# `cat /etc/passwd`、`cat C:/Users/x/.ssh/id_rsa`、`cat ../../outside.txt` 都能
+# 读到工作区外任意文件（实测确认，连 resolve_safe_path 明确拦截的 .json 也读到了）。
+# 这里对 argv 中「像路径」的 token 逐个做 resolve_safe_path 校验。
+# ─────────────────────────────────────────────────────────────────────
+_WIN_DRIVE_RE = re.compile(r"^[A-Za-z]:")
+_PATH_SEP_RE = re.compile(r"[/\\]")
+#: 形如 a.txt / 真题.pdf / my-file.md 的裸文件名（无目录分隔符）
+_BARE_FILENAME_RE = re.compile(r"^[\w\-. ]+\.[A-Za-z0-9]{1,8}$")
+
+
+def _strip_token_quotes(token: str) -> str:
+    """去掉 shlex 在 Windows(posix=False) 下保留的首尾引号。"""
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in ("'", '"'):
+        return token[1:-1]
+    return token
+
+
+def _split_option_value(token: str) -> Optional[str]:
+    """从 ``--opt=VALUE`` 里取出 ``VALUE``；非此形式返回 ``None``。
+
+    [缺陷修复·选项内嵌路径] ``grep --file=/etc/passwd x`` /
+    ``wc --files0-from=/etc/passwd`` 这类写法把路径塞进了选项的 ``=`` 右侧，
+    而 ``_looks_like_path_token`` 对「以 ``-`` 开头」的 token 一律放行 ——
+    于是整条位置参数沙箱被绕过。这里把值拆出来交给调用方走同一套路径判定。
+
+    只认 ``--`` 开头的 GNU 长选项且恰有一个 ``=``：``-rn``（无 ``=``）与
+    ``--color=auto``（值非路径）都不会被误判。返回的原始值仍要再过
+    :func:`_looks_like_path_token` 才会被当作路径处理。
+    """
+    if not token.startswith("--"):
+        return None
+    _opt, eq, value = token.partition("=")
+    if not eq or not value:
+        return None
+    return value
+
+
+def _looks_like_path_token(token: str) -> bool:
+    """判断命令行 token 是否「像路径」，需要过沙箱校验。
+
+    判定规则（宁严勿漏，同时避开选项与纯关键词）：
+      1. 以 ``-`` 开头 → 选项，跳过（``--opt=VALUE`` 的取值由调用方拆出后再判）；
+      2. 以 ``~`` 开头 → 视为路径（shell=False 下不会被展开，属无效/越权写法）；
+      3. 含 ``/`` 或 ``\\`` → 路径；
+      4. 形如 Windows 盘符 ``C:`` → 路径；
+      5. 形如裸文件名 ``a.txt`` / ``真题.pdf`` → 路径。
+
+    其余 token（如 ``grep -rn subprocess`` 里的关键词 ``subprocess``、``wc -l`` 的
+    ``5``）一律放行 —— 它们既非选项也不像路径，交给被调用的程序自行处理。
+    """
+    if not token or token.startswith("-"):
+        return False
+    if token.startswith("~"):
+        return True
+    if _PATH_SEP_RE.search(token):
+        return True
+    if _WIN_DRIVE_RE.match(token):
+        return True
+    return bool(_BARE_FILENAME_RE.match(token))
+
+
+def _is_inside_sandbox(sandbox: Sandbox, resolved: Path) -> bool:
+    """路径是否落在工作区内或用户显式授权的额外目录内。"""
+    try:
+        resolved.resolve().relative_to(sandbox.workspace_root)
+        return True
+    except ValueError:
+        pass
+    resolved_str = str(resolved).lower()
+    return any(resolved_str.startswith(str(extra).lower())
+               for extra in sandbox.allowed_extra_paths)
+
+
+def _note_lock_error(path: Path) -> Optional[str]:
+    """笔记锁定闸门：frontmatter ``locked: true`` 的笔记禁止被自动改写。
+
+    只对 Markdown 笔记生效（二进制/其他格式不受影响）。
+    返回 ``None`` 表示放行，否则返回应回给模型的错误文案。
+    """
+    if assert_writable is None:  # pragma: no cover - 环境缺 note_lock
+        return None
+    if path.suffix.lower() not in (".md", ".markdown"):
+        return None
+    try:
+        assert_writable(path)
+    except NoteLockedError as e:  # type: ignore[misc]
+        return f"Error: 笔记已锁定，拒绝改写 —— {e}"
+    return None
+
 
 class ToolDefinition:
     # level 可为 int，也可为 Callable[[dict], int]（按 action 动态定级）
@@ -210,6 +317,11 @@ class ToolRegistry:
             p = self.sandbox.resolve_safe_path(path, allow_create=True, read_only=False)
             if p.exists() and not overwrite:
                 return f"Error: 文件已存在且 overwrite=False [{p}]"
+            # [P2 修复] 学员标注 locked: true 的笔记此前可被 write_file 静默覆盖
+            # （assert_writable 只接在 error_logger 一条路径上）。
+            locked_err = _note_lock_error(p)
+            if locked_err:
+                return locked_err
             p.parent.mkdir(parents=True, exist_ok=True)
             atomic_write_text(p, content)
             return f"Success: 成功写入文件 [{p.name}] ({len(content)} 字符)"
@@ -232,6 +344,10 @@ class ToolRegistry:
             p = self.sandbox.resolve_safe_path(path, read_only=False)
             if not p.exists():
                 return f"Error: 文件不存在 [{p}]"
+            # [P2 修复] 同上：锁定的笔记不得被 edit_file 改写。
+            locked_err = _note_lock_error(p)
+            if locked_err:
+                return locked_err
             raw = p.read_text(encoding="utf-8")
             if target_content not in raw:
                 return f"Error: 在文件中未找到指定的 target_content 文本"
@@ -450,6 +566,37 @@ class ToolRegistry:
                         return (f"安全拦截：python 脚本必须位于工作区内或已授权目录，"
                                 f"已拒绝 {first_arg}（{e}）")
 
+            # [P0 修复] 位置参数沙箱校验：上面的白名单与参数黑名单都只看「程序名」和
+            # 「高危模式」，位置参数里的路径从未过沙箱 —— 于是 `cat /etc/passwd`、
+            # `cat C:/Users/x/.ssh/id_rsa`、`cat ../../outside.txt` 可读工作区外任意文件。
+            # 这里对每个「像路径」的 token 走一遍 resolve_safe_path（含 .ssh/.aws 凭据
+            # 目录、系统目录、相对穿越等全部既有规则）。`git -C <path>` 的取值同样被
+            # 这条规则覆盖。
+            for _tok in argv[1:]:
+                _cand = _strip_token_quotes(_tok)
+                # [缺陷修复] `--opt=VALUE` 形式把路径藏在选项里，必须拆出 VALUE
+                # 再判定，否则「以 - 开头一律放行」会让它绕过本层沙箱。
+                _embedded = _split_option_value(_cand)
+                if _embedded is not None:
+                    _cand = _strip_token_quotes(_embedded)
+                if not _looks_like_path_token(_cand):
+                    continue
+                if _cand.startswith("~"):
+                    return ("安全拦截：命令参数禁止使用 `~` 路径（shell=False 下不会被展开），"
+                            f"请改用工作区内的相对路径。")
+                try:
+                    _resolved = self.sandbox.resolve_safe_path(_cand, read_only=True)
+                except SecurityException as e:
+                    return f"安全拦截：命令参数 [{_cand}] 未通过沙箱校验（{e}）"
+                # resolve_safe_path 对「工作区外 + 只读 + 白名单扩展名」有**有意保留**的
+                # 豁免（服务 /img 绝对路径拍照批改、读桌面真题 PDF）。但那条豁免的前提是
+                # 「路径由用户显式给出」，而 run_command 的参数是模型自行拼的 —— 于是
+                # `cat C:/Users/x/任意.txt` 仍能读到工作区外文件。命令层因此收紧：
+                # 参数只允许工作区内或已授权目录。
+                if not _is_inside_sandbox(self.sandbox, _resolved):
+                    return (f"安全拦截：命令参数 [{_cand}] 位于工作区外，"
+                            f"run_command 仅允许访问工作区内或已授权目录的文件。")
+
             # 纵深防御：按程序类别拦截高危参数模式
             # - 只读命令 (ls/cat/head/tail/wc/grep) 不做内容模式匹配，避免 grep 源码时误伤；
             # - git 拦截破坏性子命令（会清空学员学习数据）；
@@ -555,19 +702,13 @@ class ToolRegistry:
         def fetch_url(url: str) -> str:
             if not url.startswith(("http://", "https://")):
                 return "Error: 仅支持 http:// 或 https:// 协议"
-            # [P1 修复] 防范 SSRF：禁止访问本地回环与私有内网地址
-            import urllib.parse
-            parsed = urllib.parse.urlparse(url)
-            hostname = (parsed.hostname or "").lower()
-            if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "169.254.169.254", "::1"):
-                return f"Error: 安全拦截 - 禁止访问本地与元数据地址 [{hostname}]"
-            if hostname.startswith(("10.", "192.168.")) or (hostname.startswith("172.") and any(hostname.startswith(f"172.{i}.") for i in range(16, 32))):
-                return f"Error: 安全拦截 - 禁止访问私有内网地址 [{hostname}]"
-
+            # [P1 修复] 防范 SSRF：不再用字符串黑名单（挡不住 2130706433 / 127.1 /
+            # [::ffff:127.0.0.1] / fd00:: / fe80:: 等写法，也不管重定向），改为
+            # 「解析出真实 IP 再按 ipaddress 判定 + 每次 3xx 重新校验」。
             try:
                 import re
                 req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Kaoyan-Tutor/1.0"})
-                with urllib.request.urlopen(req, timeout=12) as resp:
+                with safe_urlopen(req, timeout=12) as resp:
                     html_bytes = resp.read(80000)
                     text = html_bytes.decode("utf-8", errors="ignore")
                     # 深度过滤 script, style, nav, footer 噪点
@@ -575,6 +716,8 @@ class ToolRegistry:
                     clean_txt = re.sub(r"<[^>]+>", " ", text)
                     clean_txt = re.sub(r"\s+", " ", clean_txt).strip()
                     return clean_txt[:3000]
+            except UnsafeURLError as e:
+                return f"Error: {e}"
             except Exception as e:
                 return f"Error 访问网页失败: {e}"
 
@@ -988,15 +1131,19 @@ class ToolRegistry:
                 return "Error: 未挂载 MemoryManager"
             act = action.lower().strip()
             sc = scope.lower().strip()
-            if act == "read":
-                res = self.memory_manager.read_memory(sc)
-                return f"【记忆库 {sc} 内容】:\n{res or '(空)'}"
-            elif act == "write":
-                ok = self.memory_manager.write_memory(sc, content)
-                return f"Success: 已成功覆写 {sc} 记忆" if ok else f"Error: 写入 {sc} 记忆失败"
-            elif act == "append":
-                ok = self.memory_manager.append_memory(sc, content)
-                return f"Success: 已成功向 {sc} 记忆追加要点" if ok else f"Error: 追加 {sc} 记忆失败"
+            try:
+                if act == "read":
+                    res = self.memory_manager.read_memory(sc)
+                    return f"【记忆库 {sc} 内容】:\n{res or '(空)'}"
+                elif act == "write":
+                    ok = self.memory_manager.write_memory(sc, content)
+                    return f"Success: 已成功覆写 {sc} 记忆" if ok else f"Error: 写入 {sc} 记忆失败"
+                elif act == "append":
+                    ok = self.memory_manager.append_memory(sc, content)
+                    return f"Success: 已成功向 {sc} 记忆追加要点" if ok else f"Error: 追加 {sc} 记忆失败"
+            except ValueError as e:
+                # 作用域不在白名单（含 "../../x" 这类路径穿越载荷）时如实报错，不静默回退
+                return f"Error: 非法记忆作用域 —— {e}"
             return f"Error: 未知操作 {action}"
 
     def register_mcp_tools(self, mcp_manager):

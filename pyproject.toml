@@ -47,9 +47,14 @@ gui = [
 tui = [
     "textual>=0.40.0",
 ]
-fast = [
-    "ky-rust-ext>=0.1.0",
-]
+# [P2-8 修复·不可安装的 extra] 这里原有一个 `fast = ["ky-rust-ext>=0.1.0"]`，
+# 但 `ky-rust-ext`（= rust_ext/ 的 crate 名 ky_rust_ext）**从未发布到 PyPI**
+# （2026-09-21 核实：https://pypi.org/pypi/ky-rust-ext/json → 404 Not Found），
+# 它只由本地 maturin 从 `rust_ext/` 编译产出。于是 `pip install '.[fast]'`
+# 必然以 "No matching distribution found" 失败 —— 一个永远装不上的 extra
+# 比没有 extra 更糟（用户会以为是自己环境的问题）。
+# 故直接移除，改为在 README「Rust 加速为可选」一节写明本地构建步骤；
+# **不引入任何新的分发名**（那只会把幻觉固化进依赖图）。
 full = [
     "sympy>=1.12",
     "pypdf>=3.0.0",
@@ -63,6 +68,14 @@ dev = [
     "pytest-timeout",
     "pytest-socket",
     "maturin>=1.0.0",
+    # 测试专用依赖（**不进 requirements.txt 主依赖**，产品运行不需要）：
+    #   brotli  —— tests/test_adversarial_resiliency.py 的 br 解压对抗用例；
+    #              此前未声明 → CI（只装 requirements + [dev]）收集阶段 NameError。
+    #   pymupdf —— tests/test_multi_persona_user_journeys.py 与
+    #              tests/test_llm_decompression_and_checkin.py 用它**生成**测试 PDF
+    #              （产品侧 material_ingestion 只用 pypdf/fitz 且都有守卫）。
+    "brotli",
+    "pymupdf",
 ]
 
 [project.scripts]

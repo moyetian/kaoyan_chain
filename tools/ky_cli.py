@@ -38,7 +38,7 @@ try:
     from tools.cli.notify import send_to_dingtalk, send_to_feishu, send_to_wechat, send_to_qq, _dingtalk_sign, broadcast_briefing
     from tools.cli.gateway import run_server, create_gateway_handler, start_background_live_server, show_bridge_guide
     from tools.cli.config import configure_llm, configure_vision_model, configure_webhooks, manage_syllabi_cli, interactive_config, run_wechat_clawbot_install
-    from tools.cli.dispatch import Command, CommandSpec, _REGISTRY, build_parser, get_command, list_commands, main, register
+    from tools.cli.dispatch import Command, CommandSpec, _REGISTRY, get_command, list_commands, main, register
 except ImportError:
     from cli.shared import (
         CONFIG_FILE, HISTORY_FILE, ROOT, SUBJECT_DIRS, COACHING_STYLES,
@@ -55,7 +55,7 @@ except ImportError:
     from cli.notify import send_to_dingtalk, send_to_feishu, send_to_wechat, send_to_qq, _dingtalk_sign, broadcast_briefing
     from cli.gateway import run_server, create_gateway_handler, start_background_live_server, show_bridge_guide
     from cli.config import configure_llm, configure_vision_model, configure_webhooks, manage_syllabi_cli, interactive_config, run_wechat_clawbot_install
-    from cli.dispatch import Command, CommandSpec, _REGISTRY, build_parser, get_command, list_commands, main, register
+    from cli.dispatch import Command, CommandSpec, _REGISTRY, get_command, list_commands, main, register
 
 try:
     from tools.skills import list_skills

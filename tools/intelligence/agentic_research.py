@@ -29,13 +29,13 @@ RESEARCH_TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "yanzhao_lookup",
-            "description": "查询教育部与研招网官方院校名录及学科目录，获取高校教育部单位代码 (10xxx)、办学地区 (城市/省份)、办学层次、国家线分区 (A区/B区) 以及官方研究生院网站直达链接。",
+            "description": "查询教育部与研招网官方院校名录及学科目录，获取高校教育部单位代码 (10xxx)、办学地区 (城市/省份)、办学层次、国家线分区 (A区/B区) 以及官方研究生院网站直达链接。本地库未收录时返回 unverified=true 的占位结果（各字段为空/启发式推定），该结果不是已核验事实，严禁直接引用。",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "school_name": {
                         "type": "string",
-                        "description": "高校规范名称，例如 '目标院校' 或 '对比院校B'"
+                        "description": "高校规范名称，例如 '目标院校' 或 '湖南农业大学'"
                     },
                     "major_keyword": {
                         "type": "string",
@@ -187,15 +187,43 @@ class ToolDispatcher:
         reg = get_registry()
         entity = reg.resolve(school_name)
         if not entity:
+            # [禁止占位画像被当作已核验事实] 旧实现返回 chsi_code="待查" /
+            # region="全国" / level=["全国研招单位"]：字段形状与命中时**完全一致**，
+            # 模型会把 region="全国"、level=["全国研招单位"] 当成该校的真实属性
+            # 写进研报（"该校为全国研招单位，位于全国"）。这与「检索失败却伪造
+            # 文章」是同类污染，但成因不同：它是**本地库未命中**，不是凭空捏造
+            # 检索命中。
+            #
+            # 处理口径：未命中是常态（本地库仅收录数十所院校），故不返回
+            # {"error": ...}（那会与「工具本身坏了」混淆）；改为保留键形状、
+            # 把可能被引用的值全部清空为「未知」，并显式标注未核验。
             return {
+                "found": False,
+                "unverified": True,
+                "source": "placeholder",
                 "name": school_name,
-                "chsi_code": "待查",
-                "region": "全国",
-                "level": ["全国研招单位"],
+                "chsi_code": "",
+                "region": "",
+                "level": [],
                 "official_domain": "",
-                "graduate_domain": ""
+                "graduate_domain": "",
+                "note": (
+                    f"本地高校库未收录「{school_name}」：本条结果不含任何已核验事实，"
+                    "chsi_code / region / level 为空表示未知（不是占位数值）。"
+                    "严禁将本结果当作该校的教育部单位代码、所在地区或办学层次引用；"
+                    "请改用 web_search / scout_school 取证，仍无法核实时须如实说明未核验。"
+                ),
             }
-        return {
+        # 命中本地库。注意：registry 对「名字像高校但未收录」的查询会合成实体
+        # （见 UniversityRegistry._synthesize_unlisted_school），其 chsi_code 回落
+        # 为「待查」——这条路径**实际可达**（任何含"大学/学院"的陌生校名都走这里），
+        # 且旧实现同样把它当成已核验事实返回。故一并标注 unverified。
+        code = (entity.chsi_code or "").strip()
+        unverified = code in ("", "待查", "待核验")
+        result = {
+            "found": True,
+            "unverified": unverified,
+            "source": "local_registry",
             "name": entity.name,
             "chsi_code": entity.chsi_code,
             "region": entity.region,
@@ -205,23 +233,39 @@ class ToolDispatcher:
             "admission_domain": entity.admission_domain,
             "departments": entity.departments
         }
+        if unverified:
+            result["note"] = (
+                "本地高校库未收录该校（教育部单位代码为占位「待查」）："
+                "region / level 为启发式推定而非核验事实，不得作为已核验结论引用；"
+                "请改用 web_search / scout_school 取证，或如实说明未核验。"
+            )
+        return result
 
     def tool_web_search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         try:
             from tools.search.service import SearchService
-            service = SearchService()
-            results = service.search(query, max_results=limit)
+            # 必须走 default()：只有它会装配 Deduplicator / Ranker / SearchCache。
+            # 直连 SearchService() 会让去重与重排静默失效（多路检索会把同一条
+            # 招生简章的不同跳转 URL 原样喂给模型），缓存缺失还会放大限流。
+            service = SearchService.default()
+            # 真实签名是 search(self, query, limit=None)，返回 SearchResponse。
+            response = service.search(query, limit=limit)
             return [
                 {
                     "title": r.title,
                     "snippet": r.snippet,
                     "url": r.url,
-                    "provider": r.provider
+                    # SearchResult 的 provenance 字段叫 engine（无 provider）
+                    "provider": r.engine,
                 }
-                for r in results[:limit]
+                for r in response.results[:limit]
             ]
         except Exception as e:
-            return [{"title": f"{query} 检索结果", "snippet": str(e), "url": ""}]
+            # [禁止伪装成检索结果] 旧实现返回 {"title": f"{query} 检索结果",
+            # "snippet": str(e), "url": ""}，模型会把英文 TypeError 当成一条
+            # 来自网络的证据写进回答。检索失败必须如实呈现为错误，而不是结果。
+            _LOG.warning("web_search 检索失败: %s -> %s", query, e)
+            return [{"error": f"检索失败: {e}"}]
 
     def tool_wechat_search(self, query: str, limit: int = 4) -> List[Dict[str, Any]]:
         try:
@@ -246,7 +290,12 @@ class ToolDispatcher:
                     })
             return out
         except Exception as e:
-            return [{"title": f"{query} 经验分享", "account": "微信考研圈", "date": "近期", "url": ""}]
+            # [禁止伪装成检索结果] 与上方 tool_web_search 同款口径。旧实现返回
+            # {"title": f"{query} 经验分享", "account": "微信考研圈", "date": "近期",
+            #  "url": ""} —— 一条**凭空捏造**的文章，模型会把它当成真实证据
+            # （「学长学姐经验」）写进研报。检索失败必须如实呈现为错误，而不是结果。
+            _LOG.warning("wechat_search 检索失败: %s -> %s", query, e)
+            return [{"error": f"检索失败: {e}"}]
 
     def tool_scout_school(self, school_name: str, major_keyword: str = "") -> Dict[str, Any]:
         try:
@@ -432,7 +481,10 @@ class AgenticResearchEngine:
                     "【核心铁律】：\n"
                     "1. 严禁捏造虚假学校代码或推断未经核验的专业科目。\n"
                     "2. 严禁输出 [OFFLINE_BASELINE 离线通用基准] 或全篇'待查/未核验'敷衍数据。\n"
-                    "3. 充分使用工具取证后，输出结构化事实结论。"
+                    "3. 工具结果中若出现 unverified=true 或 source=placeholder，表示该项"
+                    "**未经核验**（如本地院校库未收录、字段为空或仅为启发式推定）："
+                    "不得当作已核验事实引用，须改用其它工具取证，仍无法核实时如实说明未核验。\n"
+                    "4. 充分使用工具取证后，输出结构化事实结论。"
                 )
             })
 
@@ -568,6 +620,19 @@ class AgenticResearchEngine:
                 parsed.setdefault("chsi_code", parsed.get("code"))
                 parsed.setdefault("official", parsed.get("official_web", ""))
                 parsed.setdefault("graduate", parsed.get("graduate_web", ""))
+                # [B3 修复·LLM缺键崩溃] 下游 comparator 用 info['region']/
+                # info['majors'][0] 等直接索引；LLM 少任一键即 KeyError。
+                # 在线分支在此补齐全部展示键默认值（ honest 的"待核验"，
+                # 不虚构具体数值），缺 majors 兜底保证 [0] 可索引。
+                parsed.setdefault("region", "待核验")
+                parsed.setdefault("level", "待核验")
+                parsed.setdefault("score_trend", "待核验")
+                parsed.setdefault("ratio", "待核验")
+                parsed.setdefault("protect", "未核验")
+                parsed.setdefault("reputation", "")
+                parsed.setdefault("pitfalls", "")
+                if not parsed.get("majors"):
+                    parsed["majors"] = ["待核验"]
                 parsed["catalog_source"] = "[RESEARCH_VERIFIED 深度研招检索]"
                 return parsed
         except Exception as e:

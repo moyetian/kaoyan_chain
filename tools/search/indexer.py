@@ -44,6 +44,12 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]
     Returns:
         文本片段列表
     """
+    # [S4 修复·边界] 空串旧返回 [""]（下游插入空 chunk）；overlap>=chunk_size
+    # 时 start 不推进死循环。默认参数安全，此为公开函数缺校验。
+    if not (text or "").strip():
+        return []
+    if overlap >= chunk_size:
+        overlap = 0
     if len(text) <= chunk_size:
         return [text]
 

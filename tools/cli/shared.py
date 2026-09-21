@@ -26,6 +26,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "api_provider": "deepseek",
     "base_url": "https://api.deepseek.com/v1",
     "api_key": "",
+    "webhook_token": "",  # /webhook 专用回调密钥（群机器人双向讲题；环境变量 KY_WEBHOOK_TOKEN 可临时覆盖）
     "model": "deepseek-chat",
     "temperature": 0.3,
     "active_subject": "math",  # math, eng, pol, pro
@@ -78,30 +79,99 @@ def interpreter_hint() -> str:
     return _INTERPRETER_HINT
 
 
+def _fresh_default_config() -> Dict[str, Any]:
+    """返回与模块级 DEFAULT_CONFIG 解耦的默认配置副本。
+
+    [G10 修复·浅拷贝污染] 旧实现三处 ``DEFAULT_CONFIG.copy()`` 都是浅拷贝：
+    返回值的 ``cfg["webhooks"]`` 与模块级默认是同一对象，
+    ``configure_webhooks`` 原地写入会污染进程内默认值，后续 load_config()
+    读到脏默认。此处对 webhooks 再拷一层（值均为标量，一层足够）。
+    """
+    fresh = DEFAULT_CONFIG.copy()
+    _wh = DEFAULT_CONFIG.get("webhooks")
+    fresh["webhooks"] = dict(_wh) if isinstance(_wh, dict) else {}
+    return fresh
+
+
 def load_config() -> Dict[str, Any]:
     """加载 ky_config.json，损坏时自动备份并回退默认配置"""
     if CONFIG_FILE.exists():
         try:
             cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-            merged = DEFAULT_CONFIG.copy()
+            merged = _fresh_default_config()
             merged.update(cfg)
             if "webhooks" in cfg and isinstance(cfg["webhooks"], dict):
-                merged["webhooks"] = {**DEFAULT_CONFIG["webhooks"], **cfg["webhooks"]}
+                merged["webhooks"] = {**merged["webhooks"], **cfg["webhooks"]}
             return merged
         except Exception as e:
             try:
                 import shutil
                 bak = CONFIG_FILE.with_suffix(".corrupted.bak")
                 shutil.copyfile(CONFIG_FILE, bak)
+                # [P1-4 修复] 备份同样含明文 api_key，POSIX 下收紧为 0600。
+                if os.name != "nt":
+                    try:
+                        os.chmod(bak, 0o600)
+                    except OSError:
+                        pass
                 print(f"[!] 警告: 读取 {CONFIG_FILE.name} 失败: {e}，已备份至 {bak.name} 并回退默认配置")
             except Exception:
                 pass
-            return DEFAULT_CONFIG.copy()
-    return DEFAULT_CONFIG.copy()
+            return _fresh_default_config()
+    return _fresh_default_config()
+
+def _guard_before_config_write() -> None:
+    """写**真实** ``ky_config.json`` 前的留档与审计（best-effort，绝不抛异常）。
+
+    2026-09-21 事故：真实配置被并发运行的临时验证脚本覆写成只剩 2 个键的测试
+    夹具（39 字段 ``study_plan`` + 51 字符真实 ``api_key`` 丢失）。写入者不在
+    pytest 进程内，``tests/conftest.py`` 的绊线一次都没响，损坏持续存在并被反复
+    覆盖，直到人工从历史副本恢复。
+
+    因此在这里对**真实仓库**的配置做写前留档：任何一次写入之前都先存一份快照，
+    保证最坏情况下也能回退。同时把调用来源写进审计日志，便于事后定位。
+    被重定向到 tmp 的测试路径不受影响（不触发守卫）。
+
+    留档与审计日志**同源同落位**：都在 ``config_guard.BACKUP_DIR``（仓库之外，
+    由 ``config_guard.default_backup_dir()`` 决定，见该模块的 CRITICAL 说明）。
+    本函数只负责「写前留档 + 记审计」的既有语义，落位一律不在本模块决定。
+    """
+    try:
+        target = Path(CONFIG_FILE).resolve()
+        root = Path(__file__).resolve().parent.parent.parent
+        if target != (root / "ky_config.json").resolve():
+            return  # 测试重定向或非真实路径，无需守卫
+
+        # [CRITICAL 加固·审计日志落位] 审计日志必须和快照同处**仓库之外**。
+        # 落位取自 ``config_guard``：``BACKUP_DIR`` 就是 ``default_backup_dir()``
+        # 的模块级结果，也正是 ``auto_backup()`` 实际写入的目录 —— 这里不另拼
+        # 一套路径。此前写死的「仓库根下配置备份子目录」会在**每次真实保存配置**
+        # 时把仓库内目录重新创建出来（导出遍历的排除名单只是第二层防御）。
+        from tools.config_guard import BACKUP_DIR, auto_backup  # noqa: WPS433
+        auto_backup()
+
+        import time
+        import traceback
+        backup_dir = Path(BACKUP_DIR)
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stack = "".join(traceback.format_stack()[-6:-1])
+        with (backup_dir / "write_audit.log").open("a", encoding="utf-8") as fh:
+            fh.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] save_config -> {target}\n{stack}")
+    except Exception:
+        # 守卫是尽力而为：任何异常都不得影响正常写盘
+        pass
+
 
 def save_config(cfg: Dict[str, Any]) -> None:
-    """原子化持久保存配置至 ky_config.json"""
-    atomic_write_text(CONFIG_FILE, json.dumps(cfg, ensure_ascii=False, indent=2))
+    """原子化持久保存配置至 ky_config.json
+
+    [P1-4 修复] ky_config.json 含 API Key / Webhook access_token，属凭证文件，
+    以 ``sensitive=True`` 落盘，POSIX 下权限收紧为 0600（此前为 umask 默认 0644）。
+
+    [配置守卫] 写盘前自动留档 + 审计，见 :func:`_guard_before_config_write`。
+    """
+    _guard_before_config_write()
+    atomic_write_text(CONFIG_FILE, json.dumps(cfg, ensure_ascii=False, indent=2), sensitive=True)
 
 def read_text_safe(path: Path) -> str:
     """安全读取文件文本内容，不存在或报错返回空字符串"""

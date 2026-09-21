@@ -87,7 +87,7 @@ def test_llm_prompt_blocks_math_for_non_math_candidate(monkeypatch):
         captured["body"] = req.data.decode("utf-8")
         return _Resp()
 
-    monkeypatch.setattr(scout_mod.urllib.request, "urlopen", _fake_urlopen)
+    monkeypatch.setattr(scout_mod, "safe_urlopen", _fake_urlopen)
     cfg = {"api_key": "sk-test",
            "study_plan": {"math_key": "none", "math_name": "不考数学"}}
     out = scout_mod.synthesize_report_with_llm("中国人民大学", "马克思主义哲学",

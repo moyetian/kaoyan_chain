@@ -4,7 +4,6 @@
 表驱动分发、命令元数据注册、参数处理与安全模式门禁
 """
 
-import argparse
 import sys
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -96,8 +95,20 @@ def list_commands() -> List[Command]:
     return list(_ALL_COMMANDS)
 
 def _wants_command_help(args: List[str]) -> bool:
-    """判断是否在请求某个子命令的帮助（如 ky exam --help）"""
-    return any(a in ("--help", "-h", "help") for a in args[1:])
+    """判断是否在请求某个子命令的帮助（如 `ky exam --help`）。
+
+    [低危修复] 此前对 ``args[1:]`` 做 ``any(a in ("--help","-h","help"))``，
+    于是正文里任意位置的字面 ``help``（如 ``ky exam help``）都会被当成帮助请求，
+    把本该交给 handler 的参数吞掉。现改为：
+      * ``--help`` / ``-h`` 只认**第一个位置参数**或**末尾**（命令行惯例）；
+      * 裸词 ``help`` 不再触发（``ky help <命令>`` 由 help 命令自身处理）。
+    """
+    rest = args[1:]
+    if not rest:
+        return False
+    if rest[0] in ("--help", "-h"):
+        return True
+    return rest[-1] in ("--help", "-h")
 
 def print_command_help(name: str) -> None:
     """打印单个子命令的用法帮助"""
@@ -127,21 +138,6 @@ def print_commands_index() -> None:
         print(f"  {cmd.head.ljust(width)}{cmd.desc}")
     print("\n  查看单个命令用法: ky help <命令> 或 ky <命令> --help")
     print(f"  查看全局帮助:     {interpreter_hint()} tools/ky_cli.py --help\n")
-
-def build_parser() -> argparse.ArgumentParser:
-    """生成包含全部已注册子命令的 ArgumentParser"""
-    parser = argparse.ArgumentParser(
-        prog="ky",
-        description="考研学习链专用终端工具 (ky-cli)",
-    )
-    subparsers = parser.add_subparsers(dest="command")
-    for cmd in list_commands():
-        subparsers.add_parser(
-            cmd.name,
-            aliases=list(cmd.aliases),
-            help=cmd.desc,
-        )
-    return parser
 
 def _init_all_commands() -> None:
     """按需导入并加载所有命令模块"""
@@ -223,7 +219,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # 主入口此前把 --host/--gateway-token 整体摘除，导致 `ky serve --host=0.0.0.0`
     # 等文档承诺的参数失效（_cmd_serve/_cmd_view 会自行解析）。此处交回给 handler。
-    if passthrough_opts:
+    # [G5 修复·透传污染] 此前无条件追加给**每个**子命令，吞自由文本的处理器
+    #（done/calc/notify/diagnose/variant 做 join）会把 token 吃进关键词导致
+    # 匹配失败。现仅对真正解析它们的 serve/view 回填。
+    if passthrough_opts and cmd.name in ("serve", "view"):
         args = args + passthrough_opts
 
     if _wants_command_help(args) and cmd.name not in _HANDLERS_WITH_OWN_HELP:

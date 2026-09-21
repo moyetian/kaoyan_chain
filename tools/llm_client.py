@@ -22,11 +22,99 @@ _LOG = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
 
+try:  # 解压体积上限与安全网络访问（双导入路径兼容）
+    from net_guard import (  # noqa: E402
+        MAX_DECOMPRESSED_BYTES,
+        MAX_HTTP_RESPONSE_BYTES,
+        TRUNCATION_MARKER,
+        UnsafeURLError,
+        decompress_limited,
+        safe_urlopen,
+        zlib_limited,
+    )
+except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
+    from tools.net_guard import (  # type: ignore
+        MAX_DECOMPRESSED_BYTES,
+        MAX_HTTP_RESPONSE_BYTES,
+        TRUNCATION_MARKER,
+        UnsafeURLError,
+        decompress_limited,
+        safe_urlopen,
+        zlib_limited,
+    )
+
+
+def _llm_urlopen(req: urllib.request.Request, timeout: float = 12.0):
+    """LLM 请求专用安全通道（B1 修复）。
+
+    经 ``net_guard.safe_urlopen`` 发送：初始 URL 做 SSRF 校验（fail-closed，
+    拦回环/私网/保留地址并 pin DNS 防重绑定），每次 3xx 跳转逐跳复核，
+    跨主机跳转剥离 Authorization（防恶意 base_url 用 302 收割 API Key）。
+    体积上限与解压保护仍由调用方的 ``resp.read(MAX_...)`` +
+    ``_decompress_response_bytes`` 承担。
+    """
+    return safe_urlopen(req, timeout=timeout)
+
 # 确保在各种导入路径与 pytest mock 环境下 tools.llm_client 与 llm_client 指向同一模块对象
 sys.modules.setdefault("tools.llm_client", sys.modules[__name__])
 sys.modules.setdefault("llm_client", sys.modules[__name__])
 sys.modules["tools.llm_client"] = sys.modules[__name__]
 sys.modules["llm_client"] = sys.modules[__name__]
+
+
+def _decompress_response_bytes(raw_bytes: bytes, headers: Any = None) -> str:
+    """智能解压 HTTP 响应或错误载荷（支持 gzip, deflate, brotli 及 magic bytes 探测），并解码为文本字符串。
+
+    支持：
+    1. Content-Encoding: gzip 或以 \x1f\x8b 魔数开头的 GZIP 流；
+    2. Content-Encoding: deflate 或标准 zlib 检验/解压，若失败则尝试 raw deflate (-zlib.MAX_WBITS)；
+    3. Content-Encoding: br / brotli（若可用）；
+    4. 纯文本解码：utf-8 优先，gbk 回退，兜底 errors="replace"。
+
+    [P2 修复] 解压全部改为**带体积上限**（``net_guard.decompress_limited``）：
+    旧实现直接用 ``gzip.decompress`` / ``zlib.decompress`` / ``brotli.decompress``，
+    几十 KB 的「解压炸弹」可膨胀成几十 MB 直接撑爆内存（实测 30KB → 31MB 无拦截）。
+    超限时截断并追加 ``TRUNCATION_MARKER``。
+    """
+    if not raw_bytes:
+        return ""
+    if isinstance(raw_bytes, str):
+        return raw_bytes
+
+    enc = ""
+    if headers is not None:
+        try:
+            enc = (getattr(headers, "get", lambda *_: "")("Content-Encoding") or "").lower()
+        except Exception:
+            pass
+
+    decompressed: bytes = raw_bytes
+    truncated = False
+
+    # 1~3. gzip / deflate / brotli 检测与**带限**解压（含 magic bytes 嗅探）
+    decompressed, truncated = decompress_limited(decompressed, enc)
+
+    # 4. 文本解码：utf-8 -> raw deflate fallback -> gbk -> utf-8 errors="replace"
+    try:
+        text = decompressed.decode("utf-8")
+    except UnicodeDecodeError:
+        text = None
+        try:
+            import zlib
+            # require_eof=True：raw deflate 是最后兜底，必须严格判定，
+            # 否则「非法字节恰好被 decompressobj 静默解成空串」会被误判为成功。
+            raw2, tr2 = zlib_limited(
+                decompressed, -zlib.MAX_WBITS, MAX_DECOMPRESSED_BYTES, require_eof=True)
+            text = raw2.decode("utf-8")
+            truncated = truncated or tr2
+        except Exception:
+            text = None
+        if text is None:
+            try:
+                text = decompressed.decode("gbk")
+            except UnicodeDecodeError:
+                text = decompressed.decode("utf-8", errors="replace")
+    return text + TRUNCATION_MARKER if truncated else text
 
 
 def normalize_openai_url(base_url: str, endpoint: str = "chat/completions") -> str:
@@ -96,24 +184,9 @@ def fetch_upstream_models(api_key: str, base_url: str, timeout: float = 15.0) ->
 
     req = urllib.request.Request(url, headers=headers, method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read()
-            # 编码解压缩处理
-            enc = getattr(resp.headers, "get", lambda *_: "")("Content-Encoding", "").lower()
-            if enc == "gzip":
-                import gzip
-                try:
-                    raw = gzip.decompress(raw)
-                except Exception:
-                    pass
-            elif enc == "deflate":
-                import zlib
-                try:
-                    raw = zlib.decompress(raw)
-                except Exception:
-                    pass
-
-            text = raw.decode("utf-8", errors="ignore")
+        with _llm_urlopen(req, timeout=timeout) as resp:
+            raw = resp.read(MAX_HTTP_RESPONSE_BYTES)
+            text = _decompress_response_bytes(raw, resp.headers).strip()
             data = json.loads(text)
 
             models: List[str] = []
@@ -150,15 +223,8 @@ def fetch_upstream_models(api_key: str, base_url: str, timeout: float = 15.0) ->
     except urllib.error.HTTPError as e:
         err_body = ""
         try:
-            raw_err = e.read()
-            enc = (getattr(e.headers, "get", lambda *_: "")("Content-Encoding") or "").lower()
-            if enc == "gzip" or raw_err.startswith(b"\x1f\x8b"):
-                import gzip
-                try:
-                    raw_err = gzip.decompress(raw_err)
-                except Exception:
-                    pass
-            err_body = raw_err.decode("utf-8", errors="ignore")
+            raw_err = e.read(MAX_HTTP_RESPONSE_BYTES)
+            err_body = _decompress_response_bytes(raw_err, e.headers)
         except Exception:
             pass
         err_msg = ""
@@ -177,6 +243,8 @@ def fetch_upstream_models(api_key: str, base_url: str, timeout: float = 15.0) ->
         elif e.code == 404:
             return False, [], f"端点未找到 (HTTP 404)：上游未开放 /models 接口或 Base URL 路径需修正"
         return False, [], f"探查接口返回错误 (HTTP {e.code}): {detail}"
+    except UnsafeURLError as e:
+        return False, [], f"安全拦截：Base URL 未通过 SSRF 校验，已拒绝请求 ({e})"
     except Exception as e:
         err_str = str(e)
         if "timed out" in err_str.lower():
@@ -237,22 +305,9 @@ def chat_completion(
         data_bytes = json.dumps(cur_payload, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=cur_timeout) as resp:
-                raw_bytes = resp.read()
-                enc = getattr(resp.headers, "get", lambda *_: "")("Content-Encoding", "").lower()
-                if enc == "gzip":
-                    import gzip
-                    try:
-                        raw_bytes = gzip.decompress(raw_bytes)
-                    except Exception:
-                        pass
-                elif enc == "deflate":
-                    import zlib
-                    try:
-                        raw_bytes = zlib.decompress(raw_bytes)
-                    except Exception:
-                        pass
-                text = raw_bytes.decode("utf-8", errors="ignore").strip()
+            with _llm_urlopen(req, timeout=cur_timeout) as resp:
+                raw_bytes = resp.read(MAX_HTTP_RESPONSE_BYTES)
+                text = _decompress_response_bytes(raw_bytes, resp.headers).strip()
                 if text.startswith("<html") or text.startswith("<!doctype"):
                     return None, None
                 resp_obj = json.loads(text)
@@ -277,17 +332,23 @@ def chat_completion(
     if http_err and http_err.code == 400:
         err_body = ""
         try:
-            err_body = http_err.read().decode("utf-8", errors="ignore")
+            raw = http_err.read(MAX_HTTP_RESPONSE_BYTES)
+            err_body = _decompress_response_bytes(raw, http_err.headers)
         except Exception:
             pass
 
         retry_payload = dict(payload)
-        # 1. 若报错包含 max_tokens，剔除 max_tokens 字段重试
-        if "max_tokens" in err_body.lower() or "token" in err_body.lower():
-            retry_payload.pop("max_tokens", None)
+        err_lower = err_body.lower()
+        modified = False
 
-        # 2. 若报错包含 system 角色，合并到首个 user 消息中
-        if "system" in err_body.lower() or "role" in err_body.lower():
+        # 1. 若报错包含 max_tokens 或 token 限制，剔除 max_tokens 字段重试
+        if any(k in err_lower for k in ("max_tokens", "token", "tokens", "max_completion_tokens", "max_output_tokens")):
+            if "max_tokens" in retry_payload:
+                retry_payload.pop("max_tokens", None)
+                modified = True
+
+        # 2. 若报错包含 system 角色，合并到首个 user 消息中（或前置插入）
+        if any(k in err_lower for k in ("system", "role", "系统", "角色")):
             new_msgs: List[Dict[str, Any]] = []
             sys_text = ""
             for m in msgs:
@@ -295,9 +356,21 @@ def chat_completion(
                     sys_text += f"[系统设定: {m.get('content', '')}]\n"
                 else:
                     new_msgs.append(dict(m))
-            if new_msgs and sys_text:
-                new_msgs[0]["content"] = sys_text + str(new_msgs[0].get("content", ""))
-            retry_payload["messages"] = new_msgs
+            if sys_text:
+                user_msg = next((m for m in new_msgs if m.get("role") == "user"), None)
+                if user_msg is not None:
+                    user_msg["content"] = sys_text + str(user_msg.get("content", ""))
+                elif new_msgs:
+                    new_msgs[0]["content"] = sys_text + str(new_msgs[0].get("content", ""))
+                else:
+                    new_msgs.append({"role": "user", "content": sys_text.strip()})
+                retry_payload["messages"] = new_msgs
+                modified = True
+
+        # 若未精准匹配但原 payload 传了 max_tokens，作为兜底也尝试剔除重试一次
+        if not modified and "max_tokens" in retry_payload:
+            retry_payload.pop("max_tokens", None)
+            modified = True
 
         content2, _ = _execute_req(retry_payload, timeout)
         if content2:
@@ -306,7 +379,12 @@ def chat_completion(
     return None
 
 
+call_llm_sync = chat_completion
+
+
 __all__ = [
+    "_decompress_response_bytes",
+    "call_llm_sync",
     "chat_completion",
     "fetch_upstream_models",
     "get_llm_config",

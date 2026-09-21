@@ -225,6 +225,13 @@ def md2html(md):
         while i < n and lines[i].strip() and not re.match(r"^(#{1,6}\s|\s*\||\s*>|\s*([-*+]|\d+\.)\s|```)", lines[i]):
             buf.append(lines[i].strip())
             i += 1
-        if buf:
-            out.append(f"<p>{inline(' '.join(buf))}</p>")
+        if not buf:
+            # [P0-4 修复·死循环] 走到这里说明当前行命中了上面的段落守卫（最典型的是
+            # 「以 | 开头、但下一行不是合法表格分隔行」的游离竖线行 / 写错的表格头），
+            # 却没有任何前置分支消费它 —— 此时 while 体一次都不执行、buf 为空、i 不推进，
+            # 外层 `while i < n` 会原地空转（CPU 100%，实测 8s 超时被强杀）。兜底把该行
+            # 当普通段落输出并显式推进 i：既不丢内容，也保证主循环每轮必定前进。
+            buf.append(lines[i].strip())
+            i += 1
+        out.append(f"<p>{inline(' '.join(buf))}</p>")
     return "\n".join(out)

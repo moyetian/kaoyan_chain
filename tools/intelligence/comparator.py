@@ -22,9 +22,9 @@ from .chsi_connector import CHSIConnector
 # [根因修复·导出文件名非法字符] 落盘前统一走项目的 safe_filename（清洗 Windows
 # 非法字符 \ / : * ? " < > | 与控制字符），替代此前只 replace 斜杠的做法。
 try:
-    from ky_io import safe_filename  # noqa: E402
+    from ky_io import safe_filename, atomic_write_text  # noqa: E402
 except ImportError:  # pragma: no cover
-    from tools.ky_io import safe_filename  # noqa: E402
+    from tools.ky_io import safe_filename, atomic_write_text  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -131,8 +131,23 @@ class SchoolComparator:
                     pass
 
             if not reused_existing:
-                out_file.write_text(markdown_report, encoding="utf-8")
-                saved_path = str(out_file)
+                # [B6 修复·safe 绕过] 原裸 write_text 不经 guard_write，
+                # --permission=safe 下仍落盘。atomic_write_text 自带守卫；
+                # 只读模式下拒绝落盘但保留报告文本（调用方展示终端版）。
+                try:
+                    atomic_write_text(out_file, markdown_report)
+                    saved_path = str(out_file)
+                except Exception as _save_exc:
+                    try:
+                        from ky_io import PermissionDeniedError
+                    except ImportError:  # pragma: no cover
+                        from tools.ky_io import PermissionDeniedError
+                    if isinstance(_save_exc, PermissionDeniedError):
+                        markdown_report += (
+                            "\n\n> 🔒 当前为严格只读模式，研报未落盘，"
+                            "仅展示本次对比结果。\n")
+                    else:
+                        raise
 
         return {
             "school1": name1,
@@ -258,8 +273,9 @@ class SchoolComparator:
             else:
                 subject_diff = "当前证据不足，无法判定两校初试科目是否相似；请核验同年度、同专业及方向的招生目录。"
 
-        # 2. 地区与资源
-        region_diff = f"【{name1}】位于 {info1['region']} ｜ 【{name2}】位于 {info2['region']}"
+        # 2. 地区与资源（[B3] 防御性取值：LLM 画像可能缺键）
+        region_diff = (f"【{name1}】位于 {info1.get('region', '待核验')} ｜ "
+                       f"【{name2}】位于 {info2.get('region', '待核验')}")
 
         # 3. 决策建议
         # [P0 修复] 建议此前无条件推荐「优先参考两校统考 408 对应方向」，
@@ -276,11 +292,11 @@ class SchoolComparator:
         # 一志愿保护机制若未核验，不得写成"可结合两校保护机制做取舍"（等于暗示已有结论）
         _prot_verified = all("未核验" not in str(info.get("protect", "")) for info in (info1, info2))
         if _prot_verified:
-            _prot_tip = (f"若看重一志愿公平性，可结合两校保护机制（{name1}: {info1['protect']} ｜ "
-                         f"{name2}: {info2['protect']}）做终极取舍。")
+            _prot_tip = (f"若看重一志愿公平性，可结合两校保护机制（{name1}: {info1.get('protect', '未核验')} ｜ "
+                         f"{name2}: {info2.get('protect', '未核验')}）做终极取舍。")
         else:
-            _prot_tip = (f"两校一志愿保护机制尚未核验（{name1}: {info1['protect']} ｜ "
-                         f"{name2}: {info2['protect']}），"
+            _prot_tip = (f"两校一志愿保护机制尚未核验（{name1}: {info1.get('protect', '未核验')} ｜ "
+                         f"{name2}: {info2.get('protect', '未核验')}），"
                          "建议查阅两校近三年复试录取细则与拟录取名单后再自行判断。")
         recommendation = f"{_exam_tip}；{_prot_tip}"
 
@@ -344,13 +360,13 @@ class SchoolComparator:
             "-" * table_w,
             f"{_pad('对比维度', col1_w)} | {_col(name1, col2_w)} | {_col(name2, col3_w)}",
             "-" * table_w,
-            f"{_pad('教育部代码', col1_w)} | {_col(info1['code'], col2_w)} | {_col(info2['code'], col3_w)}",
-            f"{_pad('所在城市', col1_w)} | {_col(info1['region'], col2_w)} | {_col(info2['region'], col3_w)}",
-            f"{_pad('办学层次', col1_w)} | {_col(info1['level'], col2_w)} | {_col(info2['level'], col3_w)}",
+            f"{_pad('教育部代码', col1_w)} | {_col(info1.get('code', '待查'), col2_w)} | {_col(info2.get('code', '待查'), col3_w)}",
+            f"{_pad('所在城市', col1_w)} | {_col(info1.get('region', '待核验'), col2_w)} | {_col(info2.get('region', '待核验'), col3_w)}",
+            f"{_pad('办学层次', col1_w)} | {_col(info1.get('level', '待核验'), col2_w)} | {_col(info2.get('level', '待核验'), col3_w)}",
             f"{_pad('数据源属性', col1_w)} | {_col(info1.get('catalog_source', ''), col2_w)} | {_col(info2.get('catalog_source', ''), col3_w)}",
-            f"{_pad('初试科目特征', col1_w)} | {_col(info1['majors'][0], col2_w)} | {_col(info2['majors'][0], col3_w)}",
-            f"{_pad('复试线走向', col1_w)} | {_col(info1['score_trend'], col2_w)} | {_col(info2['score_trend'], col3_w)}",
-            f"{_pad('一志愿保护', col1_w)} | {_col(info1['protect'], col2_w)} | {_col(info2['protect'], col3_w)}",
+            f"{_pad('初试科目特征', col1_w)} | {_col((info1.get('majors') or ['待核验'])[0], col2_w)} | {_col((info2.get('majors') or ['待核验'])[0], col3_w)}",
+            f"{_pad('复试线走向', col1_w)} | {_col(info1.get('score_trend', '待核验'), col2_w)} | {_col(info2.get('score_trend', '待核验'), col3_w)}",
+            f"{_pad('一志愿保护', col1_w)} | {_col(info1.get('protect', '未核验'), col2_w)} | {_col(info2.get('protect', '未核验'), col3_w)}",
             "-" * table_w,
             f"💡 【初试差异】: {analysis['subject_diff']}",
             f"💡 【地区分布】: {analysis['region_diff']}",
@@ -377,22 +393,22 @@ class SchoolComparator:
             "## 📊 1. 关键招考指标横向对标矩阵",
             "| 招考对比维度 | " + name1 + " | " + name2 + " |",
             "|---|---|---|",
-            f"| **教育部代码** | `{info1['code']}` | `{info2['code']}` |",
-            f"| **所在地区** | {info1['region']} | {info2['region']} |",
-            f"| **办学层次** | {info1['level']} | {info2['level']} |",
+            f"| **教育部代码** | `{info1.get('code', '待查')}` | `{info2.get('code', '待查')}` |",
+            f"| **所在地区** | {info1.get('region', '待核验')} | {info2.get('region', '待核验')} |",
+            f"| **办学层次** | {info1.get('level', '待核验')} | {info2.get('level', '待核验')} |",
             f"| **专业库来源** | `{info1.get('catalog_source', '')}` | `{info2.get('catalog_source', '')}` |",
-            f"| **复试分数线走势** | {info1['score_trend']} | {info2['score_trend']} |",
-            f"| **招生规模与报录** | {info1['ratio']} | {info2['ratio']} |",
-            f"| **一志愿保护机制** | {info1['protect']} | {info2['protect']} |",
-            f"| **研究生院官网** | [{name1}研招]({info1['graduate']}) | [{name2}研招]({info2['graduate']}) |",
+            f"| **复试分数线走势** | {info1.get('score_trend', '待核验')} | {info2.get('score_trend', '待核验')} |",
+            f"| **招生规模与报录** | {info1.get('ratio', '待核验')} | {info2.get('ratio', '待核验')} |",
+            f"| **一志愿保护机制** | {info1.get('protect', '未核验')} | {info2.get('protect', '未核验')} |",
+            f"| **研究生院官网** | [{name1}研招]({info1.get('graduate', '')}) | [{name2}研招]({info2.get('graduate', '')}) |",
             "",
             "## 📝 2. 专业方向与初试科目对比",
             f"### 【{name1}】({major})",
         ]
-        for m in info1["majors"]:
+        for m in (info1.get("majors") or ["待核验"]):
             lines.append(f"- {m}")
         lines.append(f"\n### 【{name2}】({major})")
-        for m in info2["majors"]:
+        for m in (info2.get("majors") or ["待核验"]):
             lines.append(f"- {m}")
 
         lines.extend([
@@ -403,8 +419,8 @@ class SchoolComparator:
             f"- **选校综合权衡**：{analysis['recommendation']}",
             "",
             "## ⚠️ 4. 双方核心避坑红黑榜",
-            f"- **{name1} 警示**：{info1['pitfalls']}",
-            f"- **{name2} 警示**：{info2['pitfalls']}",
+            f"- **{name1} 警示**：{info1.get('pitfalls', '')}",
+            f"- **{name2} 警示**：{info2.get('pitfalls', '')}",
             "",
             "---",
             f"> 💡 **KaoYan Intelligence 对比提示**：可根据自身当前数学与专业课摸底分数，在终端中让私教为你量身推荐更稳妥的冲刺院校。"

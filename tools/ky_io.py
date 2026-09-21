@@ -217,16 +217,21 @@ def _atomic_replace(tmp_path: Path, target: Path) -> None:
         raise last_err
 
 
-def _align_to_umask(path: Path, mode: int = 0o666) -> None:
+def _align_to_umask(path: Path, mode: int = 0o666, sensitive: bool = False) -> None:
     """把临时文件权限对齐到「umask 默认」，与 `Path.write_text` 行为保持一致。
 
     `tempfile.mkstemp` 固定以 0600 创建文件；若直接 replace 到目标，POSIX 下会把
     项目文件悄悄变成「仅属主可读写」。Windows 不使用这些权限位，直接跳过。
+
+    ``sensitive=True`` 时收紧为 ``0600``（仅属主可读写），用于含 API Key /
+    Webhook 等凭证的配置文件 —— 此时**不再**按 umask 放宽为 0644，避免同机
+    其他用户可读。
     """
     if os.name == "nt":
         return
+    target_mode = 0o600 if sensitive else (mode & ~_current_umask())
     try:
-        os.chmod(path, mode & ~_current_umask())
+        os.chmod(path, target_mode)
     except OSError as e:
         # 权限对齐是尽力而为：失败不影响写入内容，但留痕以便排查权限异常
         import logging
@@ -234,7 +239,8 @@ def _align_to_umask(path: Path, mode: int = 0o666) -> None:
 
 
 def atomic_write_text(path: PathLike, text: str, *, encoding: str = "utf-8",
-                      newline: str = None, fsync: bool = True) -> Path:
+                      newline: str = None, fsync: bool = True,
+                      sensitive: bool = False) -> Path:
     """原子写文本：先写同目录临时文件，再 `os.replace` 覆盖目标。
 
     为什么必须同目录建临时文件：`os.replace` 只有在同一文件系统内才是原子的。
@@ -250,6 +256,8 @@ def atomic_write_text(path: PathLike, text: str, *, encoding: str = "utf-8",
         newline: 换行控制；默认 None 表示不做转换（保持文本原样）
         fsync: 是否 fsync 落盘。默认 True（防断电丢数据）；
                高频小文件写入可传 False 换取一点性能。
+        sensitive: 目标文件是否含凭证。POSIX 下为 True 时权限收紧为 0600，
+                   避免 API Key / Webhook 被同机其他用户读取（Windows 无影响）。
 
     Returns:
         目标路径 Path
@@ -272,6 +280,13 @@ def atomic_write_text(path: PathLike, text: str, *, encoding: str = "utf-8",
         # 写前比对，避免无意义的 mtime 抖动
         try:
             if target.exists() and target.read_text(encoding=encoding) == text:
+                # [缺陷修复] 内容未变也要补一次权限对齐再短路返回。
+                # 否则：旧版本以 umask 0644 创建的 ky_config.json，若本次写入
+                # 内容与磁盘完全一致，就会在 _align_to_umask 之前 return，
+                # sensitive=True 的 0600 收紧被永久跳过 —— 恰好在「升级加固」
+                # 场景下失效（加固动作写的内容与旧内容相同）。
+                # Windows 上 _align_to_umask 直接返回，不影响跨平台一致性。
+                _align_to_umask(target, sensitive=sensitive)
                 return target
         except Exception as e:
             # 读旧内容只为「内容未变则跳过写入」的优化；读失败只说明无法短路，
@@ -294,7 +309,8 @@ def atomic_write_text(path: PathLike, text: str, *, encoding: str = "utf-8",
                 # mkstemp 建出来的文件权限是 0600（仅属主可读写），而 Path.write_text
                 # 走的是 umask 默认（通常 0644）。若不做对齐，本函数在 POSIX 上会
                 # 悄悄把项目文件变成「只有自己能读」，破坏跨平台一致性。
-                _align_to_umask(tmp_path)
+                # sensitive=True（凭证类文件）则保持 0600 不放宽。
+                _align_to_umask(tmp_path, sensitive=sensitive)
             _atomic_replace(tmp_path, target)
             tmp_path = None        # 已改名成功，无需清理
         finally:

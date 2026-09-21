@@ -18,17 +18,17 @@ import pytest
 
 import tools.build_package as bp
 
-SCHOOL = "目标院校"
-MAJOR = "目标专业 (专业代码)"
-PRO_NAME = "自命题专业课科目"
-WEAKNESS = "待诊断薄弱点"
+SCHOOL = "中国人民大学"
+MAJOR = "030100 法学"
+PRO_NAME = "610 法学基础 810 法学综合"
+WEAKNESS = "阅读定位不熟练"
 
 PLAN = {
     "school": SCHOOL,
     "major": MAJOR,
     "pro_name": PRO_NAME,
     "eng_weakness": WEAKNESS,
-    "eng_baseline": "摸底水平",
+    "eng_baseline": "摸底62",
     "math_baseline": "不考数学",
 }
 
