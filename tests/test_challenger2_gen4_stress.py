@@ -544,6 +544,14 @@ class TestREPLClipboardEncoding:
 
     def test_clipboard_long_multiline_text_handling(self):
         """Stress-test get_clipboard_text with 5,000 lines of mixed CRLF and LF text."""
+        # 本用例断言的是 **Win32 原生剪贴板路径**：它 patch 掉
+        # ``_read_win32_clipboard_text``，而非 Windows 上 ``get_clipboard_text``
+        # 根本不会调用该函数（走 pbpaste/xclip 分支），返回值恒为空串。
+        # 实测公开副本 CI：Linux 三个矩阵各 1 个失败（``''.startswith``）。
+        # 与本类其余三个用例保持同一守卫。
+        if sys.platform != "win32":
+            pytest.skip("Win32 API only available on Windows")
+
         lines = [f"第 {i} 条知识点：唯物辩证法核心三大规律与五大范畴" for i in range(5000)]
         big_multiline = "\r\n".join(lines)
 

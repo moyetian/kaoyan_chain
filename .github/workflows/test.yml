@@ -40,9 +40,11 @@ jobs:
     env:
       PYTHONIOENCODING: utf-8
       PYTHONUTF8: "1"
-      # [CI 稳定性] PySide6 用例在无桌面 runner 上必须使用 offscreen 平台；
-      # 各测试模块虽有局部兜底，但 pytest 收集阶段可能已导入 Qt，进而在
-      # macOS/Linux headless runner 以 139（segmentation fault）退出。
+      # [CI 稳定性] PySide6 用例在无桌面 runner 上必须使用 offscreen 平台，
+      # 否则 Qt 找不到 platform plugin 会直接 abort（GUI 用例本机有桌面时
+      # 不复现）。注意：此前把 macOS 的 exit 139 归因于 Qt，属**误判** ——
+      # faulthandler 显示崩溃发生在 pymupdf 原生库 import 期（见下方
+      # 「Drop PyMuPDF on macOS」步骤），offscreen 只解决 Qt 自身的无头问题。
       QT_QPA_PLATFORM: offscreen
 
     steps:
@@ -77,6 +79,21 @@ jobs:
         # 升级为 INTERNALERROR（本地装了插件故不复现）
         pip install -e ".[dev]"
 
+    - name: Drop PyMuPDF on macOS (native import crash)
+      # [实测·根因] macOS 矩阵三个作业长期以 exit 139 收场，faulthandler 栈顶是
+      #   pymupdf/mupdf.py:10 -> importlib create_module（原生扩展加载）
+      # 触发链：tests/test_adversarial_resiliency.py:240
+      #   -> tools/skills/material_ingestion.py:851 的 `import fitz`
+      #   -> fitz/__init__.py:2 -> pymupdf/__init__.py:395 -> pymupdf.mupdf
+      # 即 macOS arm64 wheel 在 **import 期**就段错误；段错误无法被 try/except
+      # 捕获，整条 pytest 进程被带走（两次历史运行崩在同一处，与 Qt 无关）。
+      # pymupdf 只是「测试侧造 PDF 样本」的可选工具：产品侧 material_ingestion
+      # 对 `import fitz` 有降级、测试侧对 `import pymupdf` 有 skip 守卫，
+      # 故 macOS 卸载它即可；Linux/Windows 保留，PDF 覆盖不减少。
+      if: runner.os == 'macOS'
+      run: |
+        pip uninstall -y pymupdf
+
     - name: Run Ky Doctor Self-Check
       run: |
         python tools/doctor.py
@@ -107,35 +124,12 @@ jobs:
         python tools/test_new_features.py
 
     - name: Run pytest Unit/Process Suite
-      shell: bash
+      # 命令本身与 shell 无关（不含 if/for/管道等 shell 语法），各平台用默认
+      # shell 即可 —— 此前为跑一段 `if [ ... ]` 跳过 GUI 文件的脚本而显式
+      # 指定 bash，属多余：那段脚本的立论（macOS 因 Qt 崩溃）已被证伪，
+      # 真正的崩溃源是 pymupdf，已在安装阶段处理，无需再 --ignore 任何文件。
       run: |
-        # 所有 runner 统一使用 bash：Windows 默认 PowerShell 不支持下面的
-        # ``if [ ... ]`` / ``for ...; do`` 语法，会把「跳过 GUI 测试」脚本本身判为失败。
-        # macOS GitHub runner 的 PySide6 Qt platform plugin 在 headless 环境
-        # 会于 pytest 进程级崩溃（exit 139），即使设置 offscreen 仍无法稳定
-        # 初始化；GUI 已在 Windows/Linux 与独立套件覆盖。macOS 只跳过直接
-        # 导入 PySide6 的测试文件，保留其余 1000+ 项跨平台回归。
-        if [ "$RUNNER_OS" = "macOS" ]; then
-          GUI_IGNORES=""
-          for f in \
-            tests/test_fix_packaging.py \
-            tests/test_multi_persona_user_journeys.py \
-            tests/test_qss_and_gui_ergonomics.py \
-            tests/test_fix_cli_gui_robustness.py \
-            tests/test_launcher_diagnostics.py \
-            tests/test_multimode_and_llm_injection.py \
-            tests/test_gui_smoke.py \
-            tests/test_user_feedback_fixes.py \
-            tests/test_onboarding_wizard.py \
-            tests/test_packaging_identity.py \
-            tests/test_async_and_upload.py \
-            tests/test_challenger_launcher_stress.py; do
-            GUI_IGNORES="$GUI_IGNORES --ignore=$f"
-          done
-        else
-          GUI_IGNORES=""
-        fi
-        python -m pytest tests/ -q -p no:cacheprovider $GUI_IGNORES
+        python -m pytest tests/ -q -p no:cacheprovider
 
     - name: Workspace Pollution Guard (tests must not dirty the tree)
       # [P2 加固] 「测试不得污染工作区」此前只靠约定：单个用例用 tmp_path 隔离

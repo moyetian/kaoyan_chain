@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import subprocess
 import threading
@@ -230,11 +231,39 @@ def test_gitignore_covers_corrupted_backup():
     assert "*.corrupted.bak" in text
 
 
+class _PosixOsShim:
+    """只向 ``ky_io`` 暴露 POSIX 语义的 ``os`` 替身（其余成员透传真实 ``os``）。
+
+    **[为什么不能直接改 ``ky_io.os``]** ``ky_io.os`` 就是**全局 os 模块**，
+    ``monkeypatch.setattr(ky_io.os, "name", "posix")`` 等于让整个进程伪装成
+    POSIX。Windows 上 ``pathlib`` 在**类创建时**就按当时的 ``os.name`` 决定
+    ``PosixPath.__new__`` 直接抛 ``NotImplementedError``，此后任何 ``Path(...)``
+    都会炸 —— 而 pytest 渲染失败报告时也要构造 ``Path``（``_repr_failure_py``
+    里的 ``Path(os.getcwd())``），于是把「一个用例失败」升级成整轮
+    INTERNALERROR。
+
+    实测（公开副本 CI · windows-latest）：Python 3.10/3.11 上该用例先抛
+    ``NotImplementedError: cannot instantiate 'PosixPath' on your system``，
+    pytest 随即在报告阶段再抛一次，以 ``exit 3`` 中止，**整轮只跑到第 142 个
+    用例**；3.12 因 pathlib 放宽了这条检查才侥幸通过，掩盖了问题。
+    ``os.chmod`` 同样是全局的，故一并只注入 ``ky_io``。
+    """
+
+    name = "posix"
+
+    def __init__(self, chmod):
+        self.chmod = chmod
+
+    def __getattr__(self, item):          # umask 等其余成员透传真实 os
+        return getattr(os, item)
+
+
 def test_align_to_umask_sensitive_is_0600(monkeypatch):
     """POSIX 下 sensitive=True 收紧为 0600（Windows 由 ACL 管理，跳过）。"""
     recorded = {}
-    monkeypatch.setattr(ky_io.os, "name", "posix")
-    monkeypatch.setattr(ky_io.os, "chmod", lambda p, m: recorded.__setitem__("mode", m))
+    monkeypatch.setattr(
+        ky_io, "os",
+        _PosixOsShim(lambda p, m: recorded.__setitem__("mode", m)))
 
     ky_io._align_to_umask(Path("x"), sensitive=True)
     assert recorded["mode"] == 0o600

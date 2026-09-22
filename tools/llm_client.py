@@ -56,10 +56,35 @@ def _llm_urlopen(req: urllib.request.Request, timeout: float = 12.0):
     return safe_urlopen(req, timeout=timeout)
 
 # 确保在各种导入路径与 pytest mock 环境下 tools.llm_client 与 llm_client 指向同一模块对象
-sys.modules.setdefault("tools.llm_client", sys.modules[__name__])
-sys.modules.setdefault("llm_client", sys.modules[__name__])
-sys.modules["tools.llm_client"] = sys.modules[__name__]
-sys.modules["llm_client"] = sys.modules[__name__]
+_MODULE = sys.modules[__name__]
+sys.modules.setdefault("tools.llm_client", _MODULE)
+sys.modules.setdefault("llm_client", _MODULE)
+sys.modules["tools.llm_client"] = _MODULE
+sys.modules["llm_client"] = _MODULE
+
+# [修复] 别名必须**同时挂到父包属性**上，否则 mock.patch("tools.llm_client.X") 会崩。
+#
+# 现场（公开副本 CI，Python 3.10 实测 16 个用例变红）：
+#   tools/gui/services/settings.py 的兜底导入顺序是 `from llm_client import ...`
+#   在前、`from tools.llm_client import ...` 在后；而不少测试会把 ``tools/``
+#   放进 sys.path，于是本模块**先以顶层名 llm_client 完成导入**。CPython 只在
+#   ``_find_and_load`` 真正执行时才把子模块挂到父包属性上，这里是模块体内手工
+#   写 sys.modules，父包属性从未被赋值；此后 ``from tools.llm_client import X``
+#   命中 sys.modules 直接返回，也不会补挂。
+#   最终 ``sys.modules`` 里明明有 tools.llm_client，``getattr(tools, "llm_client")``
+#   却是 AttributeError —— unittest.mock 的 ``_dot_lookup`` 正是「先 getattr、
+#   失败再 __import__、再 getattr」，第二步命中缓存后依旧拿不到属性，于是 patch
+#   抛 AttributeError。（3.11+ 的 mock 改走 sys.modules 回退，故不复现。）
+try:  # pragma: no cover - 防御性：任何异常都不得影响正常导入
+    _parent = sys.modules.get("tools")
+    if _parent is None:
+        import importlib
+
+        _parent = importlib.import_module("tools")
+    if getattr(_parent, "llm_client", None) is not _MODULE:
+        setattr(_parent, "llm_client", _MODULE)
+except Exception:
+    pass
 
 
 def _decompress_response_bytes(raw_bytes: bytes, headers: Any = None) -> str:

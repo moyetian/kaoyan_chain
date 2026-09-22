@@ -44,6 +44,34 @@ def _decode_console(raw: bytes) -> str:
         return raw.decode("gbk", errors="replace")
 
 
+def _seed_sandbox_venv(sandbox_root: Path) -> None:
+    """在沙箱里放一个「已就绪」的 .venv，让 GUI.bat 的 Python 探测走确定性第一条分支。
+
+    **[实测缺陷]** GUI.bat 的解释器探测顺序是：本地 ``.venv`` → ``venv`` →
+    ``%VIRTUAL_ENV%`` → ``%CONDA_PREFIX%`` → ``py -3`` → ``where python``，
+    命中后还会 ``import PySide6`` 探活，缺失则 ``pip install -q PySide6``（联网
+    下载上百 MB）。CI runner 上 ``py -3`` 可能指向**未装 PySide6** 的解释器，
+    于是脚本卡在联网安装，远超用例 5s 超时 —— 公开副本 CI 上 4 个批量启动用例
+    全部 ``subprocess.TimeoutExpired``（windows-latest 实测），且本机开发环境
+    ``py -3`` 恰好指向装好 PySide6 的解释器，本地永不复现。
+
+    这里把**被测解释器**（必然装了 PySide6，否则 pytest 侧 GUI 用例也跑不了）
+    做成沙箱内的 venv：``Scripts/python.exe`` 是 ``sys.executable`` 的副本，
+    ``pyvenv.cfg`` 指回基础解释器并开启 ``include-system-site-packages``。
+    于是探测在第一步就命中、探活通过，既不联网也不受 runner 影响。
+    """
+    venv = sandbox_root / ".venv"
+    scripts = venv / "Scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(sys.executable, scripts / "python.exe")
+    (venv / "pyvenv.cfg").write_text(
+        f"home = {Path(sys.executable).parent}\n"
+        f"include-system-site-packages = true\n"
+        f"version = {sys.version.split()[0]}\n",
+        encoding="utf-8",
+    )
+
+
 # ==============================================================================
 # Task 1: CLI Options Verification
 # ==============================================================================
@@ -269,6 +297,7 @@ def test_batch_gui_pauses_on_launcher_crash(tmp_path):
     """
     sandbox_tools = tmp_path / "tools"
     sandbox_tools.mkdir(parents=True, exist_ok=True)
+    _seed_sandbox_venv(tmp_path)
 
     shutil.copy2(GUI_BAT, tmp_path / "GUI.bat")
 
@@ -317,6 +346,7 @@ def test_batch_qi_dong_gui_pauses_on_launcher_crash(tmp_path):
     """
     sandbox_tools = tmp_path / "tools"
     sandbox_tools.mkdir(parents=True, exist_ok=True)
+    _seed_sandbox_venv(tmp_path)
 
     shutil.copy2(GUI_BAT, tmp_path / "GUI.bat")
     shutil.copy2(QI_DONG_GUI_BAT, tmp_path / "启动GUI.bat")
@@ -369,6 +399,7 @@ def test_full_chain_batch_invokes_launcher_catches_real_watchdog_crash(tmp_path)
     sandbox_tools = tmp_path / "tools"
     sandbox_tools.mkdir(parents=True, exist_ok=True)
     sandbox_logs = tmp_path / "logs"
+    _seed_sandbox_venv(tmp_path)
 
     shutil.copy2(GUI_BAT, tmp_path / "GUI.bat")
     shutil.copy2(GUI_LAUNCHER_PY, sandbox_tools / "gui_launcher.py")
@@ -437,6 +468,7 @@ def test_audit_gui_bat_line_114_delayed_expansion_truncation(tmp_path):
     """
     sandbox_tools = tmp_path / "tools"
     sandbox_tools.mkdir(parents=True, exist_ok=True)
+    _seed_sandbox_venv(tmp_path)
     shutil.copy2(GUI_BAT, tmp_path / "GUI.bat")
 
     mock_launcher = sandbox_tools / "gui_launcher.py"

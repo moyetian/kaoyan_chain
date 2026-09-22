@@ -1,14 +1,63 @@
 {
   "meta": {
     "snapshot_version": "ky-snapshot/1.1",
-    "generated_at": "2026-09-22 11:28:23",
+    "generated_at": "2026-09-22 13:40:13",
     "opt_in": true,
-    "subjects_count": 3,
-    "memo_cards": 49,
-    "weak_cards": 11,
-    "metrics_count": 5,
+    "subjects_count": 4,
+    "memo_cards": 52,
+    "weak_cards": 13,
+    "metrics_count": 7,
     "parse_warnings": [],
     "sections_status": [
+      {
+        "subject": "math",
+        "kw": null,
+        "status": "ok",
+        "path": "_状态/今日任务.md",
+        "tab": "today"
+      },
+      {
+        "subject": "math",
+        "kw": "公式默写卡",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "memo"
+      },
+      {
+        "subject": "math",
+        "kw": "复发错误",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "memo"
+      },
+      {
+        "subject": "math",
+        "kw": "模块掌握度雷达",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "weak"
+      },
+      {
+        "subject": "math",
+        "kw": "索引表",
+        "status": "ok",
+        "path": "错题本/_索引.md",
+        "tab": "weak"
+      },
+      {
+        "subject": "math",
+        "kw": "错因五分类",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "stat"
+      },
+      {
+        "subject": "math",
+        "kw": "计算失误",
+        "status": "ok",
+        "path": "_状态/薄弱点雷达.md",
+        "tab": "stat"
+      },
       {
         "subject": "eng",
         "kw": null,
@@ -162,7 +211,41 @@
   "data": {
     "memo": [
       {
-        "id": "eng-memo-0",
+        "id": "math-memo-0",
+        "subj": "数学",
+        "key": "math",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "title": "公式默写卡",
+        "cards": [
+          {
+            "f": "x -> 0 时，sin",
+            "b": []
+          },
+          {
+            "f": "d/dx",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "math-memo-1",
+        "subj": "数学",
+        "key": "math",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "title": "复发错误",
+        "cards": [
+          {
+            "f": "首次完成自测后私教将在此归纳易错点",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "eng-memo-2",
         "subj": "英语",
         "key": "eng",
         "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>",
@@ -177,7 +260,7 @@
         ]
       },
       {
-        "id": "pol-memo-1",
+        "id": "pol-memo-3",
         "subj": "政治",
         "key": "pol",
         "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
@@ -240,7 +323,7 @@
         ]
       },
       {
-        "id": "pol-memo-2",
+        "id": "pol-memo-4",
         "subj": "政治",
         "key": "pol",
         "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
@@ -299,7 +382,7 @@
         ]
       },
       {
-        "id": "pol-memo-3",
+        "id": "pol-memo-5",
         "subj": "政治",
         "key": "pol",
         "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
@@ -346,7 +429,7 @@
         ]
       },
       {
-        "id": "pol-memo-4",
+        "id": "pol-memo-6",
         "subj": "政治",
         "key": "pol",
         "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
@@ -401,7 +484,7 @@
         ]
       },
       {
-        "id": "pol-memo-5",
+        "id": "pol-memo-7",
         "subj": "政治",
         "key": "pol",
         "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
@@ -416,7 +499,7 @@
         ]
       },
       {
-        "id": "pro-memo-6",
+        "id": "pro-memo-8",
         "subj": "专业课",
         "key": "pro",
         "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>",
@@ -437,7 +520,37 @@
     ],
     "weak": [
       {
-        "id": "eng-weak-0",
+        "id": "math-weak-0",
+        "subj": "数学",
+        "key": "math",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "title": "模块掌握度雷达",
+        "cards": [
+          {
+            "f": "考纲核心模块",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "math-weak-1",
+        "subj": "数学",
+        "key": "math",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "title": "索引表",
+        "cards": [
+          {
+            "f": "计算失误",
+            "b": []
+          }
+        ]
+      },
+      {
+        "id": "eng-weak-2",
         "subj": "英语",
         "key": "eng",
         "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>",
@@ -460,7 +573,7 @@
         ]
       },
       {
-        "id": "pol-weak-1",
+        "id": "pol-weak-3",
         "subj": "政治",
         "key": "pol",
         "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
@@ -475,7 +588,7 @@
         ]
       },
       {
-        "id": "pol-weak-2",
+        "id": "pol-weak-4",
         "subj": "政治",
         "key": "pol",
         "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
@@ -490,7 +603,7 @@
         ]
       },
       {
-        "id": "pol-weak-3",
+        "id": "pol-weak-5",
         "subj": "政治",
         "key": "pol",
         "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>",
@@ -505,7 +618,7 @@
         ]
       },
       {
-        "id": "pro-weak-4",
+        "id": "pro-weak-6",
         "subj": "专业课",
         "key": "pro",
         "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>",
@@ -532,7 +645,7 @@
         ]
       },
       {
-        "id": "pro-weak-5",
+        "id": "pro-weak-7",
         "subj": "专业课",
         "key": "pro",
         "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>",
@@ -548,6 +661,64 @@
       }
     ],
     "metrics": [
+      {
+        "subj": "数学",
+        "key": "math",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>",
+        "items": [
+          {
+            "label": "计算失误",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "概念漏洞",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "公式记错",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "审题偏差",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "书写丢分",
+            "text": "0",
+            "count": 0.0
+          }
+        ]
+      },
+      {
+        "subj": "数学",
+        "key": "math",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>",
+        "items": [
+          {
+            "label": "符号漏负",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "分数通分",
+            "text": "0",
+            "count": 0.0
+          },
+          {
+            "label": "复合求导",
+            "text": "0",
+            "count": 0.0
+          }
+        ]
+      },
       {
         "subj": "英语",
         "key": "eng",
@@ -696,6 +867,15 @@
     ],
     "subjects": [
       {
+        "key": "math",
+        "name": "数学",
+        "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>",
+        "color": "#2563eb",
+        "dark": "#60a5fa",
+        "notes": 0,
+        "ok": true
+      },
+      {
         "key": "eng",
         "name": "英语",
         "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>",
@@ -728,6 +908,25 @@
       "total": 181
     },
     "maps": {
+      "math": {
+        "subject": "math",
+        "subject_name": "数学",
+        "total_points": 0,
+        "total_topics": 0,
+        "grade_counts": {
+          "A": 0,
+          "B": 0,
+          "C": 0,
+          "D": 0,
+          "U": 0
+        },
+        "mastery_rate": 0.0,
+        "assessed_count": 0,
+        "unassessed_count": 0,
+        "assessed_rate": 0.0,
+        "syllabus_placeholder": true,
+        "chapters": []
+      },
       "eng": {
         "subject": "eng",
         "subject_name": "英语",
@@ -1100,14 +1299,6 @@
         "chapters": []
       }
     },
-    "trend": [
-      {
-        "date": "2026-09-19",
-        "short_date": "09-19",
-        "rate": 0.0,
-        "total": 9,
-        "completed": 0
-      }
-    ]
+    "trend": []
   }
 }
