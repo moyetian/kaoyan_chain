@@ -6,8 +6,24 @@ on:
   pull_request:
     branches: [ main, master ]
 
+# [P2 加固·最小权限] 此前未声明 permissions，GitHub 会授予仓库默认令牌权限
+# （老仓库默认 read/write）。本工作流只做检出 + 跑测试，不需要任何写权限，
+# 故显式收敛为 contents: read（与同目录 deploy-pages.yml 的写法一致）。
+permissions:
+  contents: read
+
+# [P2 加固·并发去重] 同一分支连续推送时，旧的一次运行已无意义却仍占满 runner。
+# cancel-in-progress 只对 PR 开启：对 main 分支的 push **不**取消 ——
+# 否则主分支最后一次推送可能因前一次被取消而留下"未被验证"的空窗。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
+    # [P2 加固·超时] 套件里有真实网络 / 子进程用例，一旦挂起会一直占满 runner
+    # 直到 GitHub 默认 6 小时上限（表现为"一直在跑"而非快速失败）；显式上限兜底。
+    timeout-minutes: 45
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -24,13 +40,24 @@ jobs:
     env:
       PYTHONIOENCODING: utf-8
       PYTHONUTF8: "1"
+      # [CI 稳定性] PySide6 用例在无桌面 runner 上必须使用 offscreen 平台；
+      # 各测试模块虽有局部兜底，但 pytest 收集阶段可能已导入 Qt，进而在
+      # macOS/Linux headless runner 以 139（segmentation fault）退出。
+      QT_QPA_PLATFORM: offscreen
 
     steps:
+    # [P2 加固·Action 固定到 commit SHA] 浮动标签（@v4/@v5）可被上游静默改写，
+    # 等于把 CI 执行权交给第三方 tag 的当前指向；pin 到完整 commit SHA 后，
+    # 除非有人显式改本文件，跑的永远是同一份代码。
+    # SHA 经 GitHub API 核实（2026-09-21）：
+    #   actions/checkout      v4 → 11d5960a326750d5838078e36cf38b85af677262
+    #   actions/setup-python  v5 → a26af69be951a213d495a4c3e4e4022e16d87065
+    # 升级时请同步改 SHA 与行尾注释里的版本号。
     - name: Check out repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -66,6 +93,12 @@ jobs:
         python tools/check_dashboard.py
 
     - name: Run Full Kaoyan Test Suite
+      # 该套件会真实改写工作区用户数据（备考方案/今日任务/大纲），故内置守卫默认拒绝
+      # 在真实考生工作区运行（exit 2）。CI 由 actions/checkout 做全新检出，工作区里
+      # 不存在 ky_config.json（被 .gitignore 保护、未跟踪），守卫不会触发，无需额外放行。
+      # 注意：正因为没有 ky_config.json，套件里 sync_publish 用例会走「无身份规则时
+      # fail-closed 拒绝导出（exit 3）」分支 —— 这是预期行为，不是失败。
+      # 本地复现请用干净副本，或设 KY_TEST_ALLOW_REAL_WORKSPACE=1 显式放行。
       run: |
         python tools/test_ky_suite.py
 
@@ -77,6 +110,37 @@ jobs:
       run: |
         python -m pytest tests/ -q -p no:cacheprovider
 
+    - name: Workspace Pollution Guard (tests must not dirty the tree)
+      # [P2 加固] 「测试不得污染工作区」此前只靠约定：单个用例用 tmp_path 隔离
+      # 是自觉行为，没人守门。这里在**全部测试跑完之后**断言工作区必须干净 ——
+      # 任何残留改动即判失败（tools/test_ky_suite.py 内部本就有快照/还原机制，
+      # 正是为了满足这条不变式；此步把该不变式变成硬门禁）。
+      #
+      # 取舍：只排除**真正的构建产物** —— ``check_dashboard.py`` 每次都会重写
+      # ``docs/index.html`` 与 ``docs/state_snapshot.json``（本地 `git status`
+      # 亦长期显示为 M），属预期变化，故显式排除这两个文件；
+      # ``.config_backup/``（配置守卫快照）已**移出仓库根**（新写入去
+      # ``%LOCALAPPDATA%/kaoyan-study-chain/config_backup``，见
+      # ``tools/config_guard.default_backup_dir``），正常不会再出现在工作区；
+      # 保留该排除项作纵深防御（旧的仓库内目录读取仍兼容）。
+      #
+      # [P2 加固·排除范围过宽] 早前用 `':!docs'` 把 **docs/ 整目录**排除，但
+      # `docs/live.html` 是**手写源文件**、`docs/assets/vendor/**` 是随仓库分发的
+      # 第三方资源 —— 它们并不由构建生成，整目录排除与"其余任何 tracked 文件的
+      # 改动都会被抓到"自相矛盾（实测 docs/ 命中 0 项）。现收窄到具体生成物。
+      shell: bash
+      run: |
+        dirty="$(git status --porcelain -- \
+          ':!docs/index.html' \
+          ':!docs/state_snapshot.json' \
+          ':!.config_backup')"
+        if [ -n "$dirty" ]; then
+          echo "::error::测试污染了工作区，以下路径在测试后出现改动/新增："
+          echo "$dirty"
+          exit 1
+        fi
+        echo "[OK] 工作区干净（仅排除 docs/index.html、docs/state_snapshot.json 两个生成物）"
+
   rust-ext:
     # [S-6] Rust 原生加速扩展 (ky_rust_ext) 此前从未在 CI 中编译验证过 ——
     # 一旦 PyO3 版本升级或源码失效，只有用户在本地编译时才会发现。
@@ -86,12 +150,15 @@ jobs:
     # 若希望它成为硬门禁（合并前必须可编译），删除下面这行 continue-on-error 即可。
     runs-on: ubuntu-latest
     continue-on-error: true
+    # [P2 加固·超时] continue-on-error 时挂起表现为「一直在跑」而非快速失败，
+    # 更需要显式上限兜底（默认 6 小时会白占 runner）。
+    timeout-minutes: 25
     steps:
     - name: Check out repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
       with:
         python-version: "3.12"
 
