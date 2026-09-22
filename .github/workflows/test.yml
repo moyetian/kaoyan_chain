@@ -107,7 +107,10 @@ jobs:
         python tools/test_new_features.py
 
     - name: Run pytest Unit/Process Suite
+      shell: bash
       run: |
+        # 所有 runner 统一使用 bash：Windows 默认 PowerShell 不支持下面的
+        # ``if [ ... ]`` / ``for ...; do`` 语法，会把「跳过 GUI 测试」脚本本身判为失败。
         # macOS GitHub runner 的 PySide6 Qt platform plugin 在 headless 环境
         # 会于 pytest 进程级崩溃（exit 139），即使设置 offscreen 仍无法稳定
         # 初始化；GUI 已在 Windows/Linux 与独立套件覆盖。macOS 只跳过直接
