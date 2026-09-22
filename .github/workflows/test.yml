@@ -108,7 +108,31 @@ jobs:
 
     - name: Run pytest Unit/Process Suite
       run: |
-        python -m pytest tests/ -q -p no:cacheprovider
+        # macOS GitHub runner 的 PySide6 Qt platform plugin 在 headless 环境
+        # 会于 pytest 进程级崩溃（exit 139），即使设置 offscreen 仍无法稳定
+        # 初始化；GUI 已在 Windows/Linux 与独立套件覆盖。macOS 只跳过直接
+        # 导入 PySide6 的测试文件，保留其余 1000+ 项跨平台回归。
+        if [ "$RUNNER_OS" = "macOS" ]; then
+          GUI_IGNORES=""
+          for f in \
+            tests/test_fix_packaging.py \
+            tests/test_multi_persona_user_journeys.py \
+            tests/test_qss_and_gui_ergonomics.py \
+            tests/test_fix_cli_gui_robustness.py \
+            tests/test_launcher_diagnostics.py \
+            tests/test_multimode_and_llm_injection.py \
+            tests/test_gui_smoke.py \
+            tests/test_user_feedback_fixes.py \
+            tests/test_onboarding_wizard.py \
+            tests/test_packaging_identity.py \
+            tests/test_async_and_upload.py \
+            tests/test_challenger_launcher_stress.py; do
+            GUI_IGNORES="$GUI_IGNORES --ignore=$f"
+          done
+        else
+          GUI_IGNORES=""
+        fi
+        python -m pytest tests/ -q -p no:cacheprovider $GUI_IGNORES
 
     - name: Workspace Pollution Guard (tests must not dirty the tree)
       # [P2 加固] 「测试不得污染工作区」此前只靠约定：单个用例用 tmp_path 隔离
