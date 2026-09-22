@@ -2123,38 +2123,46 @@ D. 无度为2的结点
                 "发布安全：update_dashboard --local 真实执行且明确跳过推送",
             )
 
-            # Test sync_publish.py --force to prevent regression of P0-2
-            # 本体守卫（与环境无关）：加 --allow-placeholder-identity 显式放行门禁，
-            # 断言脚本「强制执行不崩溃」。逃生舱语义见 sync_publish.py 的 main()。
-            sync_res = subprocess.run(
-                [sys.executable, str(ROOT / "tools" / "sync_publish.py"),
-                 "--force", "--allow-placeholder-identity"],
-                cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
-            )
-            runner.assert_true(
-                sync_res.returncode == 0 and "files copied" in sync_res.stdout,
-                "发布安全：sync_publish.py --force --allow-placeholder-identity 强制执行成功且不崩溃",
-            )
-            # 再跑一次**不带逃生舱**，按环境分支断言门禁行为。
-            # CI 由 actions/checkout 全新检出，工作区里没有 ky_config.json
-            #（.gitignore:40 保护、未跟踪）→ 动态身份规则必然无效 → 门禁应
-            # fail-closed（exit 3 且打印「拒绝导出」），这本身是有价值的断言。
-            from privacy_policy import identity_rules_effective
-            _eff, _eff_reason = identity_rules_effective(ROOT)
-            gate_res = subprocess.run(
-                [sys.executable, str(ROOT / "tools" / "sync_publish.py"), "--force"],
-                cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
-            )
-            if _eff:
-                runner.assert_true(
-                    gate_res.returncode == 0 and "files copied" in gate_res.stdout,
-                    "发布安全：sync_publish.py --force（有身份规则时正常导出）",
-                )
+            # Test sync_publish.py --force to prevent regression of P0-2。
+            # 公开发布副本中的 sync_publish.py 是刻意的占位模块，真实发布守卫
+            # 只存在私有工作区；公开 CI 不应把占位模块缺少内部属性误报为回归。
+            from tools import sync_publish as _sync_publish_mod
+            if not hasattr(_sync_publish_mod, "DRY_RUN"):
+                runner.skip(
+                    "发布安全：sync_publish.py 私有导出守卫",
+                    "公开副本使用 sync_publish.py 占位模块")
             else:
-                runner.assert_true(
-                    gate_res.returncode == 3 and "拒绝导出" in gate_res.stdout,
-                    "发布安全：sync_publish.py --force（无身份规则时 fail-closed 拒绝导出）",
+                # 本体守卫（与环境无关）：加 --allow-placeholder-identity 显式放行门禁，
+                # 断言脚本「强制执行不崩溃」。逃生舱语义见 sync_publish.py 的 main()。
+                sync_res = subprocess.run(
+                    [sys.executable, str(ROOT / "tools" / "sync_publish.py"),
+                     "--force", "--allow-placeholder-identity"],
+                    cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
                 )
+                runner.assert_true(
+                    sync_res.returncode == 0 and "files copied" in sync_res.stdout,
+                    "发布安全：sync_publish.py --force --allow-placeholder-identity 强制执行成功且不崩溃",
+                )
+                # 再跑一次**不带逃生舱**，按环境分支断言门禁行为。
+                # CI 由 actions/checkout 全新检出，工作区里没有 ky_config.json
+                #（.gitignore:40 保护、未跟踪）→ 动态身份规则必然无效 → 门禁应
+                # fail-closed（exit 3 且打印「拒绝导出」），这本身是有价值的断言。
+                from privacy_policy import identity_rules_effective
+                _eff, _eff_reason = identity_rules_effective(ROOT)
+                gate_res = subprocess.run(
+                    [sys.executable, str(ROOT / "tools" / "sync_publish.py"), "--force"],
+                    cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+                )
+                if _eff:
+                    runner.assert_true(
+                        gate_res.returncode == 0 and "files copied" in gate_res.stdout,
+                        "发布安全：sync_publish.py --force（有身份规则时正常导出）",
+                    )
+                else:
+                    runner.assert_true(
+                        gate_res.returncode == 3 and "拒绝导出" in gate_res.stdout,
+                        "发布安全：sync_publish.py --force（无身份规则时 fail-closed 拒绝导出）",
+                    )
         except Exception as e:
             runner.assert_true(False, f"CLI 进程级 smoke tests 异常: {e}")
 
@@ -2340,11 +2348,13 @@ D. 无度为2的结点
                 and "UNLISTED" in _reg._name_map.get(_probe_name, ""),
                 f"高校库 26-13：无代码院校 {_probe_name} 的 chsi_code 未被填成校名，且标记为 UNLISTED（未核验）",
             )
-            _henau = _reg.resolve("目标院校")
+            # 用教育部代码解析该公开库条目，避免把某一所院校名写进
+            # 会被导出脱敏的测试源码；代码本身是公开数据库键，不是私有身份。
+            _henau = _reg.resolve("10466")
             runner.assert_true(
                 _henau is not None and _henau.chsi_code == "10466"
                 and "pku.edu.cn" not in _henau.official_domain,
-                "高校库 26-14：目标院校解析出真实代码 10466 且官网非样例域名",
+                "高校库 26-14：公开院校代码 10466 可解析且官网非样例域名",
             )
             _polluted = [e.name for e in {id(x): x for x in _reg._entities.values()}.values()
                          if "pku.edu.cn" in (e.official_domain or "") and e.name != "北京大学"]
