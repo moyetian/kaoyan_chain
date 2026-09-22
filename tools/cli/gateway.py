@@ -40,6 +40,12 @@ try:
 except ImportError:
     from cli.notify import send_to_feishu
 
+# [G1 修复] 复用 config.py 既有的凭证打码口径，避免终端/CI 日志明文回显网关 token。
+try:
+    from tools.cli.config import _mask_secret  # noqa: F401  (私有名，跨模块复用打码口径)
+except ImportError:
+    from cli.config import _mask_secret  # noqa: F401
+
 try:
     from skills import vision_solver
 except ImportError:
@@ -499,16 +505,22 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
     return GatewayHandler
 
 def start_background_live_server(start_port: int = 8088, host: str = "127.0.0.1",
-                                 token: str = "") -> Optional[int]:
+                                 token: str = "", webhook_token: str = "") -> Optional[int]:
     """在后台静默启动 Web 实时伴侣服务器，自动处理端口占用。
 
     [P1-8 修复] 此前本函数**没有 token 形参**，只读环境变量 ``KY_GATEWAY_TOKEN``，
     于是 ``ky --gateway-token=xxx`` 传进来的 token 被静默丢弃（调用方 loop.py /
     misc.py 明明持有 gateway_token 却无处可传）。现增加 ``token`` 形参，
     **显式传入优先于环境变量**。
+
+    [S1 修复] 同型缺陷：本路径此前也不透传 ``webhook_token``，``/webhook`` 只能靠
+    环境变量/配置兜底，与 ``run_server`` 路径口径不一致（后台伴侣模式下用户显式
+    配的回调密钥会被静默忽略）。现补齐形参并走 ``resolve_webhook_secret`` 同口径解析。
     """
     effective_token = (token or "").strip() or os.environ.get("KY_GATEWAY_TOKEN", "").strip()
-    handler_class = create_gateway_handler(token=effective_token)
+    effective_webhook_token = resolve_webhook_secret(webhook_token or "")
+    handler_class = create_gateway_handler(token=effective_token,
+                                           webhook_token=effective_webhook_token)
     bind_host = host
     for p in range(start_port, start_port + 20):
         try:
@@ -518,7 +530,12 @@ def start_background_live_server(start_port: int = 8088, host: str = "127.0.0.1"
             if bind_host not in ("127.0.0.1", "localhost", "::1"):
                 if effective_token:
                     print(colorize(f"\n[√] 网关监听于 {bind_host}:{p}，已成功启用 Token 鉴权保护。", C.GREEN))
-                    print(colorize(f"    手机访问：http://{_detect_lan_ip()}:{p}/?token={effective_token}\n", C.CYAN))
+                    # [G1 修复] 此前把 token 明文拼进 URL 打印，会留在终端录屏/CI 日志里；
+                    # 改为占位提示 + 打码确认（用户仍能核对令牌是否配对，但不泄漏完整值）。
+                    print(colorize(
+                        f"    手机访问：http://{_detect_lan_ip()}:{p}/?token=<你的访问令牌>\n"
+                        f"    （你设置的令牌形如 {_mask_secret(effective_token)}）\n",
+                        C.CYAN))
                 else:
                     print(colorize(
                         f"\n[!] 网关监听于 {bind_host}:{p}（非本机回环）。"
@@ -606,7 +623,11 @@ def run_server(port: int = 8088, host: str = "127.0.0.1", gateway_token: Optiona
     if host not in ("127.0.0.1", "localhost", "::1"):
         if effective_token:
             print(colorize(f"  [√] 已启用 Token 鉴权保护。", C.GREEN))
-            print(colorize(f"      手机访问：http://{_detect_lan_ip()}:{port}/?token={effective_token}\n", C.CYAN))
+            # [G1 修复] 同 start_background_live_server：token 不明文进 stdout，只给占位 + 打码确认。
+            print(colorize(
+                f"      手机访问：http://{_detect_lan_ip()}:{port}/?token=<你的访问令牌>\n"
+                f"      （你设置的令牌形如 {_mask_secret(effective_token)}）\n",
+                C.CYAN))
         else:
             print(colorize(
                 f"  [!] 已对外暴露 {host}:{port}。强烈建议设置环境变量 KY_GATEWAY_TOKEN 启用鉴权。\n",

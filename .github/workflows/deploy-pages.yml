@@ -39,6 +39,11 @@ jobs:
         run: |
             test -f docs/index.html || (echo "[❌] docs/index.html 未找到，请先在本地运行 python 05-考研看板/build.py" && exit 1)
             test -f docs/state_snapshot.json || (echo "[❌] docs/state_snapshot.json 未找到" && exit 1)
+            # [G8 修复] 页面产物同样必须过门禁：非空、体积正常、含看板契约标记。
+            # 此前只校验 state_snapshot.json，页面缺失或未构建也会被直接部署。
+            test -s docs/index.html || (echo "[❌] docs/index.html 为空，疑似未构建" && exit 1)
+            python -c "import pathlib; b=pathlib.Path('docs/index.html').read_bytes(); assert len(b) > 1000, 'docs/index.html 体积异常，疑似未构建'"
+            grep -q 'data-p="stat"' docs/index.html || (echo "[❌] docs/index.html 缺少看板契约标记 data-p=stat" && exit 1)
             python -c "import json; p=json.load(open('docs/state_snapshot.json', encoding='utf-8')); assert p.get('meta', {}).get('sanitized') is True, '拒绝部署未脱敏快照'"
             echo "[✅] docs/ 内容检查通过"
 

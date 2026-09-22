@@ -75,7 +75,7 @@ SVG1 = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="1
     <g transform="translate(245, 10)">
       <rect width="380" height="42" rx="6" fill="#172554" stroke="#2563eb" stroke-width="1.2" />
       <text x="15" y="18" fill="#bfdbfe" font-size="12" font-weight="700">🏛️ 高校实体解析器 &amp; 通用自适应推断器</text>
-      <text x="15" y="33" fill="#93c5fd" font-size="10.5">55+ 重点高校注册表 ＋ 800+ 双非自适应推导 (省市识别 / A区/B区判定 / 代码补全)</text>
+      <text x="15" y="33" fill="#93c5fd" font-size="10.5">57 所重点高校注册表 ＋ 800+ 双非自适应推导 (省市识别 / A区/B区判定 / 代码补全)</text>
     </g>
     <g transform="translate(640, 10)">
       <rect width="220" height="42" rx="6" fill="#1f1538" stroke="#8b5cf6" stroke-width="1.2" />
@@ -532,9 +532,12 @@ def main() -> int:
     f2 = ASSETS_DIR / "school_comparator_matrix.svg"
     f3 = ASSETS_DIR / "dashboard_5tabs_architecture.svg"
 
-    f1.write_text(SVG1, encoding="utf-8")
-    f2.write_text(SVG2, encoding="utf-8")
-    f3.write_text(SVG3, encoding="utf-8")
+    # newline="" 显式禁用换行翻译：Windows 上 ``write_text`` 默认会把 ``\n`` 写成
+    # ``\r\n``，而仓库（.gitattributes: ``* text=auto``）存的是 LF —— 于是每次重跑
+    # 本脚本都会把三份产物的工作区副本刷成 CRLF，制造一份与改动无关的巨大 diff。
+    f1.write_text(SVG1, encoding="utf-8", newline="")
+    f2.write_text(SVG2, encoding="utf-8", newline="")
+    f3.write_text(SVG3, encoding="utf-8", newline="")
 
     print(f"Generated SVG 1: {f1.name} ({f1.stat().st_size} bytes)")
     print(f"Generated SVG 2: {f2.name} ({f2.stat().st_size} bytes)")

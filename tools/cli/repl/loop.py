@@ -159,11 +159,18 @@ except ImportError:
     except ImportError:
         ky_io = None
 
-def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gateway_token: str = "") -> None:
-    """启动交互式考研全科专属私教终端 (ky-cli)"""
+def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gateway_token: str = "",
+             webhook_token: str = "") -> None:
+    """启动交互式考研全科专属私教终端 (ky-cli)
+
+    [S1 修复] 新增 ``webhook_token`` 形参：后台伴侣网关此前不透传 ``/webhook``
+    专用回调密钥，只能靠环境变量/配置兜底。默认空串时 ``start_background_live_server``
+    内部仍会按「环境变量 > ky_config.json」解析，故既有调用方不受影响。
+    """
     cfg = load_config()
 
-    live_port = start_background_live_server(8088, host=gateway_host, token=gateway_token) or 8088
+    live_port = start_background_live_server(8088, host=gateway_host, token=gateway_token,
+                                             webhook_token=webhook_token) or 8088
     print_welcome(live_port=live_port)
 
     # [P2-8 修复·拒绝后每次仍问] 用户明确拒绝（n）后必须记住选择，否则每次启动
@@ -621,6 +628,12 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                     history.append({"role": "user", "content": f"/hint {target_q}"})
                     history.append({"role": "assistant", "content": f"【第 {hint_lvl} 级启发性提示】\n{reply}"})
                     print_followup_toolbar()
+                continue
+            elif cmd == "/submit":
+                # [B-01 修复] README / 操作手册宣称的 `/submit` 斜杠指令此前在代码里
+                # 不存在（只有中文口令「交作业」/「对答案」生效）。这里与中文口令
+                # 复用同一处理器 build_homework_menu，实现与文档对齐。
+                print(colorize(build_homework_menu(), C.CYAN))
                 continue
             elif cmd in ("/batch", "/answers"):
                 if not arg:

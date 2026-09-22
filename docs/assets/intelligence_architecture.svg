@@ -53,7 +53,7 @@
     <g transform="translate(245, 10)">
       <rect width="380" height="42" rx="6" fill="#172554" stroke="#2563eb" stroke-width="1.2" />
       <text x="15" y="18" fill="#bfdbfe" font-size="12" font-weight="700">🏛️ 高校实体解析器 &amp; 通用自适应推断器</text>
-      <text x="15" y="33" fill="#93c5fd" font-size="10.5">55+ 重点高校注册表 ＋ 800+ 双非自适应推导 (省市识别 / A区/B区判定 / 代码补全)</text>
+      <text x="15" y="33" fill="#93c5fd" font-size="10.5">57 所重点高校注册表 ＋ 800+ 双非自适应推导 (省市识别 / A区/B区判定 / 代码补全)</text>
     </g>
     <g transform="translate(640, 10)">
       <rect width="220" height="42" rx="6" fill="#1f1538" stroke="#8b5cf6" stroke-width="1.2" />

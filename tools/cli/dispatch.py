@@ -161,6 +161,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     permission_mode = "ask"
     gateway_host = "127.0.0.1"
     gateway_token = ""
+    webhook_token = ""
     filtered_args = []
     passthrough_opts = []   # 交给子命令 handler 自行解析（serve/view 等需要）
 
@@ -174,6 +175,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             passthrough_opts.append(a)
         elif a.startswith("--gateway-token="):
             gateway_token = a.split("=", 1)[1].strip()
+            passthrough_opts.append(a)
+        elif a.startswith("--webhook-token="):
+            # [S1 修复·口径一致] 此前只全局解析 --gateway-token=，而 --webhook-token=
+            # 会落进 filtered_args → args[0] 变成该选项串 → 命中「未知参数」分支。
+            # 与 --gateway-token= 同构处理后，裸 `ky --webhook-token=xxx` 的 REPL
+            # 路径也能把回调密钥交给后台伴侣，与 `ky serve` / `ky view` 口径一致。
+            webhook_token = a.split("=", 1)[1].strip()
             passthrough_opts.append(a)
         else:
             filtered_args.append(a)
@@ -208,7 +216,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             from tools.cli.repl.loop import run_repl
         except ImportError:
             from cli.repl.loop import run_repl
-        run_repl(permission_mode=permission_mode, gateway_host=gateway_host, gateway_token=gateway_token)
+        run_repl(permission_mode=permission_mode, gateway_host=gateway_host,
+                 gateway_token=gateway_token, webhook_token=webhook_token)
         return 0
 
     cmd_token = args[0]

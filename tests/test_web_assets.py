@@ -108,10 +108,76 @@ def test_placeholder_map_covers_template():
     template = (DASHBOARD / "web" / "template.html").read_text(encoding="utf-8")
     declared = set(re.findall(r"\{\{([A-Z0-9_]+)\}\}", template))
     data_keys = {"DMATH", "DDAY1", "DAYNO", "TOTALDAYS", "PLANPCT", "TODAY",
-                 "MEMONOTES", "WEAKNOTES", "RADAR", "DATA", "STAMP"}
+                 "MEMONOTES", "WEAKNOTES", "RADAR", "DATA", "STAMP",
+                 # [前端修复·考期硬编码] 页头考期文案由考期真源注入
+                 "EXAM_YEAR", "EXAM_MMDD"}
     assets = {k.strip("{}") for k in mapping}
     missing = declared - data_keys - assets
     assert not missing, f"模板占位符无人提供: {missing}"
+
+
+# ── 移动端可用性 / 无障碍（第三方审查报告消缺） ──────────────────
+
+def test_viewport_allows_user_zoom():
+    """viewport 不得锁死缩放（WCAG 2.1 1.4.4 Resize text）。
+
+    [前端修复·viewport 缩放锁] 原先带 maximum-scale=1，低视力考生无法双指放大
+    正文与公式；模板与产物都必须已移除。
+    """
+    for path in (DASHBOARD / "web" / "template.html", INDEX):
+        text = path.read_text(encoding="utf-8")
+        vp = re.search(r'<meta name="viewport" content="([^"]*)"', text)
+        assert vp, f"{path} 缺少 viewport 声明"
+        content = vp.group(1)
+        assert "maximum-scale" not in content, f"{path} 仍在限制最大缩放: {content}"
+        assert "user-scalable=no" not in content, f"{path} 仍在禁止缩放: {content}"
+        assert "width=device-width" in content
+
+
+def test_trend_chart_uses_named_resizable_renderer():
+    """趋势图必须按容器实宽绘制，字号不随 viewport 缩放失真。
+
+    [前端修复·趋势图字号缩放] 原为一次性 IIFE + 固定 viewBox 宽 480 配 width:100%，
+    手机上 10px 字号被压到约 8px。现为具名函数 renderTrend()，可被 animate()
+    与 resize 复用。
+    """
+    template = (DASHBOARD / "web" / "template.html").read_text(encoding="utf-8")
+    assert "function renderTrend()" in template, "趋势图未改为具名函数"
+    assert "window.addEventListener('resize', renderTrend)" in template, "缺少 resize 重绘"
+    assert "var w = 480" not in template, "仍存在写死的 480 宽度"
+    # [前端修复·趋势图 1:1] viewBox 宽必须取「卡片内容盒」宽度（.trend-slot），
+    # 而不是 #stat-trend 容器宽度 —— 后者包含 .trend-card 的左右内边距 36px 与
+    # 边框 2px，会高估约 38px，使 viewBox 宽 > SVG 实际渲染宽，整体仍被等比缩小。
+    assert "class='trend-slot'" in template, "未落趋势图内容盒骨架"
+    assert "Math.round(slot.clientWidth)" in template, "未按卡片内容盒实宽计算 viewBox 宽度"
+    # 只断言「代码里不再以 host.clientWidth 计算宽度」——注释里提到该词是解释性说明，
+    # 不能被误伤（本仓库踩过「按字面量断言误伤注释」的坑）。
+    assert "Math.round(host.clientWidth)" not in template, \
+        "仍以容器（含内边距）宽度计算，存在残余缩放"
+    # 切到「数据」页签时（容器可见）必须重绘一次
+    animate_body = template.split("function animate(){", 1)[1].split("\n}", 1)[0]
+    assert "renderTrend();" in animate_body, "animate() 未触发趋势图重绘"
+
+
+def test_hard_marker_is_keyboard_accessible_button():
+    """卡片右上角星标必须是可键盘操作的按钮，而非裸 span[onclick]。
+
+    [前端修复·星标键盘可达] 原为 <span class='hard' onclick>，无 role/tabindex/
+    aria-pressed，键盘与读屏用户无法标记薄弱学科。
+    """
+    template = (DASHBOARD / "web" / "template.html").read_text(encoding="utf-8")
+    assert "<span class='hard" not in template, "星标仍是不可聚焦的 span"
+    assert "<button type='button' class='hard" in template, "星标未改为 button"
+    assert "aria-pressed='" in template, "星标缺少 aria-pressed 状态"
+    assert "aria-label='标记为难点'" in template, "星标缺少无障碍名称"
+    # 处理器需同步 aria-pressed
+    assert "hd.setAttribute('aria-pressed'" in template, "点击后未同步 aria-pressed"
+    # 按钮复位样式（避免默认背景/边框破坏外观）
+    hard_css = re.search(r"\.f-top \.hard\{([^}]*)\}", template)
+    assert hard_css, "缺少 .f-top .hard 样式"
+    for prop in ("background:none", "border:0", "font-family:inherit"):
+        assert prop in hard_css.group(1), f"星标按钮缺少复位样式 {prop}"
+    assert "font-size:16px" in hard_css.group(1), "复位样式覆盖了既有 16px 字号"
 
 
 # ── 主题注入（Web 并入设计系统） ────────────────────────────────

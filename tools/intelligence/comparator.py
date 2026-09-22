@@ -21,10 +21,12 @@ from .chsi_connector import CHSIConnector
 
 # [根因修复·导出文件名非法字符] 落盘前统一走项目的 safe_filename（清洗 Windows
 # 非法字符 \ / : * ? " < > | 与控制字符），替代此前只 replace 斜杠的做法。
+# [G5 修复·except 内 import] PermissionDeniedError 提到模块顶部统一双路径导入，
+# 供下方只读模式兜底使用（不再在 except 体内 import）。
 try:
-    from ky_io import safe_filename, atomic_write_text  # noqa: E402
+    from ky_io import safe_filename, atomic_write_text, PermissionDeniedError  # noqa: E402
 except ImportError:  # pragma: no cover
-    from tools.ky_io import safe_filename, atomic_write_text  # noqa: E402
+    from tools.ky_io import safe_filename, atomic_write_text, PermissionDeniedError  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -138,10 +140,6 @@ class SchoolComparator:
                     atomic_write_text(out_file, markdown_report)
                     saved_path = str(out_file)
                 except Exception as _save_exc:
-                    try:
-                        from ky_io import PermissionDeniedError
-                    except ImportError:  # pragma: no cover
-                        from tools.ky_io import PermissionDeniedError
                     if isinstance(_save_exc, PermissionDeniedError):
                         markdown_report += (
                             "\n\n> 🔒 当前为严格只读模式，研报未落盘，"

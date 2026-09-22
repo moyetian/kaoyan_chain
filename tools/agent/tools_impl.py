@@ -175,7 +175,10 @@ def _note_lock_error(path: Path) -> Optional[str]:
     只对 Markdown 笔记生效（二进制/其他格式不受影响）。
     返回 ``None`` 表示放行，否则返回应回给模型的错误文案。
     """
-    if assert_writable is None:  # pragma: no cover - 环境缺 note_lock
+    # [G10 修复·兜底脆弱] 环境缺 note_lock 时 assert_writable 与 NoteLockedError
+    # 同源被置 None（见本文件顶部导入块）。旧实现只判 assert_writable，靠前置
+    # 早退绕过下面的 except NoteLockedError —— 属脆弱耦合；两个名字一并判空。
+    if assert_writable is None or NoteLockedError is None:  # pragma: no cover - 环境缺 note_lock
         return None
     if path.suffix.lower() not in (".md", ".markdown"):
         return None

@@ -249,22 +249,29 @@ def _cmd_serve(args: List[str]) -> None:
 def _cmd_view(args: List[str]) -> None:
     gateway_host = "127.0.0.1"
     gateway_token = ""
+    webhook_token = ""
     permission_mode = "ask"
     for a in args[1:]:
         if a.startswith("--host="):
             gateway_host = a.split("=", 1)[1].strip() or "127.0.0.1"
         elif a.startswith("--gateway-token="):
             gateway_token = a.split("=", 1)[1].strip()
+        elif a.startswith("--webhook-token="):
+            # [S1 修复] 与 _cmd_serve 同口径：解析出的 /webhook 回调密钥必须一路
+            # 传到后台网关，否则与 run_server 路径不一致（形参只是摆设）。
+            webhook_token = a.split("=", 1)[1].strip()
         elif a.startswith("--permission="):
             permission_mode = a.split("=", 1)[1].strip()
-    port = start_background_live_server(8088, host=gateway_host, token=gateway_token) or 8088
+    port = start_background_live_server(8088, host=gateway_host, token=gateway_token,
+                                        webhook_token=webhook_token) or 8088
     webbrowser.open(f"http://localhost:{port}/live")
     print(f"已在默认浏览器打开实时 LaTeX 伴侣: http://localhost:{port}/live")
     try:
         from tools.cli.repl.loop import run_repl
     except ImportError:
         from cli.repl.loop import run_repl
-    run_repl(permission_mode=permission_mode, gateway_host=gateway_host, gateway_token=gateway_token)
+    run_repl(permission_mode=permission_mode, gateway_host=gateway_host,
+             gateway_token=gateway_token, webhook_token=webhook_token)
 
 
 # 注册集成辅助命令

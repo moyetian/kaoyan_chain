@@ -2,7 +2,9 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<!-- [前端修复·viewport 缩放锁] 原先带 maximum-scale=1，禁止用户双指放大，
+     违反 WCAG 2.1 1.4.4（Resize text）。低视力考生无法放大正文/公式。 -->
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme:light)">
 <meta name="theme-color" content="#090d16" media="(prefers-color-scheme:dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -236,7 +238,10 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .face.back{transform:rotateY(180deg)}
 .f-top{display:flex;align-items:center;gap:8px;padding:14px 18px 0;font-size:11.5px;color:var(--mut)}
 .f-top .tag{background:var(--acc);color:#fff;padding:3px 10px;border-radius:99px;font-weight:700;font-size:10.5px}
-.f-top .hard{margin-left:auto;font-size:16px;opacity:.35;cursor:pointer;transition:var(--dur-base)}
+/* [前端修复·星标键盘可达] .hard 由 <span onclick> 改为 <button>：
+   追加按钮复位样式，避免默认背景/边框/字体破坏既有外观。
+   刻意不用 font:inherit —— 它会一并重置 font-size，覆盖上面的 16px。 */
+.f-top .hard{margin-left:auto;font-size:16px;opacity:.35;cursor:pointer;transition:var(--dur-base);background:none;border:0;padding:0;font-family:inherit;color:inherit}
 .f-top .hard.on{opacity:1;color:var(--warn);transform:scale(1.15)}
 .f-body{flex:1;display:flex;align-items:center;justify-content:center;
  padding:18px 24px 20px;overflow-y:auto;-webkit-overflow-scrolling:touch}
@@ -338,7 +343,8 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
 <header>
   <div class="hd">
     <div class="hl">
-      <div class="lb">2026 研考倒计时</div>
+      <!-- [前端修复·考期硬编码] 原写死「2026」，改由 EXAM_YEAR 从考期真源注入 -->
+      <div class="lb">{{EXAM_YEAR}} 研考倒计时</div>
       <div class="big">{{DDAY1}}<i>天</i></div>
     </div>
     <div class="hr2">
@@ -349,7 +355,8 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
 <button type="button" id="fx-toggle" aria-pressed="true"
         style="font-size:11px;color:var(--mut);background:none;border:0;font:inherit;font-size:11px;display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px;padding:2px 0;">✨ 动效已开启 (点击关闭)</button>
 
-        初试首日 · <b>12-19</b><br>
+        <!-- [前端修复·考期硬编码] 原写死「12-19」，改由 EXAM_MMDD 注入 -->
+        初试首日 · <b>{{EXAM_MMDD}}</b><br>
         备考第 <b>{{DAYNO}}</b> / {{TOTALDAYS}} 天
       </div>
     </div>
@@ -592,7 +599,7 @@ function Flash(tab){
     + "<div class='stage'><div class='card"+(hasBack?'':' noback')+"' id='cd-"+tab+"' style='--c:"+C+"'>"
     +   "<div class='face'>"
     +     "<div class='f-top'><span class='tag'>"+esc(d.subj)+"</span><span>"+esc(d.title)+"</span>"
-    +       "<span class='hard"+(hard?' on':'')+"' id='hd-"+tab+"'>"+(hard?'★':'☆')+"</span></div>"
+    +       "<button type='button' class='hard"+(hard?' on':'')+"' id='hd-"+tab+"' aria-pressed='"+(hard?'true':'false')+"' aria-label='标记为难点'>"+(hard?'★':'☆')+"</button></div>"
     +     "<div class='f-body'><div class='f-q'>"+esc(c.f)+"</div></div>"
     +     "<div class='f-hint'>"+(hasBack?'点击翻转卡片 · 左右轻扫切换':'答案解析已脱敏 · 本地完整模式可见')+"</div>"
     +   "</div>"
@@ -612,6 +619,9 @@ function Flash(tab){
       e.stopPropagation();
       var k=self.key(i);
       if(self.hard[k]) delete self.hard[k]; else self.hard[k]=1;
+      /* [前端修复·星标键盘可达] 同步 aria-pressed 状态（render() 会重建节点，
+         此处仍显式更新，保证任何渲染路径下状态一致） */
+      hd.setAttribute('aria-pressed', self.hard[k] ? 'true' : 'false');
       self.saveHard(); self.render();
     };
     var pv=document.getElementById('pv-'+tab);
@@ -714,10 +724,19 @@ function animate(){
   document.querySelectorAll('#stat .mfl').forEach(function(el,i){
     setTimeout(function(){ el.style.width=el.dataset.w+'%'; }, 40+i*22);
   });
+  /* [前端修复·趋势图字号缩放] 切到「数据」页签时 #p-stat 已可见，此处按容器
+     真实宽度重绘趋势图（首次隐藏态渲染回落 480 的那次会被本次覆盖）。
+     renderTrend 为函数声明，已提升，可在此安全调用。 */
+  renderTrend();
 }
 
 /* ── 趋势曲线 SVG (S3-4) ── */
-(function(){
+/* [前端修复·趋势图字号缩放] 原为一次性 IIFE + 固定 viewBox 宽 480 配 CSS width:100%：
+   390px 手机上整体缩到 0.81 倍，10px 字号实际仅约 8.1px（不可读）；宽屏又被放大失真。
+   改为顶层具名函数 renderTrend()，按容器实宽设置 viewBox 宽（缩放比≈1:1 → 字号恒定）；
+   隐藏页签（#p-stat 默认 display:none）下 clientWidth 为 0，回落 480。
+   函数声明会提升，故定义在前面的 animate() 可直接调用，无需调整声明顺序。 */
+function renderTrend(){
   var host=document.getElementById('stat-trend');
   if(!host) return;
   var trend = D.trend || [];
@@ -725,7 +744,16 @@ function animate(){
     host.innerHTML = "<div class='trend-card'><h3>📈 近 7 日完成率趋势</h3><div style='font-size:12px;color:var(--mut);text-align:center;padding:12px 0;'>暂无历史打卡记录，坚持复习将在此汇聚成长曲线。</div></div>";
     return;
   }
-  var w = 480, h = 120, padL = 36, padR = 24, padT = 20, padB = 28;
+  /* [前端修复·趋势图字号 1:1] 先落卡片骨架，再量「卡片内容盒」宽度作为 viewBox 宽。
+     直接量 host.clientWidth 会高估约 38px（.trend-card 的左右内边距 36px + 边框 2px），
+     于是 viewBox 宽 > SVG 实际渲染宽 → 整体仍被等比缩小，字号继续随视口漂移。
+     .trend-slot 是纯块级 div，宽度天然等于卡片内容盒宽度，无需新增 CSS。 */
+  if(!host.querySelector('.trend-card')){
+    host.innerHTML = "<div class='trend-card'><h3>📈 近 7 日任务完成率趋势 (Trend)</h3><div class='trend-slot'></div></div>";
+  }
+  var slot = host.querySelector('.trend-slot');
+  if(!slot) return;
+  var w = Math.max(280, Math.round(slot.clientWidth) || 480), h = 120, padL = 36, padR = 24, padT = 20, padB = 28;
   var chartW = w - padL - padR, chartH = h - padT - padB;
   var n = trend.length;
   var pts = [];
@@ -752,8 +780,12 @@ function animate(){
          + "<text x='" + p.x.toFixed(1) + "' y='" + (h - 8) + "' font-size='10' fill='var(--mut)' text-anchor='middle'>" + p.date + "</text>";
   });
   svg += "</svg>";
-  host.innerHTML = "<div class='trend-card'><h3>📈 近 7 日任务完成率趋势 (Trend)</h3>" + svg + "</div>";
-})();
+  slot.innerHTML = svg;
+}
+/* 首次调用：此时 #p-stat 多为隐藏（clientWidth=0）→ 回落 480 保证有图；
+   切到「数据」页签时 animate() 会再调用一次，按真实宽度重绘。 */
+renderTrend();
+window.addEventListener('resize', renderTrend);
 
 /* ── 知识图谱渲染 (S3-4) ── */
 (function(){

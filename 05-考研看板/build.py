@@ -293,9 +293,16 @@ def build(offline: bool = False):
     # .replace("{{DATA}}", payload)」——用户笔记正文里若出现字面量 {{DATA}}，它会被当成
     # 模板占位符，把整份 JSON payload 塞进正文（实测复现）。现改为**单遍替换**：
     # 用 re.sub + 一次性映射表，任何被注入的内容都不会再被当作模板扫描。
+    # [前端修复·考期硬编码] 页头「2026 研考倒计时」「初试首日 · 12-19」此前写死
+    # 年份与月日：学员在 ky_config.json 改期后，倒计时数字变了、这两处文案不变，
+    # 同一页面出现两个互相矛盾的考期。改由 EXAM_DAY1（考期真源，模块级全局，
+    # 便于测试 monkeypatch）派生。两个占位符必须同时进 values，否则单遍 re.sub
+    # 会留下未替换的字面量。
     values = {
         "DMATH": str(d_math),
         "DDAY1": str(d_day1),
+        "EXAM_YEAR": str(EXAM_DAY1.year),
+        "EXAM_MMDD": EXAM_DAY1.strftime("%m-%d"),
         "DAYNO": str(day_no),
         "TOTALDAYS": str(total_days),
         "PLANPCT": plan_pct,

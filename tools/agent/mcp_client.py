@@ -44,9 +44,15 @@ class MCPProcessClient:
         self._reader_stop.clear()
 
         def _loop():
+            # [G2 修复·reader 线程串台] 把进程句柄**局部固化**：旧实现每轮读
+            # self.process.stdout，一旦 start() 换掉 self.process，旧线程下一轮
+            # 就会去读**新进程**的 stdout，与新线程交错消费同一管道。
+            proc = self.process
+            if proc is None or proc.stdout is None:
+                return
             while not self._reader_stop.is_set():
                 try:
-                    line = self.process.stdout.readline()
+                    line = proc.stdout.readline()
                 except Exception as err:      # pragma: no cover - 进程异常退出
                     self._rx_queue.put(err)
                     return
@@ -85,9 +91,11 @@ class MCPProcessClient:
 
     def start(self) -> bool:
         """启动 MCP Server 子进程并执行 initialize 握手"""
-        # 重启前先让旧的 reader 线程退场，避免它继续读旧进程的 stdout
-        self._reader_stop.set()
-        self._reader_thread = None
+        # [G2 修复·旧 reader 线程未回收] 旧实现只置 _reader_stop 标志、把
+        # _reader_thread 置 None 就 Popen 新进程：旧线程未必已退出，且其 _loop
+        # 每轮重新解引用 self.process，下一轮就读到**新进程**的 stdout，与新线程
+        # 交错消费同一管道。改走 stop()：先停进程、抽干队列、再收敛线程（可重入）。
+        self.stop()
         cmd_list = [self.command] + self.args
         try:
             merged_env = os.environ.copy()

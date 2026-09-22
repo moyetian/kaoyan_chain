@@ -26,6 +26,14 @@ from .discovery import OfficialDiscovery
 from .extractor import DocumentExtractor
 from .evidence_engine import resolve_conflicts
 
+# [G5 修复·except 内 import] 顶部统一双路径导入 ky_io：PermissionDeniedError
+# 供只读模式兜底、atomic_write_text 供研报落盘（原两处分别写在 except 体与
+# _save_report 函数体内，属同一类「import 藏在执行路径里」的缺陷）。
+try:
+    from ky_io import atomic_write_text, PermissionDeniedError  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text, PermissionDeniedError  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 
 
@@ -158,10 +166,6 @@ class KaoYanIntelligenceEngine:
             try:
                 saved_path = self._save_report(school_name, major_query, markdown_content)
             except Exception as _save_exc:
-                try:
-                    from ky_io import PermissionDeniedError
-                except ImportError:  # pragma: no cover
-                    from tools.ky_io import PermissionDeniedError
                 if isinstance(_save_exc, PermissionDeniedError):
                     markdown_content += (
                         "\n\n> 🔒 当前为严格只读模式，研报未落盘，"
@@ -420,10 +424,7 @@ class KaoYanIntelligenceEngine:
         # [B6 修复·safe 绕过] 原裸 open(w) 不经 guard_write，
         # --permission=safe 下仍落盘。atomic_write_text 自带守卫（只读模式抛错，
         # 由上游 IntelTaskWorker 转为可读文本，不丢异常语义）。
-        try:
-            from ky_io import atomic_write_text
-        except ImportError:  # pragma: no cover
-            from tools.ky_io import atomic_write_text
+        # [G5 修复·import 内联] atomic_write_text 已提到模块顶部统一导入。
         atomic_write_text(filepath, content)
 
         return filepath

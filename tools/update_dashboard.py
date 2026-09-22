@@ -49,22 +49,33 @@ def main():
     # [P0 修复] 显式白名单，杜绝隐私文件被顺带提交
     allowed = ["docs/index.html", "docs/live.html", "docs/assets/", "docs/state_snapshot.json"]
     valid_allowed = [p for p in allowed if (ROOT / p).exists()]
-    if valid_allowed:
-        subprocess.run(["git", "add", *valid_allowed], cwd=str(ROOT), check=True)
-    commit_res = subprocess.run(["git", "commit", "-m", f"study-chain update {ts}"], cwd=str(ROOT))
-    if commit_res.returncode != 0:
-        print("  -> 本地无增量变更或已是最新状态。")
-
-    # 3. Git 推送
-    print("\n[3/3] 正在推送到远程仓库...")
-    push_res = subprocess.run(["git", "push"], cwd=str(ROOT))
-    if push_res.returncode == 0:
-        print("\n[√] 成功推送至 GitHub！GitHub Pages 将在 1-2 分钟内自动刷新。")
+    if not valid_allowed:
+        # [G8 修复] 无白名单产物时不得构造 ["git","commit","-m",msg,"--"] 这种畸形命令
+        print("  -> 未找到任何白名单产物，跳过提交与推送。")
+        print("\n" + "=" * 65)
+        return
+    subprocess.run(["git", "add", *valid_allowed], cwd=str(ROOT), check=True)
+    # [G8 修复] commit 必须带 pathspec（-- 之后的白名单），只提交看板产物，
+    # 避免把用户此前手动 `git add` 的其它文件一并提交。
+    commit_res = subprocess.run(
+        ["git", "commit", "-m", f"study-chain update {ts}", "--", *valid_allowed],
+        cwd=str(ROOT),
+    )
+    if commit_res.returncode == 0:
+        # 3. Git 推送（仅在 commit 成功时执行）
+        print("\n[3/3] 正在推送到远程仓库...")
+        push_res = subprocess.run(["git", "push"], cwd=str(ROOT))
+        if push_res.returncode == 0:
+            print("\n[√] 成功推送至 GitHub！GitHub Pages 将在 1-2 分钟内自动刷新。")
+        else:
+            print("\n[!] 推送未执行成功。如尚未关联远程仓库，请先运行：")
+            print("    git remote add origin https://github.com/<你的用户名>/<你的仓库>.git")
+            print("    git branch -M main")
+            print("    git push -u origin main")
     else:
-        print("\n[!] 推送未执行成功。如尚未关联远程仓库，请先运行：")
-        print("    git remote add origin https://github.com/<你的用户名>/<你的仓库>.git")
-        print("    git branch -M main")
-        print("    git push -u origin main")
+        # [G8 修复] 无增量（commit 失败）时不再无条件推送
+        print("  -> 本地无增量变更或已是最新状态。")
+        print("  -> 无增量变更，跳过推送。")
 
     print("\n" + "=" * 65)
 

@@ -46,8 +46,14 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]
     """
     # [S4 修复·边界] 空串旧返回 [""]（下游插入空 chunk）；overlap>=chunk_size
     # 时 start 不推进死循环。默认参数安全，此为公开函数缺校验。
+    # [B4 修复·死循环] 入口新增 chunk_size<=0 校验：此前 chunk_size=0 时
+    # overlap(0)>=chunk_size(0) 归零、len(text)<=0 为假，进入循环后
+    # end=start+0 恒等、start=end-overlap 永不推进 —— 实测 timeout 8s 挂死。
+    # 公开函数 fail-fast；循环末尾另有「必然推进」兜底（见下）。
     if not (text or "").strip():
         return []
+    if chunk_size <= 0:
+        raise ValueError("chunk_size 必须为正整数")
     if overlap >= chunk_size:
         overlap = 0
     if len(text) <= chunk_size:
@@ -74,7 +80,10 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]
                 end = start + last_punct + 1
 
         chunks.append(chunk.strip())
-        start = end - overlap
+        # [B4 修复·死循环] 兜底保证 start 每轮必然前进：正常路径 end-overlap
+        # 必大于 start（因 chunk_size>overlap），异常路径退回按 chunk_size 步进。
+        new_start = end - overlap
+        start = new_start if new_start > start else start + max(1, chunk_size)
 
     return chunks
 

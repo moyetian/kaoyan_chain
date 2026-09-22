@@ -617,7 +617,11 @@ class AgenticResearchEngine:
                     parsed["level"] = " / ".join(coerce_str_list(parsed.get("level")))
             if parsed and parsed.get("code") and parsed.get("majors"):
                 # 补充别名健壮性
-                parsed.setdefault("chsi_code", parsed.get("code"))
+                # [S4 修复·chsi_code 可能为 None] setdefault 不覆盖已存在的键：
+                # LLM 显式返回 "chsi_code": null（或 code 缺失）时会留下 None，
+                # 下游渲染出字面量 "None"。改用 or 链强制回落空串 —— 与
+                # yanzhao_lookup 未核验分支同口径（tests 断言 == "" 且无占位）。
+                parsed["chsi_code"] = parsed.get("chsi_code") or parsed.get("code") or ""
                 parsed.setdefault("official", parsed.get("official_web", ""))
                 parsed.setdefault("graduate", parsed.get("graduate_web", ""))
                 # [B3 修复·LLM缺键崩溃] 下游 comparator 用 info['region']/
