@@ -293,13 +293,34 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
             calc_expr = input(colorize("请输入待精确验算的数学式 (如 ode y''+4*y=0, quad [[2,1],[1,2]], limit (sin(x)-x)/x^3 as x->0): ", C.YELLOW)).strip()
             if calc_expr: user_input = f"/calc {calc_expr}"
             else: continue
-        elif user_input == "/2":
-            last_resp = history[-1]["content"] if history and history[-1]["role"] == "assistant" else "做题记录"
+        elif user_input == "/2" or user_input == "/save" or user_input.startswith("/save "):
+            # [B-01 修复] 操作手册 219/466/556 行与 SETUP 72 行均宣称 `/save`
+            # 可「一键将当前题干与错因记入错题本」，但代码里从未注册该斜杠指令
+            # （只有数字快捷键 `/2`），用户照做会落到「未知指令」分支。
+            # 二者功能本就同源，故并列为同一分支的别名。
+            # [F4 修复·容忍尾随备注] `/save 补充说明` 这类带尾随文本的写法此前
+            # 落进「未知指令」；现与 `/calc <表达式>` 等指令同口径，按「首 token
+            # 定路由」处理，多余文本忽略（归档内容仍以批改上下文为准，不吃备注）。
+            last_resp = history[-1]["content"] if history and history[-1]["role"] == "assistant" else ""
             last_q = ""
             for h in reversed(history):
                 if h.get("role") == "user" and not h.get("content", "").startswith("/"):
                     last_q = h.get("content", "")
                     break
+            # [B-01 补修·空上下文守卫] 此前本分支无条件落盘：会话里还没有任何
+            # 批改内容时，detail 会退化成占位串「做题记录」、question 为空，于是
+            # 写出一条无题干、错因被兜底成「概念漏洞」的垃圾卡片——它既会进
+            # FSRS 复测队列，也会污染薄弱点雷达的错因五分类统计。
+            # 同族的 `/5` 早有守卫；这里按「必须有可归档的批改内容」补齐，并去掉
+            # 那个会产出垃圾记录的占位串默认值。
+            # 只卡 last_resp、不卡 last_q：`/dissect`、`/batch`、`/hint` 这类以
+            # 斜杠指令发起的分析同样值得归档（它们的 user 条目以 "/" 开头，会被
+            # last_q 的扫描跳过），强行要求题干会把它们误拒。
+            if not last_resp.strip():
+                print(colorize(
+                    "\n[!] 暂无可归档的内容：请先提交一次作业（输入「交作业」或 /img 批改草稿），"
+                    "再使用 /save 或快捷键 [2]\n", C.YELLOW))
+                continue
             err_type = "需强化复练"
             for et in ("概念漏洞", "审题偏差", "公式记错", "计算失误", "书写丢分"):
                 if et in last_resp: err_type = et; break
@@ -750,6 +771,24 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                 if agent_runner and hasattr(agent_runner, "hooks"):
                     agent_runner.hooks.trigger_session_end({"active_subject": curr_subj})
                 print("\n再见！保持节奏，一战成硕！🎓")
+                break
+            # 别名取 `/tui` 而非 `/nav`：与 CLI 侧 `ky menu` 的别名集对齐
+            # （misc.py:289 → ("menu", "--menu", "tui", "--tui")），
+            # 避免同一功能在两端长出第三套名字。
+            elif cmd in ("/menu", "/tui"):
+                # [B-01 修复] 操作手册 566 行宣称 `/menu` 可「退出交互 REPL 并打开
+                # TUI 终端全景导航面板」，AGENTS.md 113 行路由表同样列了 `/menu`，
+                # 但 REPL 内从未注册该分支。这里与 `ky menu`（commands/misc.py:204）
+                # 复用同一入口：先按 /exit 的口径触发会话收尾钩子，再惰性导入
+                # tui_navigator（会拉入 Textual 等重依赖，不宜进模块顶层），
+                # 启动后 break 退出 REPL，与文档「退出并打开」的语义一致。
+                if agent_runner and hasattr(agent_runner, "hooks"):
+                    agent_runner.hooks.trigger_session_end({"active_subject": curr_subj})
+                try:
+                    from tools import tui_navigator
+                except ImportError:
+                    import tui_navigator
+                tui_navigator.run_tui_loop()
                 break
             elif cmd in ("/plan", "/profile", "/blueprint"):
                 try:

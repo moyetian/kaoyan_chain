@@ -110,11 +110,13 @@ ky config
 
 弹出分类交互式配置菜单：
 
-- **1. 大模型提供商 (API Provider)**：支持 DeepSeek、智谱 GLM、通义千问、Kimi、OpenAI、本地 Ollama 等；
-- **2. 模型接入点与密钥**：填入 Base URL（如 `https://api.deepseek.com/v1`）与 API Key；
-- **3. 推理模型选择**：如 `deepseek-chat` 或 `deepseek-reasoner`；
-- **4. 严谨度温度 (Temperature)**：默认 `0.3`（理科计算推荐 0.1\~0.3，避免大模型随意发散）；
-- **5. 聊天机器人 Webhook**：配置微信、QQ OneBot、钉钉、飞书机器人地址。
+- **1. 🧠 配置主大模型 API 与密钥**：支持 DeepSeek、智谱 GLM、通义千问、Kimi、OpenAI、本地 Ollama 等，填入 Base URL（如 `https://api.deepseek.com/v1`）与 API Key；
+- **2. 📸 配置多模态视觉大模型 API**：为拍照批改单独指定视觉模型（可自定义兼容 OpenAI 规范的 Vision API）；
+- **3. 📱 配置聊天机器人 Webhook 推送**：配置微信、QQ OneBot、钉钉、飞书机器人地址；
+- **4. 📋 个人定制化必考方案设计**：时间/考纲/已有资料白名单/学情摸底/时间预算；
+- **5. 🎓 考研科目与官方考纲快速切换**：数一/数二/数三/396、英一/英二、408/自命题；
+- **6. 📄 查看当前完整配置清单**；
+- **7. 📢 一键测试所有机器人推送**。
 
 ---
 
@@ -134,7 +136,7 @@ ky config
 ### 3.3 核心 CLI 子命令矩阵速查
 
 ```bash
-# 启动 TUI 终端全景智能中枢 v2.5 (等宽排版/倒计时进度条/三阶卡片导航)
+# 启动 TUI 终端全景智能中枢 (等宽排版/倒计时进度条/三阶卡片导航)
 ky menu
 
 # 查看总战役态势、倒计时、连续打卡天数与作息节律
@@ -148,13 +150,13 @@ ky today --json
 ky done "概念精讲"
 
 # 考纲 AST 知识点版本比对与动荡率分析 (ky fetch)
-ky fetch 01-数学/考试大纲.md 01-数学/参考资料/2027新版考纲.md --save
+ky fetch diff --old=01-数学/考试大纲.md --new=01-数学/参考资料/2027新版考纲.md --save
 
 # 试题智能分块切片入库管道 (ky ingest)
-ky ingest "参考资料/2024年408模拟精选题.md" --subject=专业课 --save
+ky ingest "参考资料/2024年408模拟精选题.md" --subject=pro
 
 # 靶向自测组卷与盲盒排版 (ky compose)
-ky compose math --count=3 --type=choice --save
+ky compose math --count=3 --save
 
 # 同源变式真题检索与防伪水印 (ky variant)
 ky variant "拉格朗日"
@@ -209,7 +211,7 @@ ky notify
 
 ```bash
 # 针对数学抽取 3 道选择题盲盒试题并保存为文件
-ky compose math --count=3 --type=choice --save
+ky compose math --count=3 --save
 
 # 针对专业课抽取 5 道综合题组卷
 ky compose 专业课 --count=5 --save
@@ -246,7 +248,7 @@ ky variant "拉格朗日"
 
 ```bash
 # 比对本地基准大纲与新版大纲
-ky fetch 01-数学/考试大纲.md 01-数学/参考资料/2027考纲.md --save
+ky fetch diff --old=01-数学/考试大纲.md --new=01-数学/参考资料/2027考纲.md --save
 ```
 
 - **AST 结构化语法树解析**：精准提取原子考点及掌握度层级（掌握 / 理解 / 了解）；
@@ -264,7 +266,7 @@ ky fetch 01-数学/考试大纲.md 01-数学/参考资料/2027考纲.md --save
 将散落的历年真题 Markdown 文件、高质量模拟题结构化入库至本地题库：
 
 ```bash
-ky ingest "参考资料/2024年408模拟精选题.md" --subject=专业课 --save
+ky ingest "参考资料/2024年408模拟精选题.md" --subject=pro
 ```
 
 - **智能分块算法**：自动识别选择题（精准提取 A/B/C/D 选项）与解答题；
@@ -505,7 +507,7 @@ python tools/test_ky_suite.py
 14. 权限分级审批引擎与 MCP 客户端
 15. 上下文压缩配对保护 (防孤儿 Tool) 与 CLI 命令回归
 16. Sprint 2 教学闭环 (靶向组卷/防伪变式/考纲图谱/整卷诊断/防疲劳减负)
-17. Sprint 3 体验生态 (每日复盘/分层记忆修剪/Plan快照回滚/5Tab看板/FSRS)
+17. Sprint 3 体验生态 (每日复盘/分层记忆修剪/Plan快照回滚/6Tab看板/FSRS)
 18. 目标高校研招与社媒考研情报侦察引擎 (School Scout)
 19. KaoYan Intelligence 考研招考情报与证据链引擎 (28 项验证)
 20. Syllabus Diff 考研大纲考点版本比对引擎与 ky fetch (9 项验证)
@@ -516,8 +518,8 @@ python tools/test_ky_suite.py
 25. 升级新功能专项集成校验 (WeChat + Rust + GUI)
 26. 全国高校数据库构建器 (反幻觉 / 合并语义 / 域名来源)
 
-> 完整清单共 **26 组 304 项断言**；断言总数已做成环境无关（Git 工作区内 304 通过，
-> 干净检出时「测试组 7 Git 隐私隔离」的 5 条转为跳过、合计仍为 304）。
+> 完整清单共 **26 组 305 项断言**；断言总数已做成环境无关（Git 工作区内 305 通过，
+> 干净检出时「测试组 7 Git 隐私隔离」的 5 条转为跳过、合计仍为 305）。
 
 ---
 

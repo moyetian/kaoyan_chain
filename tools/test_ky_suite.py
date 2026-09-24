@@ -1203,7 +1203,12 @@ def run_tests():
 
     try:
         # 1. S2-1 错题反向靶向组卷 (exam_composer)
-        paper = exam_composer.compose_exam_paper("math", count=2, save_file=False)
+        # [P0 门禁回归·2026-09-24] 显式 allow_placeholder：CI 全新检出（无任何真实
+        # 题源）下组卷会被白名单门禁拒绝（success=False），而本组断言测的是
+        # 「密钥落盘 → 批改 → 诊断报告」闭环本身，必须有卷可测。占位题无标准答案，
+        # 批改走「0 分 + 转人工复核」分支，与"有题源但未登记答案"的真实场景同构。
+        paper = exam_composer.compose_exam_paper("math", count=2, save_file=False,
+                                                 allow_placeholder=True)
         p_id = paper.get("paper_id", "")
         key_file = ROOT / ".memory" / "exam_keys" / f"{p_id}.json"
         key_raw = key_file.read_text(encoding="utf-8") if key_file.exists() else ""
@@ -1315,7 +1320,7 @@ def run_tests():
 
         # ════════════════════════════════════════════════════════════
         # 测试组 17: Sprint 3 体验与生态增强全量回归
-        # (复盘自动化 / 记忆治理 / Plan沙箱 / 看板5Tab+趋势 / FSRS自适应 / 考前节律)
+        # (复盘自动化 / 记忆治理 / Plan沙箱 / 看板6Tab+趋势 / FSRS自适应 / 考前节律)
         # ════════════════════════════════════════════════════════════
         print("\n[测试组 17: Sprint 3 体验与生态增强全量回归 (复盘/记忆/Plan/看板/FSRS/心理节律)]")
         import tempfile
@@ -2001,12 +2006,44 @@ D. 无度为2的结点
             variant_res = run_cli("variant", "导数中值定理")
             runner.assert_true(variant_res.returncode == 0 and "私教自拟变式" in variant_res.stdout, "CLI smoke：variant 真实执行并标注题源")
 
-            exam_res = run_cli("exam", "math", "--count=3")
+            # [P0 门禁回归·2026-09-24] exam 的题源门禁已从「免责声明」改为「真门禁」：
+            #   · 完全无真实题源（CI 全新检出）→ 拒绝组卷 + 上手引导，退出码 2；
+            #   · 有题源但不足 → 降题量并卷首「题量声明」缺口，绝不凑数。
+            # 本机若配了真实 API Key 且薄弱点雷达存在 C/D 行，抽题会真实调用大模型
+            # （计费 + 单次 15s 超时，30s 超时上限内可能变红），沿用本文件既有快照
+            # 范式临时清空 api_key，强制走与 CI 一致的确定性离线分支。
+            _exam_cfg_path = Path(__file__).resolve().parent.parent / "ky_config.json"
+            _exam_cfg_snap = _exam_cfg_path.read_text(encoding="utf-8") if _exam_cfg_path.exists() else None
+            try:
+                if _exam_cfg_snap is not None:
+                    _exam_cfg_now = json.loads(_exam_cfg_snap)
+                    if isinstance(_exam_cfg_now, dict):
+                        _exam_cfg_now["api_key"] = ""
+                        _exam_cfg_path.write_text(
+                            json.dumps(_exam_cfg_now, ensure_ascii=False, indent=2), encoding="utf-8")
+                exam_res = run_cli("exam", "math", "--count=3")
+            finally:
+                if _exam_cfg_snap is not None:
+                    _exam_cfg_path.write_text(_exam_cfg_snap, encoding="utf-8")
+            _default_blocks = re.findall(r"^### 📝 第 .*?$", exam_res.stdout, re.MULTILINE)
+            if exam_res.returncode == 0:
+                runner.assert_true(
+                    len(_default_blocks) <= 3 and (len(_default_blocks) == 3 or "题量声明" in exam_res.stdout),
+                    "CLI smoke：exam 题源不足时降题量并卷首声明缺口（不凑数）",
+                )
+            else:
+                runner.assert_true(
+                    exam_res.returncode == 2 and "白名单题源门禁" in exam_res.stdout,
+                    "CLI smoke：exam 无真实题源时拒绝组卷并给出上手引导",
+                )
+
+            # 显式 --allow-placeholder 时才恢复「足量且不重复」的题量契约（占位题须逐题标注来源）。
+            exam_res = run_cli("exam", "math", "--count=3", "--allow-placeholder")
             question_blocks = re.findall(r"^### 📝 第 .*?$", exam_res.stdout, re.MULTILINE)
             question_texts = re.findall(r"\*\*题目设问与题干\*\*：\n```text\n(.*?)\n```", exam_res.stdout, re.DOTALL)
             runner.assert_true(
                 exam_res.returncode == 0 and len(question_blocks) == 3 and len(question_texts) == len(set(question_texts)),
-                "CLI smoke：exam --count=3 返回足量且不重复的题目",
+                "CLI smoke：exam --count=3 --allow-placeholder 返回足量且不重复的题目",
             )
 
             # [测试隔离修正·离线确定性] 本项断言的是「未命中院校库时的离线回退语义」，

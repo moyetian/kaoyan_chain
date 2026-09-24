@@ -31,6 +31,7 @@ import gzip
 import ipaddress
 import json
 import os
+import shutil
 import socket
 import sys
 import threading
@@ -78,6 +79,25 @@ def outside_file(tmp_path):
     js = outer / "secret.json"
     js.write_text('{"k":"SENTINEL_JSON_7788"}', encoding="utf-8")
     return outer, txt, js
+
+
+def _cat_available() -> bool:
+    """本机 ``cat`` 可执行文件是否存在。
+
+    [F5 修复·环境依赖] 两个阴性对照用 ``cat <外部文件>`` 证明「摘掉守卫后
+    命令真的能读到文件」。``cat`` 在 Linux/macOS 与 Git for Windows 的
+    ``usr\\bin`` 自带，但在**未把 Git usr\\bin 加入 PATH 的 Windows 裸机**
+    上根本不存在 —— 此时用例会以 ``WinError 2`` 失败，而这与被测守卫无关。
+    无 ``cat`` 时显式跳过（而非失败），并在 CI 矩阵里由 Git 自带的 coreutils
+    覆盖该路径。
+    """
+    return shutil.which("cat") is not None
+
+
+needs_cat = pytest.mark.skipif(
+    not _cat_available(),
+    reason="本机 PATH 缺少 cat（Git usr\\bin 未加入 PATH），阴性对照无法执行",
+)
 
 
 # ═════════════════════ ① run_command 沙箱 ═════════════════════
@@ -151,6 +171,7 @@ def test_run_command_does_not_break_normal_readonly_usage(tmp_path, command):
     assert "安全拦截" not in out, f"正常用法被误伤: {command} -> {out!r}"
 
 
+@needs_cat
 def test_negative_control_run_command_path_guard_is_what_blocks(
         tmp_path, outside_file, monkeypatch):
     """阴性对照（判定层）：把「像路径」判定摘掉后，工作区外文件必须真的被读到。
@@ -170,6 +191,7 @@ def test_negative_control_run_command_path_guard_is_what_blocks(
         f"摘掉路径判定后仍未读到工作区外文件，说明断言没指向该守卫: {out!r}")
 
 
+@needs_cat
 def test_negative_control_workspace_containment_is_what_blocks(
         tmp_path, outside_file, monkeypatch):
     """阴性对照（收口层）：放开「必须在工作区内」的收口后，外部 .txt 会被读到。

@@ -9,7 +9,116 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 
 ---
 
-## [2.8.0] — 2026-09-20（当前版本）
+## [未发布] — 2026-09-22
+
+> 2.8.0 发布之后累积的修复，尚未并入版本号。以下按主题归并。
+
+### 🐛 审查消缺（agent / CLI / 看板 / 运维 / 导出侧）
+
+- **agent 内核**：MCP reader 句柄回收（含 `stop()` 2s 上限 join，防滞留）、笔记只读锁兜底、
+  异常体内的导入、`chsi_code` 置空。
+- **CLI 与网关**：密钥明文打码、`webhook_token` 全链路透传、`/submit` 真正落地、
+  `/save` 尾随备注容忍（`/save <备注>` 按首 token 路由）、`chunk_text` 死循环。
+- **组卷引擎**：白名单题源门禁从「免责声明」改为「真门禁」—— 无真实题源时拒绝组卷并给出上手引导（`success=False`），
+  题源不足时降题量并卷首声明缺口（`shortfall > 0`），占位题仅在 `--allow-placeholder` 下产出且逐题标注来源；
+  题源顺序修正为 错题本 → 白名单真题卡 → 大模型变式 → 占位题，全流程 `origin` 标签供判分端区分。
+- **看板前端**：4 项真实缺陷（取数 / 渲染 / 前端契约）。
+- **运维与文档**：git 闸门收紧、部署校验补页面、院校库口径统一为「57 所详细档案 + 1,841 所基础名录」。
+- **导出侧**：发布副本排除私有工具测试与原始快照 / 运行时向量库；补齐公开副本的占位模块适配；
+  目标目录环境变量改为全大写 `KAOYAN_PUBLISH_DST`（旧名 `KAoyan_PUBLISH_DST` 仍兼容）。
+- **测试中性化**：仓库内不再出现真实院校身份（`tests/test_agentic_research.py` 等样本改为非身份院校）。
+
+### 🔁 CI 回归矩阵
+
+- 逐作业定位并修复公开副本 CI 矩阵的 5 处根因：`llm_client` 别名自注入缺父包属性、
+  测试伪造全局 `os.name`、剪贴板用例缺 Windows 平台守卫、批量启动用例依赖解释器探测、
+  macOS 侧卸载 `pymupdf` 与无依据的 Qt `ignore`。
+- **本机环境加固适配（F5）**：加固主机常见的两类配置会让套件在本机误报，
+  CI（GitHub runner 默认环境）则全绿 —— 属环境差异，非产品缺陷：
+  1. `NoDefaultCurrentDirectoryInExePath=1` 时 `cmd /c GUI.bat` 裸名无法从 cwd 解析
+     → 3 个批处理启动用例改走显式相对路径 `.\<脚本>`（cwd 仍为仓库根）；
+  2. Git `usr\bin` 未加入 PATH 时 `cat` 不存在 → 2 条沙箱阴性对照按 `shutil.which`
+     显式跳过（该路径由 CI 的 Linux/macOS 作业覆盖）；
+  3. `sync_publish.py` 补上与 `update_dashboard.py` 同口径的 stdout UTF-8 重配置，
+     本机 cp936 控制台下子进程输出断言不再因乱码误判。
+
+### 📚 文档与实现对齐
+
+- **补齐文档已宣称、REPL 未实现的斜杠指令**：
+  - `/save` —— 一键把当前题干与错因记入错题本（与数字快捷键 `/2` 同源）；
+  - `/menu` / `/tui` —— 退出 REPL 并打开 TUI 终端全景导航（与 CLI 侧 `ky menu` / `ky tui` 同一入口，别名集两端对齐）。
+- **修正与实现不符的命令与选项**：考纲对比统一为 `ky fetch diff --old=<旧> --new=<新>`；
+  `ky ingest` 用 `--subject=pro`（无 `--save`）；`ky compose` 去掉不存在的 `--type=choice`；
+  `ky config` 菜单项改为实测 7 项；区分 CLI 的 `ky view` 与 REPL 内的 `/view`。
+- **修正过期数字与版本**：TUI 版本号改为动态读取（不再写死 `v2.5`）、测试计数
+  （1637 → 1686、1206 → 1255）、Python `3.8+` → `3.10+`、看板「5 Tab / 五大」→「6 Tab / 六大」。
+- **修正架构树失效路径**：`data/universities/school_data/`（不存在）、`docs/experiences/`
+  （已迁至 `.memory/experiences/`）、`tools/skills/syllabus_diff.py`（真实位置在 `tools/intelligence/`）、
+  `variant_retrieval.py` → `variant_retriever.py`；并补列 `tools/accel|cli|search|tui` 与
+  `docs/BOT_INTEGRATION_GUIDE.md`。
+- **看板 `SETUP.md` 的 `SECTION_MAP` 整节改写**为真实存在的
+  `05-考研看板/web/config.py` 的 `SECTIONS`，并补充排错提示：
+  `memo` / `weak` / `stat` 章节必须写成标准 Markdown 表格，否则卡片会被**静默丢弃**。
+- **`docs/BOT_INTEGRATION_GUIDE.md`** 补 `ky serve --webhook-token=<密钥>` 的显式参数示例。
+- **新增守门测试**：`/save`、`/menu`（含 `/tui` 别名，参数化覆盖）的正向用例 + 阴性对照（拼错指令不得触发）。
+
+### 🧪 测试与验证
+
+- **F1–F8 本轮消缺回归**（评审后修复，见下方「第二轮审查消缺」）：
+  新增/加固 8 条守门用例（`/save 尾随备注`、批处理显式相对路径、`cat` 缺失显式跳过、
+  判负幂等三级判重、网关半开连接写保护），并修正 `sync_publish.py` 的 stdout 编码口径。
+- **判断「工作区是否被测试污染」只认 `sha256`，不要用 `mtime`**：本地全量套件
+  `tools/test_ky_suite.py`（私有工具，发布副本不含）收尾会「还原测试现场」（重写 23 个用户数据文件、清理 8 个测试残留），
+  故 `ky_config.json` 的 `mtime` 每次跑完都会刷新，而内容 `sha256` 不变（实测恒为
+  `ed4684e2119dbbbc`）。同理 `git status` 也无效——被 `.gitignore` 忽略的文件其改动永远不报告。
+
+### 🔒 隐私口径再对齐（2026-09-24 检查补漏：导出 / 打包三路径同口径）
+
+- **导出层与 `.gitignore` 补漏**：`00_考研全科总战役规划.md`（个人学情）、
+  `05-考研看板/docs/`（看板构建产物）、`scripts/gui_shots/`（含真实界面截图）、
+  `04-专业课/演示样例/`，以及 `双校考情对比_*.md` / `目标院校情报_*.md` / `20XX考纲_*.md`
+  三类研报与考纲生成物 —— 此前只被 `.gitignore` 保护，而导出走**文件系统遍历**，
+  一次导出即进公开副本。现按三层清单（顶层文件 / 路径前缀 / 路径+文件名通配）
+  收敛到 `tools/privacy_policy.py`。
+- **打包骨架部署补漏（dist 实测）**：`deploy_workspace_skeleton()` 此前只套
+  `_is_junk()`，`data/universities/_sources/`（未授权汇编的原始快照）、
+  `exam_subjects.json`、看板构建产物、研报/考纲生成物被原样复制进发布包根目录；
+  现新增 `privacy_policy.is_local_artifact()` 统一判据，导出 / staging / 骨架部署
+  三条路径同口径。
+- **测试适配**：`test_ky_suite` 的 exam smoke 与教学闭环用例适配白名单题源门禁
+  （无真实题源时组卷被拒、题源不足时降题量），新增 `--allow-placeholder` 契约断言；
+  `test_fix_packaging` 的对照组改用 `考试大纲.md`（`20XX考纲_*` 已全量剔除），
+  并新增本地产物剔除断言（staging 与骨架部署两侧）。
+- **看板文档**：`05-考研看板/README.md` 的资产引用补 `../` 前缀（此前 GitHub 上
+  相对路径 404）。
+- **计数校正**：pytest 1255 → 1268（1265 通过 + 3 跳过）、ky_suite 304 → 305、
+  合计 1686 → 1700（README / CONTRIBUTING / SETUP / 看板 README 同步）。
+
+---
+
+## 第二轮审查消缺（OCR 全量代码审查，2026-09-22）
+
+> 对工作区未提交改动 + 最近 6 个提交批次做逐文件审查，并真实执行
+> `lint_check` / `pytest tests/`（1255 项）/ `test_new_features`（130 项）/
+> `check_dashboard` / `test_ky_suite`（干净副本）后的修复清单。
+
+| 编号 | 位置 | 类型 | 修复内容 |
+| --- | --- | --- | --- |
+| F1 | `tools/sync_publish.py` | 编码 | 补 stdout/stderr UTF-8 重配置：cp936 控制台下 `sync_publish --force` 的「拒绝导出」文案此前按 GBK 输出，测试按 UTF-8 解码即误判 fail-closed 失效（门禁本身 exit 3 正确）。 |
+| F2 | `tools/sync_publish.py` | 跨平台 | 发布目录环境变量改全大写 `KAOYAN_PUBLISH_DST`（Linux/macOS 大小写敏感，旧混合大小写名曾静默失效）；旧名保留兼容读取，报错文案同步更新。 |
+| F3 | `tools/agent/mcp_client.py` | 资源回收 | `stop()` 增加 2s 上限 `join()`：此前只把 `_reader_thread` 置 None 不回收，进程 terminate+kill 双失败时旧线程滞留。 |
+| F4 | `tools/cli/repl/loop.py` | 健壮性 | `/save <备注>` 按首 token 路由（此前尾随文本被挤进「未知指令」），并补回归用例。 |
+| F5 | `tests/test_launcher_diagnostics.py`、`tests/test_fix_agent_sandbox_and_ssrf.py` | 测试可移植 | 批处理用例改显式相对路径 `.\<脚本>`（加固机 `NoDefaultCurrentDirectoryInExePath=1` 下裸名不可解析）；沙箱阴性对照在无 `cat` 的机器上显式跳过（而非 WinError 2 假失败）。 |
+| F6 | `README.md`、`CHANGELOG.md` | 文档 | 测试计数按实测校正：pytest 1245→1252 通过、合计 1679→1686；补充「无 cat 裸机」跳过项说明。 |
+| F7 | `tools/cli/gateway.py` | 健壮性 | `/api/clear` 与 `/webhook` 响应写入加半开连接保护：客户端超时先断时不再抛 `ConnectionAbortedError` 刷 stderr（业务已处理完毕）。 |
+| F8 | `tools/skills/exam_grading.py` | 幂等 | 判负归档前新增三级判重（精确标题 / 题干预览 / 题干指纹，`_find_existing_mistake_record`）：同一题整卷重判不再重复新建错题、不再重复污染 FSRS 队列与错因统计；扫描异常时回落既有新建路径（宁可重复，不破坏闭环）。 |
+
+已验证：`lint_check` 0 错误；`pytest tests/` 全绿（含上述新增用例）；
+`test_new_features` 130/130；`test_ky_suite` 干净副本 299 通过 / 0 失败 / 5 跳过（F1 修复前为 298/1/5）。
+
+---
+
+## [2.8.0] — 2026-09-20（当前发布版本）
 
 ### 📦 开箱即用程序包（本版本最重要的变化）
 

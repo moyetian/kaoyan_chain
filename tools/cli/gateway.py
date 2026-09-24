@@ -292,7 +292,15 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
-                self.wfile.write(b'{"status":"cleared"}')
+                try:
+                    self.wfile.write(b'{"status":"cleared"}')
+                except (ConnectionError, BrokenPipeError):
+                    # [F7 修复·写半开连接] 客户端（如冒烟测试的超时探针）先断开后，
+                    # 旧实现直接抛 ConnectionAbortedError / BrokenPipeError，经
+                    # socketserver 的 handle_error 打到 stderr 刷屏（测试日志里表现为
+                    # 「网关异常」），但请求本身早已处理完毕。此处吞掉该类错误 ——
+                    # 状态变更不受影响，仅响应没人收。
+                    pass
                 return
 
             if parsed.path == "/api/ask":
@@ -497,7 +505,12 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                 resp_body = json.dumps({"reply": reply, "at_sender": True}, ensure_ascii=False)
             else:
                 resp_body = json.dumps({"msgtype": "text", "text": {"content": reply}}, ensure_ascii=False)
-            self.wfile.write(resp_body.encode("utf-8"))
+            try:
+                self.wfile.write(resp_body.encode("utf-8"))
+            except (ConnectionError, BrokenPipeError):
+                # [F7 修复·写半开连接] 同 /api/clear：第三方回调平台超时先断，
+                # 回业务已处理完（判分/入队/回推均已完成），只吞响应写入错误。
+                pass
 
         def log_message(self, format, *args):
             return

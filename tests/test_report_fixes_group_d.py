@@ -187,6 +187,14 @@ def test_university_counts_are_accurate_in_docs():
     assert "57 所" in readme, "README 未给出 57 所详细档案口径"
     assert "57 所" in contributing, "CONTRIBUTING 未给出 57 所详细档案口径"
 
+    # 徽章走 shields.io，文案里的 ``+`` 被 URL 编码成 ``%2B``，
+    # 上面按字面量写的 ``"55+" not in text`` 对徽章**完全无效**：
+    # 实测 README 顶部徽章长期挂着「KaoYan Intelligence 55+所高校档案」，
+    # 而本用例一直是绿的（假阴性）。这里把编码形态一并钉住。
+    assert "55%2B" not in readme, "README 徽章仍是被 URL 编码的过时口径 55%2B"
+    # 同类假阴性：TUI 徽章曾写死 ``v2.5``，而正文的 ``v2.5`` 早已清干净。
+    assert "Terminal%20TUI-v" not in readme, "TUI 徽章不得写死版本号（应动态读取）"
+
     # 同一句「55+」的其它副本（手册 / 看板子 README / README 配图源脚本）
     others = [
         ROOT / "操作手册.md",

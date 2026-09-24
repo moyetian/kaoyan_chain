@@ -556,6 +556,20 @@ def deploy_workspace_skeleton(target_dir: Path, keep_identity: bool = False):
 
     def ignore_patterns(src, names):
         ignored = {name for name in names if _is_junk(name)}
+        # [2026-09-24 检查补漏] 与导出层 / staging 同口径：.gitignore 已忽略的
+        # 本地产物与受限路径（原始快照、看板构建产物、研报/考纲生成物等）
+        # 同样不得随发布包分发 —— 此前只套 _is_junk，dist 实测它们原样进了
+        # 产物根（staging 已排除、部署这一步漏掉）。
+        try:
+            rel_dir = Path(src).relative_to(ROOT)
+        except (ValueError, IndexError):
+            rel_dir = None
+        if rel_dir is not None:
+            for name in names:
+                if name in ignored:
+                    continue
+                if _pp.is_local_artifact((rel_dir / name).as_posix()):
+                    ignored.add(name)
         # [P1 修复] 位于用户私有目录内时，仅放行骨架白名单，其余一律剔除
         owner = _private_owner(src)
         if owner is not None:

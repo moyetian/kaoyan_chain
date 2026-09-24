@@ -169,6 +169,17 @@ class MCPProcessClient:
                     pass
             self.process = None
             self.is_initialized = False
+        # [F3 修复·reader 线程 join] 旧实现只把 _reader_thread 置 None 而不 join：
+        # 若 terminate+kill 双失败（或子进程忽略 SIGTERM），旧线程仍阻塞在
+        # readline 上滞留（daemon 线程，进程退出时才回收）。此处带 2s 上限 join，
+        # 既回收句柄又不让 stop() 无限卡死；超时未退出的线程仍靠 _loop 内的
+        # 局部 proc 固化 + _read_response 的 id 校验兜底，不会串台。
+        _old_reader = self._reader_thread
+        if _old_reader is not None and _old_reader is not threading.current_thread():
+            try:
+                _old_reader.join(timeout=2)
+            except Exception:
+                pass
         # 丢弃残留行，避免下一个会话读到上一个进程的响应
         while True:
             try:

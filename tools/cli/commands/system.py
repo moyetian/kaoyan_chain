@@ -64,7 +64,7 @@ def _cmd_help(args: List[str]) -> None:
   done <关键词>                               快速将包含关键词的今日任务标记为完成并回写状态
   review [math|eng|pol|pro]                   查看 FSRS 待复测错题列表
   calc <表达式>                               基于 SymPy 高精度数学符号验算 (极限/导数/积分/ODE/矩阵，别名: verify)
-  diff [选项]                                 新旧考纲版本变化与动荡率对比研报 (等同于 ky fetch diff)
+  diff [选项]                                 新旧考纲版本变化与动荡率对比研报 (简写=ky fetch diff；帮助见 ky fetch --help)
   style [1/2/3/4]                             查看或动态切换 4 种私教辅导风格
   doctor                                      一键系统健康诊断 (Python环境/依赖/状态/连通性)
   plan                                        启动个人专属定制化必考方案向导

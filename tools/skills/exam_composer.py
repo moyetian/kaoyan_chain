@@ -379,6 +379,7 @@ def _load_whitelist_cards(subject, need=1, boost_text: str = ""):
                 # 供阅卷端按题计分（此前一律按 10 分算，真题卷分值会被算错）
                 "score": score,
                 "is_whitelist_card": True,
+                "origin": ORIGIN_WHITELIST,
             })
 
     weakness_grams = _bigrams(boost_text)
@@ -431,16 +432,253 @@ def _generate_synthetic_question_llm(subject: str, subj_name: str, topic: str, p
                         "score": str(data.get("score", 10)),
                         "stage": 0,
                         "is_synthetic": True,
+                        "origin": ORIGIN_SYNTHETIC_LLM,
                     }
     except Exception:
         pass
     return {}
 
 
-def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=True):
+# ════════════════════════════════════════════════════════════════
+# [P0 修复·白名单门禁从「免责声明」改为「真门禁」]
+#
+# 缺陷现场（2026-09-23 实测，参考资料/ 为空、错题本为空）：
+#   ky exam math --count=3 →
+#     第 1 题：数学核心必考大纲自测题
+#     第 2 题：数学考纲综合自测题 1     ← 题干 = 同一句话 + "（第 1 组）"
+#     第 3 题：数学考纲综合自测题 2     ← 题干 = 同一句话 + "（第 2 组）"
+#   三题共用一句「请针对【数学】当前攻坚考纲要求，写出核心公式并简述做题防踩坑
+#   步骤。」，无标准答案、无法判分、无学习价值，却被包装成一份「自测卷」。
+#   门禁只剩一行「题源声明」——降级本身诚实，产物却几乎为零价值。
+#   更糟的是雷达模板占位题排在白名单真题卡**之前**：只要雷达里有 C/D 行且未配大
+#   模型，即便 参考资料/ 已有真题切片，也会先用模板句凑数。
+#
+# 现改为按题源覆盖率分级响应：
+#   · 有真实题源（错题本 / 白名单真题卡 / 按薄弱点由大模型命制且含参考答案）→ 照常组卷；
+#   · 题源不足 → **降题量**组卷，卷首明确「仅 N 题来自真实题源，其余已省略」，绝不凑数；
+#   · 完全无题源 → **拒绝组卷**，改为输出可执行的上手引导（放资料 → ky ingest → 重组）；
+#   · 占位题只在调用方显式 allow_placeholder=True 时产出，且必须按考纲考点 / 薄弱点
+#     生成**互不相同**的题干（不再复制同一句话）。
+# 题源顺序也随之修正：错题本 → 白名单真题卡 → 大模型变式 → （显式允许时）占位题。
+# ════════════════════════════════════════════════════════════════
+
+#: 题卡 origin 字段取值（写入每张题卡与答案密钥，供题源声明 / 判卷端 / 评测区分）
+ORIGIN_MISTAKE = "mistake"              # 错题本（到期 / 未掌握错题）
+ORIGIN_WHITELIST = "whitelist"          # 参考资料/题库切片_*.md 白名单真题卡
+ORIGIN_SYNTHETIC_LLM = "synthetic_llm"  # 按薄弱点由大模型命制（含参考答案，非真题）
+ORIGIN_PLACEHOLDER = "placeholder"      # 考纲级设问框架（无答案；仅 allow_placeholder 时产出）
+
+#: 真实题源（据此判断「是否有资格组卷」）
+_REAL_ORIGINS = (ORIGIN_MISTAKE, ORIGIN_WHITELIST, ORIGIN_SYNTHETIC_LLM)
+
+
+def _read_radar_rows(subject: str):
+    """读取「_状态/薄弱点雷达.md」里评级为 C/D 的行 → [(模块名, 核心卡点)]。"""
+    subj_folder = SUBJECT_DIRS.get(subject, "01-数学")
+    radar_file = ROOT / subj_folder / "_状态" / "薄弱点雷达.md"
+    if not radar_file.exists():
+        return []
+    try:
+        txt = radar_file.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return []
+    rows = []
+    seen = set()
+    for m in re.findall(r"\|\s*([^|\n]+?)\s*\|\s*([^|\n]+?)\s*\|\s*[CD]\s*\|\s*([^|\n]+?)\s*\|", txt):
+        module_name = m[0].strip()
+        pain_point = m[2].strip()
+        if not module_name or module_name in seen:
+            continue
+        seen.add(module_name)
+        rows.append((module_name, pain_point))
+    return rows
+
+
+#: 占位题按考点展开时的科目化设问模板（同一考点只用一次，题干天然互不相同）
+_POINT_STEM_TEMPLATES = {
+    "math": ("【{point}】：写出该考点的核心定义 / 定理成立条件，完整推演一道典型题型的"
+             "标准步骤，并列出 2 个最常见的失分点。"),
+    "eng": ("【{point}】：说明该题型 / 技能的标准解题步骤与定位方法，自选一句真题长难句"
+            "拆出主干，并说明选项排除依据。"),
+    "pol": ("【{point}】：写出该考点的核心表述（含关键帽子词），辨析 1 组最易混淆的选项，"
+            "并说明多选题排谬 / 排异步骤。"),
+    "pro": ("【{point}】：界定核心概念，列出代表观点 / 原理要点与出处，并按论述题规范"
+            "写出「总—分—总」答题提纲。"),
+}
+
+#: 无考纲考点可用时的兜底设问角度（每个科目 3 个不同角度，超出后按轮次编号）
+_GENERIC_STEM_ANGLES = {
+    "math": (
+        "请针对【{subj}】当前攻坚考纲要求，写出核心公式并简述做题防踩坑步骤。",
+        "请针对【{subj}】当前攻坚考纲要求，挑一道你最近做错的典型题，复现完整推导并标出每一步的采分点。",
+        "请针对【{subj}】当前攻坚考纲要求，列出 3 个最常混淆的定理 / 公式使用条件，并各举一个反例说明。",
+    ),
+    "eng": (
+        "请针对【{subj}】当前攻坚考纲要求，完成一段长难句主干拆解，并说明阅读选项定位与排除依据。",
+        "请针对【{subj}】当前攻坚考纲要求，写出一段功能句模板（观点—论证—总结），并替换 2 组高分词汇。",
+        "请针对【{subj}】当前攻坚考纲要求，总结 3 类干扰选项的常见特征，并各举一例说明识别方法。",
+    ),
+    "pol": (
+        "请针对【{subj}】当前攻坚考纲要求，辨析一对易混帽子词，并说明多选题排谬 / 排异步骤。",
+        "请针对【{subj}】当前攻坚考纲要求，梳理一个核心原理的「是什么—为什么—怎么办」三段式表述。",
+        "请针对【{subj}】当前攻坚考纲要求，列出 3 个最易记混的历史节点 / 会议，并写出对应的关键判断。",
+    ),
+    "pro": (
+        "请针对【{subj}】当前攻坚考纲要求，写出核心概念界定与代表人物主要观点，并完成一道典型题目的规范论述步骤。",
+        "请针对【{subj}】当前攻坚考纲要求，选一个核心原理写出「概念—要点—现实意义」的论述提纲。",
+        "请针对【{subj}】当前攻坚考纲要求，对比两个易混概念的异同，并各举一道真题式设问说明答题思路。",
+    ),
+}
+
+
+def _syllabus_points_for_placeholder(subject: str, limit: int):
+    """从考试大纲解析考点名（按 D 盲区 > C 生疏 > U 未评估 > B > A 排序），供差异化占位题使用。
+
+    考纲缺失 / 仍为占位模板 / 解析异常时返回空列表（由调用方回落到通用设问角度）。
     """
-    自动从 FSRS 到期错题与薄弱点雷达抽取题目拼成自测卷
+    if limit <= 0:
+        return []
+    try:
+        try:
+            from skills import knowledge_map
+        except Exception:
+            from tools.skills import knowledge_map
+        km = knowledge_map.build_knowledge_map(subject, root=ROOT)
+    except Exception:
+        return []
+    if not isinstance(km, dict) or km.get("syllabus_placeholder"):
+        return []
+    rank = {"D": 0, "C": 1, "U": 2, "B": 3, "A": 4}
+    pts = []
+    seen = set()
+    for chap in km.get("chapters") or []:
+        for pt in chap.get("points") or []:
+            name = str(pt.get("name") or "").strip()
+            # 内置保底模块（无考纲时 knowledge_map 自己造的）不算真实考点
+            if len(name) < 2 or name in seen or name.endswith("核心必考概念"):
+                continue
+            seen.add(name)
+            pts.append((rank.get(pt.get("grade", "U"), 2), len(pts), name))
+    pts.sort()
+    return [name for _, _, name in pts[:limit]]
+
+
+def _build_placeholder_items(subject: str, subj_name: str, need: int, radar_rows):
+    """生成 ``need`` 道**互不相同**的占位题（仅在 allow_placeholder=True 时调用）。
+
+    优先级：薄弱点雷达行（带学员真实卡点）→ 考纲考点（按盲区优先）→ 通用设问角度。
+    每张题卡 origin=placeholder / is_placeholder=True / grading_mode=open / 无标准答案。
+    """
+    items = []
+    today = date.today().strftime("%Y-%m-%d")
+
+    def _mk(title, question, error_type, detail):
+        return {
+            "subject": subject,
+            "subject_name": subj_name,
+            "title": title,
+            "error_type": error_type,
+            "date": today,
+            "question": question,
+            "detail": detail,
+            # 开放题不登记伪标准答案，判卷端按「转人工复核」契约处理
+            "standard_answer": "",
+            "grading_mode": "open",
+            "stage": 0,
+            "is_synthetic": True,
+            "is_placeholder": True,
+            "origin": ORIGIN_PLACEHOLDER,
+        }
+
+    for module_name, pain_point in radar_rows:
+        if len(items) >= need:
+            break
+        items.append(_mk(
+            f"{module_name}专题攻坚自测",
+            f"针对【{module_name}】核心考点与薄弱痛点「{pain_point}」，请写出核心定义、定理条件并完成典型变式题推导。",
+            "概念漏洞", pain_point))
+
+    tmpl = _POINT_STEM_TEMPLATES.get(subject, _POINT_STEM_TEMPLATES["pro"])
+    for point in _syllabus_points_for_placeholder(subject, need - len(items)):
+        if len(items) >= need:
+            break
+        items.append(_mk(f"{point} · 考纲自测", tmpl.format(point=point), "综合考点", f"考纲考点：{point}"))
+
+    angles = _GENERIC_STEM_ANGLES.get(subject, _GENERIC_STEM_ANGLES["pro"])
+    round_no = 0
+    while len(items) < need:
+        idx = len(items)
+        angle = angles[idx % len(angles)].format(subj=subj_name)
+        round_no = idx // len(angles)
+        suffix = f"（第 {round_no + 1} 轮）" if round_no else ""
+        title = f"{subj_name}核心必考大纲自测题" if idx == 0 else f"{subj_name}考纲综合自测题 {idx}"
+        items.append(_mk(title, angle + suffix, "综合考点" if idx else "概念漏洞", "考纲基础自测"))
+    return items[:need]
+
+
+def _build_refusal_guidance(subject, subj_name, subj_folder, diag, requested):
+    """无任何题源时返回给学员的**可执行**上手引导（替代原来的雷同占位卷）。"""
+    ref_dir = f"{subj_folder}/参考资料/"
+    mistake_dir = f"{subj_folder}/{'错题与长难句本' if subject == 'eng' else '错题本'}/"
+    lines = [
+        f"# ⛔ 未组卷 · {subj_name}",
+        "",
+        f"> 请求题量 {requested} 题，但本地没有任何可用题源。**白名单题源门禁**拒绝用考纲模板句冒充试卷",
+        "> （占位题没有标准答案、无法判分、也不会进入 FSRS 复测队列，对提分没有价值）。",
+        "",
+        "## 当前题源盘点",
+        f"- 错题本（`{mistake_dir}`）：{diag['mistake']} 条待复测 / 未掌握错题",
+        f"- 白名单真题卡（`{ref_dir}题库切片_*.md`）：{diag['whitelist']} 张"
+        + ("（目录不存在）" if not diag["ref_dir_exists"] else
+           ("（目录为空，尚未放入任何资料）" if diag["ref_files"] == 0 else
+            f"（目录内有 {diag['ref_files']} 个文件，但尚未切片入库）")),
+        f"- 薄弱点雷达（`{subj_folder}/_状态/薄弱点雷达.md`）："
+        + (f"{diag['radar']} 行 C/D 级薄弱项，但未配置大模型，无法据此命制变式题"
+           if diag["radar"] else "尚未建立（由 AI 私教在批改对话中逐步写入，可先从模板复制）"),
+        "",
+        "## 3 步启动「组卷 → 判分 → 归因 → 复测」闭环",
+        f"1. 把至少 1 份近年真题（PDF / Word / Markdown / TXT）放入 `{ref_dir}`（该目录已被 .gitignore 保护，绝不上云）；",
+        f"2. 切片入库：`ky ingest \"<真题文件路径>\" --subject={subject} --source=\"2025 真题\"`；",
+        f"3. 重新组卷：`ky exam {subject} --count={requested} --save`，作答后用 `ky exam-submit <试卷路径> <作答>` 判分。",
+        "",
+        "> 已有做题记录？先用 `ky exam-submit` 判分或让私教 `log_mistake` 归档，错题会自动成为组卷题源。",
+        f"> 如确需几道考纲级设问框架热身，可显式加 `--allow-placeholder`（占位题不计分、不入复测队列）。",
+    ]
+    return "\n".join(lines)
+
+
+def _material_diagnostics(subject, subj_folder):
+    """组卷失败时的题源诊断快照（只读，不落盘）。"""
+    ref_dir = ROOT / subj_folder / "参考资料"
+    ref_files = 0
+    if ref_dir.exists():
+        try:
+            ref_files = sum(1 for p in ref_dir.iterdir()
+                            if p.is_file() and p.name.lower() != "readme.md" and not p.name.startswith("."))
+        except Exception:
+            ref_files = 0
+    return {
+        "ref_dir_exists": ref_dir.exists(),
+        "ref_files": ref_files,
+        "whitelist": len(_load_whitelist_cards(subject, need=10 ** 6)) if ref_dir.exists() else 0,
+        "radar": len(_read_radar_rows(subject)),
+        "mistake": 0,  # 由调用方填充（依赖 error_logger）
+    }
+
+
+def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=True,
+                       allow_placeholder=False):
+    """
+    自动从 FSRS 到期错题、白名单真题卡与薄弱点雷达抽取题目拼成自测卷
     返回包含试卷元数据与 Markdown 文本的字典
+
+    题源门禁（[P0 修复]）：
+      * ``success=True``：有真实题源。题量可能**少于** ``count``（``shortfall`` > 0），
+        卷首会声明「仅 N 题来自真实题源，其余已省略」，绝不用占位题凑数；
+      * ``success=False`` / ``refused=True``：没有任何真实题源，**不产出试卷、不写密钥、
+        不落盘**，``content`` / ``formatted_paper`` 为可执行的上手引导；
+      * ``allow_placeholder=True``：显式允许用考纲级设问框架补足题量（题干按薄弱点 /
+        考纲考点差异化生成，逐题标注「私教自拟占位题」，无标准答案、不计分）。
     """
     subj_name = get_subject_name(subject, SUBJECT_NAMES.get(subject, subject))
     subj_folder = SUBJECT_DIRS.get(subject, "01-数学")
@@ -451,8 +689,8 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
     selected_items = []
     selected_keys = set()
 
-    def add_unique(item):
-        """按题源、标题和题干去重，避免同一错题重复占位。"""
+    def add_unique(item, origin=None):
+        """按题源、标题和题干去重，避免同一错题重复占位；同时补齐 origin 标签。"""
         if not isinstance(item, dict):
             return False
         if not str(item.get("question") or "").strip():
@@ -464,6 +702,8 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
         )
         if identity in selected_keys:
             return False
+        if origin and not item.get("origin"):
+            item["origin"] = origin
         selected_keys.add(identity)
         selected_items.append(item)
         return True
@@ -473,7 +713,7 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
         for item in due_items:
             if len(selected_items) >= count:
                 break
-            add_unique(item)
+            add_unique(item, ORIGIN_MISTAKE)
 
     # 2. 到期题不足时，拉取其他尚未掌握的错题
     if len(selected_items) < count and error_logger:
@@ -482,107 +722,86 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
             if len(selected_items) >= count:
                 break
             if "已掌握" not in err.get("status", "") and err not in selected_items:
-                add_unique(err)
+                add_unique(err, ORIGIN_MISTAKE)
+    mistake_count = len(selected_items)
 
-    # 3. 错题仍不足且允许引入雷达薄弱项时，从薄弱点雷达生成针对性测试题
-    if len(selected_items) < count and include_weak:
-        radar_file = ROOT / subj_folder / "_状态" / "薄弱点雷达.md"
-        if radar_file.exists():
-            txt = radar_file.read_text(encoding="utf-8", errors="ignore")
-            # 提取薄弱点与核心卡点
-            matches = re.findall(r"\|\s*([^|\n]+?)\s*\|\s*([^|\n]+?)\s*\|\s*[CD]\s*\|\s*([^|\n]+?)\s*\|", txt)
-            for m in matches:
-                if len(selected_items) >= count:
-                    break
-                module_name = m[0].strip()
-                pain_point = m[2].strip()
-                llm_synth = _generate_synthetic_question_llm(subject, subj_name, module_name, pain_point, workspace_root=ROOT)
-                if llm_synth and llm_synth.get("question"):
-                    add_unique(llm_synth)
-                else:
-                    add_unique({
-                        "subject": subject,
-                        "subject_name": subj_name,
-                        "title": f"{module_name}专题攻坚自测",
-                        "error_type": "概念漏洞",
-                        "date": date.today().strftime("%Y-%m-%d"),
-                        "question": f"针对【{module_name}】核心考点与薄弱痛点「{pain_point}」，请写出核心定义、定理条件并完成典型变式题推导。",
-                        "detail": pain_point,
-                        # [P0 修复] 开放题严禁以「说明文字」冒充标准答案：
-                        # 此前该字段存放免责声明，导致判卷时以其为基准做文本重合度比对
-                        # ——学员认真作答恒为 0 分，而抄写该说明文字反而满分。
-                        # 现统一置空并标记 grading_mode=open，交由人工/多模型复核通道处理。
-                        "standard_answer": "",
-                        "grading_mode": "open",
-                        "stage": 0,
-                        "is_synthetic": True
-                    })
+    # 薄弱点雷达行：既作为白名单靶向打分的线索，也是大模型命制变式题的依据
+    radar_rows = _read_radar_rows(subject) if include_weak else []
 
-    # 3.5 [P0 修复·题源闭环] 错题与雷达仍不足时，优先抽取已入库的白名单真题卡，
-    #     只有在无任何题卡可用时才降级到合成题/占位题（守住「白名单题源抽题门禁」）。
-    #     boost_text 把已选错题的题干/错因与雷达痛点喂给打分器，实现真靶向。
+    # 3. [P0 修复·题源顺序] 白名单真题卡**先于**任何自拟题：
+    #    此前雷达模板占位题排在白名单前面，导致 参考资料/ 已有真题切片时仍先用模板句凑数。
+    #    boost_text 把已选错题的题干 / 错因与雷达痛点喂给打分器，实现真靶向。
     if len(selected_items) < count:
         _boost_parts = []
         for _it in selected_items:
             _boost_parts.append(str(_it.get("question") or ""))
             _boost_parts.append(str(_it.get("detail") or ""))
             _boost_parts.append(str(_it.get("title") or ""))
+        for _mod, _pain in radar_rows:
+            _boost_parts.append(f"{_mod} {_pain}")
         _boost_text = "\n".join(p for p in _boost_parts if p)
         for card in _load_whitelist_cards(subject, need=count - len(selected_items),
                                           boost_text=_boost_text):
             if len(selected_items) >= count:
                 break
-            add_unique(card)
+            add_unique(card, ORIGIN_WHITELIST)
 
-    # 若没有任何题目，构造基础考纲基准题
-    # [文科适配·占位题串味] 此前全科目统一"写出核心公式"，哲学考生拿到理科模板。
-    # 现按科目分支设问（仍为【私教自拟占位题】，明确标注非真题）。
-    if subject == "pro":
-        _fb_question = (f"请针对【{subj_name}】当前攻坚考纲要求，写出核心概念界定与"
-                        f"代表人物主要观点，并完成一道典型题目的规范论述步骤。")
-    elif subject == "eng":
-        _fb_question = (f"请针对【{subj_name}】当前攻坚考纲要求，完成一段长难句主干拆解，"
-                        f"并说明阅读选项定位与排除依据。")
-    elif subject == "pol":
-        _fb_question = (f"请针对【{subj_name}】当前攻坚考纲要求，辨析一对易混帽子词，"
-                        f"并说明多选题排谬/排异步骤。")
-    else:
-        _fb_question = (f"请针对【{subj_name}】当前攻坚考纲要求，写出核心公式并简述"
-                        f"做题防踩坑步骤。")
-    if not selected_items:
-        add_unique({
+    # 4. 仍不足且允许引入雷达薄弱项时，按薄弱点由大模型命制变式题（含参考答案）。
+    #    未配置大模型 / 调用失败时**不再**用模板句顶替 —— 那属于占位题，由第 5 步按显式开关处理。
+    llm_synth_failed_rows = []
+    if len(selected_items) < count and include_weak:
+        for module_name, pain_point in radar_rows:
+            if len(selected_items) >= count:
+                break
+            llm_synth = _generate_synthetic_question_llm(subject, subj_name, module_name, pain_point, workspace_root=ROOT)
+            if llm_synth and llm_synth.get("question"):
+                add_unique(llm_synth, ORIGIN_SYNTHETIC_LLM)
+            else:
+                llm_synth_failed_rows.append((module_name, pain_point))
+
+    real_items = [it for it in selected_items if it.get("origin") in _REAL_ORIGINS]
+
+    # 5. 题源门禁裁决
+    source_breakdown = {
+        "mistake": mistake_count,
+        "whitelist": sum(1 for it in selected_items if it.get("origin") == ORIGIN_WHITELIST),
+        "synthetic_llm": sum(1 for it in selected_items if it.get("origin") == ORIGIN_SYNTHETIC_LLM),
+        "placeholder": 0,
+    }
+    if not real_items and not allow_placeholder:
+        diag = _material_diagnostics(subject, subj_folder)
+        diag["mistake"] = mistake_count
+        guidance = _build_refusal_guidance(subject, subj_name, subj_folder, diag, count)
+        return {
+            "success": False,
+            "refused": True,
+            "reason": "no_material",
+            "paper_id": "",
             "subject": subject,
             "subject_name": subj_name,
-            "title": f"{subj_name}核心必考大纲自测题",
-            "error_type": "概念漏洞",
-            "date": date.today().strftime("%Y-%m-%d"),
-            "question": _fb_question,
-            "detail": "考纲基础自测",
-            # [P0 修复] 同上一处：开放题不登记伪标准答案，改走复核通道
-            "standard_answer": "",
-            "grading_mode": "open",
-            "stage": 0,
-            "is_synthetic": True
-        })
+            "count": 0,
+            "requested_count": count,
+            "shortfall": count,
+            "items": [],
+            "content": guidance,
+            "formatted_paper": guidance,
+            "saved_path": None,
+            "source_breakdown": source_breakdown,
+            "diagnostics": diag,
+            "guidance": guidance,
+        }
 
-    # 题源不足时补齐不同的考纲自拟题，保持请求题量且绝不复制同一题干。
-    fallback_index = 1
-    while len(selected_items) < count:
-        add_unique({
-            "subject": subject,
-            "subject_name": subj_name,
-            "title": f"{subj_name}考纲综合自测题 {fallback_index}",
-            "error_type": "综合考点",
-            "date": date.today().strftime("%Y-%m-%d"),
-            "question": f"{_fb_question}（第 {fallback_index} 组）",
-            "detail": f"考纲综合自测题 {fallback_index}",
-            # [P0 修复] 同上一处：开放题不登记伪标准答案，改走复核通道
-            "standard_answer": "",
-            "grading_mode": "open",
-            "stage": 0,
-            "is_synthetic": True
-        })
-        fallback_index += 1
+    if allow_placeholder and len(selected_items) < count:
+        # 显式允许时才补占位题；雷达行里已被大模型命制过的模块不再重复出占位题
+        for ph in _build_placeholder_items(subject, subj_name, count - len(selected_items),
+                                           llm_synth_failed_rows):
+            if len(selected_items) >= count:
+                break
+            add_unique(ph, ORIGIN_PLACEHOLDER)
+        source_breakdown["placeholder"] = sum(
+            1 for it in selected_items if it.get("origin") == ORIGIN_PLACEHOLDER)
+
+    shortfall = max(0, count - len(selected_items))
 
     today_str = datetime.now().strftime("%Y-%m-%d")
     paper_id = f"EXAM-{subject.upper()}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
@@ -594,17 +813,27 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
         f"> **试卷编号**：`{paper_id}` ｜ **生成日期**：`{today_str}` ｜ **题量**：`{len(selected_items)} 题`",
         f"> **试卷属性**： FSRS 盲盒复测 + 薄弱点针对性抽题（隐去原答案与历史错误）",
     ]
-    # [缺陷修复·题源诚实标注] 当本地「参考资料/」未命中该考点真题时，组卷会退化为
-    # 考纲自拟占位题（`is_synthetic=True`）。此前这类题以「XX核心必考大纲自测题」的
-    # 名义直接混在真卷里，学员无法分辨"这是真题"还是"私教凑数的模板句"，
-    # 而同一产品内的 ky variant 却明确标注 `[⚠️ 私教自拟变式]` —— 标准不一致。
-    _synthetic_count = sum(1 for _it in selected_items if _it.get("is_synthetic"))
-    if _synthetic_count:
-        _real_count = len(selected_items) - _synthetic_count
+    # [缺陷修复·题源诚实标注] 占位题与大模型变式题都不是真题，必须在卷首与逐题两级标注，
+    # 与同一产品内 ky variant 的 `[⚠️ 私教自拟变式]` 口径一致。
+    _placeholder_count = source_breakdown["placeholder"]
+    _llm_count = source_breakdown["synthetic_llm"]
+    _real_count = len(selected_items) - _placeholder_count
+    if _placeholder_count:
         lines.append(
-            f"> ⚠️ **题源声明**：本卷 {len(selected_items)} 题中，**{_synthetic_count} 题为【私教自拟占位题】**"
-            f"（本地「参考资料/」未命中该考点真题，仅有考纲级设问框架，**不是真实试题**）；"
-            f"真实题源题 {_real_count} 题。请把真题资料放入对应科目「参考资料/」后重新组卷。")
+            f"> ⚠️ **题源声明**：本卷 {len(selected_items)} 题中，**{_placeholder_count} 题为【私教自拟占位题】**"
+            f"（本地「参考资料/」未命中该考点真题，仅有考纲级设问框架，**不是真实试题**，无标准答案、不计分）；"
+            f"真实题源题 {_real_count} 题。请把真题资料放入对应科目「参考资料/」并运行 `ky ingest` 后重新组卷。")
+    if _llm_count:
+        lines.append(
+            f"> ⚠️ **变式声明**：本卷 {_llm_count} 题为【私教自拟变式】——按薄弱点雷达由大模型命制，"
+            f"附参考答案但**并非真题**，仅作针对性巩固。")
+    if shortfall:
+        lines.append(
+            f"> ⚠️ **题量声明**：本次请求 {count} 题，实际仅 {len(selected_items)} 题来自真实题源"
+            f"（错题本 {source_breakdown['mistake']} 题 / 白名单真题 {source_breakdown['whitelist']} 题 / "
+            f"大模型变式 {_llm_count} 题），其余 {shortfall} 题已省略 —— 本地「参考资料/」未命中更多真题，"
+            f"系统拒绝用考纲模板句凑数。补充真题后运行 `ky ingest` 即可扩充题源；"
+            f"如确需占位题热身，可加 `--allow-placeholder`。")
     lines.extend([
         f"> **作答要求**：请在各题【学员作答区】下方独立书写推导或最终结论，拒绝查阅笔记！",
         f"",
@@ -622,11 +851,15 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
 
         lines.append(f"### 📝 第 {i} 题：{t_title}")
         lines.append(f"- **考查属性**：`{err_type}` ｜ FSRS 档位: `stage={stage}`")
-        if item.get("is_synthetic"):
+        if item.get("is_placeholder"):
             # 逐题标注，确保学员不会把占位题当成真题来做（与 ky variant 的标注口径一致）
             lines.append(
                 "- **题源属性**：⚠️ `[私教自拟占位题]` —— 本地「参考资料/」未命中该考点真题，"
                 "本题只有考纲级设问框架，**不是真实试题**，不可据此判断真实应试水平。")
+        elif item.get("is_synthetic"):
+            lines.append(
+                "- **题源属性**：⚠️ `[私教自拟变式]` —— 按薄弱点由大模型命制的巩固题，"
+                "附参考答案但**并非真题**。")
         lines.append(f"- **题目设问与题干**：")
         lines.append(f"```text\n{q_text.strip()}\n```")
         lines.append(f"")
@@ -653,7 +886,9 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
             "standard_answer": str(item.get("standard_answer", "") or "").strip(),
             # [P0 修复] 透传判分模式：open=开放论述/推导题（无唯一数值解），
             # 判卷端据此给出「转复核而非答错」的准确提示，避免误导学员。
-            "grading_mode": str(item.get("grading_mode", "exact") or "exact").strip()
+            "grading_mode": str(item.get("grading_mode", "exact") or "exact").strip(),
+            # 题源标签：占位题在判卷端不计分、不入复测队列
+            "origin": str(item.get("origin", "") or ""),
         })
 
     # [P0 修复] 答案键只落地到密钥文件且加密存储 (ENC1)，不再内嵌进试卷 Markdown；
@@ -687,10 +922,15 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
         atomic_write_text(companion_file, sealed_keys)
 
     return {
+        "success": True,
+        "refused": False,
         "paper_id": paper_id,
         "subject": subject,
         "subject_name": subj_name,
         "count": len(selected_items),
+        "requested_count": count,
+        "shortfall": shortfall,
+        "source_breakdown": source_breakdown,
         "items": selected_items,
         "content": full_content,
         "formatted_paper": full_content,

@@ -237,13 +237,16 @@ def _is_placeholder_syllabus(txt):
     return real_lines < _PLACEHOLDER_MIN_REAL_LINES
 
 
-def build_knowledge_map(subject="math"):
+def build_knowledge_map(subject="math", root=None):
     """
     解析指定科目的考试大纲与学情错题，构建考点-掌握度-失分风险二维图谱
+
+    ``root`` 可选：指定工作区根目录（默认模块级 ROOT）。组卷引擎按考纲考点生成
+    差异化占位题时传入自己的 ROOT，保证与试卷落盘目录同源（测试隔离亦依赖此）。
     """
     subj_folder = SUBJECT_DIRS.get(subject, "01-数学")
     subj_name = get_subject_name(subject, SUBJECT_NAMES.get(subject, subject))
-    s_dir = ROOT / subj_folder
+    s_dir = (Path(root) if root else ROOT) / subj_folder
 
     # 1. 扫描大纲文件
     syllabus_file = s_dir / "考试大纲.md"

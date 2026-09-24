@@ -26,6 +26,8 @@ kaoyan_chain/
 ├── .gitignore                           # Local-First 隐私防泄露安全规则
 ├── .cursorrules                         # Cursor 编辑器智能加载协议
 ├── .clinerules                          # Roo Code / Cline 编辑器加载协议
+├── .memory/                             # 学员本地隐私记忆中枢（已由 .gitignore 忽略，绝不入库）
+│   └── experiences/                     # 社媒实名去噪高分经验与避坑档案库
 ├── LICENSE                              # MIT 开源许可证
 ├── README.md                            # 项目门户总说明与快速开箱指引
 ├── 操作手册.md                          # 📘 学员专用实操全流程指南（39子命令全景）
@@ -46,7 +48,7 @@ kaoyan_chain/
 │   └── universities/                    # 全国高校研招名录与站点拓扑
 │       ├── registry.json                # 57 所院校详细档案（代码、别名与官网二级域名库）
 │       ├── <省份>/<高校>.yaml           # 57 所详细档案 + 1,841 所基础名录分省结构化配置
-│       └── school_data/                 # 各高校结构化招生简章与专业目录缓存
+│       └── national_institutions.json   # 1,841 所基础名录派生库（可由本地 _sources/ 快照复现）
 │
 ├── 01-数学/                             # 数学专属私教体系（数一/二/三/396通用）
 │   ├── AGENTS.md                        # 防超纲、解题步骤规范、防计算失误协议
@@ -86,8 +88,8 @@ kaoyan_chain/
 │   ├── 01_考纲拆解与分值地图模板.md     # 考纲分值拆解模板
 │   ├── 02_核心公式与考点速查模板.md     # 核心结论速记模板
 │   ├── 03_题源核验与抽题协议模板.md     # 权威题源白名单门禁
-│   ├── 双校考情对比_对比院校B_VS_对比院校B_计算机.md # ky compare 自动生成横向对标研报
-│   ├── 目标院校情报_对比院校B_计算机.md # ky scout / admission 权威招考情报研报
+│   ├── 双校考情对比_目标院校_VS_对比院校B_目标专业.md # ky compare 自动生成横向对标研报
+│   ├── 目标院校情报_目标院校_目标专业.md # ky scout / admission 权威招考情报研报
 │   ├── 学情档案.template.md             # 章节掌握度记忆中枢模板
 │   ├── 每日作业/                        # 每日作业记录模板
 │   └── 错题本/                          # 错题记录模板与索引
@@ -105,13 +107,15 @@ kaoyan_chain/
 │
 ├── docs/                                # GitHub Pages 发布源镜像与高清矢量图谱
 │   ├── assets/                          # 印刷级 SVG 架构图与演示素材
-│   ├── experiences/                     # 社媒实名去噪高分经验与避坑档案库
+│   ├── BOT_INTEGRATION_GUIDE.md         # 多端 IM 机器人（微信/QQ/钉钉/飞书）打通指南
 │   ├── index.html                       # 移动端 6-Tab 自测看板发布源
 │   ├── live.html                        # 印刷级 KaTeX 实时可视化网页伴侣
 │   └── state_snapshot.json              # 学情脱敏快照数据集
 │
 └── tools/                               # 跨平台运维与管理工具包
     ├── agent/                           # 工业级自主智能体内核 (Loop, Hooks, Memory, MCP, Sandbox)
+    ├── accel/                           # Rust PyO3 加速扩展能力协商层（缺失时自动降级纯 Python）
+    ├── cli/                             # 39 子命令 CLI 内核（dispatch / commands / repl / gateway）
     ├── gui/                             # [v2.6+] PySide6 桌面 GUI 模块
     │   ├── __init__.py                  # GUI 包入口
     │   ├── main_window.py               # 主窗口：组装界面 + 事件分发（数据/样式已外移）
@@ -120,6 +124,7 @@ kaoyan_chain/
     │   └── widgets/                     # 对话框与自定义控件 (FunctionCard / WeChatSearchDialog)
     ├── theme/                           # 设计系统单一真源：token + 三端编译器（QSS / CSS / ANSI）
     ├── state/                           # 四端共享状态层（今日任务、倒计时、配置摘要统一解析）
+    ├── tui/                             # 终端交互组件包（terminal 能力探测 / textual app）
     ├── version.py                       # 项目版本号单一真源
     ├── intelligence/                    # KaoYan Intelligence 招考全景情报与证据链引擎
     │   ├── chsi_connector.py            # 研招网 S 级权威目录连接器
@@ -133,15 +138,15 @@ kaoyan_chain/
     │   ├── scout_engine.py              # 社媒(知乎/B站/小红书)就读体验口碑引擎
     │   ├── syllabus_diff.py             # 考纲 AST 变迁对比与动荡率分析引擎
     │   └── watcher.py                   # 招生简章动态指纹监控与变动雷达
+    ├── search/                          # 混合检索内核（索引 / 去重 / 缓存 / 健康度）
     ├── skills/                          # 考研专有能力技能中枢
     │   ├── school_scout.py              # 目标高校研招与社媒口碑侦察专属技能
     │   ├── wechat_searcher.py           # [v2.6+] 微信公众号考研经验贴检索与 Markdown 清洗管道
-    │   ├── syllabus_diff.py             # 考纲版本对比技能
     │   ├── material_ingestion.py        # 试题智能分块切片入库管道 (ky ingest)
     │   ├── exam_composer.py             # 靶向自测组卷与盲盒排版引擎 (ky compose)
-    │   ├── variant_retrieval.py         # 同源变式检索与防伪水印引擎 (ky variant)
+    │   ├── variant_retriever.py         # 同源变式检索与防伪水印引擎 (ky variant)
     │   └── ...                          # 验算/抽题/图谱/诊断各技能实现
-    ├── tui_navigator.py                 # 终端全景智能中枢 TUI v2.5 极客控制台
+    ├── tui_navigator.py                 # 终端全景智能中枢 TUI 极客控制台
     ├── ky_gui.py                        # [v2.6+] PySide6 GUI 启动入口 (ky gui)
     ├── doctor.py                        # 全系统健康诊断工具 (ky doctor)
     ├── init_workspace.py                # 跨平台工作区全能初始化向导
@@ -165,7 +170,7 @@ kaoyan_chain/
     ├── simulate_workflow.py             # 工作流模拟（开发工具）
     ├── study_planner.py                 # 个人定制化方案设计引擎与防疲劳预警
     ├── syllabus_manager.py              # 官方考纲智能匹配与切换管理器
-    ├── test_ky_suite.py                 # 完整自动化回归测试与 CLI smoke test (26 组, 304 项)
+    ├── test_ky_suite.py                 # 完整自动化回归测试与 CLI smoke test (26 组, 305 项)
     ├── test_new_features.py             # [v2.6+] 新增功能专项测试 (WeChat + Rust + GUI + CLI, 130 项)
     ├── update_dashboard.py              # 自动化看板生成与同步脚本
     └── verify_health.py                 # 全科规范与关键文件健康度巡检脚本
@@ -225,8 +230,8 @@ ky doctor
 #    或先备份 ky_config.json，再设 KY_TEST_ALLOW_REAL_WORKSPACE=1 显式放行。
 python tools/test_ky_suite.py
 ```
-该套件包含 **26 组测试项**（共 **304 测试点**：Git 工作区内 304 通过 + 0 跳过；干净检出无 `.git` 时
-为 299 通过 + 5 跳过 = 304，差在「测试组 7 Git 隐私隔离」需 `.git`，两种环境总数一致），覆盖：
+该套件包含 **26 组测试项**（共 **305 测试点**：Git 工作区内 305 通过 + 0 跳过；干净检出无 `.git` 时
+为 300 通过 + 5 跳过 = 305，差在「测试组 7 Git 隐私隔离」需 `.git`，两种环境总数一致），覆盖：
 - 配置文件解析与默认兜底
 - 四科 Prompt 与防书目幻觉门禁
 - Webhook 格式与模拟并发处理
@@ -246,7 +251,7 @@ python tools/test_new_features.py
 - **组 C**：PySide6 GUI 离屏实例化与 QSS 主题完整性（需 `PySide6`，否则跳过）
 - **组 D**：CLI 子命令路由（`ky gui`/`ky wechat`/`ky wx`）与 TUI 菜单挂载
 
-> **计数是环境相关的**（2026-09-21 实测）：上述数字随是否 Git 工作区、是否构建 `dist/`、
+> **计数是环境相关的**（2026-09-22 实测）：上述数字随是否 Git 工作区、是否构建 `dist/`、
 > 是否配置 `study_plan.school` 而变。改文档计数时请连同环境前提一起写。
 
 **准入标准**：测试结果必须为 `失败 0 项`（100% 通过或跳过），不允许任何断言失败。

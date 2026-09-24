@@ -3,7 +3,10 @@ from types import SimpleNamespace
 import pytest
 from tools.skills import exam_composer as exam
 from tools.skills.exam_answers import parse_answers
-from tools.skills.exam_grading import _unique_mistake_title
+from tools.skills.exam_grading import (
+    _find_existing_mistake_record,
+    _unique_mistake_title,
+)
 
 
 def test_mistake_titles_carry_stem_preview_and_do_not_collide():
@@ -67,3 +70,81 @@ def test_missing_answers_excluded_and_registered_score_used(monkeypatch):
     assert result["score"] == 5
     assert result["pass_rate"] == 100
     assert len(result["need_review"]) == 1
+
+
+# ───────────── F8 回归：重复判负必须幂等，不得重复新建错题 ─────────────
+
+def test_regraded_failure_does_not_duplicate_mistake_record(monkeypatch):
+    """同一题整卷重判（回写失败后重跑）不得重复新建错题记录。
+
+    [F8 现场] 旧实现新建前不做判重，同一题第二次判负又新建一条 ——
+    FSRS 队列与错因统计被同一题刷屏。现新建前三级判重，命中即跳过。
+    """
+    created = []
+    scan_calls = []
+
+    def fake_scan(subject=None):
+        scan_calls.append(subject)
+        # 模拟第一次判负后错题本里已有的记录（标题由 _unique_mistake_title 生成，
+        # 已带题干预览「 · 齐物逍遥游辨析」，与真实 log_error_record 落盘形态一致）
+        return [{"title": _unique_mistake_title("探针题", "齐物逍遥游辨析"),
+                 "question": "齐物逍遥游辨析"}]
+
+    fake_logger = SimpleNamespace(
+        scan_error_records=fake_scan,
+        log_error_record=lambda **kw: created.append(kw) or "ok",
+        mark_error_status=lambda **kw: (False, "无既有记录"))
+    monkeypatch.setattr(exam, "error_logger", fake_logger)
+
+    keys = [{"id": 1, "title": "探针题", "question": "齐物逍遥游辨析",
+             "standard_answer": "A", "error_type": "概念漏洞"}]
+    paper = "<!-- EXAM_ANSWER_KEYS: " + json.dumps(keys) + " -->"
+    result = exam.grade_exam_paper(paper, "1. B")   # 答错 → 判负
+    assert result["success"]
+    # 命中既有记录：不得新建
+    assert created == [], f"重复判负仍新建了错题: {[c['title'] for c in created]}"
+    report = result.get("report", "")
+    assert "不重复归档" in report, "命中既有记录时未在回执中说明跳过原因"
+    assert scan_calls, "未执行三级判重扫描"
+
+
+def test_find_existing_mistake_record_three_level_matching(tmp_path, monkeypatch):
+    """三级判重口径单测：精确标题 / 题干预览 / 题干指纹。"""
+    # 与真实链路同源：错题本里的标题就是 _unique_mistake_title 的产物
+    # （标题 + 题干前 12 字预览），故用它构造"已归档"的现场。
+    q1 = "齐物逍遥游辨析：庄子与惠子游于濠梁之上。"
+    t1 = _unique_mistake_title("探针题", q1)
+    records = [
+        {"title": t1, "question": q1},
+        {"title": "另一题", "question": "白马非马，公孙龙所谓名实之辩也。"},
+    ]
+    monkeypatch.setattr(exam, "error_logger", SimpleNamespace(
+        scan_error_records=lambda subject=None: records))
+
+    # ① 精确标题
+    assert _find_existing_mistake_record(
+        subject="pro", title=t1, question="别的题干",
+        error_logger=exam.error_logger) == t1
+    # ② 标题含题干预览（同一题干、标题未带预览时命中标题里的预览片段）
+    assert _find_existing_mistake_record(
+        subject="pro", title="探针题", question=q1,
+        error_logger=exam.error_logger) == t1
+    # ③ 题干指纹（跨空白归一化后命中记录正文）
+    assert _find_existing_mistake_record(
+        subject="pro", title="全新标题",
+        question="白马非马，公孙龙所谓名实之辩也。",
+        error_logger=exam.error_logger) == "另一题"
+    # 未命中
+    assert _find_existing_mistake_record(
+        subject="pro", title="全新标题", question="毫不相关的新题干内容xyz",
+        error_logger=exam.error_logger) is None
+
+
+def test_find_existing_mistake_record_scan_failure_returns_none(monkeypatch):
+    """扫描抛异常时必须返回 None（走新建路径），绝不让闭环断裂。"""
+    def _boom(subject=None):
+        raise RuntimeError("磁盘故障")
+
+    monkeypatch.setattr(exam, "error_logger", SimpleNamespace(scan_error_records=_boom))
+    assert _find_existing_mistake_record(
+        subject="pro", title="任意", question="任意") is None

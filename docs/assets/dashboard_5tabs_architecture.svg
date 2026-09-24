@@ -26,7 +26,7 @@
 
   <!-- 标题 -->
   <g transform="translate(480, 42)" text-anchor="middle">
-    <text class="t-main3" y="0">考研全科自测看板 · 五大核心交互页签与考纲图谱架构</text>
+    <text class="t-main3" y="0">考研全科自测看板 · 六大核心交互页签与考纲图谱架构</text>
     <text class="t-sub3" y="24">单文件静态免部署 · 移动端 PWA 丝滑自测 · 7日完成率趋势 · 考纲全景图谱 · 👁️ 毛玻璃遮罩自测</text>
   </g>
 

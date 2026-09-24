@@ -51,6 +51,7 @@ __all__ = [
     "private_owner",
     "is_backup",
     "is_junk",
+    "is_local_artifact",
     "should_publish",
     "load_study_plan",
     "identity_substitutions",
@@ -112,7 +113,12 @@ SKELETON_WHITELIST = {
 
 #: 不在私有目录内、但同样属于个人档案的文件（对应 .gitignore:80-82）。
 #: 例：04-专业课/学情档案.md 是学员真实学情，仅 .template/.example 可发布。
-PRIVATE_TOP_LEVEL_FILES: Tuple[str, ...] = ("学情档案.md",)
+#: [2026-09-24 检查补漏] 00_考研全科总战役规划.md（.gitignore:68 已保护）：
+#: 由 ky plan 本地生成，含个人科目组合、分数目标与学情，仅 .example 可发布。
+PRIVATE_TOP_LEVEL_FILES: Tuple[str, ...] = (
+    "学情档案.md",
+    "00_考研全科总战役规划.md",
+)
 
 # ── 通用垃圾/临时产物 ────────────────────────────────────────────────────
 JUNK_DIR_NAMES = frozenset({
@@ -189,6 +195,24 @@ NON_PUBLISH_PATH_PREFIXES: Tuple[Tuple[str, ...], ...] = (
     ("data", "universities", "_sources"),
     ("data", "universities", "exam_subjects.json"),
     ("data", "knowledge"),
+    # [2026-09-24 检查补漏] 与 .gitignore 逐条对齐的本地产物（导出层此前未对齐）：
+    #   - 05-考研看板/docs/（.gitignore:73）：看板构建产物，发布版在根 docs/；
+    #   - scripts/gui_shots/（.gitignore:11）：GUI 冒烟截图与 result.json，
+    #     画面含真实看板/学情界面；
+    #   - 04-专业课/演示样例/：工具生成的演示研报，仅本机留档。
+    ("05-考研看板", "docs"),
+    ("scripts", "gui_shots"),
+    ("04-专业课", "演示样例"),
+)
+
+#: `.gitignore` 已保护、导出层此前未对齐的「本地研报/考纲产物」：
+#: ``(目录前缀 parts, basename 通配)`` 二元组。生成物含真实院校信息且不入库，
+#: 导出走文件系统遍历时必须与 git 层同口径，否则一次导出即进公开副本。
+#: 逐条对应 .gitignore:186 / 187 / 227。
+NON_PUBLISH_PATH_PATTERNS: Tuple[Tuple[Tuple[str, ...], str], ...] = (
+    (("04-专业课",), "双校考情对比_*.md"),
+    (("04-专业课",), "目标院校情报_*.md"),
+    (("04-专业课",), "20*考纲_*.md"),
 )
 
 #: 只在**私有工作区**里才有意义的路径（相对仓库根的 parts 前缀元组）。
@@ -279,6 +303,28 @@ def is_junk(name: str) -> bool:
     return False
 
 
+def is_local_artifact(rel: Union[str, Path]) -> bool:
+    """是否为「.gitignore 已忽略、发布物必须同口径剔除」的本地产物 / 受限路径。
+
+    是 ``NON_PUBLISH_PATH_PREFIXES`` 与 ``NON_PUBLISH_PATH_PATTERNS`` 两张清单
+    的统一判据，供三条路径共用：公开副本导出（sync_publish）、打包 staging
+    （collect_data_specs，经 ``should_publish()``）、打包骨架部署
+    （deploy_workspace_skeleton）。
+
+    [2026-09-24 检查补漏] 骨架部署此前只套 ``_is_junk()``，于是原始快照、
+    看板构建产物、研报/考纲生成物被原样复制进发布包根目录（dist 实测）；
+    它走 shutil 白名单机制、不适用整套 ``should_publish()``，故单独暴露本判据。
+    """
+    parts = _parts(rel)
+    if not parts:
+        return False
+    name = parts[-1]
+    if any(parts[:len(pfx)] == pfx for pfx in NON_PUBLISH_PATH_PREFIXES):
+        return True
+    return any(parts[:len(dp)] == dp and fnmatch(name, pat)
+               for dp, pat in NON_PUBLISH_PATH_PATTERNS)
+
+
 def should_publish(path: Union[str, Path]) -> bool:
     """判断某个相对路径是否可以进入发布物（分发包 / 公开仓库副本）。
 
@@ -320,9 +366,10 @@ def should_publish(path: Union[str, Path]) -> bool:
     if parts[0] in ROOT_ONLY_EXCLUDE_DIRS:
         return False
 
-    # 3.5 与 .gitignore 对齐的受限路径（原始快照 / 运行时向量库）：
-    #     git 层已忽略，发布层必须同口径，否则导出即泄漏（见上方常量注释）。
-    if any(parts[:len(pfx)] == pfx for pfx in NON_PUBLISH_PATH_PREFIXES):
+    # 3.5 与 .gitignore 对齐的受限路径与本地产物（原始快照 / 运行时向量库 /
+    #     看板构建产物 / 研报与考纲生成物）：git 层已忽略，发布层必须同口径，
+    #     否则一次导出即泄漏（见上方两张常量清单的注释）。
+    if is_local_artifact(parts):
         return False
 
     # 3.6 只在私有工作区里有意义的文件（测试「公开副本里的占位工具」的用例）：

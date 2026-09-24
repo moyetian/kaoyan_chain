@@ -18,6 +18,53 @@ def _unique_mistake_title(title, question):
             t = f"{t} · {preview}"
     return t
 
+
+def _question_fingerprint(question):
+    """题干指纹：去空白后取归一化文本的前 48 字，用于跨标题判重。"""
+    return re.sub(r"\s+", "", str(question or ""))[:48]
+
+
+def _find_existing_mistake_record(*, subject, title, question, error_logger=None):
+    """[F8 幂等] 三级判重：查该科目错题本是否已有本题记录。
+
+    返回命中记录的标题（供回执展示），未命中返回 ``None``。
+    判重口径：
+      1. 精确标题（含 FSRS 记录的标准「📌」标题行）；
+      2. 标题含题干预览（``_unique_mistake_title`` 的追加片段）；
+      3. 题干指纹（归一化题干前 48 字）出现在记录的题干设问/正文中。
+    扫描失败一律返回 ``None``（按"未命中"处理，走既有新建路径 ——
+    宁可重复归档也不能让闭环断裂）。
+    """
+    try:
+        if error_logger is None:
+            try:
+                from error_logger import scan_error_records  # noqa: E402
+            except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
+                from tools.skills.error_logger import scan_error_records  # type: ignore
+            records = scan_error_records(subject)
+        else:
+            records = error_logger.scan_error_records(subject)
+    except Exception:
+        return None
+
+    q_fp = _question_fingerprint(question)
+    q_preview = re.sub(r"\s+", " ", str(question or "").strip())[:12]
+    t_norm = str(title or "").strip()
+    for rec in records or []:
+        r_title = str(rec.get("title", "") or "").strip()
+        r_q = str(rec.get("question", "") or "").strip()
+        # ① 精确标题（含 FSRS 记录中生成的唯一化标题）
+        if t_norm and r_title == t_norm:
+            return r_title
+        # ② 标题含题干预览（_unique_mistake_title 的追加片段）
+        if q_preview and q_preview in r_title:
+            return r_title
+        # ③ 题干指纹：跨空白归一化后，查询题干指纹命中记录的题干
+        if q_fp and q_fp in re.sub(r"\s+", "", r_q):
+            return r_title or t_norm
+    return None
+
+
 def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", auto_advance=True, *,
                      root, error_logger, open_keys, grade_open, extract_tokens, norm_tokens, text_hit):
     """
@@ -353,18 +400,34 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
                 # log_mistake），于是回写静默跳过 → 题目永不进入 FSRS 复测队列，
                 # 但汇总行仍宣称"已重置回第一复测周期"——声称的状态变更从未发生。
                 # 现改为：未通过且未找到既有记录时，由判卷链路**确定性新建**一条。
+                # [F8 修复·重复判负幂等] 同一题再次判负（整卷重判 / 状态回写失败后
+                # 重跑）时，旧实现**无条件再新建一条**，重复刷屏且污染 FSRS 队列与
+                # 错因统计。现新建前先做三级判重：① 精确标题；② 标题+题干锚定；
+                # ③「题干指纹」正文匹配。任一命中即视为已归档，跳过新建。
                 if not _archived and not is_passed and str(k.get("question") or "").strip():
-                    _display_title = _unique_mistake_title(title, k.get("question"))
-                    record_msg = error_logger.log_error_record(
+                    _already = _find_existing_mistake_record(
                         subject=k.get("subject", subject),
-                        title=_display_title,
-                        error_type=k.get("error_type", "概念漏洞"),
-                        detail=(judge_basis or "") + "\n（本题由自测卷链路自动归档，原卷题面见上方【题干设问】）",
-                        prescription="复测订正：先复现采分点步骤，再独立重做一遍。",
+                        title=title,
                         question=k["question"],
+                        error_logger=error_logger,
                     )
-                    _archived = True
-                    report_lines.append(f"  - 状态回写: 已新建错题记录并排入 FSRS 复测队列（{record_msg}）")
+                    if _already:
+                        _archived = True
+                        _display_title = _already
+                        report_lines.append(
+                            f"  - 状态回写: 错题已在 FSRS 复测队列（{_already}），不重复归档")
+                    else:
+                        _display_title = _unique_mistake_title(title, k.get("question"))
+                        record_msg = error_logger.log_error_record(
+                            subject=k.get("subject", subject),
+                            title=_display_title,
+                            error_type=k.get("error_type", "概念漏洞"),
+                            detail=(judge_basis or "") + "\n（本题由自测卷链路自动归档，原卷题面见上方【题干设问】）",
+                            prescription="复测订正：先复现采分点步骤，再独立重做一遍。",
+                            question=k["question"],
+                        )
+                        _archived = True
+                        report_lines.append(f"  - 状态回写: 已新建错题记录并排入 FSRS 复测队列（{record_msg}）")
                 if _archived:
                     updated_records.append(_display_title)
             except Exception as e:

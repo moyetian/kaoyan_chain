@@ -294,3 +294,210 @@ def test_b01_negative_control_unknown_slash_not_routed(monkeypatch, capsys):
     """阴性对照：未注册的斜杠指令不得触发该处理器（避免断言空转）。"""
     calls = _drive_repl_once(monkeypatch, ["/submit_typo_placeholder"])
     assert calls == [], "未注册指令却触发了 build_homework_menu"
+
+
+# ── B-01 续：``/save`` 与 ``/menu`` —— 此前只写在文档里的两个指令 ──────────────
+#
+# 与 ``/submit`` 同一类缺陷，但上一轮只修了 ``/submit``：
+#   * ``/save`` —— 操作手册 219/466/556 行、SETUP 72 行宣称可「一键把当前题干与
+#     错因记入错题本」，实际只有数字快捷键 ``/2`` 生效；
+#   * ``/menu`` —— 操作手册 566 行、AGENTS.md 113 行宣称可「退出 REPL 并打开 TUI
+#     终端全景导航面板」，实际 REPL 内无此分支（``ky menu`` 命令才有）。
+
+def _drive_repl_capture(monkeypatch, inputs, observer=None):
+    """在打桩环境下驱动一次 run_repl，返回 ``observer`` 的返回值。
+
+    ``observer(monkeypatch)`` 用于挂载本次用例要观察的桩；不传则只铺基础桩。
+    基础桩保证：不读真实配置、不启端口、不进 Agent、不落盘。
+    """
+    cfg = {
+        "api_key": "",
+        "model": "deepseek-chat",
+        "active_subject": "math",
+        "onboarding_completed": True,
+        "study_plan": {},
+    }
+    monkeypatch.setattr(repl_loop, "load_config", lambda: dict(cfg))
+    monkeypatch.setattr(repl_loop, "print_welcome", lambda *a, **k: None)
+    monkeypatch.setattr(repl_loop, "start_background_live_server", lambda *a, **k: 8088)
+    monkeypatch.setattr(repl_loop, "AgentRunner", None)
+    # 主路径的 LLM 调用一律打桩：既避免用例意外打到真实计费端点，
+    # 也让「先有上下文再 /save」这类场景可以被确定性地构造出来。
+    monkeypatch.setattr(repl_loop, "stream_chat", lambda *a, **k: "SENTINEL_LLM_REPLY")
+
+    observed = observer(monkeypatch) if observer else None
+
+    it = iter(list(inputs))
+
+    def fake_input(*a, **k):
+        try:
+            return next(it)
+        except StopIteration:
+            raise EOFError
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    repl_loop.run_repl(permission_mode="ask")
+    return observed
+
+
+def test_b01_save_slash_archives_mistake(monkeypatch, capsys):
+    """``/save`` 必须与数字快捷键 ``/2`` 同源，真正触发错题归档。"""
+    def observe(mp):
+        calls = []
+
+        class _Recorder:
+            """只记录归档调用；其余方法一律空转，避免用例被无关分支干扰。"""
+
+            def log_error_record(self, **kw):
+                calls.append(kw)
+                return "SENTINEL_ARCHIVED"
+
+            def __getattr__(self, name):
+                return lambda *a, **k: None
+
+        mp.setattr(repl_loop, "error_logger", _Recorder())
+        return calls
+
+    calls = _drive_repl_capture(monkeypatch, ["请讲解这道题", "/save"], observe)
+    out = capsys.readouterr().out
+
+    assert calls, "/save 未触发错题归档（斜杠别名未注册）"
+    assert "SENTINEL_ARCHIVED" in out, "/save 的归档结果未落地到终端"
+    assert "未知指令" not in out, "/save 落进了未知指令分支"
+
+
+@pytest.mark.parametrize("slash", ["/menu", "/tui"])
+def test_b01_menu_slash_launches_tui(monkeypatch, capsys, slash):
+    """``/menu`` 与 ``/tui`` 两个别名都必须启动 TUI 全景导航，而不是落进「未知指令」。"""
+    from tools import tui_navigator
+
+    def observe(mp):
+        calls = []
+        mp.setattr(tui_navigator, "run_tui_loop", lambda *a, **k: calls.append(1))
+        return calls
+
+    calls = _drive_repl_capture(monkeypatch, [slash], observe)
+    out = capsys.readouterr().out
+
+    assert calls, f"{slash} 未启动 TUI（斜杠分支未注册）"
+    assert "未知指令" not in out, f"{slash} 落进了未知指令分支"
+
+
+def test_b01_negative_control_save_menu_typos(monkeypatch, capsys):
+    """阴性对照：形近但未注册的指令不得触发任何处理器（避免断言空转）。
+
+    注意 ``/save_typo_placeholder`` 这类写法（下划线连写）与
+    ``/save 备注``（空格分隔尾随文本）是两回事：后者按首 token 路由，
+    属于已注册的 ``/save``（见 test_b01_save_with_trailing_note），
+    不得出现在这里。
+    """
+    from tools import tui_navigator
+
+    def observe(mp):
+        calls = []
+
+        class _Recorder:
+            def log_error_record(self, **kw):
+                calls.append("logger")
+                return "SHOULD_NOT_HAPPEN"
+
+            def __getattr__(self, name):
+                return lambda *a, **k: None
+
+        mp.setattr(repl_loop, "error_logger", _Recorder())
+        mp.setattr(tui_navigator, "run_tui_loop", lambda *a, **k: calls.append("tui"))
+        return calls
+
+    calls = _drive_repl_capture(
+        monkeypatch, ["/save_typo_placeholder", "/menu_typo_placeholder"], observe)
+    out = capsys.readouterr().out
+
+    assert calls == [], f"未注册指令却触发了处理器: {calls}"
+    assert out.count("未知指令") == 2, "未注册指令未逐条落进未知指令分支"
+
+
+def test_b01_save_without_context_is_refused(monkeypatch, capsys):
+    """守卫：空会话下的 ``/save`` 不得落盘。
+
+    否则会写出一条无题干（``question=""``）、错因被兜底成「概念漏洞」、
+    正文字段退化成占位串的记录——它既进 FSRS 复测队列，也污染错因五分类统计。
+    """
+    def observe(mp):
+        calls = []
+
+        class _Recorder:
+            def log_error_record(self, **kw):
+                calls.append(kw)
+                return "SHOULD_NOT_ARCHIVE"
+
+            def __getattr__(self, name):
+                return lambda *a, **k: None
+
+        mp.setattr(repl_loop, "error_logger", _Recorder())
+        return calls
+
+    calls = _drive_repl_capture(monkeypatch, ["/save"], observe)
+    out = capsys.readouterr().out
+
+    assert calls == [], f"空会话 /save 仍然落盘了: {calls}"
+    assert "SHOULD_NOT_ARCHIVE" not in out
+    assert "暂无可归档" in out, "空会话 /save 未给出可操作的提示"
+    assert "未知指令" not in out, "/save 落进了未知指令分支"
+
+def test_b01_save_after_slash_only_context_is_allowed(monkeypatch, capsys):
+    """对照：以斜杠指令发起的分析（没有「非斜杠」题干）仍须可归档。
+
+    守卫只卡「有没有可归档的批改内容」，不卡「有没有题干」——否则
+    `/dissect`、`/batch`、`/hint` 之后按 `/save` 会被误拒。
+    """
+    def observe(mp):
+        calls = []
+
+        class _Recorder:
+            def log_error_record(self, **kw):
+                calls.append(kw)
+                return "SENTINEL_ARCHIVED"
+
+            def __getattr__(self, name):
+                return lambda *a, **k: None
+
+        mp.setattr(repl_loop, "error_logger", _Recorder())
+        return calls
+
+    calls = _drive_repl_capture(
+        monkeypatch, ["/dissect Please analyze this sentence", "/save"], observe)
+    out = capsys.readouterr().out
+
+    assert calls, "/dissect 之后按 /save 被误拒（守卫口径过严）"
+    assert "SENTINEL_ARCHIVED" in out
+    assert calls[0]["question"] == "", "本用例刻意构造「无题干」场景"
+    assert calls[0]["detail"], "归档正文不得为空"
+
+
+def test_b01_save_with_trailing_note_still_archives(monkeypatch, capsys):
+    """``/save`` 带尾随文本（如 ``/save 补充说明``）仍须归档，不得落进未知指令。
+
+    [F4 回归] 路由按首 token 判定：多余文本忽略，归档内容仍以批改上下文为准。
+    """
+    def observe(mp):
+        calls = []
+
+        class _Recorder:
+            def log_error_record(self, **kw):
+                calls.append(kw)
+                return "SENTINEL_ARCHIVED"
+
+            def __getattr__(self, name):
+                return lambda *a, **k: None
+
+        mp.setattr(repl_loop, "error_logger", _Recorder())
+        return calls
+
+    calls = _drive_repl_capture(
+        monkeypatch, ["请讲解这道题", "/save 这次错在概念理解"], observe)
+    out = capsys.readouterr().out
+
+    assert calls, "/save <备注> 未触发错题归档（尾随文本把指令挤进了未知分支）"
+    assert "SENTINEL_ARCHIVED" in out, "/save <备注> 的归档结果未落地到终端"
+    assert "未知指令" not in out, "/save <备注> 落进了未知指令分支"

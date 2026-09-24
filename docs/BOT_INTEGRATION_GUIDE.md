@@ -13,6 +13,7 @@
 >   1. 终端运行 `ky config` ➔ `[3] 📱 机器人配置` ➔ `[8] 🔑 群机器人回调密钥`，输入密钥并保存（写入 `ky_config.json`，长期生效）；
 >   2. 临时覆盖：设置环境变量 `KY_WEBHOOK_TOKEN=<你的回调密钥>`（重启终端即失效，适合临时排障）。
 > - **优先级**：命令行显式参数 > 环境变量 `KY_WEBHOOK_TOKEN` > `ky_config.json` 的 `webhook_token`。
+>   命令行形态：`ky serve --webhook-token=<你的回调密钥>`（与 `--gateway-token=` 同一约定，可同时指定端口与 `--host=`）。
 > - **设置后必须同步改回调地址**，把密钥作为查询参数带上：
 >   ```text
 >   http://<你的地址或穿透域名>/webhook?token=<你的回调密钥>

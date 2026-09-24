@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/Status-Sprint%207%20Delivered%20%C2%B7%20%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE%E5%B0%B1%E7%BB%AA-success.svg?style=flat-square" alt="Status" />
   <img src="https://img.shields.io/badge/Tests-CLI%20smoke%20%2B%20regression-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
   <img src="https://img.shields.io/badge/Dashboard-6%20Tabs%20(%E6%96%B0%E5%A2%9E%20%F0%9F%93%A1%20%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE)-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
-  <img src="https://img.shields.io/badge/Python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/Math-KaTeX%20LaTeX-00d084?style=flat-square&logo=latex&logoColor=white" alt="KaTeX" />
   <img src="https://img.shields.io/badge/Mobile-Responsive%20PWA-f59e0b?style=flat-square&logo=pwa&logoColor=white" alt="Mobile" />
   <img src="https://img.shields.io/badge/Privacy-Local--First-10b981?style=flat-square&logo=shield&logoColor=white" alt="Privacy" />
@@ -32,7 +32,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/hero_banner.jpg" alt="Kaoyan AI Study Chain Banner" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
+  <img src="../docs/assets/hero_banner.jpg" alt="Kaoyan AI Study Chain Banner" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
 </p>
 
 ---
@@ -40,7 +40,7 @@
 ## 📖 这是什么？
 
 <p align="center">
-  <img src="docs/assets/feature_comparison.svg" alt="传统 AI 对话与考研学习链对比" style="max-width:100%;" />
+  <img src="../docs/assets/feature_comparison.svg" alt="传统 AI 对话与考研学习链对比" style="max-width:100%;" />
 </p>
 
 **考研学习链 (Kaoyan AI Study Chain)** 是一套面向考研学子的**数字化、工程化 AI 私人教师备考系统**。
@@ -59,14 +59,14 @@
 
 > 💡 **在线直达**：点击体验 👉 **[考研全科移动端自测看板 (Live Demo)](https://moyetian.github.io/kaoyan_chain/)**
 > 
-> *(本地使用：双击工作区中的 [`docs/index.html`](docs/index.html) 即可单文件直接运行，纯原生 HTML5/CSS3/JS 构建，零第三方依赖)*
+> *(本地使用：双击工作区中的 [`../docs/index.html`](../docs/index.html) 即可单文件直接运行，纯原生 HTML5/CSS3/JS 构建，零第三方依赖)*
 
 <p align="center">
-  <img src="docs/assets/dashboard_showcase.jpg" alt="移动端自测看板与遮罩默写功能演示" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
+  <img src="../docs/assets/dashboard_showcase.jpg" alt="移动端自测看板与遮罩默写功能演示" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
 </p>
 
 <p align="center">
-  <img src="docs/assets/dashboard_5tabs_architecture.svg" alt="考研全科自测看板五大核心交互页签与考纲图谱架构" style="max-width:100%;" />
+  <img src="../docs/assets/dashboard_5tabs_architecture.svg" alt="考研全科自测看板六大核心交互页签与考纲图谱架构" style="max-width:100%;" />
 </p>
 
 ### 1. 六大核心交互页签图解
@@ -100,7 +100,7 @@
 
 针对考研数学中复杂的微积分、矩阵推导与采分点批改，系统配备了专用的**实时可视化伴侣窗口**：
 
-- **终端与 Web 端两端实时同步**：在终端运行 `ky /view`（或直接双击 `docs/live.html`），浏览器立刻打开同步视图；
+- **终端与 Web 端两端实时同步**：在终端运行 `ky view`（或在 REPL 内输入 `/view`；也可直接双击 `docs/live.html`），浏览器立刻打开同步视图；
 - **印刷级排版**：全面支持 KaTeX 渲染定积分、行列式、多元微分与分步计算式；
 - **AI 动态思考呼吸动效与毫秒计时器**：解题过程中动态显示 `⏱️ 正在审阅题干关键采分点... (1.8s)`，推导完毕平滑淡出，交互体验极佳。
 
@@ -121,7 +121,7 @@
 ```
 ╭────────────────────────────────────────────────────────────────────────╮
 │  🎓 考研全科 AI 私人教师 · 个人专属定制化必考方案设计向导             │
-│  (7 大核心维度：时间 · 考纲 · 资料白名单 · 学情摸底 · 每日投入 · 作息)  │
+│  (7 大维度：时间 · 考纲 · 资料白名单·学情摸底·每日投入·作息·辅导风格)  │
 ╰────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -309,7 +309,7 @@ python tools/init_workspace.py
 ### 第三步：日常私教学习闭环
 
 <p align="center">
-  <img src="docs/assets/daily_study_loop.jpg" alt="每日数字化私教闭环 SOP" style="max-width:100%;border-radius:12px;" />
+  <img src="../docs/assets/daily_study_loop.jpg" alt="每日数字化私教闭环 SOP" style="max-width:100%;border-radius:12px;" />
 </p>
 
 在您选用的 Agent 或终端终端私教中输入口令开始复习：
@@ -322,7 +322,7 @@ python tools/init_workspace.py
 ### 第四步：移动端自测看板查看与多端同步
 
 #### 1. 本地直接预览
-双击工作区中的 [`docs/index.html`](docs/index.html)，即可直接在任何现代浏览器中打开自测看板！
+双击工作区中的 [`../docs/index.html`](../docs/index.html)，即可直接在任何现代浏览器中打开自测看板！
 
 #### 2. 同局域网手机浏览 (无需云端)
 在项目根目录下启动轻量级本地服务：
@@ -390,7 +390,7 @@ kaoyan_chain/
 ├── data/                                # 高校研招权威数据库
 │   └── universities/                    # 全国高校研招名录与站点拓扑
 │       ├── registry.json                # 57 所研招高校详细档案（代码、别名与官网二级域名库）
-│       └── school_data/                 # 各高校结构化招生简章与专业目录缓存
+│       └── national_institutions.json   # 1,841 所基础名录派生库（可由本地快照复现）
 │
 ├── 01-数学/                             # 数学专属私教体系（数一/二/三/396通用）
 │   ├── AGENTS.md                        # 防超纲、解题步骤规范、防计算失误协议
@@ -445,7 +445,7 @@ kaoyan_chain/
 │   ├── assets/                          # 印刷级 SVG 架构图与演示素材
 │   │   ├── intelligence_architecture.svg# 研招情报与证据链架构图
 │   │   ├── school_comparator_matrix.svg # 双校横向对标决策矩阵
-│   │   ├── dashboard_5tabs_architecture.svg # 看板 5Tab 全景架构图
+│   │   ├── dashboard_5tabs_architecture.svg # 看板 6Tab 全景架构图（文件名沿用历史命名）
 │   │   └── ...                          # 技能、记忆、生命周期架构矢量图
 │   ├── index.html                       # 移动端自测看板发布源
 │   ├── live.html                        # 印刷级 KaTeX 实时可视化网页伴侣
@@ -467,12 +467,12 @@ kaoyan_chain/
     ├── skills/                          # 考研专有能力技能中枢 (SymPy验算, PDF抽题, 盲盒组卷, 变式检索, 考纲图谱, 院校侦察)
     │   ├── school_scout.py              # 目标高校研招与社媒口碑侦察专属技能
     │   └── ...                          # 验算/抽题/组卷/变式/图谱/诊断各技能实现
-    ├── doctor.py                        # 6 维度全链路系统体检工具 (Python/依赖/状态/API/端口/Git隐私)
+    ├── doctor.py                        # 7 维度全链路系统体检工具 (Python/依赖/状态/API/端口/Git隐私/降级评估)
     ├── init_workspace.py                # 跨平台工作区全能初始化向导
     ├── ky_cli.py                        # 专有终端私教 (REPL) 与多端 IM 网关 (WeChat/QQ/DingTalk/Feishu)
     ├── study_planner.py                 # 7维度个人定制化方案设计引擎与防疲劳预警
     ├── syllabus_manager.py              # 官方考纲智能匹配与切换管理器
-    ├── test_ky_suite.py                 # 26 组全自动化工程回归测试套件 (共 304 项断言；干净检出为 299 通过 + 5 跳过 = 304)
+    ├── test_ky_suite.py                 # 26 组全自动化工程回归测试套件 (共 305 项断言；干净检出为 300 通过 + 5 跳过 = 305)
     ├── update_dashboard.py              # 本地编译；--push 时才提交并推送
     └── verify_health.py                 # 全科规范与关键文件健康度巡检脚本
 ```
@@ -488,7 +488,7 @@ kaoyan_chain/
 ## 🛠️ 常见问题解答 (FAQ)
 
 ### Q1: 运行脚本报编码错误或找不到 Python？
-- **Python 找不到**：请确认已安装 Python 3.8 或更高版本，并在安装时勾选了 `Add python.exe to PATH`；
+- **Python 找不到**：请确认已安装 Python 3.10 或更高版本，并在安装时勾选了 `Add python.exe to PATH`；
 - **Windows 乱码**：本项目所有脚本已内置 UTF-8 控制台兼容层。若使用 PowerShell，可执行 `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` 确保正常显示。
 
 ### Q2: 为什么我推送到 GitHub 后，找不到我的做题记录和参考资料？

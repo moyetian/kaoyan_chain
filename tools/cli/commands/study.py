@@ -18,10 +18,11 @@ except ImportError:
     from cli.repl.renderer import C, colorize
 
 
-def _cmd_exam(args: List[str]) -> None:
+def _cmd_exam(args: List[str]) -> int:
     target_subj = load_config().get("active_subject", "math")
     count = 3
     save_flag = False
+    allow_placeholder = False
     unknown_flags = []
     _SUBJ_ALIAS = {
         "math": "math", "eng": "eng", "pol": "pol", "pro": "pro",
@@ -47,6 +48,9 @@ def _cmd_exam(args: List[str]) -> None:
             target_subj = _SUBJ_ALIAS.get(nxt, target_subj)
         elif a in ("--save", "-s"):
             save_flag = True
+        elif a == "--allow-placeholder":
+            # [P0 修复·白名单门禁] 占位题只在显式开关下产出，见 exam_composer.compose_exam_paper
+            allow_placeholder = True
         else:
             matched = False
             for sk, sv in (("math", "数"), ("eng", "英"), ("pol", "政"), ("pro", "专")):
@@ -60,7 +64,7 @@ def _cmd_exam(args: List[str]) -> None:
         print(colorize(
             "[!] 已忽略无法识别的参数: " + " ".join(unknown_flags) + "\n"
             "    ky exam 支持的参数: [math|eng|pol|pro] (或 数/英/政/专) · "
-            "--subject=<科目> · --count=N · --save", C.YELLOW))
+            "--subject=<科目> · --count=N · --save · --allow-placeholder", C.YELLOW))
 
     try:
         from tools.skills import exam_composer
@@ -70,13 +74,28 @@ def _cmd_exam(args: List[str]) -> None:
         except ImportError:
             exam_composer = None
 
-    if exam_composer:
-        res = exam_composer.compose_exam_paper(target_subj, count=count, save_file=save_flag)
-        print(res.get("formatted_paper", ""))
-        if res.get("saved_path"):
-            print(colorize(f"\n[√ 试卷已成功保存至]: {res['saved_path']}\n", C.GREEN))
-    else:
+    if not exam_composer:
         print("exam_composer 技能模块未载入")
+        return 1
+
+    res = exam_composer.compose_exam_paper(target_subj, count=count, save_file=save_flag,
+                                           allow_placeholder=allow_placeholder)
+    if res.get("success") is False:
+        # 没有任何真实题源：不产出试卷，只给可执行的上手引导（退出码 2 = 未组卷，供脚本判定）
+        print(colorize(res.get("formatted_paper", ""), C.YELLOW))
+        return 2
+
+    print(res.get("formatted_paper", ""))
+    if res.get("saved_path"):
+        print(colorize(f"\n[√ 试卷已成功保存至]: {res['saved_path']}\n", C.GREEN))
+    else:
+        # [缺陷修复·闭环断点] 不加 --save 时试卷只打印不落盘，学员随后拿一个不存在的
+        # 路径去 exam-submit 会得到「未读取到本卷答案密钥」——看起来像判分坏了，
+        # 实际是没有可提交的文件。此处把下一步说清楚。
+        print(colorize(
+            "\n[i] 本次试卷未落盘（仅打印）。要作答后判分，请加 --save 生成试卷文件，"
+            "或把上方内容原样保存为 .md 后运行 ky exam-submit <试卷路径> <作答>。\n", C.DIM))
+    return 0
 
 
 def _cmd_exam_submit(args: List[str]) -> None:
@@ -84,6 +103,16 @@ def _cmd_exam_submit(args: List[str]) -> None:
         print(colorize("用法: ky exam-submit <试卷文件路径> <作答文本或答案文件>\n示例: ky exam-submit paper_123.json '1. A 2. C 3. B'", C.YELLOW))
         sys.exit(1)
     paper_p = args[1]
+    # [缺陷修复·误报「密钥不可读」] 第一个参数呈路径形态却不存在时，此前被当成
+    # 「试卷内联文本」继续判分：文本里没有 EXAM_PAPER_ID → 三条密钥通道全部落空 →
+    # 报「无法判分：未读取到本卷答案密钥」。学员会误以为密钥库坏了，实际只是路径写错
+    # 或 ky exam 没加 --save。现直接点名文件不存在并给出下一步。
+    if _looks_like_path(paper_p) and not Path(paper_p).is_file():
+        print(colorize(f"[!] 找不到试卷文件: {paper_p}", C.RED))
+        print(colorize(
+            "    提示：ky exam 默认只打印不落盘，请先运行 `ky exam <科目> --count=N --save` 生成试卷文件，\n"
+            "    试卷会保存到对应科目的「错题本/」目录（文件名形如 自测卷_<日期>_EXAM-...md）。", C.YELLOW))
+        sys.exit(1)
     answers = " ".join(args[2:])
     try:
         is_file = len(answers) < 255 and "\n" not in answers and Path(answers).exists()

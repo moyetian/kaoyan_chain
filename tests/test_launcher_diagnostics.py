@@ -434,16 +434,31 @@ def test_ky_gui_global_excepthook(tmp_path):
 # ==============================================================================
 
 @pytest.mark.skipif(sys.platform != "win32", reason="批处理脚本仅在 Windows 环境下验证")
-def test_batch_gui_preflight_only():
-    """验证从 CMD 双击/调用 GUI.bat --preflight-only 返回退出码 0"""
-    ret = subprocess.run(
-        ["cmd.exe", "/c", "GUI.bat", "--preflight-only"],
+@pytest.mark.skipif(sys.platform != "win32", reason="批处理脚本仅在 Windows 环境下验证")
+def _run_bat_from_repo_root(bat_name: str, *bat_args: str):
+    """以「仓库根为 cwd」执行批处理脚本并返回 CompletedProcess。
+
+    [F5 修复·环境加固] 部分企业/加固主机会设置
+    ``NoDefaultCurrentDirectoryInExePath=1``（禁止从当前目录按裸名解析
+    可执行文件），此时 ``cmd /c GUI.bat`` 会报「不是内部或外部命令」——
+    这是**本机安全策略**，不是产品缺陷。为让测试在加固机与普通机上都
+    可判定，统一用显式相对路径 ``.\\<脚本>`` 调用（cwd 仍为仓库根，
+    与真实双击场景一致）。
+    """
+    return subprocess.run(
+        ["cmd.exe", "/c", f".\\{bat_name}", *bat_args],
         cwd=str(ROOT),
         capture_output=True,
         text=True,
         encoding="utf-8",
         errors="replace",
     )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="批处理脚本仅在 Windows 环境下验证")
+def test_batch_gui_preflight_only():
+    """验证从 CMD 双击/调用 GUI.bat --preflight-only 返回退出码 0"""
+    ret = _run_bat_from_repo_root("GUI.bat", "--preflight-only")
     assert ret.returncode == 0
     assert "Preflight Check" in ret.stdout or "通过" in ret.stdout
 
@@ -451,14 +466,7 @@ def test_batch_gui_preflight_only():
 @pytest.mark.skipif(sys.platform != "win32", reason="批处理脚本仅在 Windows 环境下验证")
 def test_batch_gui_help():
     """验证从 CMD 调用 GUI.bat --help 成功打印使用说明"""
-    ret = subprocess.run(
-        ["cmd.exe", "/c", "GUI.bat", "--help"],
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    ret = _run_bat_from_repo_root("GUI.bat", "--help")
     assert ret.returncode == 0
     assert "--preflight-only" in ret.stdout
     assert "--debug" in ret.stdout
@@ -467,14 +475,7 @@ def test_batch_gui_help():
 @pytest.mark.skipif(sys.platform != "win32", reason="批处理脚本仅在 Windows 环境下验证")
 def test_batch_qi_dong_gui_preflight_only():
     """验证中文友好入口 启动GUI.bat --preflight-only 正确代理执行"""
-    ret = subprocess.run(
-        ["cmd.exe", "/c", "启动GUI.bat", "--preflight-only"],
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    ret = _run_bat_from_repo_root("启动GUI.bat", "--preflight-only")
     assert ret.returncode == 0
     assert "Preflight Check" in ret.stdout or "通过" in ret.stdout
 

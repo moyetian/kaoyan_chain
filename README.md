@@ -17,12 +17,12 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v2.8.0-blue?style=flat-square&logo=github&logoColor=white" alt="版本 v2.8.0" />
-  <img src="https://img.shields.io/badge/Tests-1637%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 1637 Passed" />
+  <img src="https://img.shields.io/badge/Tests-1700%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 1700 Passed" />
   <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-6366f1?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
   <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
   <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
-  <img src="https://img.shields.io/badge/KaoYan%20Intelligence-55%2B%E6%89%80%E9%AB%98%E6%A0%A1%E6%A1%A3%E6%A1%88-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white" alt="KaoYan Intelligence" />
-  <img src="https://img.shields.io/badge/Terminal%20TUI-v2.5%20%E6%9E%81%E5%AE%A2%E6%8E%A7%E5%88%B6%E5%8F%B0-3b82f6?style=flat-square&logo=gnometerminal&logoColor=white" alt="Terminal TUI" />
+  <img src="https://img.shields.io/badge/KaoYan%20Intelligence-57%2B%E6%89%80%E9%AB%98%E6%A0%A1%E6%A1%A3%E6%A1%88-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white" alt="KaoYan Intelligence" />
+  <img src="https://img.shields.io/badge/Terminal%20TUI-%E6%9E%81%E5%AE%A2%E6%8E%A7%E5%88%B6%E5%8F%B0-3b82f6?style=flat-square&logo=gnometerminal&logoColor=white" alt="Terminal TUI" />
   <img src="https://img.shields.io/badge/Dashboard-6%20Tabs-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
   <img src="https://img.shields.io/badge/Memory-3--Tier%20Pruning-f59e0b?style=flat-square&logo=speedtest&logoColor=white" alt="Memory" />
   <img src="https://img.shields.io/badge/Privacy-Local--First-10b981?style=flat-square&logo=shield&logoColor=white" alt="Privacy" />
@@ -182,13 +182,13 @@ ky
 > 考研学习链提供 **三大操作端** 供你自由选用：
 >
 > - 🖥️ **桌面可视化端**：输入 `ky gui`，享受 PySide6 构建的高颜值多主题看板（5 套主题预设含护眼绿/樱粉/高对比）、倒计时与可视化做题面板！
-> - 📟 **终端全景中枢**：输入 `ky menu`，启动 TUI v2.5 极客控制台，键鼠双控、零多余依赖！
+> - 📟 **终端全景中枢**：输入 `ky menu`，启动 TUI 极客控制台，键鼠双控、零多余依赖！
 > - 💬 **流式对话私教**：输入 `ky`，即刻开启多轮推演与真题采分点打分！
 
 > [!TIP]
 > **装完先自检**：执行 `python tools/doctor.py`，一次性核对 Python 版本、可选依赖、四科协议、
 > `ky_config.json`、API 连通性与 Git 隐私隔离是否就绪；如需验证功能完整性，
-> 请在**干净副本**里跑 `python tools/test_ky_suite.py`（26 组 304 项断言，数分钟）。
+> 请在**干净副本**里跑 `python tools/test_ky_suite.py`（26 组 305 项断言，数分钟）。
 
 > [!WARNING]
 > **`tools/test_ky_suite.py` 会真实改写工作区用户数据**（备考方案 / 今日任务 / 大纲等），
@@ -228,7 +228,7 @@ ky
 - **原生动态库赋能**：在 `rust_ext/` 下采用 PyO3 + Maturin 构建高性能模块，试题智能分块、高校简章指纹 SHA-256、上下文 Token 压缩等性能敏感路径提速数十倍；
 - **极致 Local-First 兼容**：在未安装 Rust 编译环境或特定架构下，自动透明降级为纯 Python 基准实现，零破坏、零报错。
 
-### 4. 📟 终端全景智能中枢 (TUI v2.5 极客控制台)
+### 4. 📟 终端全景智能中枢 (TUI 极客控制台)
 
 - **键鼠双控面板**：运行 `ky menu`，呈现考研总战役倒计时、今日四科推进进度条、目标院校雷达与 10 大核心功能直达入口；
 方向键/鼠标选择、Enter 执行，长任务在后台线程运行不冻结界面，执行输出保留在右侧日志区不再一闪而过；
@@ -484,7 +484,7 @@ AI 私教只从你放入的白名单资料出题，白名单为空时仅按官�
 本项目包含覆盖全链路功能、权限沙箱、研招情报、Rust加速与真实 CLI 进程级 smoke test 的自动化回归套件：
 
 ```bash
-# 运行全套自动化质量回归测试 (26 组全链路回归测试，共 304 项断言)
+# 运行全套自动化质量回归测试 (26 组全链路回归测试，共 305 项断言)
 # ⚠️ 该套件会真实改写工作区用户数据，默认拒绝在真实考生工作区运行；
 #    请在干净副本里跑，或设 KY_TEST_ALLOW_REAL_WORKSPACE=1 显式放行（先备份 ky_config.json）。
 python tools/test_ky_suite.py
@@ -492,21 +492,23 @@ python tools/test_ky_suite.py
 # 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、开放题判分等，共 130 项断言)
 python tools/test_new_features.py
 
-# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 1206 项）
+# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 1268 项）
 python -m pytest -q
 ```
 
 > [!NOTE]
-> **测试计数已做成环境无关，但前提仍要写清**（下列数字为 2026-09-21 实测）：
+> **测试计数已做成环境无关，但前提仍要写清**（下列数字为 2026-09-24 实测）：
 >
-> - `test_ky_suite.py`：26 组共 **304 项断言**。Git 工作区内为 304 通过 / 0 跳过；
-> 干净检出（`git archive` 导出、无 `.git`）为 **299 通过 + 5 跳过 = 304** ——
-> 「测试组 7 Git 隐私隔离」的 5 条断言需 `.git`，无 `.git` 时逐条记为跳过，故**两种环境总数恒为 304**。
+> - `test_ky_suite.py`：26 组共 **305 项断言**。Git 工作区内为 305 通过 / 0 跳过；
+> 干净检出（`git archive` 导出、无 `.git`）为 **300 通过 + 5 跳过 = 305** ——
+> 「测试组 7 Git 隐私隔离」的 5 条断言需 `.git`，无 `.git` 时逐条记为跳过，故**两种环境总数恒为 305**。
 > - `test_new_features.py`：**130 项断言**（0 跳过），与是否 Git 工作区无关。
-> - `pytest tests/`：共 **1206 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
-> **含** `dist/` 构建产物，实测 1203 通过 + 3 跳过）。跳过项为联网测试未设
+> - `pytest tests/`：共 **1268 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
+> **含** `dist/` 构建产物，实测 1265 通过 + 3 跳过）。跳过项为联网测试未设
 > `KY_LIVE_TEST=1`（2 条）与一条需特定 registry 探测串的守卫（1 条）。
 > 在**无** `dist/` 的副本里跑，6 条打包断言会转为跳过 —— 收集总数不变，通过数下降。
+> 在**无 `cat` 的 Windows 裸机**（Git usr\bin 未加入 PATH）上，2 条沙箱阴性对照会转为
+> 跳过 —— 收集总数不变，通过数下降（该路径由 CI 的 Linux/macOS 作业与 Git 自带 coreutils 覆盖）。
 > 在**公开副本**里跑还会少一整份 `tests/test_fix_publish_privacy.py`（私有工作区实测 106 项）：
 > 它测的 `tools/sync_publish.py` / `tools/build_package.py` 在公开副本里是刻意保留的占位文件，
 > 该测试只对私有工作区有意义，导出时按 `privacy_policy.PRIVATE_WORKSPACE_ONLY_PATHS` 剔除。
@@ -516,7 +518,7 @@ python -m pytest -q
 >
 > 改文档里的计数时，请**把对应环境一并写上**，否则下一个人会误判为「数字漂移」。
 
-- **测试保障**：主套件 26 组测试集 **304 项断言** + 新功能专项 **130 项断言** + pytest 单元/进程层 **1203 项**（合计 **1637 项通过**，另有 3 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
+- **测试保障**：主套件 26 组测试集 **305 项断言** + 新功能专项 **130 项断言** + pytest 单元/进程层 **1265 项**（合计 **1700 项通过**，另有 3 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
 - **门禁脚本**：`python tools/lint_check.py`（零依赖静态检查，只卡 ERROR 级问题）、`python tools/check_dashboard.py`（看板产物守卫）已接入 CI；
 - **CI 流水线**：内置 GitHub Actions 多平台 (Linux/Windows) 与多 Python 版本自动化测试保障；
 - **开发者文档**：如需参与贡献或了解完整项目架构树，请参阅 [🛠️ 开发者与贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。

@@ -12,9 +12,9 @@
 
 本模块是考研学习链的**静态网站生成器 (Static Site Generator)**：
 - **数据源输入**：扫描 `01-数学/`、`02-英语/`、`03-思想政治理论/`、`04-专业课/` 中的最新学情 Markdown 状态文件；
-- **核心构建引擎**：`build.py`（Python 3.8+ 标准库）；数学、PDF、图像和 OCR 增强技能按需安装根目录 `requirements.txt` 中的依赖；
+- **核心构建引擎**：`build.py`（Python 3.10+ 标准库）；数学、PDF、图像和 OCR 增强技能按需安装根目录 `requirements.txt` 中的依赖；
 - **产物输出**：
-  - `docs/index.html`（单文件自包含 HTML5 页面，原生内嵌 5 大 Tab、3D 翻转卡与毛玻璃遮罩）；
+  - `docs/index.html`（单文件自包含 HTML5 页面，原生内嵌 6 大 Tab、3D 翻转卡与毛玻璃遮罩）；
   - `docs/state_snapshot.json`（学情脱敏状态快照，供公开环境或第三方工具消费）。
 
 ---
@@ -38,29 +38,32 @@ python 05-考研看板/build.py
 
 ---
 
-## 三、 自定义章节提取规则 (`SECTION_MAP`)
+## 三、 自定义章节提取规则 (`SECTIONS`)
 
-`build.py` 通过顶部的 `SECTION_MAP` 字典定义从各科 Markdown 状态文件中提取哪些表格与内容块。
+看板不做关键词猜测：`05-考研看板/web/config.py` 中的 `SECTIONS` 字典，按**科目**声明「从哪个文件、抓哪个二级标题、生成哪类卡片」，`build.py` 只负责按这张表取数与渲染。
 
-若您自行修改了各科 `_状态/薄弱点雷达.md` 或 `核心速记.md` 的二级标题，请同步检查并修改 `build.py` 中的匹配关键词：
+每个条目是一个四元组 `(文件相对路径, 章节标题, 卡片类型, 附加参数)`；章节标题写 `None` 表示整篇解析（`今日任务` 用）：
 
 ```python
-# build.py 中的核心映射表
-SECTION_MAP = {
-    # 抽取为必背 3D 翻转卡 (memo)
-    "公式": {"tab": "memo", "type": "formula"},
-    "必背": {"tab": "memo", "type": "table"},
-    "帽子词": {"tab": "memo", "type": "table"},
-    
-    # 抽取为薄弱掌握度雷达与错题队列 (weak)
-    "掌握度": {"tab": "weak", "type": "radar"},
-    "错题": {"tab": "weak", "type": "queue"},
-    
-    # 抽取为学情数据与错因五分类 (stat)
-    "错因": {"tab": "stat", "type": "metric"},
-    "失误": {"tab": "stat", "type": "metric"},
+# 05-考研看板/web/config.py 中的核心映射表（节选）
+SECTIONS = {
+    "math": [
+        ("_状态/今日任务.md", None, "today", {}),
+        ("_状态/薄弱点雷达.md", "公式默写卡", "memo", {"mode": "formula", "front": 1}),
+        ("_状态/薄弱点雷达.md", "模块掌握度雷达", "weak", {"front": 0}),
+        ("_状态/薄弱点雷达.md", "错因五分类", "stat", {"label": 1, "value": 4}),
+    ],
+    # eng / pol / pro 三科同理；mode_b（双专业课）会额外追加 "pro2"
 }
 ```
+
+卡片类型共四种：`today`（今日任务清单）、`memo`（必背翻转卡）、`weak`（薄弱雷达与错题队列）、`stat`（学情指标）。
+
+> [!IMPORTANT]
+> `memo` / `weak` / `stat` 三类章节的内容**必须是标准 Markdown 表格**（`| 列1 | 列2 |` 形式）。
+> 若写成无序列表或纯段落，看板会**静默丢弃该章节的全部卡片**——页面不报错，只是卡片凭空消失。
+
+若您自行修改了各科 `_状态/薄弱点雷达.md` 等状态文件的二级标题，请同步修改 `web/config.py` 中对应的标题字符串；`SECTIONS` 的科目键需与 `SUBJECTS` 保持一致。
 
 ---
 
@@ -90,7 +93,7 @@ SECTION_MAP = {
 |---|---|---|
 | 页面能打开但数学公式显示为原始 LaTeX | 离线无网且 CDN 无法加载 | 无需担心，看板已内置 `fallbackMathUnicode` 符号降级解析器，关键公式仍可正常阅读 |
 | 看板中的任务依然是昨天的旧数据 | 在保存状态文件之前就运行了构建 | 确认各科 `今日任务.md` 已保存后，再次运行 `ky build` |
-| 某科目的特定表格没有出现在看板中 | 表格的 Markdown 表头格式不标准，或章节标题被修改 | 确保使用标准 `\| col1 \| col2 \|` 表格语法，并对照 `SECTION_MAP` 检查标题 |
+| 某科目的特定表格没有出现在看板中 | 表格的 Markdown 表头格式不标准，或章节标题被修改 | 确保使用标准 `\| col1 \| col2 \|` 表格语法，并对照 `web/config.py` 中的 `SECTIONS` 检查标题 |
 
 ---
 

@@ -363,9 +363,14 @@ def identity_repo(tmp_path, monkeypatch):
     subj.mkdir(parents=True)
     for name in IDENTITY_NAMES:
         _write(subj / name, "IDENTITY")
-    # 对照组：正常文件必须保留
-    _write(subj / "2027考纲_814信号与系统.md", "OK")
+    # 对照组：正常文件必须保留（``20XX考纲_*`` 已按隐私策略全量剔除，
+    # 故用随仓库公开的 ``考试大纲.md`` 这类文件做对照）
+    _write(subj / "考试大纲.md", "OK")
     _write(subj / "AGENTS.md", "OK")
+    # 本地产物（.gitignore 已忽略）：不含身份，但两条打包路径都不得收录
+    _write(subj / "2027考纲_814信号与系统.md", "LOCAL-ARTIFACT")
+    _write(subj / "演示样例" / "考纲变动分析_示例.md", "DEMO")
+    _write(src / "data" / "universities" / "_sources" / "chsi_schools.json", "RAW-SNAPSHOT")
     # 公开高校库：校名在这里是功能数据，绝不能被当身份剔除
     _write(src / "data" / "universities" / "河南" / "示例农业大学.yaml", "PUBLIC-DB")
 
@@ -381,10 +386,11 @@ def identity_repo(tmp_path, monkeypatch):
 
 
 def test_staging_excludes_identity_named_files(identity_repo, tmp_path):
-    """staging（→ PyInstaller 的 _internal/）不得收录身份文件名。
+    """staging（→ PyInstaller 的 _internal/）不得收录身份文件名与本地产物。
 
-    这是「通用规则 + 打包特有规则」两层过滤的核心：只套 should_publish()
-    时，这 4 个文件全部会进 staging。
+    这是「通用规则 + 打包特有规则」两层过滤的核心：``should_publish()``
+    与 ``_is_junk()`` 各自拦下一部分（``双校对标_`` 靠 _is_junk、
+    ``20XX考纲_`` 靠 should_publish），缺任一层都会漏。
     """
     staging = tmp_path / "staging"
     staging.mkdir()
@@ -395,22 +401,30 @@ def test_staging_excludes_identity_named_files(identity_repo, tmp_path):
     assert not left, f"身份文件名进入了 staging: {left}"
 
     # 对照组：正常文件与公开高校库必须保留
-    assert (staging / "04-专业课" / "2027考纲_814信号与系统.md").exists()
+    assert (staging / "04-专业课" / "考试大纲.md").exists()
     assert (staging / "04-专业课" / "AGENTS.md").exists()
     assert (staging / "data" / "universities" / "河南" / "示例农业大学.yaml").exists(), \
         "公开高校库被误当身份剔除（校名在 data/ 下是功能数据）"
+    # 本地产物：不得进入 staging
+    assert not (staging / "04-专业课" / "2027考纲_814信号与系统.md").exists()
+    assert not (staging / "04-专业课" / "演示样例").exists()
+    assert not (staging / "data" / "universities" / "_sources").exists()
 
 
 def test_deploy_skeleton_excludes_identity_named_files(identity_repo, tmp_path):
-    """顶层骨架部署同样不得留下身份文件名。"""
+    """顶层骨架部署同样不得留下身份文件名与本地产物。"""
     dst = tmp_path / "dst"
     bp.deploy_workspace_skeleton(dst)
 
     left = [str(p.relative_to(dst)) for p in dst.rglob("*")
             if p.is_file() and any(n in p.name for n in IDENTITY_NAMES)]
     assert not left, f"身份文件名进入了发布包: {left}"
-    assert (dst / "04-专业课" / "2027考纲_814信号与系统.md").exists()
+    assert (dst / "04-专业课" / "考试大纲.md").exists()
     assert (dst / "data" / "universities" / "河南" / "示例农业大学.yaml").exists()
+    # [2026-09-24 检查补漏] 本地产物同样不得进入发布包根（dist 实测曾泄漏）
+    assert not (dst / "04-专业课" / "2027考纲_814信号与系统.md").exists()
+    assert not (dst / "04-专业课" / "演示样例").exists()
+    assert not (dst / "data" / "universities" / "_sources").exists()
 
 
 def test_leak_reason_flags_identity_filename():
