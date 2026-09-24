@@ -98,8 +98,8 @@
    当前提供 **`KaoyanStudyChain-v3.0.0.zip`** —— 解压即用的免装目录（压缩包约 380 MB，解压后约 1 GB）。
    > 安装版（`KaoyanStudyChain_Setup_v3.0.0.exe`）需要用 Inno Setup 编译，当前版本暂未提供，后续补上。
 2. **解压 / 启动**：把 zip 解压到任意文件夹（**不要放在需要管理员权限的目录**，
-   如 `C:\Program Files`），运行 `KaoyanStudyChain.exe`，或双击 `启动GUI.bat`。
-3. **启动并跟随引导配置**：运行 `KaoyanStudyChain`（或双击 `启动GUI.bat`），
+   如 `C:\Program Files`），运行 `KaoyanStudyChain.exe`，或双击 `调试启动.bat`（带控制台，方便排错）。
+3. **启动并跟随引导配置**：运行 `KaoyanStudyChain`（或双击 `调试启动.bat`），
    首次启动会引导你完成：
    - 填写**大模型 API Key**（DeepSeek / GLM / Qwen / Kimi / OpenAI / 本地 Ollama 均可，兼容 OpenAI 接口）；
    - 选择**报考院校、专业与考试科目**；
