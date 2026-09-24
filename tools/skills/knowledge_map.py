@@ -517,3 +517,39 @@ def format_knowledge_map_table(subject="math"):
     lines.append(f"💡 建议：主攻 [C] 与 [D] 评级考点，在终端输入「/variant <考点>」立即展开变式题专项训练！")
     lines.append(f"============================================================\n")
     return "\n".join(lines)
+
+
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    图谱的**唯一输入**是各科「考试大纲.md」：四科中至少有一科存在且非占位模板
+    → READY；否则 UNAVAILABLE 并点名缺哪一科 —— 旧硬编码"已就绪"时用户会对着
+    空图谱纳闷。只做文件存在性 + 占位标记读取（KB 级，纯本地）。
+    """
+    valid, placeholder_only, missing = [], [], []
+    for subject, folder in SUBJECT_DIRS.items():
+        s_dir = ROOT / folder
+        syllabus_file = s_dir / "考试大纲.md"
+        if not syllabus_file.exists():
+            syllabus_file = s_dir / "01_官方考试大纲与核心考点.md"
+        if not syllabus_file.exists():
+            missing.append(subject)
+            continue
+        try:
+            txt = syllabus_file.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            missing.append(subject)
+            continue
+        if _is_placeholder_syllabus(txt):
+            placeholder_only.append(subject)
+        else:
+            valid.append(subject)
+
+    if valid:
+        return {"status": "READY",
+                "reason": f"考纲图谱可用（{'/'.join(valid)} 共 {len(valid)} 科大纲已填写）"}
+    if placeholder_only:
+        return {"status": "UNAVAILABLE",
+                "reason": f"考试大纲仍为未填写的占位模板（{'/'.join(placeholder_only)}），图谱将为空；请填写对应科目的「考试大纲.md」"}
+    return {"status": "UNAVAILABLE",
+            "reason": f"未找到考试大纲文件（{'/'.join(missing)}），图谱将为空；请在各科目录建立「考试大纲.md」"}

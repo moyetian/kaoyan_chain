@@ -176,6 +176,26 @@ def get_status() -> str:
     return f"已启用（{n} 位评审模型）" if n else "未启用（未配置评审模型）"
 
 
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    判据是"开放题判分链路是否真的会跑多模型评审"：
+      * 未启用（或启用但没配评审模型）→ DEGRADED：开放题会按设计**回落人工复核**，
+        功能不算坏，但不能算"已就绪"（旧实现恰恰把这种情况也当就绪，误导用户）。
+      * 启用且评审编队非空 → READY。
+    只读 ky_config.json，不联网、不建连接（评审模型是否真能应答由 ky doctor 的
+    模型探活负责）。
+    """
+    cfg = _load_grading_config()
+    if not cfg.get("enabled"):
+        return {"status": "DEGRADED",
+                "reason": "未启用，开放题判分将回落人工复核（可在 ky_config.json 的 exam_grading 段启用）"}
+    n = len([r for r in (cfg.get("reviewers") or []) if r.get("enabled", True)])
+    if n:
+        return {"status": "READY", "reason": f"已启用，{n} 位评审模型参与初评与仲裁"}
+    return {"status": "DEGRADED", "reason": "已启用但未配置评审模型，开放题判分将回落人工复核"}
+
+
 def build_ensemble(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     """构建评审编队。
 

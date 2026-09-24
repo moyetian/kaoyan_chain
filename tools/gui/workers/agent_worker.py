@@ -5,6 +5,7 @@ Agent Loop 异步执行 Worker，防止 GUI 主线程阻塞
 
 import sys
 from pathlib import Path
+from typing import Optional
 from PySide6.QtCore import QThread, Signal
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -21,10 +22,34 @@ class AgentWorker(QThread):
     #: 中间思考过程与工具调用事件（推送到 GUI 聊天框，无需查看外部终端黑框）
     step_signal = Signal(str)
 
+    #: [B3b] 进程内共享的 GUI 会话 id：GUI 每条消息都新建一个 AgentWorker，
+    #: 若各自新建会话则「每问一句产生一个新 .jsonl」。改由类级变量在首次
+    #: 发消息时生成一次，此后所有 worker 复用同一个会话文件。
+    _shared_session_id: Optional[str] = None
+
+    @classmethod
+    def _resolve_session_id(cls) -> Optional[str]:
+        """取/建进程内共享的 GUI 会话 id；任何失败返回 None（回落既有行为）。
+
+        只生成 id（``SessionLog`` 懒创建，不碰磁盘）；真正的日志文件在首次
+        有效 run 时由 AgentRunner 写入。
+        """
+        if cls._shared_session_id is None:
+            try:
+                try:
+                    from agent.session_log import SessionLog
+                except ImportError:
+                    from tools.agent.session_log import SessionLog
+                cls._shared_session_id = SessionLog(workspace_root=ROOT).session_id
+            except Exception:
+                cls._shared_session_id = ""
+        return cls._shared_session_id or None
+
     def __init__(self, config: dict, user_input: str, timeout: float = None):
         super().__init__()
         self.config = config or {}
         self.user_input = user_input
+        self._session_id = self._resolve_session_id()
         if timeout is None:
             try:
                 self.timeout = float(self.config.get("request_timeout") or 120.0)
@@ -33,6 +58,24 @@ class AgentWorker(QThread):
         else:
             self.timeout = float(timeout)
         self._is_cancelled = False
+        # [A3b 修复·GUI 审批通道] 桌面端里有人在场：Level 4（网络）/ Level 5
+        # （破坏性）此前走 headless 默认策略被静默拒绝，用户只看到
+        # 「PermissionDenied: 操作被拦截」。这里在**主线程**构造 GUI 弹窗通道
+        # （Qt 对象必须归属主线程），run() 里注入给 AgentRunner。
+        # 构造失败（无 PySide6 / 无 QApplication / 任何异常）一律降级为 None，
+        # 回落到既有默认通道，绝不因此让任务崩溃。
+        self._approval_channel = self._build_approval_channel()
+
+    def _build_approval_channel(self):
+        """构造 GUI 审批通道；任何异常返回 None（回落默认通道）。"""
+        try:
+            try:
+                from gui.approval_bridge import GuiApproval, resolve_approval_timeout
+            except ImportError:
+                from tools.gui.approval_bridge import GuiApproval, resolve_approval_timeout
+            return GuiApproval(timeout=resolve_approval_timeout(self.config))
+        except Exception:
+            return None
 
     def cancel(self):
         """中止任务"""
@@ -286,6 +329,7 @@ class AgentWorker(QThread):
             self.finished_signal.emit(local_reply)
             return
 
+        runner = None
         try:
             try:
                 from agent.loop import AgentRunner
@@ -294,12 +338,23 @@ class AgentWorker(QThread):
             runner = AgentRunner(
                 config=self.config,
                 workspace_root=ROOT,
-                permission_mode="acceptEdits",
+                # [A3a/G13 修复] 此前传 "acceptEdits"：PermissionManager 不认识
+                # 这个 Claude Code 系命名，静默回退成 `ask`，再叠加 GUI 的
+                # `interactive=False` → Level 1+ 写操作**全部被拒**（桌面端
+                # 完全写不了文件）。现传规范化后的 `auto`：Level 0-3 自动执行，
+                # Level 4-5 交由审批通道。
+                permission_mode="auto",
+                # [A3b 修复] Level 4-5 走 GUI 弹窗（批准 / 本会话信任 / 拒绝），
+                # 而不是 headless 默认的静默拒绝。
+                approval_channel=self._approval_channel,
                 max_steps=8,
                 request_timeout=self.timeout,
                 stream_callback=self._emit_chunk,
                 step_callback=self._emit_step,
                 quiet=True,
+                # [B3b] 同一 GUI 会话的所有消息复用同一个 .jsonl（跨消息保持
+                # 上下文可追溯），而不是每问一句新建一个会话文件。
+                session_id=self._session_id,
             )
             reply = runner.run(self.user_input, interactive=False)
             if self._is_cancelled:
@@ -319,3 +374,10 @@ class AgentWorker(QThread):
                 f"（若为超时，说明上游在 {self._safe_timeout_text()} 秒内无响应，"
                 f"请稍后重试或检查网络/代理）"
             )
+        finally:
+            # [B3b] 收尾：写 session_end 事件并关闭日志句柄（close 幂等、内部
+            # 不抛）。同一 GUI 会话跨多条消息会产生多条 session_end —— 可接受
+            # （每条消息一个 runner 的生命周期），真正的会话上下文由共享
+            # session_id 的同一份 JSONL 保留。
+            if runner is not None:
+                runner.close()

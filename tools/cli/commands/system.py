@@ -26,7 +26,7 @@ except ImportError:
         from version import get_version
     except ImportError:
         def get_version() -> str:
-            return "2.8.0"
+            return "3.0.0"
 
 
 def _cmd_version(args: List[str]) -> None:

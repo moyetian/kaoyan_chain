@@ -195,6 +195,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     except Exception:
         pass
 
+    # [A3a/G13 修复] 权限模式解析走单一实现处（`normalize_mode`）：别名
+    # `acceptEdits` 归一到 `auto`，未知模式**显式报错**而不是静默回退成 ask
+    # —— 旧行为下 `--permission=SAFE` 会悄悄变成 `ask`，用户以为只读却拿到了
+    # 可批准的写权限。
+    try:
+        from tools.agent.permissions import normalize_mode
+    except ImportError:
+        from agent.permissions import normalize_mode  # type: ignore
+    try:
+        permission_mode = normalize_mode(permission_mode)
+    except ValueError as exc:
+        print(colorize(f"\n[✘ 已拒绝] {exc}\n", C.RED))
+        sys.exit(3)
+
     if permission_mode == "safe":
         violation = detect_safe_mode_violation(args)
         if violation:

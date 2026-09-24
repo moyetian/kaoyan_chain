@@ -120,7 +120,7 @@ def test_inno_setup_scripts_specification():
 
         # 1. 验证版本号与应用名称
         assert 'MyAppName "考研学习链"' in content
-        assert 'MyAppVersion "2.8.0"' in content
+        assert 'MyAppVersion "3.0.0"' in content
         assert 'MyAppExeName "KaoyanStudyChain.exe"' in content
 
         # 2. 验证纯正简体中文语言包与自定义消息

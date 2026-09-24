@@ -1,6 +1,6 @@
 ﻿; 考研学习链 (Kaoyan Study Chain) · Inno Setup 自动化安装向导脚本
 #define MyAppName "考研学习链"
-#define MyAppVersion "2.8.0"
+#define MyAppVersion "3.0.0"
 #define MyAppPublisher "Kaoyan Study Chain Community"
 #define MyAppURL "https://github.com/moyetian/kaoyan_chain"
 #define MyAppExeName "KaoyanStudyChain.exe"

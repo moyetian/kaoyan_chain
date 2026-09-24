@@ -985,3 +985,26 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
                  root=ROOT, error_logger=error_logger, open_keys=_open_keys_payload,
                  grade_open=_grade_open_by_llm, extract_tokens=_extract_answer_tokens,
                  norm_tokens=_norm_numeric_tokens, text_hit=_text_answer_hit)
+
+
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    组卷有两条腿：本地题库/到期错题（永远可用）与 LLM 靶向命题（需 API Key）。
+      * 已配置 Key → READY：题库不足时可由大模型补题；
+      * 未配置 Key → DEGRADED：题库与到期错题不足时会返回空卷，只能靠已有题库组卷。
+    只读 ky_config.json 判断，不联网（旧硬编码"已就绪"掩盖的正是后者）。
+    """
+    if not callable(globals().get("grade_exam_paper")):
+        return {"status": "UNAVAILABLE", "reason": "判分/组卷核心入口缺失，ky exam 将不可用"}
+    import json as _json
+    from pathlib import Path as _Path
+    cfg: dict = {}
+    try:
+        cfg = _json.loads((_Path(ROOT) / "ky_config.json").read_text(encoding="utf-8"))
+    except Exception:
+        cfg = {}
+    if str(cfg.get("api_key", "") or "").strip():
+        return {"status": "READY", "reason": "本地题库组卷 + LLM 靶向补题全链路可用"}
+    return {"status": "DEGRADED",
+            "reason": "未配置大模型 API Key：本地题库/到期错题不足时无法 LLM 补题，仅能使用已有题库组卷"}

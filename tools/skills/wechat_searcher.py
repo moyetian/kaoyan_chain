@@ -901,3 +901,20 @@ def search_wechat_articles(
 # 别名兼容
 search_wechat_experiences = wechat_search
 
+
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    本技能零第三方依赖（纯标准库 + 外网检索）：用**真调一次最小用例**验证
+    关键词去噪链路可用。联网可达性不做探活（慢且离线会假红），在 reason 中如实
+    标注"需联网"——调用失败时由检索层给出网络错误提示。
+    """
+    try:
+        kw = denoise_keyword("样本关键词（测试）")
+    except Exception as e:  # noqa: BLE001 - 自检异常必须收敛为可见状态
+        return {"status": "UNAVAILABLE",
+                "reason": f"关键词去噪链路失败（{type(e).__name__}: {e}），ky wechat 将不可用"}
+    if kw is None:
+        return {"status": "UNAVAILABLE", "reason": "关键词去噪产出为空，ky wechat 将不可用"}
+    return {"status": "READY", "reason": "多源检索与 Markdown 清洗可用（零第三方依赖；检索需联网）"}
+

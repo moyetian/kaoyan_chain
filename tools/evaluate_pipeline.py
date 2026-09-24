@@ -6,8 +6,13 @@
 
   1. ``--srs``   FSRS 校准度评测（RMSE / LogLoss / 预测-实际保留率偏差）
      数据来源：``.memory/review_log.jsonl``（由 error_logger 在每次复测回写时追加）
-     预测模型：以该题**复测前**的档位重建卡片，取**实际复测时刻**的可回想概率 p；
-              实际结果 y = 1（good/easy 想起）或 0（hard/again 未想起）。
+     预测模型：以该题**复测前**的档位重建卡片，并把重建链的时间轴平移对齐到
+              日志记录的计划到期日，取**实际复测时刻**（到期日 + 迟延天数）的
+              可回想概率 p；实际结果 y = 1（good/easy 想起）或 0（hard/again 未想起）。
+     有效样本口径：``stage_before >= 1`` 且 ``due_before`` 可解析 —— **未复习卡
+              （stage_before=0）不在 FSRS 可校准域**（py-fsrs 对全新 Card 的
+              retrievability 返回 0 是正确行为，评测端不得解读为"预测必忘"），
+              其余事件计入 excluded 并附原因，不参与指标计算。
 
   2. ``--ragas`` 引文忠实度评测（反幻觉闸门的功能评测）
      数据来源：内置**带标注**用例集（正例应通过、反例应被拒绝），
@@ -70,32 +75,66 @@ def load_review_log(path: Optional[Path] = None) -> List[Dict[str, Any]]:
     return events
 
 
-def _predict_recall_probability(stage_before: int, due_before: str, days_late: int) -> Optional[float]:
-    """预测"在本次复测时刻能想起"的概率。
+def _predict_recall_probability(
+    stage_before: int, due_before: str, days_late: int
+) -> Tuple[Optional[float], str]:
+    """预测"在本次复测时刻能想起"的概率；返回 ``(p, reason)``。
 
-    做法：用 ``stage_before`` 次 good 复习重建记忆稳定性（与
-    ``fsrs_scheduler.compute_next_interval`` 同一套快进逻辑），
-    再取该卡片在**实际复测时刻**的可回想概率。
-    实际复测时刻 = 计划到期日 + 迟延天数（按时复测即等于计划到期日）。
+    重建方式：用 ``stage_before`` 次 good 复习快进记忆稳定性（与
+    ``fsrs_scheduler.compute_next_interval`` 同一套快进逻辑），并把重建链的
+    时间轴**平移对齐到日志记录的计划到期日**（``due_before``），使
+    "上次复习 → 计划到期"的间隔与真实调度一致；再取卡片在
+    "计划到期日 + 迟延天数"时刻的可回想概率。
+
+    不可用样本返回 ``(None, reason)``：
+
+    - ``"stage0"``：``stage_before == 0`` 的未复习卡不在可校准域（历史版本
+      曾把 py-fsrs 对全新卡的 retrievability=0 当成"预测必忘"，导致 RMSE=1.0）。
+    - ``"invalid_due"``：``due_before`` 缺失或不可解析，无法对齐时间轴。
+    - ``"predict_failed"``：重建或取值失败（依赖缺失、参数异常等）。
     """
     try:
-        from fsrs import Card, Rating  # noqa: F401
+        stage = max(0, int(stage_before or 0))
+    except (TypeError, ValueError):
+        return None, "predict_failed"
+    if stage < 1:
+        return None, "stage0"
+
+    due_text = str(due_before or "").strip()[:10]
+    if not due_text:
+        return None, "invalid_due"
+    try:
+        target_due = datetime.strptime(due_text, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None, "invalid_due"
+
+    try:
+        from fsrs import Card, Rating
         from fsrs_scheduler import make_scheduler
 
         sched = make_scheduler()
         base = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        card = Card()
-        cursor = base
-        for _ in range(max(0, int(stage_before or 0))):
-            card, _log = sched.review_card(card, Rating.Good, cursor)
-            cursor = card.due
-        probe = cursor + timedelta(days=max(0, int(days_late or 0)))
+
+        def _fast_forward(origin: datetime):
+            card = Card()
+            cursor = origin
+            for _ in range(stage):
+                card, _log = sched.review_card(card, Rating.Good, cursor)
+                cursor = card.due
+            return card, cursor
+
+        _card, natural_due = _fast_forward(base)
+        # 时间轴平移：让重建链的"下次计划到期日"对齐到日志记录的 due_before。
+        shift = target_due - natural_due
+        card, _cursor = _fast_forward(base + shift)
+
+        probe = target_due + timedelta(days=max(0, int(days_late or 0)))
         value = sched.get_card_retrievability(card, probe)
         if value is None:
-            return None
-        return max(1e-6, min(1 - 1e-6, float(value)))
+            return None, "predict_failed"
+        return max(1e-6, min(1 - 1e-6, float(value))), ""
     except Exception:
-        return None
+        return None, "predict_failed"
 
 
 def evaluate_srs_benchmark(
@@ -104,30 +143,48 @@ def evaluate_srs_benchmark(
 ) -> Dict[str, Any]:
     """计算 FSRS 预测的 RMSE / LogLoss 与保留率偏差。
 
+    有效样本口径：``rating`` 合法、``stage_before >= 1``、``due_before`` 可解析。
+    其余事件计入 ``excluded``（附原因分类），不参与指标计算。
+
     Returns:
-        ``{"evaluable": bool, "reason": str, "samples": int, "rmse": float, ...}``
+        ``{"evaluable": bool, "reason": str, "samples": int, "excluded": {...}, ...}``
     """
     events = load_review_log() if events is None else list(events)
 
     pairs: List[Tuple[float, int]] = []
+    excluded: Dict[str, int] = {}
+
     for ev in events:
         rating = str(ev.get("rating", "")).strip().lower()
         if rating not in ("again", "hard", "good", "easy"):
+            excluded["invalid_rating"] = excluded.get("invalid_rating", 0) + 1
             continue  # 缺少评级的事件无法判定实际结果
-        p = _predict_recall_probability(
+        p, reason = _predict_recall_probability(
             ev.get("stage_before", 0), str(ev.get("due_before", "")), ev.get("days_late", 0)
         )
         if p is None:
+            key = reason or "predict_failed"
+            excluded[key] = excluded.get(key, 0) + 1
             continue
         y = 1 if rating in ("good", "easy") else 0
         pairs.append((p, y))
 
-    result: Dict[str, Any] = {"evaluable": False, "samples": len(pairs), "reason": ""}
+    result: Dict[str, Any] = {
+        "evaluable": False,
+        "samples": len(pairs),
+        "total_events": len(events),
+        "excluded": excluded,
+        "reason": "",
+    }
     if len(pairs) < min_samples:
+        detail = "、".join(f"{k}×{v}" for k, v in sorted(excluded.items())) or "无"
         result["reason"] = (
-            f"有效复测样本仅 {len(pairs)} 条，少于可信评测所需的最小样本量 {min_samples} 条。"
-            "请先通过 `ky review` 完成若干轮错题复测（每次回写都会追加一条事件到 "
-            f"{REVIEW_LOG_FILE.relative_to(ROOT)}），积累后再运行本评测。"
+            f"有效复测样本仅 {len(pairs)} 条（原始事件 {len(events)} 条，已排除：{detail}）。"
+            "未复习卡（stage_before=0）不在 FSRS 可校准域，不计入有效样本；"
+            "请先通过 `ky review` 对同一错题完成若干轮复测（达 stage≥1），"
+            "每次回写都会追加一条事件到 "
+            f"{REVIEW_LOG_FILE.relative_to(ROOT)}，"
+            f"有效样本达到 {min_samples} 条后再运行本评测。"
         )
         return result
 
@@ -154,6 +211,10 @@ def evaluate_srs_benchmark(
 
 def _print_srs_result(res: Dict[str, Any]) -> None:
     print("\n=== FSRS 校准度评测 (srs-benchmark 口径) ===")
+    excluded = res.get("excluded") or {}
+    if excluded:
+        detail = "、".join(f"{k}×{v}" for k, v in sorted(excluded.items()))
+        print(f"  已排除样本         : {detail}")
     if not res["evaluable"]:
         print(f"  ⚠️ 不可评测：{res['reason']}")
         return

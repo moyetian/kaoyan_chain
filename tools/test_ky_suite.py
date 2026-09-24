@@ -97,6 +97,10 @@ def run_tests():
         "*/_状态/*.md",
         ".memory/*.md",
         ".memory/**/*.md",
+        # [A1 补漏] review_log.jsonl 是 FSRS 校准评测的样本源，此前不在快照范围 ——
+        # 测试期间对它的追加会跨运行累积（曾积 36 条同质 stage0 残留，把评测
+        # 误导成 RMSE=1.0 的红灯）。纳入快照/还原，与 .memory/*.md 同等待遇。
+        ".memory/*.jsonl",
         ".memory/exam_keys/*.json",
         "docs/index.html",
         "docs/state_snapshot.json",
@@ -847,10 +851,16 @@ def run_tests():
     #    【隔离沙箱】error_logger 的 ROOT 指向真实工作区，直接调用会把测试错题
     #    写进学员真实的「01-数学/错题本/」造成数据污染（曾积累 30+ 条假错题）。
     #    此处将 ROOT 临时指向系统临时目录，测试结束后自动还原。
+    #    【沙箱补漏】REVIEW_LOG_FILE 是导入期按真实 ROOT 固化的**独立模块常量**，
+    #    只改 ROOT 不会跟随 —— mark_error_status 成功回写时仍会把复测事件追加
+    #    进学员真实的 .memory/review_log.jsonl（曾积累 36 条同质测试残留，全部
+    #    stage0，会污染 FSRS 校准评测的样本池）。故此处一并指向沙箱。
     import tempfile as _tempfile
     _el_real_root = el_test.ROOT
+    _el_real_review_log = el_test.REVIEW_LOG_FILE
     _el_sandbox = Path(_tempfile.mkdtemp(prefix="ky_test_errlog_"))
     el_test.ROOT = _el_sandbox
+    el_test.REVIEW_LOG_FILE = _el_sandbox / ".memory" / "review_log.jsonl"
     try:
         el_test.log_error_record("math", "泰勒展开阶数匹配失误", "审题偏差", "展开至3阶漏掉余项", "严格对照分母极限阶数", question="求极限 lim (tan(x)-x)/x^3")
         # [重构修正] 新记录的下次到期日由 FSRS 实时给出（stage=0/good 实测为 2 天后，
@@ -887,6 +897,7 @@ def run_tests():
         )
     finally:
         el_test.ROOT = _el_real_root
+        el_test.REVIEW_LOG_FILE = _el_real_review_log
         import shutil as _shutil
         _shutil.rmtree(_el_sandbox, ignore_errors=True)
 

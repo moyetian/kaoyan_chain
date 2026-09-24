@@ -63,6 +63,7 @@ WRITE_COMMAND_SAMPLES = {
     "plan":        ["plan"],
     "relieve":     ["relieve"],
     "rollback":    ["rollback"],
+    "session":     ["session", "fork", "abc"],
     "style":       ["style", "2"],
     "subject":     ["subject"],
     "variant":     ["variant", "导数定义"],
@@ -494,6 +495,49 @@ def test_late_imported_alias_inherits_read_only_flag():
                        text=True, encoding="utf-8", errors="replace", timeout=120)
     assert r.returncode == 0, f"子进程失败: {r.stdout}\n{r.stderr}"
     assert "OK" in r.stdout
+
+
+def test_alias_recognized_across_drive_case_variants():
+    """同一份 ky_io.py 经不同盘符大小写的 sys.path 条目加载时，别名必须仍判为兄弟。
+
+    [实测根因] ``_sibling_modules`` 原用 ``os.path.abspath(f) == here`` 做
+    **大小写敏感**的字符串比较。Windows 文件系统不区分大小写：pytest 的
+    ``pythonpath=["."]``（根目录盘符大小写随 shell cwd）与测试文件自插入的
+    ``tools`` 目录（盘符大小写随 ``__file__``）可能给出仅差盘符大小写的
+    ``__file__`` —— 比较失败 → 兄弟识别为空 → 跨别名 fail-closed 判定静默
+    失效（本机全量 pytest 实测：``test_read_only_flag_is_shared_across_ky_io_aliases``
+    与 ``test_read_only_flag_is_fail_closed_across_aliases`` 间歇变红，是否复现
+    取决于调用方 shell 设置的 cwd 盘符大小写）。
+
+    阴性对照：把 ``_sibling_modules`` 里的 ``os.path.normcase`` 去掉，本用例变红
+    （子进程里 ``a._sibling_modules()`` 返回空列表）。
+    """
+    tools_dir = str(REPO_ROOT / "tools")
+    tools_alt = tools_dir[0].swapcase() + tools_dir[1:]
+    if tools_alt == tools_dir:
+        pytest.skip("当前平台路径大小写不敏感变体不适用（POSIX 大小写敏感）")
+
+    snippet = (
+        "import sys\n"
+        "sys.path.insert(0, r'{root}')\n"       # 原盘符（如 C:）→ 解析 tools 包
+        "sys.path.insert(0, r'{tools_alt}')\n"  # 变体盘符（如 c:）→ 解析顶层 ky_io
+        "import importlib\n"
+        "a = importlib.import_module('tools.ky_io')\n"
+        "b = importlib.import_module('ky_io')\n"
+        "assert a is not b\n"
+        "sib = [m.__name__ for m in a._sibling_modules()]\n"
+        "assert sib == ['ky_io'], (\n"
+        "    '大小写变体路径下兄弟别名识别失败: ' + repr(sib)\n"
+        "    + ' | a.__file__=' + repr(a.__file__) + ' b.__file__=' + repr(b.__file__))\n"
+        "a.set_read_only_mode(True)\n"
+        "assert b.is_read_only_mode() is True, '只读标志未跨大小写变体别名同步'\n"
+        "print('CASE_ALIAS_OK')\n"
+    ).format(root=REPO_ROOT, tools_alt=tools_alt)
+
+    r = subprocess.run([sys.executable, "-c", snippet], capture_output=True,
+                       text=True, encoding="utf-8", errors="replace", timeout=120)
+    assert r.returncode == 0, f"子进程失败: {r.stdout}\n{r.stderr}"
+    assert "CASE_ALIAS_OK" in r.stdout
 
 
 # ───────────────────────── 真实 CLI 端到端（沙箱） ─────────────────────────

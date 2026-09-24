@@ -10,15 +10,67 @@ Level 4 = Network (网络访问)
 Level 5 = Dangerous (删除与破坏性操作)
 """
 
-import sys
 import json
-from pathlib import Path
 from typing import Dict, Any, Tuple
 
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
     from ky_io import atomic_write_text  # noqa: E402
 except ImportError:  # pragma: no cover
     from tools.ky_io import atomic_write_text  # noqa: E402
+
+try:  # 双导入路径兼容
+    from .approval import (  # noqa: E402
+        DEFAULT_HEADLESS_POLICY,
+        resolve_headless_allow_tools,
+        resolve_headless_policy,
+        select_channel,
+        tool_name_matches,
+    )
+except ImportError:  # pragma: no cover
+    from agent.approval import (  # type: ignore # noqa: E402
+        DEFAULT_HEADLESS_POLICY,
+        resolve_headless_allow_tools,
+        resolve_headless_policy,
+        select_channel,
+        tool_name_matches,
+    )
+
+#: 合法权限模式（4 档，保持既有语义不变）
+VALID_MODES = ("ask", "auto", "safe", "plan")
+
+#: 外部叫法 → 本项目的模式。`acceptEdits` 是 Claude Code 系的命名，语义等价于
+#: 本项目的 `auto`（Level 0-3 自动执行、Level 4-5 询问）。
+#: [G13 修复] 此前任何不在 4 档里的字符串都被**静默**当成 `ask`，GUI 传的
+#: `acceptEdits` 因此悄悄降级，叠加非 TTY 判定后写操作全被拒。
+MODE_ALIASES = {"acceptedits": "auto"}
+
+#: [B2b] 「工作区外只读读取」审批用的工具名（不是真实工具名，仅作为审批卡片的标识）。
+#: 用户在卡片上选 [a]「本会话记住并信任此类操作」后，该键写入 ``session_allowed_tools``，
+#: 本会话内所有外部读取不再弹卡；不选 [a] 时按**目录**粒度记忆（见
+#: ``Sandbox.register_authorized_read_dir``）。
+EXTERNAL_READ_TOOL_NAME = "read_file@external"
+
+
+def normalize_mode(mode: Any) -> str:
+    """把外部传入的模式名规范化；**未知模式抛 ValueError 而不是静默回退**。
+
+    [G13 修复] 旧实现是 ``mode.lower() if mode in ("ask", "auto", "safe", "plan") else "ask"``：
+    判断用的是**原始大小写**，于是
+      * ``"SAFE"`` / ``"Auto"`` 这类大小写变体被判为非法 → 静默降级成 ``ask``，
+        请求只读却拿到可批准的写权限（安全降级，比 G13 本身更危险）；
+      * 任何拼写错误都无声变成 ``ask``，调用方以为自己拿到了别的模式。
+    现在：先 strip+lower，再查别名表，最后校验 4 档；都不中则显式报错。
+    """
+    raw = str(mode if mode is not None else "").strip().lower()
+    if raw in MODE_ALIASES:
+        return MODE_ALIASES[raw]
+    if raw in VALID_MODES:
+        return raw
+    raise ValueError(
+        f"未知权限模式 {mode!r}；合法值为 {', '.join(VALID_MODES)}"
+        f"（别名：{', '.join(sorted(MODE_ALIASES))}）"
+    )
+
 
 class PermissionLevel:
     READ_ONLY = 0      # 只读 (read_file, list_dir, grep, read_exam_paper, verify_math)
@@ -38,20 +90,69 @@ LEVEL_NAMES = {
 }
 
 class PermissionManager:
-    def __init__(self, mode: str = "ask", workspace_root=None):
+    def __init__(self, mode: str = "ask", workspace_root=None, config=None,
+                 approval_channel=None):
         """
         mode:
           - 'ask': 默认推荐模式。Level 0 自动执行；Level 1-4 提示用户审批；Level 5 必须高亮确认
           - 'auto': 全自动沙箱模式。Level 0-3 自动执行；Level 4-5 询问
           - 'safe': 严格只读模式。只允许 Level 0，其他全部拒绝
           - 'plan': 计划审计模式。Level 0 自动放行；非只读修改强制呈现 Plan 审查卡片并在写前创建 Checkpoint 备份
+          - 'acceptEdits'：`auto` 的别名（Claude Code 系命名）
+
+        未知模式抛 ValueError（不再静默回退 ask）。
+
+        无交互环境（GUI / 网关 / 管道 / CI）下的写操作由 `agent.approval` 的
+        headless 通道决策，策略取自 `config['agent']['headless_write_policy']`
+        （默认 `deny_all`，即与接入通道前行为一致）。
+
+        [A3b] ``approval_channel``：调用方显式提供的审批通道（如 GUI 弹窗
+        ``GuiApproval``）。给了就**直接用**，不再走 ``select_channel`` 的
+        TTY 判定；不传（默认）时行为与接入该参数前**逐字节一致**。
         """
         from pathlib import Path
-        self.mode = mode.lower() if mode in ("ask", "auto", "safe", "plan") else "ask"
+        self.mode = normalize_mode(mode)
         self.workspace_root = Path(workspace_root).resolve() if workspace_root else Path.cwd().resolve()
         self.session_allowed_tools = set()  # 会话内用户选择 [a] 记住允许的工具集合
         self.force_allow_all = False        # 测试与全自动沙箱调试开关
         self.checkpoint_dir = self.workspace_root / ".checkpoint"
+        self.config = config if isinstance(config, dict) else {}
+        self.headless_policy = resolve_headless_policy(self.config)
+        self.headless_allow_tools = resolve_headless_allow_tools(self.config)
+        self.approval_channel = approval_channel
+        if approval_channel is not None:
+            # 通道侧若自带信任集（TtyApproval / GuiApproval 均是），必须**共享同一个
+            # set 对象**：用户在弹窗里选"本会话信任"后，策略层的
+            # ``tool_name in self.session_allowed_tools`` 要立刻生效。
+            shared = getattr(approval_channel, "session_allowed_tools", None)
+            if isinstance(shared, set):
+                self.session_allowed_tools = shared
+
+    def _select_channel(self, interactive: bool):
+        """按当前环境选择审批通道（显式注入 > TTY 卡片 / headless 策略）。"""
+        # [A3b 修复·GUI 审批通道] 调用方显式注入的通道优先：GUI 里有人在场，
+        # Level 4-5 应该弹审批框，而不是因 stdin 非 TTY 被 headless 静默拒绝。
+        if self.approval_channel is not None:
+            return self.approval_channel
+        return select_channel(
+            interactive=interactive,
+            mode=self.mode,
+            policy=self.headless_policy,
+            allow_tools=self.headless_allow_tools,
+            workspace_root=self.workspace_root,
+            session_allowed_tools=self.session_allowed_tools,
+            checkpoint_fn=self._checkpoint_for,
+        )
+
+    def _checkpoint_for(self, target_file: str):
+        """Plan 卡片用：把相对路径解析成工作区内文件并建快照（不存在则返回 None）。"""
+        try:
+            full_target = (self.workspace_root / target_file).resolve()
+        except Exception:
+            return None
+        if not full_target.exists():
+            return None
+        return self.create_checkpoint(full_target)
 
     def create_checkpoint(self, file_path) -> str:
         """在修改文件前自动创建快照备份 (S3-3 Plan Mode 审计沙箱)"""
@@ -126,12 +227,19 @@ class PermissionManager:
         """
         评估工具调用权限:
         返回 (is_allowed, reason)
+
+        本方法**只负责策略**（该不该问 / 该不该自动放行）；「怎么问」全部委托给
+        `agent.approval` 的审批通道 —— 交互终端走 TTY 卡片，GUI / 网关 / 管道
+        走 headless 策略（默认 `deny_all`，与接入通道前逐字节一致）。
         """
         if self.force_allow_all:
             return True, "force_allow_all 开启，测试放行"
 
         # 1. 如果工具已在本会话中被永久信任 (且非 Level 5 高危)
-        if tool_name in self.session_allowed_tools and level < PermissionLevel.DANGEROUS:
+        # [B4] 用 glob 匹配而非 ``in set``：信任集里可以是 ``mcp_*`` 这样的类别键
+        # （用户批准一个 MCP 工具时收口写入，见 approval.session_remember_key）。
+        # 普通工具名仍按精确匹配，既有行为不变。
+        if tool_name_matches(tool_name, self.session_allowed_tools) and level < PermissionLevel.DANGEROUS:
             return True, "会话已永久信任此工具"
 
         # 2. Level 0 只读操作：任何模式均全自动放行
@@ -142,110 +250,82 @@ class PermissionManager:
         if self.mode == "safe":
             return False, f"当前处于严格安全模式 (--permission=safe)，已拒绝执行非只读操作 [{tool_name}]"
 
-        # 4. auto 模式：Level 1-3 自动放行
+        # 4. auto 模式：Level 1-3 自动放行（含非交互环境 —— GUI 的 acceptEdits 别名）
         if self.mode == "auto" and level <= PermissionLevel.SHELL_EXEC:
             return True, f"全自动模式 (--permission=auto)，已自动执行 [{tool_name}]"
 
-        # 5. plan 模式：强制 Plan 审查与 Checkpoint 备份
+        # 5. 其余情形交给审批通道：plan 模式用计划审计卡片，其余用普通卡片/策略
+        channel = self._select_channel(interactive)
         if self.mode == "plan":
-            if not interactive or not sys.stdin.isatty():
-                return False, f"Plan 模式 (--permission=plan) 下非交互环境禁止自动执行写操作 [{tool_name}]，需出具并确认行动计划"
-            return self._prompt_plan_approval(tool_name, level, tool_args)
+            return channel.request_plan(tool_name, level, tool_args)
+        return channel.request(tool_name, level, tool_args)
 
-        # 6. 非交互模式 (如脚本、管道调用或无 TTY 环境)
-        if not interactive or not sys.stdin.isatty():
-            if self.mode == "auto" and level <= PermissionLevel.SAFE_EDIT:
-                return True, "全自动模式非交互环境安全放行"
-            return False, f"当前模式 ({self.mode}) 下非交互环境无法请求用户审批写操作 [{tool_name}]，请在交互终端运行或指定 --permission=auto"
+    def check_session_script_exec(self, script_display: str, tool_args: Dict[str, Any],
+                                  interactive: bool = True) -> Tuple[bool, str]:
+        """[B2a] 「本会话写入的脚本」执行闸门：**任何模式下都不得自动放行**。
 
-        # 7. 交互式提示用户审批
-        return self._prompt_user_approval(tool_name, level, tool_args)
+        为什么不能复用 :meth:`check_permission`：``auto`` 模式对 Level 0-3 一律
+        自动放行，而「先用 write_file 落一个脚本、再 ``python 脚本.py``」正是靠
+        这一步绕过审批执行任意代码的。本闸门因此**不看模式档位**，只按
+        「有没有人能批准」决策：
+          * 有交互通道（TTY 卡片 / GUI 弹窗 / 网关卡片）→ 弹一次高危审批
+            （Level 5 同款卡片：无"本会话记住"选项）；
+          * headless（管道 / CI / 无人在场）→ 一律拒绝，文案可辨识。
 
-    def _prompt_user_approval(self, tool_name: str, level: int, tool_args: Dict[str, Any]) -> Tuple[bool, str]:
-        """渲染 Codex 风格的优雅审批卡片"""
-        args_preview = []
-        for k, v in tool_args.items():
-            val_str = str(v)
-            if len(val_str) > 60:
-                val_str = val_str[:57] + "..."
-            args_preview.append(f"{k}='{val_str}'")
-        param_line = ", ".join(args_preview)
+        **授权记忆不落盘**（刻意不提供"本会话记住"）：批准只在本次调用内生效，
+        不写入任何文件。理由：agent 的 ``write_file`` / ``edit_file`` 能写工作区内
+        任意路径 —— 工作区内不存在它写不到的"安全存储位置"；而按工具名或路径
+        "记住"，会把一次批准放大成"批准该路径之后的任意内容"（脚本可能再次被
+        改写）。因此每次执行都重新批准，与 Level 5 高危操作同款语义。
+        """
+        if self.force_allow_all:
+            return True, "force_allow_all 开启，测试放行"
 
-        level_desc = LEVEL_NAMES.get(level, f"Level {level}")
-        is_danger = (level >= PermissionLevel.DANGEROUS)
+        if self.mode == "safe":
+            return False, (f"当前处于严格安全模式 (--permission=safe)，"
+                           f"已拒绝执行本会话写入的脚本 [{script_display}]")
 
-        # 终端卡片展示
-        border_color = "\033[91m" if is_danger else "\033[93m"
-        reset = "\033[0m"
-        bold = "\033[1m"
+        channel = self._select_channel(interactive)
+        if not getattr(channel, "is_interactive", False):
+            return False, ("本会话写入的脚本禁止在无审批的情况下执行："
+                           "非交互（headless）环境无法请求用户审批，"
+                           "需在交互终端批准后才能执行。")
+        return channel.request("run_command", PermissionLevel.DANGEROUS, tool_args)
 
-        print(f"\n{border_color}╭────────────────────────────────────────────────────────────────────────╮{reset}")
-        print(f"{border_color}│{reset}  {bold}🛡️ [权限审批] 智能私教请求调用外部工具:{reset}")
-        print(f"{border_color}│{reset}  • 目标工具: {bold}{tool_name}{reset}")
-        print(f"{border_color}│{reset}  • 权限级别: {level_desc}")
-        print(f"{border_color}│{reset}  • 传入参数: {param_line}")
-        print(f"{border_color}│{reset}")
-        if is_danger:
-            print(f"{border_color}│{reset}  ⚠️  {bold}此操作包含文件删除或系统破坏风险，请极其谨慎核对!{reset}")
-            print(f"{border_color}│{reset}  选项: [y] 仅批准本次执行  /  [n] 拒绝执行 (默认)")
-        else:
-            print(f"{border_color}│{reset}  选项: [y] 批准本次  /  [a] 本会话记住并信任此类操作  /  [n] 拒绝 (默认)")
-        print(f"{border_color}╰────────────────────────────────────────────────────────────────────────╯{reset}")
+    def check_external_read(self, path_display: str, tool_args: Dict[str, Any],
+                            interactive: bool = True) -> Tuple[bool, str]:
+        """[B2b] 「读取工作区外文件」闸门：**默认拒绝**，交互环境弹一次授权卡。
 
-        try:
-            choice = input(f"👉 请选择审批决定 [y/a/n] (默认 n): ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print("\n已取消执行。")
-            return False, "用户中断审批"
+        与 :meth:`check_session_script_exec` 的异同：
+          * 相同：**不看模式档位**（``auto`` 模式不得自动放行）；headless（无人在场）
+            一律拒绝且文案可辨识；授权记忆**不落盘**（只存在于进程内存）。
+          * 不同：授权粒度是**目录**（批准一次，本会话内同目录的其他文件不再弹卡，
+            由 ``Sandbox.register_authorized_read_dir`` 记忆）；卡片按 Level 4 渲染，
+            带 [a]「本会话记住并信任此类操作」选项（写入 ``session_allowed_tools``
+            后所有外部读取免卡），不是 Level 5 高危卡片。
+        """
+        if self.force_allow_all:
+            return True, "force_allow_all 开启，测试放行"
 
-        if choice == "y":
-            return True, "用户批准单次执行"
-        elif choice == "a" and not is_danger:
-            self.session_allowed_tools.add(tool_name)
-            return True, "用户批准本会话永久信任此工具"
-        else:
-            return False, "用户拒绝执行该操作"
+        # 用户曾选 [a]「本会话记住并信任此类操作」：直接放行，不再弹卡。
+        if tool_name_matches(EXTERNAL_READ_TOOL_NAME, self.session_allowed_tools):
+            return True, "会话已永久信任外部只读读取"
 
-    def _prompt_plan_approval(self, tool_name: str, level: int, tool_args: Dict[str, Any]) -> Tuple[bool, str]:
-        """Plan Mode 专用计划审计与确认卡片 (S3-3)"""
-        args_preview = []
-        target_file = None
-        for k, v in tool_args.items():
-            if k in ("path", "file_name", "target_file"):
-                target_file = str(v)
-            val_str = str(v)
-            if len(val_str) > 60:
-                val_str = val_str[:57] + "..."
-            args_preview.append(f"{k}='{val_str}'")
-        param_line = ", ".join(args_preview)
+        if self.mode == "safe":
+            return False, (f"当前处于严格安全模式 (--permission=safe)，"
+                           f"已拒绝读取工作区外文件 [{path_display}]")
 
-        # 若操作涉及文件修改，写前自动创建快照
-        backup_hint = ""
-        if target_file and self.workspace_root:
-            try:
-                full_target = (self.workspace_root / target_file).resolve()
-                if full_target.exists():
-                    ckpt_file = self.create_checkpoint(full_target)
-                    if ckpt_file:
-                        backup_hint = f"\n\033[96m│\033[0m  📦 \033[1m[Checkpoint 安全快照已创建]\033[0m: {Path(ckpt_file).name} (随时输入 ky rollback 一键还原)"
-            except Exception:
-                pass
+        channel = self._select_channel(interactive)
+        if not getattr(channel, "is_interactive", False):
+            return False, (
+                f"读取工作区外文件 [{path_display}] 需要用户授权，"
+                "非交互（headless）环境无法请求审批。两条出路："
+                "① 长期授权：在 ky_config.json 的 agent.allowed_extra_paths "
+                "中登记该目录，之后直接放行；"
+                "② 本次授权：在交互终端中重试，并在弹卡中批准"
+                "（批准后本会话内同目录不再询问）。")
 
-        print(f"\n\033[96m╭── 📋 [Plan Mode 行动计划审计] ────────────────────────────────────────╮\033[0m")
-        print(f"\033[96m│\033[0m  \033[1m智能私教请求执行文件写入或环境变更操作:\033[0m")
-        print(f"\033[96m│\033[0m  • 计划调用: \033[1m{tool_name}\033[0m (Level {level})")
-        print(f"\033[96m│\033[0m  • 涉及参数: {param_line}{backup_hint}")
-        print(f"\033[96m│\033[0m")
-        print(f"\033[96m│\033[0m  选项: [y] 批准计划并执行变更  /  [n] 拒绝本次计划 (默认)")
-        print(f"\033[96m╰────────────────────────────────────────────────────────────────────────╯\033[0m")
-
-        try:
-            choice = input(f"👉 是否批准此项行动计划? [y/n] (默认 n): ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print("\n已取消执行。")
-            return False, "用户中断 Plan 审批"
-
-        if choice == "y":
-            return True, "用户批准 Plan 模式执行变更"
-        else:
-            return False, "用户拒绝 Plan 模式该项执行计划"
+        return channel.request(
+            EXTERNAL_READ_TOOL_NAME, PermissionLevel.NETWORK,
+            {**tool_args,
+             "scope": "工作区外只读，批准后本会话内同目录不再询问"})

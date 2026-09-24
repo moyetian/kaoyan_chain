@@ -306,6 +306,51 @@ def run_doctor(return_summary=False):
     except Exception as e:
         check_item("本地参考资料库盘点（只读）", False, "", str(e), warn=True)
 
+    # ── 3.6 沙箱能力边界（逻辑隔离，非 OS 沙箱）──
+    # [B2b] 用户必须能一眼看清沙箱的真实强度：它是应用层的路径/命令/审批校验，
+    # 不依赖 OS 级隔离（如 Windows Job Object / 容器）—— 越权防线在工具层，
+    # 不构成内核级安全边界，也不得被宣传成沙箱逃逸意义上的"安全沙箱"。
+    print(color("\n【3.6 沙箱能力边界（逻辑隔离，非 OS 沙箱）】", C.BOLD))
+    check_item(
+        "隔离方式",
+        True,
+        "应用层逻辑隔离（路径越界拦截 / 高危命令黑名单 / 审批闸门），"
+        "不依赖 OS 级隔离（如 Windows Job Object），不构成内核级安全边界",
+    )
+    check_item(
+        "工作区外读取策略",
+        True,
+        "默认拒绝；交互终端弹卡授权（本会话内同目录免再问，授权只存内存、不落盘）；"
+        "配置白名单目录直接放行",
+    )
+    try:
+        _sb_cfg = {}
+        _sb_cfg_path = ROOT / "ky_config.json"
+        if _sb_cfg_path.exists():
+            _sb_cfg = json.loads(_sb_cfg_path.read_text(encoding="utf-8"))
+        _sb_agent = _sb_cfg.get("agent") if isinstance(_sb_cfg, dict) else None
+        _sb_raw = _sb_agent.get("allowed_extra_paths") if isinstance(_sb_agent, dict) else None
+        _sb_extra = ([str(p) for p in _sb_raw if isinstance(p, str) and p.strip()]
+                     if isinstance(_sb_raw, (list, tuple)) else [])
+        if _sb_extra:
+            check_item(
+                "外部授权目录 (agent.allowed_extra_paths)",
+                True,
+                f"已配置 {len(_sb_extra)} 个目录: {'；'.join(_sb_extra)}",
+            )
+        else:
+            check_item(
+                "外部授权目录 (agent.allowed_extra_paths)",
+                False, "",
+                '未配置；如需长期放行某目录（免每次弹卡），在 ky_config.json 添加 '
+                '"agent": {"allowed_extra_paths": ["D:/你的资料目录"]}',
+                warn=True,
+            )
+            warnings += 1
+    except Exception as e:
+        check_item("外部授权目录 (agent.allowed_extra_paths)", False, "", str(e), warn=True)
+        warnings += 1
+
     # ── 4. 配置文件与模型状态 ──
     print(color("\n【4. 配置参数与大模型连通性】", C.BOLD))
     cfg_path = ROOT / "ky_config.json"
@@ -447,6 +492,48 @@ def run_doctor(return_summary=False):
             else:
                 check_item("模型有效性 (上游 /v1/models)", True, "上游暂不可达，已跳过探测 (离线环境属正常)")
 
+    # ── 4.5 MCP 外部工具挂载 (B4) ──
+    # [B4 新增] MCP 是可选能力：未配置时零开销、不拉任何子进程；配置了才做
+    # **轻量探活**（3s 握手超时）并逐个汇报 名称/状态/工具数/失败原因 ——
+    # 此前崩溃的 MCP server 在体检里完全不可见，用户只在会话里莫名少工具。
+    print(color("\n【4.5 MCP 外部工具挂载】", C.BOLD))
+    _mcp_cfg = cfg.get("mcp_servers") if isinstance(cfg, dict) else None
+    if not isinstance(_mcp_cfg, dict) or not _mcp_cfg:
+        check_item("外部 MCP Server 挂载", True,
+                   "未配置（可选能力；在 ky_config.json 的 mcp_servers 段挂载外部工具）")
+    else:
+        try:
+            try:
+                from agent.mcp_client import MCPClientManager
+            except ImportError:
+                from tools.agent.mcp_client import MCPClientManager
+            _mgr = MCPClientManager(workspace_root=ROOT)
+            try:
+                _mgr.load_from_config(_mcp_cfg, start_timeout=3)
+                _health = _mgr.mcp_health()
+            finally:
+                # 体检不留常驻子进程：取到健康快照后立即回收
+                _mgr.close_all()
+            _all_ok = _health["degraded"] == 0 and _health["dead"] == 0
+            check_item(
+                "外部 MCP Server 挂载",
+                _all_ok,
+                f"共 {_health['total']} 个 server 全部健康，工具可发现",
+                f"{_health['healthy']}/{_health['total']} 健康、"
+                f"{_health['degraded']} 降级、{_health['dead']} 崩溃",
+            )
+            if not _all_ok:
+                warnings += 1
+            for _s in _health["servers"]:
+                if _s["status"] == "healthy":
+                    check_item(f"  └ MCP [{_s['name']}]", True, f"{_s['tool_count']} 个工具可用")
+                else:
+                    check_item(f"  └ MCP [{_s['name']}]", False, "",
+                               f"[{_s['status']}] {_s['reason']}", warn=True)
+        except Exception as _e:
+            check_item("外部 MCP Server 挂载", False, "", f"MCP 体检失败: {_e}", warn=True)
+            warnings += 1
+
     # ── 5. 网关与看板构建环境 ──
     print(color("\n【5. Web 伴侣网关与看板系统】", C.BOLD))
     build_script = ROOT / "05-考研看板" / "build.py"
@@ -551,6 +638,39 @@ def run_doctor(return_summary=False):
         print(f"  • 多模态作业拍照批改 (Pillow): {color('完全就绪', C.GREEN)}")
     else:
         print(f"  • 多模态作业拍照批改 (Pillow): {color('降级运行 (支持文本敲字输入作答)', C.YELLOW)}")
+
+    # ── 7.5 技能中枢真实状态 (B4) ──
+    # [B4 修复] 此前 SKILLS_REGISTRY 的 13 项状态是硬编码"已就绪"，体检无法发现
+    # "面板说就绪、实际缺依赖"的错位。现在汇总运行时自检结果：完全不可用的技能
+    # 点名列出，降级可用的单独提示（不阻断主链路）。
+    print(color("\n【7.5 技能中枢真实状态 (Skills Health)】", C.BOLD))
+    try:
+        try:
+            from skills import SKILLS_REGISTRY
+        except ImportError:
+            from tools.skills import SKILLS_REGISTRY
+        _total = len(SKILLS_REGISTRY)
+        _unavail = [k for k, v in SKILLS_REGISTRY.items()
+                    if (v.get("health") or {}).get("status") == "UNAVAILABLE"]
+        _degraded = [k for k, v in SKILLS_REGISTRY.items()
+                     if (v.get("health") or {}).get("status") == "DEGRADED"]
+        _ready_n = _total - len(_unavail) - len(_degraded)
+        _title = f"技能就绪度: {_ready_n}/{_total} 项全功能就绪"
+        if _unavail:
+            check_item(_title, False, "",
+                       "不可用: " + "、".join(_unavail) + "（详见上方依赖项，或在终端输入 /skills 查看原因）",
+                       warn=True)
+            warnings += 1
+        elif _degraded:
+            check_item(_title, False, "",
+                       "降级可用: " + "、".join(_degraded) + "（部分能力受限，不影响主链路）",
+                       warn=True)
+            warnings += 1
+        else:
+            check_item(_title, True, "全部技能健康自检通过")
+    except Exception as _e:
+        check_item("技能中枢健康自检", False, "", f"自检失败: {_e}", warn=True)
+        warnings += 1
 
     # ── 总结与处方 ──
     print(color("\n" + "=" * 60, C.CYAN))

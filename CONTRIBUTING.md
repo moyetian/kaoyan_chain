@@ -171,7 +171,7 @@ kaoyan_chain/
     ├── study_planner.py                 # 个人定制化方案设计引擎与防疲劳预警
     ├── syllabus_manager.py              # 官方考纲智能匹配与切换管理器
     ├── test_ky_suite.py                 # 完整自动化回归测试与 CLI smoke test (26 组, 305 项)
-    ├── test_new_features.py             # [v2.6+] 新增功能专项测试 (WeChat + Rust + GUI + CLI, 130 项)
+    ├── test_new_features.py             # [v2.6+] 新增功能专项测试 (WeChat + Rust + GUI + CLI, 131 项)
     ├── update_dashboard.py              # 自动化看板生成与同步脚本
     └── verify_health.py                 # 全科规范与关键文件健康度巡检脚本
 ```

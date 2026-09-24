@@ -41,6 +41,21 @@ def _missing_dependency_message() -> str:
     )
 
 
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    本模块是惰性模块：能走到这里说明调用方已显式访问它，此时用 ``_ensure_pypdf()``
+    做**真实加载判据** —— 比 find_spec 更硬，能捕获"pypdf 装了但导入即崩"
+    （版本不兼容/警告升级为异常）这一实测坑。SKILLS_REGISTRY 构建期不能导入本模块，
+    走 skills/__init__.py 里的免导入探测，两者判据等价。
+    """
+    pypdf = _ensure_pypdf()
+    if pypdf is None:
+        return {"status": "UNAVAILABLE", "reason": _missing_dependency_message()}
+    return {"status": "READY",
+            "reason": f"pypdf 已加载（v{getattr(pypdf, '__version__', '未知')}），可解析 PDF 真题与教材"}
+
+
 def list_materials():
     """列出四科参考资料库中的所有文献与试卷。"""
     result = {}

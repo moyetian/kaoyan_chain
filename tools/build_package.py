@@ -32,7 +32,7 @@ TOOLS = ROOT / "tools"
 
 
 def get_app_version() -> str:
-    """动态获取项目版本号，优先从 tools/version.py 或 pyproject.toml 读取，兜底 2.8.0"""
+    """动态获取项目版本号，优先从 tools/version.py 或 pyproject.toml 读取，兜底 3.0.0"""
     try:
         from version import get_version
         v = get_version()
@@ -60,7 +60,7 @@ def get_app_version() -> str:
         except Exception:
             pass
 
-    return "2.8.0"
+    return "3.0.0"
 
 
 def check_prerequisites() -> bool:

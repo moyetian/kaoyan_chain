@@ -258,6 +258,9 @@ _SAFE_MODE_WRITE_FLAGS: Dict[str, frozenset] = {
 _SAFE_MODE_READONLY_SUBS: Dict[str, frozenset] = {
     "key":    frozenset({"list", "ls", "--list", "l", "show", "query", ""}),
     "memory": frozenset({"status", "health", "check", "show", "list", ""}),
+    # [B3b] ky session：默认（无子命令）与 ls/list 只读；resume（进 REPL、
+    # 写会话日志）/ fork / rm / prune 都是写操作，只读模式下按预期拦截。
+    "session": frozenset({"ls", "list", ""}),
 }
 
 #: 「默认只读、但特定子命令会落盘」：子命令不在白名单内即按写操作拦截。

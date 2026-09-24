@@ -61,8 +61,16 @@ def _sibling_modules() -> List[object]:
 
     以 ``__file__`` 而非模块名判定身份：只有真·同一份源码的别名才共享标志，
     避免把同名但来自其它安装目录的模块误判成兄弟。
+
+    [P0 修复·Windows 路径大小写] 比较必须过 ``os.path.normcase``：Windows 文件
+    系统不区分大小写，同一份 ky_io.py 经不同 sys.path 条目（如 pytest 的
+    ``pythonpath=["."]`` 注入的根目录与小写盘符的 shell cwd 派生的 tools 目录）
+    加载会得到仅差盘符大小写的 ``__file__``。裸字符串比较会判为「非兄弟」→
+    跨别名 fail-closed 判定静默失效（实测：全量 pytest 中别名共享/只读标志
+    用例间歇变红，且 ``--permission=safe`` 的写闸门在真实入口上可被绕过）。
+    POSIX 上 ``normcase`` 为恒等变换，语义不变。
     """
-    here = os.path.abspath(__file__)
+    here = os.path.normcase(os.path.abspath(__file__))
     self_mod = sys.modules.get(__name__)
     out: List[object] = []
     for name in _KY_IO_ALIASES:
@@ -70,7 +78,7 @@ def _sibling_modules() -> List[object]:
         if mod is None or mod is self_mod:
             continue
         f = getattr(mod, "__file__", None)
-        if f and os.path.abspath(f) == here:
+        if f and os.path.normcase(os.path.abspath(f)) == here:
             out.append(mod)
     return out
 

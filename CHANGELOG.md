@@ -9,9 +9,102 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 
 ---
 
-## [未发布] — 2026-09-22
+## [3.0.0] — 2026-09-24（当前发布版本）
 
-> 2.8.0 发布之后累积的修复，尚未并入版本号。以下按主题归并。
+> 阶段二「可靠（Reliability）」：B1–B4 四批（B2、B3 各拆 2 个子批）并入本版。
+> 本版集中解决四类**会静默发生**的问题：长会话丢约束、沙箱边界靠自觉、
+> 会话不可恢复、能力声明与实现不符。版本号真源 `pyproject.toml`。
+
+### 🧠 阶段二 · 可靠（B1–B4）
+
+- **B1 · 上下文压缩升级**：旧压缩把被压缩历史逐条压成
+  「学员此前曾提问: …」并只保留最后 10 行 —— 早期考纲约束 / 错因 / 待复习
+  一旦被挤出「保留窗口 + 摘要窗口」即**静默丢弃**。新增
+  `tools/agent/compaction.py` 结构化摘要引擎（goal / progress / key_info /
+  file_ops / pending 五分区，每分区有界 12 条）；考纲约束 / 错因 / 待复习
+  整行保留（单条上限 400 字符，旧实现 100 字符截断正是丢约束根因之一）。
+  摘要支持 LLM 模式（`agent.compact_mode`，异常 / 非法返回一律降级回规则
+  摘要并提示）；新增 `validate_compacted` 结构校验（孤儿 tool / 缺配对 /
+  非法 role）。`compact_context` 新增 `focus` 参数。
+- **B2 · 沙箱加固**：
+  - **B2a · 脚本执行收紧**：堵住「先用 `write_file` 落一个 `evil.py`、再
+    `python evil.py`」这条**唯一能绕过审批执行任意代码**的路径。两道闸门：
+    ① 脚本路径白名单（`tools/`、`tests/`、`rust_ext/`，硬拒绝不走审批）；
+    ② 会话污染闸门 —— 本会话被写过 / 改过的脚本，执行前必须经审批通道
+    显式批准，`auto` 模式不得自动放行、headless 一律拒绝。残余已在代码中
+    诚实标注：`pytest <脚本>` 等同样能执行代码的入口未纳入本闸门。
+  - **B2b · 外部读取授权**：工作区外只读豁免改为**默认拒绝 + 需授权**
+    （敏感路径 / 凭据 / 穿越永不可授权）；交互式弹卡可「信任该目录」
+    （授权记忆进程级、不落盘）、headless 拒绝并给双出路引导；`doctor` 新增
+    【3.6 沙箱能力边界（逻辑隔离，非 OS 沙箱）】，REPL / GUI 审批弹窗同步明示。
+- **B3 · 会话持久化**：
+  - **B3a · JSONL 事件日志 + resume**：会话事件 append-only 落盘
+    `.memory/sessions/<session_id>.jsonl`（AgentEvent schema v1，parent 串链，
+    7 类事件）；崩溃现场半截 JSON 行丢弃容错、未知事件不崩（新旧版本互读）；
+    `compose_history()` 让「resume 上下文 == 实时上下文」可逐条断言；写失败
+    降级纯内存不中断对话；`SessionStart` 改为会话首次仅一次、`close()` 幂等。
+  - **B3b · fork / replay + `ky session` 命令**：`ky session ls | resume |
+    fork --at | rm | prune`（删除默认 dry-run，`--yes` 才真删；id 支持唯一
+    前缀）；fork 点自动对齐 `tool_call`/`tool_result` 配对边界、**只读**源文件；
+    GUI 跨消息复用同一 `session_id`（每条消息仍新建 runner）。
+- **B4 · MCP 完形 + Skills 真实性**：MCP 客户端补齐 `resources/list|read` 与
+  `prompts/list|get`（此前 initialize 声明三类 capability 却只实现 `tools/*`）；
+  `start()` 失败写 `last_error`（命令不存在 / 进程退出 / 握手超时 / 非 JSON-RPC
+  各有专属文案），新增 `health()` 三档（healthy / degraded / dead）与
+  `mcp_health()` 汇总，崩溃不再无痕迹。Skills 15 项状态全部改为**运行时计算**
+  （READY / DEGRADED / UNAVAILABLE + reason；此前 13 项硬编码「已就绪」，
+  依赖缺失也显示就绪），`_SKILL_META` 与健康提供者在构建期强校验防回退；
+  REPL `/skills` 面板按真实档位着色，`/img` `/calc` `/pdf` 对不可用技能
+  给出技能级原因与修复建议。
+
+### 🧪 测试与验证
+
+- 新增 6 组守门测试（共 170 项）：`tests/test_b1_compaction.py`（34）、
+  `tests/test_b2a_script_exec_gate.py`（27）、`tests/test_b2b_external_read_gate.py`（32）、
+  `tests/test_b3a_session_log.py`（20）、`tests/test_b3b_session_fork.py`（41）、
+  `tests/test_b4_mcp_skills_health.py`（16）。
+- 核心验收均带**阴性对照**与端到端实测：如 B1 把 `extract_key_info` 变异为空桶
+  后「早期约束存活」用例必须变红；B2a 摘掉守卫后必须复现「脚本真的被执行」；
+  B3a 用独立探针脚本验证 5 轮 / 2 次压缩下 `rebuild == 实时`；B4 拔掉 sympy
+  后 math_verifier 必须从 READY 变 DEGRADED 且带 reason。
+- B2b 起 `test_new_features` 的 H.8 与 SSRF 阴性对照按新契约更新。
+
+---
+
+## [2.9.0] — 2026-09-24（上一发布版本）
+
+> 阶段一「可信（Trust）」：A1–A4 四批 + 2.8.0 之后累积的修复一并并入本版。
+> 版本号真源 `pyproject.toml`；本版同时把 CI 门禁收紧，并修掉两处会静默
+> 降级的安全缺陷（审批模式解析、脱敏导出的等价问题见下）。
+
+### 🔒 阶段一 · 可信（A1–A4）
+
+- **A1 · FSRS 评测红灯修复**：`evaluate_pipeline.py --srs` 此前把「未复习卡
+  （`stage_before=0`）」也当成"预测遗忘"，导致 RMSE=1.0 / LogLoss=13.8 的
+  满屏红灯。现按 FSRS 可校准域排除 stage0 与非法样本、并把预测时间线对齐到
+  `due_before`，同时打印「已排除样本」明细。退出码语义固定为
+  `0=达标 / 1=不达标 / 2=样本不足`，并归档 4 份真实残留数据作夹具。
+- **A2 · 真 tokenizer + 上下文预算查表**：`int(总字符数 * 0.6)` 的假 tokenizer
+  与硬编码 `max_context_tokens=48000` 一并移除。新增 `tools/agent/tokenizer.py`
+  作为唯一实现处：装了 `tiktoken` 走精确计数，否则走**五类字符单价**启发式
+  （汉字 52 / 中文标点 150 / ASCII 字母 18 / 空白 6 / 其余 95，单位 1/100
+  token），由 7 条黄金向量 + 3 份留出样本真实标定，最大误差 8.0%；上下文窗口
+  按模型查表并预留输出位，可用 `{"context": {"max_tokens": N}}` 覆盖；Rust
+  侧同步同一模型，与 Python 逐位一致。
+- **A3 · 审批四通道 + GUI 缺陷修复**：把「怎么问」从权限策略里抽成
+  `agent.approval` 的审批通道（TTY 卡片 / headless 策略 / GUI 弹窗 / 网关），
+  策略只管「该不该问」。修掉两处**静默降级**缺陷：
+  1. 桌面端 `acceptEdits` 未被识别 → 静默回退 `ask` + 非交互 → Level 1+
+     写操作**全被拒**（桌面端完全写不了文件，且没有任何报错）；
+  2. 反方向更危险：`--permission=SAFE` 这类大小写变体同样被判非法 → 静默
+     降级成 `ask`，用户以为只读、实际拿到"可批准写操作"的权限。
+  现模式解析收敛到单一实现处，未知模式**显式报错**；无交互环境新增
+  `agent.headless_write_policy`（`deny_all` 默认 / `allow_list` /
+  `auto_within_workspace`），非法配置一律回落 `deny_all`。
+- **A4 · CI 门禁收紧**：评测（`--srs` / `--ragas`）进 CI，用提交的夹具日志跑通
+  0/1/2 三条路径（样本不足告警跳过、不达标判红）；`rust-ext` 去掉
+  `continue-on-error` 转为硬门禁并补上"产物装上真能用"的验证；macOS 的
+  pymupdf 规避补告警留痕与跟踪说明。
 
 ### 🐛 审查消缺（agent / CLI / 看板 / 运维 / 导出侧）
 
@@ -118,7 +211,7 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 
 ---
 
-## [2.8.0] — 2026-09-20（当前发布版本）
+## [2.8.0] — 2026-09-20
 
 ### 📦 开箱即用程序包（本版本最重要的变化）
 

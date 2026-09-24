@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kaoyan-study-chain"
-version = "2.8.0"
+version = "3.0.0"
 description = "考研全科 AI 私人教师与全自动备考总控系统 (Kaoyan Study Chain)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -47,6 +47,14 @@ gui = [
 tui = [
     "textual>=0.40.0",
 ]
+# [P0-1 可选依赖·精确 token 计数] 装了走 tiktoken 精确计数，没装则自动降级到
+# 五类字符单价启发式（汉字 52 / 中文标点 150 / ASCII 字母 18 / 空白 6 / 其余 95，
+# 单位 1/100 token；由 7 条黄金向量 + 3 份留出样本真实标定，最大误差 8.0%）
+# —— 见 tools/agent/tokenizer.py。
+# 与下面的 `fast` 不同，tiktoken **确实在 PyPI 上**，此 extra 是可安装的。
+tokenizer = [
+    "tiktoken>=0.7",
+]
 # [P2-8 修复·不可安装的 extra] 这里原有一个 `fast = ["ky-rust-ext>=0.1.0"]`，
 # 但 `ky-rust-ext`（= rust_ext/ 的 crate 名 ky_rust_ext）**从未发布到 PyPI**
 # （2026-09-21 核实：https://pypi.org/pypi/ky-rust-ext/json → 404 Not Found），
@@ -62,6 +70,7 @@ full = [
     "rapidocr-onnxruntime>=1.3.0",
     "PySide6>=6.6.0",
     "textual>=0.40.0",
+    "tiktoken>=0.7",
 ]
 dev = [
     "pytest>=7.0.0",

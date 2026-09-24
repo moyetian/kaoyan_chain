@@ -361,3 +361,43 @@ def solve_image_with_model(image_path, user_prompt="", config=None, stream=True)
     if stream:
         print(f"\n{tip_md}\n")
     return tip_md
+
+
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    判据（只读 ky_config.json，绝不联网/不拉起可选依赖）：
+      * 主模型或视觉模型 API Key 一个都没有 → UNAVAILABLE：批改链路根本走不通；
+      * 有 Key 但本地 Pillow / RapidOCR 都缺 → DEGRADED：图片预处理与离线 OCR 降级，
+        纯文本模型走 OCR 的路径受限；
+      * 有 Key 且本地能力至少有一个 → READY。
+    注意这是"配置就绪"而非"上游可用"——模型是否真能应答由 ky doctor 的探活负责。
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    cfg: dict = {}
+    try:
+        root = _Path(__file__).resolve().parent.parent.parent
+        cfg = _json.loads((root / "ky_config.json").read_text(encoding="utf-8"))
+    except Exception:
+        cfg = {}
+
+    api_key = str(cfg.get("api_key", "") or "").strip()
+    vision_model = str(cfg.get("vision_model", "") or "").strip()
+    vision_key = str(cfg.get("vision_api_key", "") or "").strip()
+    has_llm = bool(api_key) or (bool(vision_model) and bool(vision_key or api_key))
+    if not has_llm:
+        return {"status": "UNAVAILABLE",
+                "reason": "未配置大模型/视觉模型 API Key，无法调用看图批改；请运行 ky config"}
+
+    def _has(mod: str) -> bool:
+        try:
+            import importlib.util
+            return importlib.util.find_spec(mod) is not None
+        except Exception:
+            return False
+
+    if _has("PIL") or _has("rapidocr_onnxruntime"):
+        return {"status": "READY", "reason": "已配置 API Key，且本地图像处理/离线 OCR 至少一项可用"}
+    return {"status": "DEGRADED",
+            "reason": "已配置 API Key，但缺 Pillow/rapidocr：图片预处理与离线 OCR 降级，仅多模态直连可用"}

@@ -19,11 +19,31 @@ from .context_engine import ContextEngine
 from .memory import MemoryManager
 from .hooks import HookManager
 from .mcp_client import MCPClientManager
+from .session_log import (
+    SessionLog,
+    RESUME_TAIL_MESSAGES,
+    TOOL_RESULT_MAX_CHARS,
+    compose_history,
+    load_events,
+    rebuild_history,
+    EVENT_SESSION_START,
+    EVENT_USER,
+    EVENT_ASSISTANT,
+    EVENT_TOOL_CALL,
+    EVENT_TOOL_RESULT,
+    EVENT_COMPACT,
+    EVENT_SESSION_END,
+)
 
 try:  # 网络访问安全与响应体积上限（双导入路径兼容）
     from net_guard import MAX_HTTP_RESPONSE_BYTES, decompress_limited, safe_urlopen
 except ImportError:  # pragma: no cover
     from tools.net_guard import MAX_HTTP_RESPONSE_BYTES, decompress_limited, safe_urlopen  # type: ignore
+
+try:  # [B3b] 压缩摘要头部常量的唯一实现处在 compaction（loop 不再保留私有副本）
+    from .compaction import COMPACT_SUMMARY_PREFIX
+except ImportError:  # pragma: no cover
+    from tools.agent.compaction import COMPACT_SUMMARY_PREFIX  # type: ignore
 
 
 def normalize_openai_url(base_url: str, endpoint: str = "chat/completions") -> str:
@@ -40,6 +60,11 @@ def normalize_openai_url(base_url: str, endpoint: str = "chat/completions") -> s
     return f"{b}/v1/{ep}"
 
 
+#: [B3a] ``COMPACT_SUMMARY_PREFIX``（从 compaction 导入）用于识别「本次
+#: compact_context 是否真的发生了压缩」—— 只有真的插入了新摘要，才写 compact
+#: 事件并更新 resume 用的摘要。[B3b] 私有副本已删除，避免两处字面量各自漂移。
+
+
 class AgentRunner:
     def __init__(
         self,
@@ -53,6 +78,12 @@ class AgentRunner:
         request_timeout: Optional[float] = None,
         # GUI 场景设 True：不在 stdout 打字机输出（否则控制台与界面各刷一份）
         quiet: bool = False,
+        # [A3b] 调用方显式提供的审批通道（如 GUI 弹窗 GuiApproval）；
+        # None 时回落 agent.approval.select_channel 的默认 TTY/headless 判定。
+        approval_channel=None,
+        # [B3b] 指定既有会话 id：resume（ky session resume）/ GUI 跨消息复用同一
+        # 个 .jsonl。None = 新建会话（沿用 B3a 行为）。
+        session_id: Optional[str] = None,
     ):
         self.config = config
         self.workspace_root = workspace_root
@@ -81,8 +112,16 @@ class AgentRunner:
             self.mcp_manager.load_from_config(self.config["mcp_servers"])
 
         # 4. 初始化沙箱、权限与工具库
-        self.sandbox = Sandbox(workspace_root=self.workspace_root)
-        self.permissions = PermissionManager(mode=permission_mode, workspace_root=self.workspace_root)
+        # [B2b] allowed_extra_paths：工作区外长期授权目录（配置内目录直接放行、
+        # 不弹卡），来源 ky_config.json 的 agent.allowed_extra_paths。
+        self.sandbox = Sandbox(workspace_root=self.workspace_root,
+                               allowed_extra_paths=self._resolve_extra_paths(self.config))
+        # config 一并传入：headless（GUI / 网关 / 管道）下的写操作策略
+        # `agent.headless_write_policy` 由 PermissionManager 从配置解析。
+        # approval_channel 一并透传：GUI 传入自己的弹窗通道后，Level 4-5 会真的
+        # 弹审批框，而不是走 headless 默认拒绝（A3b）。
+        self.permissions = PermissionManager(mode=permission_mode, workspace_root=self.workspace_root,
+                                             config=self.config, approval_channel=approval_channel)
         self.tool_registry = ToolRegistry(
             sandbox=self.sandbox,
             permissions=self.permissions,
@@ -91,14 +130,26 @@ class AgentRunner:
         # 挂载外部 MCP 工具
         self.tool_registry.register_mcp_tools(self.mcp_manager)
 
-        # 5. 初始化上下文引擎 (挂载三级分层记忆)
+        # 5. 初始化上下文引擎 (挂载三级分层记忆 + 按模型解析上下文预算)
         self.context_engine = ContextEngine(
             workspace_root=self.sandbox.workspace_root,
             active_subject=self.config.get("active_subject", "math"),
-            memory_manager=self.memory_manager
+            memory_manager=self.memory_manager,
+            model=self.config.get("model", ""),
+            config=self.config,
         )
 
         self.history: List[Dict[str, Any]] = []
+        # [B3a] 会话持久化：日志惰性创建（首次有效 run 才落盘），事件流写入
+        # .memory/sessions/<session_id>.jsonl；history 的截断/摘要插入与
+        # session_log.rebuild_history 共用同一 compose_history 语义。
+        # [B3b] _session_id 由调用方指定（resume / GUI 复用）；None = 新建会话。
+        self._session_id: Optional[str] = session_id
+        self._session_log: Optional[SessionLog] = None
+        self._session_started = False        # SessionStart 钩子只触发一次
+        self._session_start_logged = False   # session_start 事件只写一次
+        self._history_summary: Optional[str] = None  # 最近一次压缩摘要（resume 重建用）
+        self._closed = False
 
     @staticmethod
     def _resolve_timeout(explicit, config) -> float:
@@ -114,9 +165,132 @@ class AgentRunner:
                 continue
         return 120.0
 
+    @staticmethod
+    def _resolve_extra_paths(config) -> list:
+        """[B2b] 解析 ``agent.allowed_extra_paths``（工作区外长期授权目录清单）。
+
+        只收非空字符串；配置缺失 / 类型不对 / 任何异常一律返回 ``[]``（fail-safe：
+        宁可少授权，绝不因配置写错而放开沙箱）。
+        """
+        try:
+            agent_cfg = (config or {}).get("agent")
+            raw = agent_cfg.get("allowed_extra_paths") if isinstance(agent_cfg, dict) else None
+            if not isinstance(raw, (list, tuple)):
+                return []
+            return [str(p) for p in raw if isinstance(p, str) and p.strip()]
+        except Exception:
+            return []
+
     def set_subject(self, subject: str):
         self.config["active_subject"] = subject
         self.context_engine.set_subject(subject)
+
+    # ── [B3a] 会话持久化辅助 ─────────────────────────────────────────────
+
+    def _restore_history_from_log(self) -> None:
+        """[B3b] resume：若指定 session_id 的日志已有事件，则从事件流恢复会话。
+
+        * 仅在 ``self._session_id`` 非空（resume / GUI 复用）且尚未恢复过时执行；
+          普通新建会话（id 为 None）零开销直接返回；
+        * 恢复 ``history``（``rebuild_history``，与实时维护同语义）与
+          ``_history_summary``（最后一条 compact 的摘要），并把会话标记为
+          「已开始 / 已写过 session_start」—— 源文件里已经有过 SessionStart，
+          resume 不得重复触发钩子、不得重复写 session_start 事件；
+        * 读盘失败 / 文件不存在一律静默降级（绝不抛），文件不存在 = 全新会话。
+        """
+        if not self._session_id or self._session_started or self.history:
+            return
+        try:
+            log = SessionLog(workspace_root=self.sandbox.workspace_root,
+                             session_id=self._session_id)
+            events = load_events(log.path)
+            if not events:
+                return
+            self.history = rebuild_history(events)
+            self._session_started = True
+            self._session_start_logged = True
+            for evt in reversed(events):
+                if not isinstance(evt, dict) or evt.get("type") != EVENT_COMPACT:
+                    continue
+                payload = evt.get("payload")
+                text = payload.get("summary") if isinstance(payload, dict) else None
+                if isinstance(text, str) and text.strip():
+                    self._history_summary = text
+                break
+        except Exception:
+            return
+
+    def _ensure_session_log(self) -> Optional[SessionLog]:
+        """惰性创建会话日志（首次有效 run 才落盘）；构造失败一律降级为纯内存。
+
+        [B3b] 指定 ``session_id``（resume / GUI 复用）且文件已有事件时，顺带
+        恢复 history 与压缩摘要（见 :meth:`_restore_history_from_log`）。
+        """
+        if self._session_log is None and not self._closed:
+            try:
+                self._session_log = SessionLog(workspace_root=self.sandbox.workspace_root,
+                                               session_id=self._session_id)
+                self._restore_history_from_log()
+            except Exception as e:
+                print(f"\033[93m[warn] 会话日志初始化失败，本会话降级为纯内存: "
+                      f"{type(e).__name__}: {e}\033[0m")
+                self._session_log = None
+        return self._session_log
+
+    def _append_event(self, event_type: str, payload=None, parent=None) -> Optional[str]:
+        """写一条会话事件；任何失败都不得中断对话（SessionLog 内部已降级）。"""
+        if self._session_log is None:
+            return None
+        try:
+            return self._session_log.append(event_type, payload, parent=parent)
+        except Exception:
+            return None
+
+    def _log_compact_if_happened(self, before: List[Dict[str, Any]],
+                                 after: List[Dict[str, Any]]) -> None:
+        """检测 compact_context 是否真的压缩了；是则记 compact 事件并更新摘要。
+
+        判据：压缩后的消息里出现**新**的摘要 system 消息（``render_summary``
+        的头部是固定字面量，可稳定识别；输入里已有同一条则说明本轮没压缩）。
+        更新后的 ``_history_summary`` 会被 run 末尾的 history 重组带上，
+        使实时上下文与 resume 重建结果保持一致。
+        """
+        summary_text = None
+        for msg in after:
+            if not isinstance(msg, dict) or msg.get("role") != "system":
+                continue
+            content = msg.get("content")
+            if isinstance(content, str) and content.startswith(COMPACT_SUMMARY_PREFIX):
+                summary_text = content
+        if not summary_text:
+            return
+        for msg in before:
+            if isinstance(msg, dict) and msg.get("content") == summary_text:
+                return
+        self._history_summary = summary_text
+        self._append_event(EVENT_COMPACT, {
+            "summary": summary_text,
+            "before_messages": len(before),
+            "after_messages": len(after),
+        })
+
+    def close(self) -> None:
+        """会话收尾（幂等）：写 session_end 事件并关闭日志句柄。
+
+        [B3a] 供 REPL / GUI 调用方在退出时收尾。**不触发** SessionEnd 钩子 ——
+        钩子仍由既有调用点 ``hooks.trigger_session_end`` 负责，避免日终复盘
+        （写盘 + IM 推送都有副作用）被重复触发。从未有效 run 过的会话不产生日志文件。
+        """
+        if self._closed:
+            return
+        self._closed = True
+        self._append_event(EVENT_SESSION_END,
+                           {"active_subject": self.config.get("active_subject", "")})
+        if self._session_log is not None:
+            try:
+                self._session_log.close()
+            except Exception:
+                pass
 
     def run(self, user_input: str, interactive: bool = True) -> str:
         """运行完整的 Agent Loop 交互循环"""
@@ -127,13 +301,31 @@ class AgentRunner:
             "math_key": study_plan.get("math_key", "math2") if self.config.get("active_subject") == "math" else None,
             "user_input": user_input,
         }
-        self.hooks.trigger_session_start(ctx)
+        # [B3b] resume 恢复必须先于 SessionStart 判定：恢复成功的会话在源文件里
+        # 已经触发过 SessionStart 钩子，本次不得重复触发（`_session_started`
+        # 会被置 True）。普通新建会话（session_id 为 None）零开销直接返回。
+        self._restore_history_from_log()
+        # [B3a 生命周期统一] SessionStart 只在**会话首次** run 时触发一次；
+        # 旧实现在每轮 run 都触发（一个会话只有一次开始，语义不对）。
+        if not self._session_started:
+            self._session_started = True
+            self.hooks.trigger_session_start(ctx)
 
         api_key = self.config.get("api_key", "").strip()
         if not api_key:
             err_msg = "[!] 错误: 未配置大模型 API Key！请在终端输入 /config 进行配置。"
             print(f"\033[91m{err_msg}\033[0m")
             return err_msg
+
+        # [B3a] 有效会话开始：惰性创建日志并记录 session_start
+        # （写盘失败自动降级为纯内存，见 SessionLog / _append_event）。
+        self._ensure_session_log()
+        if not self._session_start_logged:
+            self._session_start_logged = True
+            self._append_event(EVENT_SESSION_START, {
+                "active_subject": ctx.get("active_subject"),
+                "user_input": user_input[:500],
+            })
 
         # 1. 组装对话上下文
         sys_prompt = self.context_engine.build_system_prompt()
@@ -142,9 +334,13 @@ class AgentRunner:
         active_messages: List[Dict[str, Any]] = [{"role": "system", "content": sys_prompt}]
         active_messages.extend(self.history)
         active_messages.append({"role": "user", "content": user_input})
+        self._append_event(EVENT_USER, {"content": user_input})
 
         # 2. 上下文防爆压缩 (联动 BeforeCompact 自动提炼决策记忆)
+        # [B3a] 调用前后各留一份，用于识别「本次是否真的发生了压缩」并写 compact 事件
+        before_compact = list(active_messages)
         active_messages = self.context_engine.compact_context(active_messages, hook_manager=self.hooks)
+        self._log_compact_if_happened(before_compact, active_messages)
 
         # 3. Agent 循环 (最多 max_steps 步)
         step = 0
@@ -199,6 +395,13 @@ class AgentRunner:
                     else:
                         fn_args = fn_args_raw
 
+                    # [B3a] 记 tool_call 事件；其事件 id 作为配对 tool_result 的 parent
+                    call_event_id = self._append_event(EVENT_TOOL_CALL, {
+                        "tool_call_id": tc_id,
+                        "name": fn_name,
+                        "arguments": fn_args if isinstance(fn_args, dict) else {"raw": fn_args},
+                    })
+
                     # 优雅的高科技状态行显示
                     args_summary = ", ".join(f"{k}='{v}'" if len(str(v))<40 else f"{k}='...'" for k, v in fn_args.items())
                     if not self.quiet:
@@ -240,8 +443,22 @@ class AgentRunner:
                     }
                     active_messages.append(tool_msg)
 
+                    # [B3a] 记 tool_result 事件（parent 串到对应 tool_call）。
+                    # 超长结果按 TOOL_RESULT_MAX_CHARS 截断存储并在 payload 标注；
+                    # resume 重建不依赖 tool 事件，故截断不破坏 rebuild 语义。
+                    result_text = str(exec_result)
+                    self._append_event(EVENT_TOOL_RESULT, {
+                        "tool_call_id": tc_id,
+                        "name": fn_name,
+                        "content": result_text[:TOOL_RESULT_MAX_CHARS],
+                        "truncated": len(result_text) > TOOL_RESULT_MAX_CHARS,
+                        "original_chars": len(result_text),
+                    }, parent=call_event_id)
+
                 # 工具回包可能包含大文件或多轮结果，在循环内动态防爆压缩
+                before_compact = list(active_messages)
                 active_messages = self.context_engine.compact_context(active_messages, hook_manager=self.hooks)
+                self._log_compact_if_happened(before_compact, active_messages)
 
                 # 继续下一轮循环，让 LLM 拿到工具结果进行最终综合分析
                 continue
@@ -252,11 +469,16 @@ class AgentRunner:
             self._display_final_answer(final_answer)
             break
 
-        # 更新历史
-        self.history.append({"role": "user", "content": user_input})
-        self.history.append({"role": "assistant", "content": final_answer})
-        if len(self.history) > 12:
-            self.history = self.history[-12:]
+        # [B3a] 更新历史：与 session_log.rebuild_history 共用同一 compose_history
+        # 语义（最近一条压缩摘要 + 最后 RESUME_TAIL_MESSAGES 条消息），
+        # 因此「resume 上下文 == 实时上下文」可逐条断言。
+        msgs = [m for m in self.history
+                if isinstance(m, dict) and m.get("role") in ("user", "assistant")]
+        msgs.append({"role": "user", "content": user_input})
+        msgs.append({"role": "assistant", "content": final_answer})
+        self.history = compose_history(self._history_summary, msgs, limit=RESUME_TAIL_MESSAGES)
+
+        self._append_event(EVENT_ASSISTANT, {"content": final_answer})
 
         # 同步推送到网页伴侣
         if self.live_callback:

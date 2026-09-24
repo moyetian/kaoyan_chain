@@ -285,13 +285,19 @@ D. 2
                 [{"role": "user", "content": "408真题切片：计算机网络TCP三次握手与四次挥手协议细节分析", "tool_calls": [{"name": "search", "args": {}}]}],
             ]
             all_tokens_match = True
+            # [A2 修复·三阶路由] `estimate_tokens` 现为「tiktoken 精确 > Rust 启发式
+            # > Python 启发式」三阶。此处钉住两条不变式：
+            #   ① 纯 Python 回退（`_force_python`）必须与 Rust 逐位一致；
+            #   ② 统一路径必须走 tiktoken（装了）或回落 Rust（没装），不得是别的值。
             for msgs in message_cases:
                 rust_tokens = rust_mod.estimate_tokens(msgs)
                 engine._force_python = True
                 py_tokens = engine.estimate_tokens(msgs)
                 engine._force_python = False
                 unified_tokens = engine.estimate_tokens(msgs)
-                if py_tokens != rust_tokens or unified_tokens != rust_tokens:
+                expect_unified = (engine.tokenizer.count_messages(msgs)
+                                  if engine.tokenizer.has_encoder else rust_tokens)
+                if py_tokens != rust_tokens or unified_tokens != expect_unified:
                     all_tokens_match = False
                     break
             runner.assert_true(all_tokens_match, "Rust vs Python: Token 估算结果 100% 精确一致")
@@ -1127,7 +1133,7 @@ D. 2
         runner.assert_true(
             _res.get("count") == 0, "H.7 报错时不虚报入库数量")
 
-        # ---------- H.8 【R-8】沙箱：相对穿越拒绝 / .json 不豁免 / 白名单只读仍可用 ----------
+        # ---------- H.8 【R-8/B2b】沙箱：相对穿越拒绝 / .json 不豁免 / 白名单只读默认拒绝、授权后可用 ----------
         from tools.agent.sandbox import Sandbox, SecurityException
         _ws2 = _h_tmp / "sb_ws"
         _ws2.mkdir(parents=True)
@@ -1155,15 +1161,31 @@ D. 2
         runner.assert_true(
             _json_blocked, "H.8 工作区外 .json 只读豁免被取消（防凭据外泄）")
 
-        _ext_md = _h_tmp / "photo_notes.md"
+        # [B2b] 工作区外只读改为「默认拒绝 + 交互授权」：未授权必须拒绝，
+        # 显式登记授权目录后才可读（本会话目录级记忆）。用独立子目录承载，
+        # 避免登记授权污染本进程内其他断言。
+        _ext_read_dir = _h_tmp / "ext_read"
+        _ext_read_dir.mkdir(parents=True, exist_ok=True)
+        _ext_md = _ext_read_dir / "photo_notes.md"
         _ext_md.write_text("# 真题笔记", encoding="utf-8")
+
+        _ext_denied = False
+        try:
+            _sb.resolve_safe_path(str(_ext_md), read_only=True)
+        except SecurityException:
+            _ext_denied = True
+        runner.assert_true(
+            _ext_denied,
+            "H.8 [B2b] 工作区外白名单只读未经授权被拒绝（默认拒绝）")
+
+        _sb.register_authorized_read_dir(_ext_md.parent)
         try:
             _read_back = _sb.resolve_safe_path(str(_ext_md), read_only=True)
             _ext_ok = _read_back.exists() and _read_back == _ext_md.resolve()
         except SecurityException:
             _ext_ok = False
         runner.assert_true(
-            _ext_ok, "H.8 工作区外白名单只读（拍照真题/图片批改）仍可用")
+            _ext_ok, "H.8 [B2b] 授权目录后工作区外白名单只读（拍照真题/图片批改）可用")
 
         # ---------- H.9 【R-9】python 仅允许运行工作区内脚本 ----------
         from tools.agent.permissions import PermissionManager

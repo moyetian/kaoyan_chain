@@ -28,11 +28,40 @@ except ImportError:
     HAS_SYMPY = False
 
 def get_status():
-    """获取数学引擎当前就绪状态"""
+    """获取数学引擎当前就绪状态（人类可读单行文案，保留向后兼容）"""
     if HAS_SYMPY:
         return "SymPy 高精度符号计算引擎 (已就绪 · 全功能激活 · 含微分方程/二次型/级数)"
     return ("轻量级纯 Python 计算引擎 (支持单变量多项式求导与不定积分；"
             "运行: pip install sympy 解锁全部高等数学验算能力)")
+
+
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    为什么另起一个方法而不是复用 :func:`get_status`：后者是给人看的单行文案，
+    程序无法据此判定"能不能调度"。SKILLS_REGISTRY 的 status、doctor 汇总与
+    调度守卫都需要机器可识别的档位。
+
+    判据刻意分两档而不是一律 DEGRADED：
+      * ``HAS_SYMPY`` 为假但 sympy 装得上（find_spec 命中）→ 是**导入失败**
+        （版本/依赖异常），与"根本没装"的处置建议不同（前者要修环境，后者 pip install）。
+    此处只做轻量探测（find_spec / 读模块全局），绝不 import sympy，避免
+    ``import skills`` 因健康自检反而拉起重依赖。
+    """
+    if HAS_SYMPY:
+        return {"status": "READY",
+                "reason": "SymPy 高精度符号计算引擎已加载（微分方程/二次型/级数全功能）"}
+    installed = False
+    try:
+        import importlib.util
+        installed = importlib.util.find_spec("sympy") is not None
+    except Exception:
+        installed = False
+    if installed:
+        return {"status": "DEGRADED",
+                "reason": "sympy 已安装但导入失败（版本/依赖异常），当前仅纯 Python 多项式引擎可用"}
+    return {"status": "DEGRADED",
+            "reason": "未安装 sympy，仅支持单变量多项式求导/不定积分；pip install sympy 解锁全功能"}
 
 def _parse_infinity(token: str):
     """把 'inf' / 'oo' / '-inf' / '-oo' 安全转成 sympy 符号（避免 -inf 被误判为 +oo）。

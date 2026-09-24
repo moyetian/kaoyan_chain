@@ -118,3 +118,19 @@ def prettify_latex_for_terminal(text):
     res = re.sub(r"\\\((.*?)\\\)", inline_repl, res)
     res = re.sub(r"(?<!\$)\$(?!\$)(.*?)(?<!\$)\$(?!\$)", inline_repl, res)
     return res
+
+
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    纯本地正则渲染技能：用**真调一次最小用例**验证美化链路没坏（函数在但
+    正则写错同样会在这里暴露）。
+    """
+    try:
+        rendered = prettify_latex_for_terminal("样本公式：$x^2+1$")
+    except Exception as e:  # noqa: BLE001 - 自检异常必须收敛为可见状态
+        return {"status": "UNAVAILABLE",
+                "reason": f"公式美化渲染失败（{type(e).__name__}: {e}），终端公式展示将不可用"}
+    if not rendered or not str(rendered).strip():
+        return {"status": "UNAVAILABLE", "reason": "公式美化渲染产出为空，终端公式展示将不可用"}
+    return {"status": "READY", "reason": "LaTeX 终端美化与网页伴侣联动可用（纯本地正则，无外部依赖）"}

@@ -1,0 +1,149 @@
+{
+  "_meta": {
+    "purpose": "tokenizer 启发式的黄金向量：断言分语言估算与真实模型 tokenizer 的偏差",
+    "generated_at": "2026-09-24",
+    "model_under_test": "本机实网对话模型（Qwen 系，2026-09 版本；型号名不落盘）",
+    "reference_source": "真实 API `usage.prompt_tokens`，按差值法扣除固定开销后得到净文本计数",
+    "measured_fixed_overhead_tokens": 62,
+    "calibration": {
+      "method": "对 7 条向量 + 3 份留出样本做真实 API 标定，最小二乘拟合五类字符单价（整数百分数）",
+      "prices_per_100_tokens": {
+        "han": 52,
+        "punct": 150,
+        "alpha": 18,
+        "space": 6,
+        "sym": 95
+      },
+      "denominator": 100,
+      "holdout_max_error_pct": 8.0
+    },
+    "tolerance": {
+      "relative": 0.1,
+      "relative_min_reference_tokens": 20,
+      "absolute_tokens_for_tiny": 3,
+      "why_absolute_for_tiny": "净计数 <20 时，固定开销扣除与整数取整本身就有 ±1~2 token 噪声，相对误差无意义；3 token 的绝对容差相对 128K 预算可忽略。"
+    },
+    "tiktoken_column_note": "tiktoken_o200k 仅作交叉核对列（不参与断言）：实测该模型对中文的合并能力远强于 o200k_base（汉字 0.52 vs 0.83 token/字），二者不可互换。"
+  },
+  "vectors": [
+    {
+      "name": "short_message",
+      "category": "短消息",
+      "text": "英语报到",
+      "chars": 4,
+      "classes": {
+        "han": 4,
+        "punct": 0,
+        "alpha": 0,
+        "space": 0,
+        "sym": 0
+      },
+      "reference_tokens": 1,
+      "api_raw_tokens": 63,
+      "tiktoken_o200k": 3,
+      "heuristic": 2
+    },
+    {
+      "name": "chinese_paragraph",
+      "category": "中文段落",
+      "text": "思想政治理论的多项选择题是拉开分差的关键题型。作答时要先抓题干中的限定词与关键词，判断命题人考查的是概念辨析还是原理应用；遇到绝对化表述（如“唯一”“完全”“始终”）要优先怀疑其正确性。错题必须归因到概念漏洞、审题偏差、公式记错、计算失误、书写丢分这五类中的一类，否则复习就是无效重复。",
+      "chars": 143,
+      "classes": {
+        "han": 125,
+        "punct": 18,
+        "alpha": 0,
+        "space": 0,
+        "sym": 0
+      },
+      "reference_tokens": 89,
+      "api_raw_tokens": 151,
+      "tiktoken_o200k": 117,
+      "heuristic": 92
+    },
+    {
+      "name": "english_paragraph",
+      "category": "英文段落",
+      "text": "The professor argued that the apparent decline in students' reading ability should not be attributed to digital media alone. Rather, she suggested, it reflects a broader shift in how attention is allocated and rewarded. Her research indicates that sustained reading requires deliberate practice, and that short-form content, while not inherently harmful, offers few opportunities to build the stamina that long texts demand.",
+      "chars": 424,
+      "classes": {
+        "han": 0,
+        "punct": 0,
+        "alpha": 353,
+        "space": 61,
+        "sym": 10
+      },
+      "reference_tokens": 71,
+      "api_raw_tokens": 133,
+      "tiktoken_o200k": 72,
+      "heuristic": 76
+    },
+    {
+      "name": "code_snippet",
+      "category": "代码",
+      "text": "def resolve_context_window(model: str = '', config=None):\n    cfg = config if isinstance(config, dict) else {}\n    ctx = cfg.get('context')\n    if isinstance(ctx, dict):\n        raw = ctx.get('max_tokens')\n        if raw is not None and not isinstance(raw, bool):\n            return int(raw), 'config'\n    return lookup_context_window(model)\n",
+      "chars": 342,
+      "classes": {
+        "han": 0,
+        "punct": 0,
+        "alpha": 214,
+        "space": 81,
+        "sym": 47
+      },
+      "reference_tokens": 82,
+      "api_raw_tokens": 144,
+      "tiktoken_o200k": 76,
+      "heuristic": 88
+    },
+    {
+      "name": "mixed_cn_en",
+      "category": "中英混排",
+      "text": "长难句主干速抓：The professor argued that the apparent decline in students' reading ability should not be attributed to digital media alone. 本句主干是 The professor argued that...，that 引导宾语从句；从句内部主干为 the decline should not be attributed to...；apparent 意为“表面上的”，属态度暗示词，常与转折呼应。",
+      "chars": 263,
+      "classes": {
+        "han": 43,
+        "punct": 9,
+        "alpha": 171,
+        "space": 32,
+        "sym": 8
+      },
+      "reference_tokens": 75,
+      "api_raw_tokens": 137,
+      "tiktoken_o200k": 86,
+      "heuristic": 76
+    },
+    {
+      "name": "long_document",
+      "category": "长文档",
+      "text": "马克思主义基本原理的复习要抓住三条主线：辩证唯物主义的世界观与方法论、认识论中的实践与认识的辩证运动、历史唯物主义关于社会存在与社会意识的关系。每一条主线都要能默写出核心命题、能辨析常见错误说法、能结合材料作简要分析。背书不是逐字复述，而是先搭骨架再填要点，考场上按采分点分条作答。马克思主义基本原理的复习要抓住三条主线：辩证唯物主义的世界观与方法论、认识论中的实践与认识的辩证运动、历史唯物主义关于社会存在与社会意识的关系。每一条主线都要能默写出核心命题、能辨析常见错误说法、能结合材料作简要分析。背书不是逐字复述，而是先搭骨架再填要点，考场上按采分点分条作答。马克思主义基本原理的复习要抓住三条主线：辩证唯物主义的世界观与方法论、认识论中的实践与认识的辩证运动、历史唯物主义关于社会存在与社会意识的关系。每一条主线都要能默写出核心命题、能辨析常见错误说法、能结合材料作简要分析。背书不是逐字复述，而是先搭骨架再填要点，考场上按采分点分条作答。马克思主义基本原理的复习要抓住三条主线：辩证唯物主义的世界观与方法论、认识论中的实践与认识的辩证运动、历史唯物主义关于社会存在与社会意识的关系。每一条主线都要能默写出核心命题、能辨析常见错误说法、能结合材料作简要分析。背书不是逐字复述，而是先搭骨架再填要点，考场上按采分点分条作答。马克思主义基本原理的复习要抓住三条主线：辩证唯物主义的世界观与方法论、认识论中的实践与认识的辩证运动、历史唯物主义关于社会存在与社会意识的关系。每一条主线都要能默写出核心命题、能辨析常见错误说法、能结合材料作简要分析。背书不是逐字复述，而是先搭骨架再填要点，考场上按采分点分条作答。马克思主义基本原理的复习要抓住三条主线：辩证唯物主义的世界观与方法论、认识论中的实践与认识的辩证运动、历史唯物主义关于社会存在与社会意识的关系。每一条主线都要能默写出核心命题、能辨析常见错误说法、能结合材料作简要分析。背书不是逐字复述，而是先搭骨架再填要点，考场上按采分点分条作答。马克思主义基本原理的复习要抓住三条主线：辩证唯物主义的世界观与方法论、认识论中的实践与认识的辩证运动、历史唯物主义关于社会存在与社会意识的关系。每一条主线都要能默写出核心命题、能辨析常见错误说法、能结合材料作简要分析。背书不是逐字复述，而是先搭骨架再填要点，考场上按采分点分条作答。马克思主义基本原理的复习要抓住三条主线：辩证唯物主义的世界观与方法论、认识论中的实践与认识的辩证运动、历史唯物主义关于社会存在与社会意识的关系。每一条主线都要能默写出核心命题、能辨析常见错误说法、能结合材料作简要分析。背书不是逐字复述，而是先搭骨架再填要点，考场上按采分点分条作答。马克思主义基本原理的复习要抓住三条主线：辩证唯物主义的世界观与方法论、认识论中的实践与认识的辩证运动、历史唯物主义关于社会存在与社会意识的关系。每一条主线都要能默写出核心命题、能辨析常见错误说法、能结合材料作简要分析。背书不是逐字复述，而是先搭骨架再填要点，考场上按采分点分条作答。马克思主义基本原理的复习要抓住三条主线：辩证唯物主义的世界观与方法论、认识论中的实践与认识的辩证运动、历史唯物主义关于社会存在与社会意识的关系。每一条主线都要能默写出核心命题、能辨析常见错误说法、能结合材料作简要分析。背书不是逐字复述，而是先搭骨架再填要点，考场上按采分点分条作答。马克思主义基本原理的复习要抓住三条主线：辩证唯物主义的世界观与方法论、认识论中的实践与认识的辩证运动、历史唯物主义关于社会存在与社会意识的关系。每一条主线都要能默写出核心命题、能辨析常见错误说法、能结合材料作简要分析。背书不是逐字复述，而是先搭骨架再填要点，考场上按采分点分条作答。马克思主义基本原理的复习要抓住三条主线：辩证唯物主义的世界观与方法论、认识论中的实践与认识的辩证运动、历史唯物主义关于社会存在与社会意识的关系。每一条主线都要能默写出核心命题、能辨析常见错误说法、能结合材料作简要分析。背书不是逐字复述，而是先搭骨架再填要点，考场上按采分点分条作答。",
+      "chars": 1692,
+      "classes": {
+        "han": 1572,
+        "punct": 120,
+        "alpha": 0,
+        "space": 0,
+        "sym": 0
+      },
+      "reference_tokens": 971,
+      "api_raw_tokens": 1033,
+      "tiktoken_o200k": 1404,
+      "heuristic": 997
+    },
+    {
+      "name": "symbols_and_numbers",
+      "category": "公式符号",
+      "text": "泰勒展开：f(x)=f(0)+f'(0)x+f''(0)x²/2!+o(x²)，误差 ≤ 10⁻³。",
+      "chars": 50,
+      "classes": {
+        "han": 6,
+        "punct": 3,
+        "alpha": 9,
+        "space": 2,
+        "sym": 30
+      },
+      "reference_tokens": 36,
+      "api_raw_tokens": 98,
+      "tiktoken_o200k": 39,
+      "heuristic": 37
+    }
+  ]
+}

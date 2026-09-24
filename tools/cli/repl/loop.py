@@ -93,14 +93,14 @@ except ImportError:
 try:
     from skills import (
         vision_solver, math_verifier, english_dissector, socratic_tutor,
-        error_logger, latex_beautifier, list_skills,
+        error_logger, latex_beautifier, list_skills, dispatch_guard,
         exam_composer, variant_retriever, knowledge_map, exam_diagnoser, school_scout
     )
 except ImportError:
     try:
         from tools.skills import (
             vision_solver, math_verifier, english_dissector, socratic_tutor,
-            error_logger, latex_beautifier, list_skills,
+            error_logger, latex_beautifier, list_skills, dispatch_guard,
             exam_composer, variant_retriever, knowledge_map, exam_diagnoser, school_scout
         )
     except ImportError:
@@ -111,6 +111,7 @@ except ImportError:
         error_logger = None
         latex_beautifier = None
         list_skills = lambda: {}
+        dispatch_guard = lambda skill_id: None
         exam_composer = None
         variant_retriever = None
         knowledge_map = None
@@ -134,6 +135,27 @@ def _get_pdf_extractor():
         except ImportError:
             return None
     return pdf_extractor
+
+def _print_external_read_summary(agent_runner) -> None:
+    """[B2b] 会话结束时汇总本会话读取过的「工作区外」文件（为空则静默）。
+
+    读取记录只存在于进程内存（见 ``sandbox._SESSION_EXTERNAL_READS``），退出时
+    不打印就彻底丢失 —— 用户需要知道 agent 这次会话碰过工作区外的哪些文件。
+    任何异常都不得影响退出流程（宁可少打印一行，不可让用户退不出去）。
+    """
+    try:
+        reads = agent_runner.sandbox.session_external_reads
+    except Exception:
+        return
+    if not reads:
+        return
+    try:
+        print(colorize(f"\n📂 本会话读取的工作区外文件（共 {len(reads)} 个）:", C.YELLOW))
+        for path in reads:
+            print(colorize(f"   • {path}", C.DIM))
+    except Exception:
+        pass
+
 
 try:
     import intelligence
@@ -160,12 +182,16 @@ except ImportError:
         ky_io = None
 
 def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gateway_token: str = "",
-             webhook_token: str = "") -> None:
+             webhook_token: str = "", resume_session_id: Optional[str] = None) -> None:
     """启动交互式考研全科专属私教终端 (ky-cli)
 
     [S1 修复] 新增 ``webhook_token`` 形参：后台伴侣网关此前不透传 ``/webhook``
     专用回调密钥，只能靠环境变量/配置兜底。默认空串时 ``start_background_live_server``
     内部仍会按「环境变量 > ky_config.json」解析，故既有调用方不受影响。
+
+    [B3b] 新增 ``resume_session_id``：由 ``ky session resume <id>`` 传入，
+    会话日志复用既有 ``.jsonl`` 并恢复历史（见 ``AgentRunner`` 的
+    ``session_id`` 形参）。默认 None 时行为与既有完全一致。
     """
     cfg = load_config()
 
@@ -214,9 +240,21 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
             config=cfg,
             workspace_root=ROOT,
             permission_mode=effective_perm,
-            live_callback=append_live_message
+            live_callback=append_live_message,
+            # [B3b] resume：复用既有会话的 .jsonl 并恢复历史（None = 新建会话）
+            session_id=resume_session_id,
         )
         agent_runner.set_subject(curr_subj)
+        if resume_session_id:
+            # [B3b] 触发恢复（惰性）并显示历史规模；恢复成功的会话不再触发
+            # SessionStart 钩子、不再重复写 session_start 事件。
+            try:
+                agent_runner._ensure_session_log()
+                restored = len([m for m in agent_runner.history
+                                if isinstance(m, dict) and m.get("role") in ("user", "assistant")])
+            except Exception:
+                restored = 0
+            print(colorize(f"\n[i] 已恢复会话 {resume_session_id}（历史消息 {restored} 条）\n", C.CYAN))
 
     def _persist_config_or_deny() -> bool:
         """写回 ky_config.json；严格只读模式下拒绝写盘并返回 False。
@@ -282,6 +320,10 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
         except (KeyboardInterrupt, EOFError):
             if agent_runner and hasattr(agent_runner, "hooks"):
                 agent_runner.hooks.trigger_session_end({"active_subject": curr_subj})
+            # [B3a] 写 session_end 事件并关闭会话日志（幂等；不重复触发钩子）
+            if agent_runner and hasattr(agent_runner, "close"):
+                _print_external_read_summary(agent_runner)   # [B2b] 会话外部读取汇总
+                agent_runner.close()
             print("\n再见！保持节奏，一战成硕！🎓")
             break
 
@@ -556,7 +598,10 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
             if cmd == "/skills":
                 print(colorize("\n=== 🧩 考研专有智能体技能中心 (Skills Registry) ===", C.BOLD))
                 for sk_id, sk in list_skills().items():
-                    print(f"\n  {sk['name']} [{colorize(sk['status'], C.GREEN)}]\n    - 功能: {sk['desc']}\n    - 指令: {colorize(sk['command'], C.YELLOW)}")
+                    # [B4] 状态着色跟随真实档位：降级/不可用不得再显示成绿色"已就绪"
+                    _h = (sk.get("health") or {}).get("status", "UNAVAILABLE")
+                    _color = C.GREEN if _h == "READY" else (C.YELLOW if _h == "DEGRADED" else C.RED)
+                    print(f"\n  {sk['name']} [{colorize(sk['status'], _color)}]\n    - 功能: {sk['desc']}\n    - 指令: {colorize(sk['command'], C.YELLOW)}")
                 print()
                 continue
             elif cmd in ("/paste", "/clip", "/v"):
@@ -574,6 +619,12 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                     print_followup_toolbar()
                 continue
             elif cmd in ("/img", "/ocr"):
+                # [B4] 调度守卫：技能完全不可用（如未配 API Key）时给出统一提示，
+                # 不进入深层调用才暴露（文案含技能名 + 原因 + 修复建议）。
+                _guard = dispatch_guard("vision_solver")
+                if _guard:
+                    print(colorize(f"\n{_guard}\n", C.YELLOW))
+                    continue
                 img_p = ""
                 extra = ""
                 if not arg:
@@ -601,6 +652,11 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
             elif cmd in ("/calc", "/verify"):
                 if not arg:
                     print(colorize("用法: /calc <数学表达式>\n示例: /calc limit (sin(x)-x)/x^3 as x->0", C.YELLOW))
+                    continue
+                # [B4] 调度守卫：完全不可用时不进引擎（DEGRADED 的纯 Python 降级放行）
+                _guard = dispatch_guard("math_verifier")
+                if _guard:
+                    print(colorize(f"\n{_guard}\n", C.YELLOW))
                     continue
                 print(colorize(f"\n[📐 正在运行数学符号验算引擎...]\n", C.CYAN))
                 if math_verifier:
@@ -682,6 +738,11 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                     history.append({"role": "assistant", "content": reply})
                 continue
             elif cmd == "/pdf":
+                # [B4] 统一调度守卫（UNAVAILABLE 时给出技能级原因与修复建议）
+                _guard = dispatch_guard("pdf_extractor")
+                if _guard:
+                    print(colorize(f"\n{_guard}\n", C.YELLOW))
+                    continue
                 pdf_extractor = _get_pdf_extractor()
                 if pdf_extractor is None:
                     print(colorize("\n[!] PDF 抽取技能不可用（缺少 pypdf）。"
@@ -770,6 +831,10 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
             elif cmd in ("/exit", "/quit", "exit", "quit"):
                 if agent_runner and hasattr(agent_runner, "hooks"):
                     agent_runner.hooks.trigger_session_end({"active_subject": curr_subj})
+                # [B3a] 写 session_end 事件并关闭会话日志（幂等；不重复触发钩子）
+                if agent_runner and hasattr(agent_runner, "close"):
+                    _print_external_read_summary(agent_runner)   # [B2b] 会话外部读取汇总
+                    agent_runner.close()
                 print("\n再见！保持节奏，一战成硕！🎓")
                 break
             # 别名取 `/tui` 而非 `/nav`：与 CLI 侧 `ky menu` 的别名集对齐
@@ -784,6 +849,10 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                 # 启动后 break 退出 REPL，与文档「退出并打开」的语义一致。
                 if agent_runner and hasattr(agent_runner, "hooks"):
                     agent_runner.hooks.trigger_session_end({"active_subject": curr_subj})
+                # [B3a] 写 session_end 事件并关闭会话日志（幂等；不重复触发钩子）
+                if agent_runner and hasattr(agent_runner, "close"):
+                    _print_external_read_summary(agent_runner)   # [B2b] 会话外部读取汇总
+                    agent_runner.close()
                 try:
                     from tools import tui_navigator
                 except ImportError:

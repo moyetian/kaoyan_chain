@@ -85,7 +85,17 @@ def print_welcome(live_port: int = 8088, animate: bool = True) -> None:
     _preview = [str(k) for k in list(_skills_map.keys())[:6]]
     skill_preview = " / ".join(_preview) if _preview else "Vision/Math/Composer"
     skill_count_text = f"{skill_count} 项" if skill_count else "全部"
-    skill_status_text = f"{skill_count}项全就绪" if skill_count else "已就绪"
+    # [B4] 真实状态统计：此前写死"N项全就绪"，技能缺依赖（sympy/pypdf/API Key）时
+    # 横幅仍宣称全就绪，与 /skills 面板的真实状态自相矛盾。现在按 health 档位统计，
+    # 只有全部 READY 才说"全就绪"。
+    _ready_n = sum(1 for sk in _skills_map.values()
+                   if (sk.get("health") or {}).get("status") == "READY")
+    if skill_count and _ready_n == skill_count:
+        skill_status_text = f"{skill_count}项全就绪"
+    elif skill_count:
+        skill_status_text = f"{_ready_n}/{skill_count} 项就绪"
+    else:
+        skill_status_text = "已就绪"
 
     gradient_ascii = f"""
 {C.CYAN}{C.BOLD}  ██╗  ██╗ █████╗  ██████╗ ██╗   ██╗ █████╗ ███╗   ██╗     ██████╗██╗     ██╗{C.RESET}
@@ -232,6 +242,7 @@ def print_command_palette(cfg: Optional[dict] = None) -> None:
 {C.CYAN}│{C.RESET}    {C.MAGENTA}/clear{C.RESET}           清空当前会话上下文                                         {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}    {C.MAGENTA}/exit{C.RESET}            退出私教终端 (落盘记忆与会话钩子)                          {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}                                                                          {C.CYAN}│{C.RESET}
+{C.CYAN}│{C.RESET}  {C.DIM}沙箱: 逻辑隔离（非 OS 沙箱）；读取工作区外文件需在弹卡中授权{C.RESET}            {C.CYAN}│{C.RESET}
 {C.CYAN}│{C.RESET}  💡 {C.BOLD}中文原生口令{C.RESET}: {_native_cmds} {C.CYAN}│{C.RESET}
 {C.CYAN}╰──────────────────────────────────────────────────────────────────────────╯{C.RESET}
 """)

@@ -8,7 +8,15 @@
 """
 
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+
+from .compaction import (
+    build_structured_summary,
+    llm_summarize,
+    render_summary,
+    resolve_compact_mode,
+)
+from .tokenizer import Tokenizer, heuristic_count_messages, make_budget, resolve_budget
 
 try:
     import ky_rust_ext as _rust
@@ -19,12 +27,29 @@ except ImportError:
 
 
 class ContextEngine:
-    def __init__(self, workspace_root: Path, active_subject: str = "math", max_context_tokens: int = 48000, memory_manager=None):
+    def __init__(self, workspace_root: Path, active_subject: str = "math",
+                 max_context_tokens: Optional[int] = None, memory_manager=None,
+                 model: str = "", config: Optional[Dict[str, Any]] = None):
         self.workspace_root = Path(workspace_root).resolve()
         self.active_subject = active_subject
-        self.max_context_tokens = max_context_tokens
         self.memory_manager = memory_manager
         self.messages: List[Dict[str, Any]] = []
+        # 配置留给 compact_context 读 agent.compact_mode / 供 LLM 摘要复用；
+        # 非 dict 一律收敛为空 dict，后续解析函数自己兜底（fail-safe）。
+        self.config: Dict[str, Any] = config if isinstance(config, dict) else {}
+
+        # [P0-1 修复·硬编码 48000] 预算解析：显式参数 > config['context']['max_tokens']
+        # > 模型查表 > 保守默认。`max_context_tokens` 语义为**模型窗口**，
+        # 压缩触发线是 (窗口 − 输出预留) × 水位，见 tokenizer.Budget。
+        if max_context_tokens is None:
+            budget = resolve_budget(model, config)
+        else:
+            budget = make_budget(max_context_tokens, "explicit")
+        self.model = model or ""
+        self.budget = budget
+        self.max_context_tokens = budget.window
+        self.compact_watermark = budget.watermark
+        self.tokenizer = Tokenizer(self.model)
 
     def set_subject(self, subject: str):
         self.active_subject = subject
@@ -181,28 +206,48 @@ class ContextEngine:
         return "\n\n".join(sys_parts)
 
     def estimate_tokens(self, messages: List[Dict[str, Any]]) -> int:
-        """粗略估算消息 Token 量 (中英混合 1 字符约 0.6 token，优先 Rust 极速路径)"""
-        if _HAS_RUST_EXT and not getattr(self, "_force_python", False):
+        """估算消息 Token 量（tiktoken 精确 > Rust 极速启发式 > Python 启发式）。
+
+        [P0-1 修复·假 tokenizer] 旧实现是 `int(total_chars * 0.6)`：对所有字符
+        一律 0.6，而实测中英密度差 3 倍以上（汉字 ≈0.52、英文 ≈0.18 token/字符），
+        英文/代码会话因此被高估 3 倍、压缩过晚。现走 `tokenizer` 模块的五类字符
+        启发式；Rust 侧与 Python 侧逐位一致（整数运算）。
+
+        `_force_python` 沿用全仓约定（见 `intelligence/extractor.py`、
+        `skills/material_ingestion.py`）：**跳过加速实现、走纯 Python 回退**。
+        Rust 侧只能做启发式，故此处它同时跳过 tiktoken 精确路径 —— 否则
+        `test_new_features.py` 的双模一致性校验会拿 tiktoken 去比 Rust 启发式。
+        """
+        force_python = getattr(self, "_force_python", False)
+        # 1) tiktoken 精确路径：装了可选依赖就用精确值
+        if self.tokenizer.has_encoder and not force_python:
+            return self.tokenizer.count_messages(messages)
+        # 2) Rust 极速路径
+        if _HAS_RUST_EXT and not force_python:
             try:
                 return _rust.estimate_tokens(messages)
             except Exception:
                 pass
-        total_chars = 0
-        for m in messages:
-            content = m.get("content") or ""
-            total_chars += len(content)
-            if "tool_calls" in m:
-                total_chars += len(str(m["tool_calls"]))
-        return int(total_chars * 0.6)
+        # 3) Python 启发式
+        return heuristic_count_messages(messages)
 
-    def compact_context(self, messages: List[Dict[str, Any]], hook_manager=None) -> List[Dict[str, Any]]:
+    def compact_context(self, messages: List[Dict[str, Any]], hook_manager=None,
+                        focus: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Context Compaction 算法:
-        当估算 Token 超过阈值时，保留 System Prompt 与最近 4 轮交互，
-        将早期冗长 Tool Results 压缩为精简摘要，释放大量上下文空间。
+        当估算 Token 超过**压缩水位**（可用预算 = 窗口 − 输出预留，取其 70%；
+        见 `tokenizer.Budget`）时，保留 System Prompt 与最近 4 轮交互，
+        将早期消息压缩为**结构化摘要**（见 `agent.compaction`），释放上下文空间。
+
+        [B1 修复·早期约束被静默丢弃] 旧实现只保留最后 10 行
+        `学员此前曾提问: {content[:100]}`，早期出现的考纲约束、错因会随行数上限
+        整段丢失。现改为结构化摘要：考纲约束/错因/待复习整条保留（上限 400 字符）。
+        摘要模式由 `agent.compact_mode` 决定（`rule_only` / `llm`，非法回落前者）；
+        `llm` 模式失败时**静默降级**回规则摘要，绝不因摘要失败而中断会话。
+        `focus` 为可选关注点：规则模式下命中的消息在 goal/progress 抽取时优先保留。
         """
         cur_tokens = self.estimate_tokens(messages)
-        if cur_tokens <= self.max_context_tokens or len(messages) <= 6:
+        if cur_tokens <= self.compact_watermark or len(messages) <= 6:
             return messages
 
         # 触发 BeforeCompact Hook 提取关键记忆
@@ -236,22 +281,25 @@ class ContextEngine:
         keep_tail = non_system[cut:]
         history_to_compress = non_system[:cut]
 
-        compressed_summary_lines = []
-        for msg in history_to_compress:
-            role = msg.get("role")
-            if role == "user":
-                compressed_summary_lines.append(f"学员此前曾提问: {msg.get('content', '')[:100]}")
-            elif role == "tool":
-                tool_name = msg.get("name", "tool")
-                compressed_summary_lines.append(f"智能体执行了工具 [{tool_name}] 并获取了数据")
-            elif role == "assistant" and msg.get("content"):
-                compressed_summary_lines.append(f"私教给出了辅导要点: {msg.get('content', '')[:100]}")
+        # 摘要生成：先按 compact_mode 决定路径，LLM 失败即降级规则摘要
+        mode = resolve_compact_mode(self.config)
+        summary = None
+        if mode == "llm":
+            summary = llm_summarize(
+                history_to_compress,
+                focus=focus,
+                config=self.config,
+                workspace_root=self.workspace_root,
+            )
+            if summary is None:
+                print(f"\033[93m[压缩] LLM 结构化摘要不可用（未配置 / 调用失败 / 返回非法），"
+                      f"本次已降级为规则摘要\033[0m")
+        if summary is None:
+            summary = build_structured_summary(history_to_compress, focus=focus)
+            if mode != "llm":
+                self._notice_rule_summary_once()
 
-        summary_text = (
-            "【历史上下文压缩摘要 (Context Compaction)】:\n" +
-            "\n".join(compressed_summary_lines[-10:]) +
-            "\n(早期工具执行细节已自动精简以节省上下文)"
-        )
+        summary_text = render_summary(summary)
 
         compacted = []
         if system_msg:
@@ -260,6 +308,14 @@ class ContextEngine:
         compacted.extend(keep_tail)
 
         return compacted
+
+    def _notice_rule_summary_once(self) -> None:
+        """规则摘要的首次启用提示：每实例只提示一次，避免每轮压缩刷屏。"""
+        if getattr(self, "_rule_summary_notice_shown", False):
+            return
+        self._rule_summary_notice_shown = True
+        print("\033[93m[压缩] 会话超长，已启用规则摘要（考纲约束 / 错因 / 待复习整条保留）；"
+              "如需更高质量摘要可在 ky_config.json 设置 agent.compact_mode=llm\033[0m")
 
     def _read_safe(self, p: Path) -> str:
         for enc in ("utf-8", "utf-8-sig", "gbk"):

@@ -179,3 +179,20 @@ def format_diagnosis_report(diag_result: dict) -> str:
     if isinstance(diag_result, dict):
         return diag_result.get("report", "")
     return str(diag_result)
+
+
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    整卷诊断是纯本地聚合（读配置只为科目名，不写盘、不联网）：用**真调一次最小
+    用例**验证"解析→聚类→出报告"链路没断（只查函数存在会漏掉内部逻辑损坏）。
+    """
+    try:
+        diag = diagnose_mock_exam(subject="math", exam_input="样本：第 1 题 计算失误 扣 2 分")
+        report = format_diagnosis_report(diag)
+    except Exception as e:  # noqa: BLE001 - 自检异常必须收敛为可见状态
+        return {"status": "UNAVAILABLE",
+                "reason": f"整卷诊断链路失败（{type(e).__name__}: {e}），ky diagnose 将不可用"}
+    if not report or not str(report).strip():
+        return {"status": "UNAVAILABLE", "reason": "整卷诊断产出为空，ky diagnose 将不可用"}
+    return {"status": "READY", "reason": "整卷失分聚类与诊断报告可用（纯本地逻辑，无外部依赖）"}

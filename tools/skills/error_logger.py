@@ -182,6 +182,23 @@ def next_due_with_interval(today: date, stage_index: int = 0, rating: str = "goo
     return next_due_d, interval_days
 
 
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    判据是"复测调度是否真的算得出来"：用 0 档 good 评级**真跑一次** FSRS 最小用例
+    （纯本地、毫秒级、不联网）。一旦 fsrs 版本 API 不兼容（如缺
+    ``Scheduler.review_card``），这里会抛异常 —— 错题归档与盲盒复测主链路瘫痪，
+    必须报 UNAVAILABLE 而不是显示"已就绪"。这正是旧硬编码状态最危险的盲区：
+    doctor 报全绿，真到记错题才炸。
+    """
+    try:
+        calc_fsrs_interval(stage=0, rating="good", today=date.today())
+    except Exception as e:  # noqa: BLE001 - 自检异常必须收敛为可见状态
+        return {"status": "UNAVAILABLE",
+                "reason": f"FSRS 复测调度不可用（{type(e).__name__}: {e}），错题归档与盲盒复测将无法排期"}
+    return {"status": "READY", "reason": "FSRS 自适应复测调度可用（错题归档与到期复测闭环正常）"}
+
+
 # ── 复测事件日志（供 FSRS 校准度评测使用）─────────────────────────────
 # 仅凭错题卡片里的 stage/到期日**无法**做真实的 RMSE/LogLoss 评测：
 # 校准度需要「模型预测的回忆概率」与「实际是否想起」的成对样本。

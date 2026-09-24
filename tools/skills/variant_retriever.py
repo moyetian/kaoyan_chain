@@ -430,3 +430,28 @@ def format_variant_output(result: dict) -> str:
 
     lines.append(f"============================================================\n")
     return "\n".join(lines)
+
+
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    变式检索优先查白名单题库（PDF 经 pdf_extractor、文本直接读）：
+      * pypdf 可用 → READY：PDF/Markdown/TXT 题库都能检索；
+      * 缺 pypdf → DEGRADED：PDF 题库不可检索，仅 Markdown/TXT 可用（仍会如实
+        标注"自拟变式"警告，不会伪造题源）。
+    白名单题库为空不算降级 —— 那是用户资料状态，不是技能缺陷（设计上会
+    回落到"私教自拟变式 + 防幻觉标注"）。只做 find_spec 探测，不导入 pypdf。
+    """
+    def _has(mod: str) -> bool:
+        try:
+            import importlib.util
+            return importlib.util.find_spec(mod) is not None
+        except Exception:
+            return False
+
+    if not callable(globals().get("search_real_variant")):
+        return {"status": "UNAVAILABLE", "reason": "核心检索入口 search_real_variant 缺失，ky variant 将不可用"}
+    if _has("pypdf"):
+        return {"status": "READY", "reason": "白名单题库检索可用（PDF/Markdown/TXT），无命中时如实标注自拟变式"}
+    return {"status": "DEGRADED",
+            "reason": "缺 pypdf：PDF 题库不可检索，仅 Markdown/TXT 题库可用（pip install pypdf 解锁）"}

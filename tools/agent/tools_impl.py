@@ -169,6 +169,45 @@ def _is_inside_sandbox(sandbox: Sandbox, resolved: Path) -> bool:
                for extra in sandbox.allowed_extra_paths)
 
 
+# ─────────────────────────────────────────────────────────────────────
+# [B2a ①] 脚本执行 allowlist（硬闸门）
+# 「写脚本再执行」是权限模型里唯一一条能绕过审批执行任意代码的路径：
+# agent 先用 write_file 在工作区内落一个 evil.py，再 `python evil.py` ——
+# 既有校验只查"是否在工作区内"，全部通过。因此 python/python3 可执行的脚本
+# 被收紧为**受控目录白名单**：tools/ / tests/ / rust_ext/ 是版本受控、可审计
+# 的项目代码目录；工作区其他位置（如 01-数学/、05-考研看板/）里的 .py 一律
+# 拒绝执行。越界是硬拒绝 —— 不走审批通道，不给"批准后放行"的口子。
+# ─────────────────────────────────────────────────────────────────────
+
+#: 允许被 run_command 执行的脚本所在目录前缀（相对工作区根，POSIX 风格、小写）。
+_SCRIPT_EXEC_ALLOWED_PREFIXES = (
+    "tools/",
+    "tests/",
+    "rust_ext/",
+)
+
+#: 允许被执行的根级脚本（相对工作区根，小写）。宁缺毋滥：仅收显式点名的入口脚本。
+#: 当前仓库根目录没有 .py 入口（入口在 tools/ky_cli.py），故为空。
+_SCRIPT_EXEC_ALLOWED_ROOT_SCRIPTS: tuple = ()
+
+
+def _is_script_exec_allowed(resolved: Path, workspace_root: Path) -> bool:
+    """[B2a] 脚本是否落在「受控目录」白名单内（硬闸门，见上方常量说明）。
+
+    判定基于**解析后的工作区相对路径**：``./tools/x.py``、``tools/../tools/x.py``
+    等写法在解析后归一，无法靠拼路径绕过；Windows 上经 ``normcase`` 归一大小写，
+    ``TOOLS/x.py`` 也不能冒充白名单目录。
+    """
+    try:
+        rel = Path(resolved).resolve().relative_to(Path(workspace_root).resolve())
+    except (ValueError, OSError):
+        return False
+    rel_key = os.path.normcase(rel.as_posix()).replace("\\", "/")
+    if rel_key in _SCRIPT_EXEC_ALLOWED_ROOT_SCRIPTS:
+        return True
+    return any(rel_key.startswith(pfx) for pfx in _SCRIPT_EXEC_ALLOWED_PREFIXES)
+
+
 def _note_lock_error(path: Path) -> Optional[str]:
     """笔记锁定闸门：frontmatter ``locked: true`` 的笔记禁止被自动改写。
 
@@ -249,12 +288,40 @@ class ToolRegistry:
 
         # 2. 执行工具
         try:
-            result = tool_def.func(**args)
+            # [B2a/B2b] 需要知道调用方是否声明可交互的闸门（headless 一律拒绝、
+            # 交互通道才弹审批卡）显式透传该上下文：B2a 的 run_command「会话污染」
+            # 闸门与 B2b 的 read_file / read_exam_paper「工作区外读取」闸门共用。
+            # 该参数不在工具 schema 里，模型无法通过 args 影响它（此处强制覆盖）。
+            call_args = args
+            if name in ("run_command", "read_file", "read_exam_paper"):
+                call_args = {**args, "interactive": interactive}
+            result = tool_def.func(**call_args)
             return str(result)
         except SecurityException as se:
             return f"SecurityError: {se}"
         except Exception as e:
             return f"ExecutionError in [{name}]: {type(e).__name__} - {str(e)}"
+
+    def _resolve_read_path(self, raw_path, interactive: bool = True) -> Path:
+        """[B2b] 读取入口统一前置：工作区外文件先过外部读取授权闸门。
+
+        流程：``classify_external_read`` 判定是否为「可授权的工作区外只读候选」——
+          * 不是（工作区内 / 白名单目录内 / 已授权目录内，或属于永不可授权的拒绝）
+            → 直接走原有 ``resolve_safe_path``（该拒绝就拒绝，该放行就放行）；
+          * 是 → 先请求授权；被拒则抛 ``SecurityException``（文案含出路引导）；
+            批准则把文件所在目录登记进本会话授权集，再重试解析 ——
+            此时沙箱豁免分支放行，并留下审计日志与会话读取记录。
+        """
+        candidate = self.sandbox.classify_external_read(raw_path)
+        if candidate is None:
+            return self.sandbox.resolve_safe_path(raw_path, read_only=True)
+        allowed, reason = self.permissions.check_external_read(
+            str(raw_path), {"path": str(raw_path)}, interactive=interactive)
+        if not allowed:
+            raise SecurityException(
+                f"沙箱拦截: 拒绝读取工作区外文件 [{raw_path}] —— {reason}")
+        self.sandbox.register_authorized_read_dir(candidate.parent)
+        return self.sandbox.resolve_safe_path(raw_path, read_only=True)
 
     def _register_all_tools(self):
         # ─────────────────────────────────────────────────────────────
@@ -275,8 +342,10 @@ class ToolRegistry:
             },
             level=PermissionLevel.READ_ONLY
         )
-        def read_file(path: str, offset: int = 0, limit: int = 2000) -> str:
-            p = self.sandbox.resolve_safe_path(path, read_only=True)
+        def read_file(path: str, offset: int = 0, limit: int = 2000,
+                      interactive: bool = True) -> str:
+            # [B2b] 工作区外文件先过外部读取授权闸门（批准后同目录免再问）
+            p = self._resolve_read_path(path, interactive)
             if not p.exists():
                 return f"Error: 文件不存在 [{p}]"
 
@@ -327,6 +396,9 @@ class ToolRegistry:
                 return locked_err
             p.parent.mkdir(parents=True, exist_ok=True)
             atomic_write_text(p, content)
+            # [B2a] 登记会话污染：本会话写过的文件禁止被 run_command 直接执行
+            # （除非经审批通道显式批准，见 run_command 的会话污染闸门）。
+            self.sandbox.register_written_file(p)
             return f"Success: 成功写入文件 [{p.name}] ({len(content)} 字符)"
 
         @self.register(
@@ -356,6 +428,9 @@ class ToolRegistry:
                 return f"Error: 在文件中未找到指定的 target_content 文本"
             updated = raw.replace(target_content, replacement, 1)
             atomic_write_text(p, updated)
+            # [B2a] 同 write_file：被改过的既有文件同样计入会话污染集合 ——
+            # 「改一行再执行」与「整文件写入再执行」是同一类风险。
+            self.sandbox.register_written_file(p)
             return f"Success: 成功修改文件 [{p.name}]"
 
         @self.register(
@@ -516,7 +591,7 @@ class ToolRegistry:
             },
             level=PermissionLevel.SHELL_EXEC
         )
-        def run_command(command: str, timeout: int = 30) -> str:
+        def run_command(command: str, timeout: int = 30, interactive: bool = True) -> str:
             # 1. 基础安全检查
             self.sandbox.check_command_safety(command)
             # 2. [P0 修复] 白名单可执行文件校验 + shell=False 执行，根除 RCE 注入
@@ -564,10 +639,30 @@ class ToolRegistry:
                     # 或 `python C:/anywhere/script.py` 能执行工作区外的既有脚本。
                     # 这里补上沙箱校验，让实现与自述契约一致。
                     try:
-                        self.sandbox.resolve_safe_path(first_arg, read_only=True)
+                        _script_path = self.sandbox.resolve_safe_path(first_arg, read_only=True)
                     except SecurityException as e:
                         return (f"安全拦截：python 脚本必须位于工作区内或已授权目录，"
                                 f"已拒绝 {first_arg}（{e}）")
+
+                    # [B2a ①] 脚本路径 allowlist（硬闸门）：仅受控目录下的脚本可执行。
+                    if not _is_script_exec_allowed(_script_path, self.sandbox.workspace_root):
+                        return (
+                            f"安全拦截：仅允许执行受控目录"
+                            f"（{', '.join(_SCRIPT_EXEC_ALLOWED_PREFIXES)}）下的脚本，"
+                            f"已拒绝 [{first_arg}]。工作区其他位置的脚本需人工核对后执行。"
+                        )
+
+                    # [B2a ②] 会话污染闸门：本会话被 write_file / edit_file 写过或
+                    # 改过的脚本，执行前必须经审批通道**显式批准** —— auto 模式不得
+                    # 自动放行；headless（无人在场）一律拒绝且文案可辨识。
+                    # 已知残余（不在 B2a 范围）：`pytest <脚本>` 等同样能执行代码的
+                    # 入口未纳入本闸门，留待后续批次收口。
+                    if self.sandbox.is_session_written(_script_path):
+                        _approved, _reason = self.permissions.check_session_script_exec(
+                            first_arg, {"command": command}, interactive=interactive)
+                        if not _approved:
+                            return (f"PermissionDenied: 本会话写入的脚本 [{first_arg}] "
+                                    f"执行未获批准 —— {_reason}")
 
             # [P0 修复] 位置参数沙箱校验：上面的白名单与参数黑名单都只看「程序名」和
             # 「高危模式」，位置参数里的路径从未过沙箱 —— 于是 `cat /etc/passwd`、
@@ -805,8 +900,10 @@ class ToolRegistry:
             },
             level=PermissionLevel.READ_ONLY
         )
-        def read_exam_paper(pdf_path: str, year: str = "", question_no: str = "", keyword: str = "") -> str:
-            p = self.sandbox.resolve_safe_path(pdf_path, read_only=True)
+        def read_exam_paper(pdf_path: str, year: str = "", question_no: str = "",
+                            keyword: str = "", interactive: bool = True) -> str:
+            # [B2b] 工作区外真题 PDF 先过外部读取授权闸门（批准后同目录免再问）
+            p = self._resolve_read_path(pdf_path, interactive)
             if not p.exists() or p.suffix.lower() != ".pdf":
                 # 智能在各科 参考资料/ 目录或工作区全量搜索同名 PDF
                 file_name = Path(pdf_path).name

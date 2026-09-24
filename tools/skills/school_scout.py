@@ -706,6 +706,28 @@ def format_scout_report(data: Dict[str, Any], use_color: bool = False) -> str:
     return "\n".join(lines)
 
 
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    判据（只读配置，不做联网探活 —— 探活慢且离线环境会假红）：
+      * 已配置大模型 API Key → READY：抓取官网 + LLM 生成情报研报全链路可用（需联网）；
+      * 未配置 → DEGRADED：仍能抓取研招网/官网线索，但研报生成降级为模板拼装。
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    cfg: dict = {}
+    try:
+        root = _Path(__file__).resolve().parent.parent.parent
+        cfg = _json.loads((root / "ky_config.json").read_text(encoding="utf-8"))
+    except Exception:
+        cfg = {}
+    if str(cfg.get("api_key", "") or "").strip():
+        return {"status": "READY",
+                "reason": "已配置 API Key，官网抓取与情报研报生成全链路可用（需联网）"}
+    return {"status": "DEGRADED",
+            "reason": "未配置 API Key，仅能抓取官网线索，情报研报生成降级为模板拼装（ky config 可解锁）"}
+
+
 
 
 

@@ -863,3 +863,26 @@ def extract_text_from_pdf(pdf_path: Any, max_chars: int = 3500) -> str:
     return f"[PDF 文件: {path.name}, 提取结果: 未能提取到文本（可能为纯扫描图片版）]"
 
 
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    切片入库的核心输入是 PDF 试题：pypdf 缺失时仍能处理 Markdown/TXT 文本，
+    因此是 DEGRADED 而不是 UNAVAILABLE（旧硬编码"已就绪"会让用户拿着 PDF
+    进来才发现提不出文本）。Rust 加速扩展缺失只影响性能、不影响功能，不降档。
+    只做 find_spec 轻量探测，不真正 import pypdf。
+    """
+    def _has(mod: str) -> bool:
+        try:
+            import importlib.util
+            return importlib.util.find_spec(mod) is not None
+        except Exception:
+            return False
+
+    if _has("pypdf"):
+        return {"status": "READY",
+                "reason": "pypdf 可用，支持 PDF/Markdown/TXT 试题切片入库"
+                          + ("（含 Rust 加速）" if _HAS_RUST_EXT else "（纯 Python 切片）")}
+    return {"status": "DEGRADED",
+            "reason": "未安装 pypdf，PDF 试题无法解析；当前仅支持 Markdown/TXT 文本切片（pip install pypdf 解锁）"}
+
+

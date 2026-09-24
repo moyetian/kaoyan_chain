@@ -40,3 +40,19 @@ def is_english_sentence(text):
     if not clean: return False
     ascii_count = sum(1 for ch in clean if ord(ch) < 128)
     return (ascii_count / len(clean)) > 0.6 and len(clean.split()) >= 4
+
+
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    纯本地模板技能：用**真调一次最小用例**验证切分指令能构造出来（函数在但
+    模板写坏同样会在这里暴露）。
+    """
+    try:
+        prompt = build_dissection_prompt("This is a sample sentence for self-check.")
+    except Exception as e:  # noqa: BLE001 - 自检异常必须收敛为可见状态
+        return {"status": "UNAVAILABLE",
+                "reason": f"长难句切分指令构造失败（{type(e).__name__}: {e}），/dissect 将不可用"}
+    if not prompt or not str(prompt).strip():
+        return {"status": "UNAVAILABLE", "reason": "长难句切分指令产出为空，/dissect 将不可用"}
+    return {"status": "READY", "reason": "五步搭积木切分模板可用（纯本地逻辑，无外部依赖）"}

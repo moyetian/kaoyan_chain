@@ -16,8 +16,8 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
-  <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v2.8.0-blue?style=flat-square&logo=github&logoColor=white" alt="版本 v2.8.0" />
-  <img src="https://img.shields.io/badge/Tests-1700%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 1700 Passed" />
+  <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v3.0.0-blue?style=flat-square&logo=github&logoColor=white" alt="版本 v3.0.0" />
+  <img src="https://img.shields.io/badge/Tests-2038%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 2038 Passed" />
   <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-6366f1?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
   <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
   <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
@@ -90,13 +90,13 @@
 
 ## 📦 开箱即用：不懂技术也能直接用（推荐）
 
-**v2.8.0 最重要的变化**：本项目现已提供**开箱即用的程序包**。你**不需要安装 Python、不需要懂命令行**，下载后跟着界面引导填几项配置就能开始用。
+**v3.0.0 亮点**：新增**会话恢复与分叉**（`ky session`）、**外部文件读取授权**（默认拒绝 + 交互授权）、**长会话压缩不丢约束**、**沙箱脚本执行收紧**等能力（详见 [CHANGELOG.md](CHANGELOG.md)）。本项目同时提供**开箱即用的程序包** —— 你**不需要安装 Python、不需要懂命令行**，下载后跟着界面引导填几项配置就能开始用。
 
 ### 三步开始使用
 
 1. **下载**：到 [Releases 页面](https://github.com/moyetian/kaoyan_chain/releases) 下载最新版程序包。
-   当前提供 **`KaoyanStudyChain-v2.8.0.zip`** —— 解压即用的免装目录（压缩包约 380 MB，解压后约 1 GB）。
-   > 安装版（`KaoyanStudyChain_Setup_v2.8.0.exe`）需要用 Inno Setup 编译，当前版本暂未提供，后续补上。
+   当前提供 **`KaoyanStudyChain-v3.0.0.zip`** —— 解压即用的免装目录（压缩包约 380 MB，解压后约 1 GB）。
+   > 安装版（`KaoyanStudyChain_Setup_v3.0.0.exe`）需要用 Inno Setup 编译，当前版本暂未提供，后续补上。
 2. **解压 / 启动**：把 zip 解压到任意文件夹（**不要放在需要管理员权限的目录**，
    如 `C:\Program Files`），运行 `KaoyanStudyChain.exe`，或双击 `启动GUI.bat`。
 3. **启动并跟随引导配置**：运行 `KaoyanStudyChain`（或双击 `启动GUI.bat`），
@@ -294,7 +294,7 @@ ky
 ├── GEMINI.md                    # Gemini / Antigravity 适配入口
 ├── .cursorrules / .clinerules   # Cursor / Roo·Cline 编辑器适配规则（与 AGENTS.md 同源）
 ├── LICENSE                      # MIT 开源许可证
-├── pyproject.toml               # 打包元数据（Python ≥3.10，当前版本 2.8.0）
+├── pyproject.toml               # 打包元数据（Python ≥3.10，当前版本 3.0.0）
 ├── requirements.txt             # 可选增强依赖清单（核心功能零依赖）
 ├── installer.iss                # Inno Setup 安装包脚本（由构建生成）
 ├── KaoyanStudyChain.spec        # 路径无关的 PyInstaller 打包配置
@@ -418,11 +418,20 @@ AI 私教只从你放入的白名单资料出题，白名单为空时仅按官�
    # 或： maturin build --release  → 安装 target/wheels/ 下产出的 wheel（分发用）
    ```
 
-9. **Windows 终端编码**
+9. **精确 token 计数为可选（`pip install '.[tokenizer]'`）**
+不装也能跑：上下文预算会用内置的**五类字符单价**启发式估算（汉字 52 / 中文标点 150 /
+ASCII 字母 18 / 空白 6 / 其余 95，单位 1/100 token，最大实测误差 8.0%）。
+想拿到与模型完全一致的计数再装它：
+
+   ```bash
+   pip install '.[tokenizer]'    # 拉取 tiktoken；未装或离线时自动降级，不会报错
+   ```
+
+10. **Windows 终端编码**
 中文输出建议在 Windows Terminal 下运行，或先执行 `chcp 65001` 切换到 UTF-8 代码页，避免乱码。
-10. **Python 版本**
+11. **Python 版本**
 低于 3.10 会因语言特性与类型标注报错，请升级到 3.11 / 3.12 获得最佳兼容性。
-11. **提交 PR 前请自测**
+12. **提交 PR 前请自测**
 运行 `python tools/test_ky_suite.py` 与 `python tools/test_new_features.py`，确认无失败后再提交。注意 `test_ky_suite.py` 会改写工作区用户数据，**默认拒绝在真实考生工作区运行**（exit 2）—— 请在干净副本里跑，或设 `KY_TEST_ALLOW_REAL_WORKSPACE=1` 显式放行（先备份 `ky_config.json`）。
 更多排查思路见 [SETUP.md](SETUP.md) 与 [操作手册.md](操作手册.md) 第 7 章「常见突发场景速查」。
 12. **看板默认离线，公式断网也能渲染**
@@ -489,10 +498,10 @@ AI 私教只从你放入的白名单资料出题，白名单为空时仅按官�
 #    请在干净副本里跑，或设 KY_TEST_ALLOW_REAL_WORKSPACE=1 显式放行（先备份 ky_config.json）。
 python tools/test_ky_suite.py
 
-# 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、开放题判分等，共 130 项断言)
+# 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、开放题判分等，共 131 项断言)
 python tools/test_new_features.py
 
-# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 1268 项）
+# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 1605 项）
 python -m pytest -q
 ```
 
@@ -502,9 +511,9 @@ python -m pytest -q
 > - `test_ky_suite.py`：26 组共 **305 项断言**。Git 工作区内为 305 通过 / 0 跳过；
 > 干净检出（`git archive` 导出、无 `.git`）为 **300 通过 + 5 跳过 = 305** ——
 > 「测试组 7 Git 隐私隔离」的 5 条断言需 `.git`，无 `.git` 时逐条记为跳过，故**两种环境总数恒为 305**。
-> - `test_new_features.py`：**130 项断言**（0 跳过），与是否 Git 工作区无关。
-> - `pytest tests/`：共 **1268 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
-> **含** `dist/` 构建产物，实测 1265 通过 + 3 跳过）。跳过项为联网测试未设
+> - `test_new_features.py`：**131 项断言**（0 跳过），与是否 Git 工作区无关。
+> - `pytest tests/`：共 **1605 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
+> **含** `dist/` 构建产物，实测 1602 通过 + 3 跳过）。跳过项为联网测试未设
 > `KY_LIVE_TEST=1`（2 条）与一条需特定 registry 探测串的守卫（1 条）。
 > 在**无** `dist/` 的副本里跑，6 条打包断言会转为跳过 —— 收集总数不变，通过数下降。
 > 在**无 `cat` 的 Windows 裸机**（Git usr\bin 未加入 PATH）上，2 条沙箱阴性对照会转为
@@ -518,7 +527,7 @@ python -m pytest -q
 >
 > 改文档里的计数时，请**把对应环境一并写上**，否则下一个人会误判为「数字漂移」。
 
-- **测试保障**：主套件 26 组测试集 **305 项断言** + 新功能专项 **130 项断言** + pytest 单元/进程层 **1265 项**（合计 **1700 项通过**，另有 3 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
+- **测试保障**：主套件 26 组测试集 **305 项断言** + 新功能专项 **131 项断言** + pytest 单元/进程层 **1602 项**（合计 **2038 项通过**，另有 3 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
 - **门禁脚本**：`python tools/lint_check.py`（零依赖静态检查，只卡 ERROR 级问题）、`python tools/check_dashboard.py`（看板产物守卫）已接入 CI；
 - **CI 流水线**：内置 GitHub Actions 多平台 (Linux/Windows) 与多 Python 版本自动化测试保障；
 - **开发者文档**：如需参与贡献或了解完整项目架构树，请参阅 [🛠️ 开发者与贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。

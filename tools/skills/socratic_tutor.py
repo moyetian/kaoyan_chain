@@ -60,3 +60,19 @@ def get_next_level(current_level):
     """计算下一次提示级别"""
     lvl = int(current_level)
     return min(lvl + 1, 3)
+
+
+def health_check() -> dict:
+    """[B4] 结构化健康自检：``{"status": READY/DEGRADED/UNAVAILABLE, "reason": str}``。
+
+    纯本地模板技能，判据用**真调一次最小用例**而不是"函数是否存在"：
+    函数在但内部逻辑坏了（模板变量改名等）同样会在这里暴露。
+    """
+    try:
+        prompt = build_hint_prompt("样本题干：求 1+1 的值。", hint_level=1)
+    except Exception as e:  # noqa: BLE001 - 自检异常必须收敛为可见状态
+        return {"status": "UNAVAILABLE",
+                "reason": f"提示模板构造失败（{type(e).__name__}: {e}），/hint 将不可用"}
+    if not prompt or not str(prompt).strip():
+        return {"status": "UNAVAILABLE", "reason": "提示模板产出为空，/hint 将不可用"}
+    return {"status": "READY", "reason": "三级微步骤提示模板可用（纯本地逻辑，无外部依赖）"}

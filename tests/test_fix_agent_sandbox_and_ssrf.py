@@ -196,14 +196,19 @@ def test_negative_control_workspace_containment_is_what_blocks(
         tmp_path, outside_file, monkeypatch):
     """阴性对照（收口层）：放开「必须在工作区内」的收口后，外部 .txt 会被读到。
 
-    单靠 ``resolve_safe_path`` 不够 —— 它对「工作区外 + 只读 + 白名单扩展名」
-    有**有意保留**的豁免（服务 /img 拍照批改）。命令层额外加的
-    ``_is_inside_sandbox`` 才是这条断言真正的支撑。
+    单靠 ``resolve_safe_path`` 不够 —— 命令层额外加的 ``_is_inside_sandbox``
+    才是这条断言真正的支撑。本对照必须**只**摘掉这一个变量：
+
+    [B2b] ``resolve_safe_path`` 的「工作区外 + 只读 + 白名单扩展名」豁免已收紧为
+    「默认拒绝 + 本会话授权后放行」，因此先走合法授权路径
+    （``register_authorized_read_dir``）把该目录登记为本会话已授权 —— 这样沙箱层
+    的放行条件与 B2b 之前等价，被摘掉的仍然只有 ``_is_inside_sandbox`` 收口。
     """
     ws = tmp_path / "ws"
     ws.mkdir()
     reg = _registry(ws)
     _outer, txt, _js = outside_file
+    reg.sandbox.register_authorized_read_dir(txt.parent)   # [B2b] 合法授权路径
 
     monkeypatch.setattr(tools_impl_mod, "_is_inside_sandbox", lambda sandbox, resolved: True)
 
