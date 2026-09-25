@@ -188,6 +188,10 @@ if PYSIDE_AVAILABLE:
                 self._timer.stop()
 
 
+#: [CI 稳定性·2026-09-25] 跨线程 Qt 对象的保活容器 —— 见 ``_drive_request`` 尾部注释。
+_KEEPALIVE: list = []
+
+
 def _drive_request(channel, tool_name="fetch_url", level=4, tool_args=None,
                    is_plan=False, guard_ms=8000):
     """worker 线程发请求 + 主线程跑事件循环收结果（确定性，无显示器依赖）。"""
@@ -202,6 +206,14 @@ def _drive_request(channel, tool_name="fetch_url", level=4, tool_args=None,
     loop.exec()
     worker.wait(3000)
     assert collector.received, "worker 未在保护时间内返回（通道疑似阻塞）"
+    # [CI 稳定性·2026-09-25] QThread / QEventLoop / QObject 此前仅被局部引用，
+    # 函数返回即进入 GC 待回收区；若回收发生在后续测试的 Qt 分配密集操作中
+    # （如全量跑到 test_gui_redesign 首个 win fixture 的 setStyleSheet 触发
+    # gen2 GC），C++ 侧悬垂状态会导致段错误 —— ubuntu-3.11 全量跑实测三次
+    # 同点崩溃（exit 139，前 1193 项后；3.10/3.12 与 Windows 均不复现）。
+    # 保留引用至进程结束规避回收时机；对象数量少，内存开销可忽略。
+    _KEEPALIVE.append((worker, collector, loop))
+
     return collector.result
 
 
