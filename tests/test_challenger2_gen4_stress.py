@@ -528,13 +528,16 @@ class TestREPLClipboardEncoding:
             """
 
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            # 超时 30s（原 10s）：CI windows runner 冷启动 powershell 并加载
+            # WinForms/Drawing 程序集实测可 >10s（windows-3.10 作业 TimeoutExpired），
+            # 本机同用例仅 1.4s。护栏只防挂死，放宽不损断言语义。
             res = subprocess.run(
                 ["powershell", "-NoProfile", "-Command", ps_script],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=10,
+                timeout=30,
                 creationflags=creationflags,
             )
             assert res.returncode == 0, f"PowerShell execution failed on path {p}:\nSTDOUT: {res.stdout}\nSTDERR: {res.stderr}"
