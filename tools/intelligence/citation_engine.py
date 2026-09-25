@@ -195,14 +195,34 @@ def _coerce_answer(raw: Any) -> "Answer":
     """把 dict / Answer 统一转换（校验）为 Answer 对象。
 
     接受 dict 是为了让调用方（如 JSON 模式的 LLM 输出）无需先构造模型。
+
+    [C2 修复] 字段载体非法时（``document_index="abc"``、``confidence=None`` 等），
+    pydantic 路径会在**构造阶段**抛 ``ValidationError`` —— 它不在
+    ``UngroundedCitation`` 契约内，会以未捕获异常逃出反幻觉闸门；而无 pydantic
+    路径（内置模型）会把 None 静默回落为默认值 —— 两条路径行为不一致，违反本模块
+    「双路径构造与取值行为保持一致」的设计要点。这里统一收敛：非法载体一律转为
+    ``UngroundedCitation``（fail-closed），两条路径语义完全一致。
     """
     if isinstance(raw, dict):
         citations = raw.get("citations") or []
-        return Answer(
-            answer=raw.get("answer", ""),
-            citations=[c if isinstance(c, Citation) else Citation(**_as_citation_kwargs(c)) for c in citations],
-            confidence=raw.get("confidence", DEFAULT_CONFIDENCE),
-        )
+        confidence = raw.get("confidence", DEFAULT_CONFIDENCE)
+        if not isinstance(confidence, str):
+            # 显式 null / 数字 / 对象等非法载体：契约外输入一律拒绝。
+            raise UngroundedCitation(
+                f"非法的 confidence 取值: {confidence!r}（应为 {list(ALLOWED_CONFIDENCE)} 之一）"
+            )
+        try:
+            return Answer(
+                answer=raw.get("answer", ""),
+                citations=[c if isinstance(c, Citation) else Citation(**_as_citation_kwargs(c)) for c in citations],
+                confidence=confidence,
+            )
+        except UngroundedCitation:
+            raise
+        except Exception as e:  # pydantic ValidationError / 内置模型 TypeError
+            raise UngroundedCitation(
+                f"回答结构非法（无法构造 Answer/Citation）: {type(e).__name__}: {e}"
+            ) from e
     if isinstance(raw, Answer):
         return raw
     raise UngroundedCitation(

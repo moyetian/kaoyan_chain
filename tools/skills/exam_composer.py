@@ -232,6 +232,23 @@ except Exception:
     except Exception:
         get_subject_name = lambda s, d=None: SUBJECT_NAMES.get(s, s)
 
+# [C3 题源溯源] 题源类别常量与身份模型统一由 question_source 提供（单一事实源）；
+# 这里重新导出同名常量，`from exam_composer import ORIGIN_*` 的既有调用方不受影响。
+try:
+    from skills.question_source import (  # noqa: F401
+        ORIGIN_MISTAKE, ORIGIN_PLACEHOLDER, ORIGIN_SYNTHETIC_LLM, ORIGIN_WHITELIST,
+        QuestionSource, extract_card_stem, has_declared_identity, source_from_card,
+        split_card_blocks,
+    )
+    from skills.question_source import REAL_ORIGINS as _REAL_ORIGINS
+except Exception:  # pragma: no cover - 包式导入路径
+    from tools.skills.question_source import (  # noqa: F401
+        ORIGIN_MISTAKE, ORIGIN_PLACEHOLDER, ORIGIN_SYNTHETIC_LLM, ORIGIN_WHITELIST,
+        QuestionSource, extract_card_stem, has_declared_identity, source_from_card,
+        split_card_blocks,
+    )
+    from tools.skills.question_source import REAL_ORIGINS as _REAL_ORIGINS
+
 SUBJECT_DIRS = {
     "math": "01-数学",
     "eng": "02-英语",
@@ -350,19 +367,32 @@ def _load_whitelist_cards(subject, need=1, boost_text: str = ""):
             txt = slice_file.read_text(encoding="utf-8", errors="ignore")
         except Exception:
             continue
-        for blk in txt.split("### 【题号")[1:]:
+        # [C3 分块口径统一] 用 question_source.split_card_blocks（与补录侧同一
+        # 正则）切块 —— 此前用字面量 "### 【题号" 切分，遇到 "###  【题号 2】"
+        # 之类的空白变体会把两张卡并成一块，误把后卡的身份行算进前卡。
+        for blk in split_card_blocks(txt)[1:]:
             m_src = re.search(r"【题源出处】\*\*[：:]\s*`([^`]+)`", blk)
             source = m_src.group(1).strip() if m_src else slice_file.stem
             m_type = re.search(r"】\s*(.+?)（满分[:：]\s*([0-9.]+)\s*分", blk.splitlines()[0] if blk.splitlines() else "")
             q_type = m_type.group(1).strip() if m_type else "真题"
             score = m_type.group(2).strip() if m_type else ""
-            m_q = re.search(r"####\s*\d+\s*[.、]?\s*试题原题\s*\n(.*?)(?=\n-{3,}|\Z)", blk, re.DOTALL)
-            if not m_q:
-                continue
-            question = m_q.group(1).strip()
+            # [C3 单一事实源] 题干提取与 question_source.extract_card_stem 同源
+            # （此前这里是逐字复制的内联正则，两处漂移会让渲染侧算出的 checksum
+            # 在解析侧校验失败）。
+            question = extract_card_stem(blk)
             if len(question) < 8:
                 continue
             stem_preview = question.replace('\n', ' ')[:12]
+            # [C3 题源溯源] 读取/补全题源身份：
+            #   · 卡片**元数据区**声明过身份（ID 或 校验和字段名，含"值被改坏"）
+            #     → 必须通过校验，不一致 = 题干被改动过 → source_tampered，组卷侧
+            #     排除。半声明 / 值不可解析同样按声明处理 —— 否则"删掉 ID 行"或
+            #     "把校验和值改坏"即可绕过；
+            #   · 完全无身份字段的存量卡片 → 现场构建（惰性 backfill，不落盘）——
+            #     不能因缺字段把存量真题整批拒之门外。
+            declared = has_declared_identity(blk)
+            src = source_from_card(blk, origin=ORIGIN_WHITELIST, fallback_stem=question)
+            tampered = declared and not src.verify(question)
             cards.append({
                 "subject": subject,
                 "subject_name": subj_name,
@@ -380,13 +410,23 @@ def _load_whitelist_cards(subject, need=1, boost_text: str = ""):
                 "score": score,
                 "is_whitelist_card": True,
                 "origin": ORIGIN_WHITELIST,
+                # [C3] 题源身份（source_id / checksum / 篡改标记）
+                "source_id": src.source_id,
+                "source_checksum": src.checksum,
+                "source_verified": src.verified,
+                "source_tampered": tampered,
             })
 
     weakness_grams = _bigrams(boost_text)
     scored = [(_score_card_against_weakness(c, weakness_grams), c.get("title", ""), c)
               for c in cards]
     scored.sort(key=lambda t: (-t[0], t[1]))
-    return [c for _, _, c in scored[:max(1, need)]]
+    # [C3 题源溯源] 可信卡按 need 取 Top-N；被篡改的卡**全部**附在返回列表末尾
+    # （不占 Top-N 名额，也不因 need 截断而漏报）—— 组卷侧据此计数诊断
+    # （source_breakdown.tampered）并排除。
+    trusted = [c for _, _, c in scored if not c.get("source_tampered")]
+    tampered = [c for _, _, c in scored if c.get("source_tampered")]
+    return trusted[:max(1, need)] + tampered
 
 
 def _generate_synthetic_question_llm(subject: str, subj_name: str, topic: str, pain_point: str = "", workspace_root=None) -> dict:
@@ -462,14 +502,9 @@ def _generate_synthetic_question_llm(subject: str, subj_name: str, topic: str, p
 # 题源顺序也随之修正：错题本 → 白名单真题卡 → 大模型变式 → （显式允许时）占位题。
 # ════════════════════════════════════════════════════════════════
 
-#: 题卡 origin 字段取值（写入每张题卡与答案密钥，供题源声明 / 判卷端 / 评测区分）
-ORIGIN_MISTAKE = "mistake"              # 错题本（到期 / 未掌握错题）
-ORIGIN_WHITELIST = "whitelist"          # 参考资料/题库切片_*.md 白名单真题卡
-ORIGIN_SYNTHETIC_LLM = "synthetic_llm"  # 按薄弱点由大模型命制（含参考答案，非真题）
-ORIGIN_PLACEHOLDER = "placeholder"      # 考纲级设问框架（无答案；仅 allow_placeholder 时产出）
-
-#: 真实题源（据此判断「是否有资格组卷」）
-_REAL_ORIGINS = (ORIGIN_MISTAKE, ORIGIN_WHITELIST, ORIGIN_SYNTHETIC_LLM)
+# 题卡 origin 字段取值（ORIGIN_MISTAKE / WHITELIST / SYNTHETIC_LLM / PLACEHOLDER）
+# 与「真实题源」集合 _REAL_ORIGINS 已在文件头从 question_source 导入 ——
+# 那是单一事实源（题卡渲染侧 material_ingestion 也依赖同一份定义）。
 
 
 def _read_radar_rows(subject: str):
@@ -635,6 +670,15 @@ def _build_refusal_guidance(subject, subj_name, subj_folder, diag, requested):
         f"- 薄弱点雷达（`{subj_folder}/_状态/薄弱点雷达.md`）："
         + (f"{diag['radar']} 行 C/D 级薄弱项，但未配置大模型，无法据此命制变式题"
            if diag["radar"] else "尚未建立（由 AI 私教在批改对话中逐步写入，可先从模板复制）"),
+    ]
+    # [C3 题源溯源] 被防篡改闸门排除的卡片必须在盘点里可见 —— 否则学员看到
+    # "盘点 1 张卡 / 组卷说无题源"会一头雾水，也不知道怎么修。
+    if diag.get("tampered"):
+        lines.append(
+            f"- ⚠️ 另有 {diag['tampered']} 张题源卡（白名单 / 错题本）**因题干与题源ID 校验和不符被排除**"
+            "（卡片被改动过，或身份行残缺）——请改回题干，或删掉该卡的「题源ID / 题源校验和」"
+            "两行后运行 `python tools/backfill_source_ids.py` 重新盖章。")
+    lines.extend([
         "",
         "## 3 步启动「组卷 → 判分 → 归因 → 复测」闭环",
         f"1. 把至少 1 份近年真题（PDF / Word / Markdown / TXT）放入 `{ref_dir}`（该目录已被 .gitignore 保护，绝不上云）；",
@@ -643,7 +687,7 @@ def _build_refusal_guidance(subject, subj_name, subj_folder, diag, requested):
         "",
         "> 已有做题记录？先用 `ky exam-submit` 判分或让私教 `log_mistake` 归档，错题会自动成为组卷题源。",
         f"> 如确需几道考纲级设问框架热身，可显式加 `--allow-placeholder`（占位题不计分、不入复测队列）。",
-    ]
+    ])
     return "\n".join(lines)
 
 
@@ -657,10 +701,14 @@ def _material_diagnostics(subject, subj_folder):
                             if p.is_file() and p.name.lower() != "readme.md" and not p.name.startswith("."))
         except Exception:
             ref_files = 0
+    cards = _load_whitelist_cards(subject, need=10 ** 6) if ref_dir.exists() else []
     return {
         "ref_dir_exists": ref_dir.exists(),
         "ref_files": ref_files,
-        "whitelist": len(_load_whitelist_cards(subject, need=10 ** 6)) if ref_dir.exists() else 0,
+        # 只数**可信**卡：被防篡改闸门排除的卡不算"可用题源"（否则会出现
+        # "盘点说库里有 1 张卡、组卷却说没有任何可用题源"的自相矛盾）
+        "whitelist": sum(1 for c in cards if not c.get("source_tampered")),
+        "tampered": sum(1 for c in cards if c.get("source_tampered")),
         "radar": len(_read_radar_rows(subject)),
         "mistake": 0,  # 由调用方填充（依赖 error_logger）
     }
@@ -704,23 +752,46 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
             return False
         if origin and not item.get("origin"):
             item["origin"] = origin
+        # [C3 题源溯源] 每道进入试卷的题都挂题源身份。存量卡片（错题本 / 旧切片）
+        # 没有 source_id 时现场构建 —— 身份是题干的纯派生值，故无需落盘即可校验；
+        # 已有 source_id 的（如白名单卡）保持原样，不覆盖其来源语义。
+        if not item.get("source_id"):
+            _stem = str(item.get("question") or item.get("title") or "")
+            if _stem:
+                _src = QuestionSource.build(
+                    _stem, str(item.get("origin") or origin or ""))
+                item["source_id"] = _src.source_id
+                item["source_checksum"] = _src.checksum
         selected_keys.add(identity)
         selected_items.append(item)
         return True
+    #: [C3 题源溯源] 因题干与题源ID 校验和不符而被排除的卡片数（防篡改闸门）
+    tampered_count = 0
+
+    # 0. 错题池：一次全量扫描（含防篡改标记），供后续两步复用。
+    #    [C3 复查 P2] 错题卡此前完全不读落盘身份 —— backfill 给它盖的章成了死数据，
+    #    改过题干的错题仍会进卷（落盘身份与进卷身份分裂）。现在与白名单卡同口径：
+    #    声明过身份就必须通过校验。全量扫描使坏卡计数不受"选满退出"截断影响。
+    all_errs = error_logger.scan_error_records(subject) if error_logger else []
+    tampered_count += sum(1 for e in all_errs if e.get("source_tampered"))
+
     # 1. 优先拉取到期错题
     if error_logger:
         due_items = error_logger.get_due_reviews(subject, max_count=count)
         for item in due_items:
             if len(selected_items) >= count:
                 break
+            if item.get("source_tampered"):
+                continue  # 已在上方计数；不占名额、不进试卷
             add_unique(item, ORIGIN_MISTAKE)
 
     # 2. 到期题不足时，拉取其他尚未掌握的错题
     if len(selected_items) < count and error_logger:
-        all_errs = error_logger.scan_error_records(subject)
         for err in all_errs:
             if len(selected_items) >= count:
                 break
+            if err.get("source_tampered"):
+                continue  # 已在上方计数
             if "已掌握" not in err.get("status", "") and err not in selected_items:
                 add_unique(err, ORIGIN_MISTAKE)
     mistake_count = len(selected_items)
@@ -742,6 +813,13 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
         _boost_text = "\n".join(p for p in _boost_parts if p)
         for card in _load_whitelist_cards(subject, need=count - len(selected_items),
                                           boost_text=_boost_text):
+            # [C3 题源溯源] 题干与题源ID 的 checksum 不符 → 卡片被改动过，
+            # 不进入试卷（计入 source_breakdown.tampered 供卷首声明与诊断）。
+            # 篡改判定必须在「选满退出」**之前**：坏卡被刻意排在返回列表末尾，
+            # 若先 break 就永远数不到它们，诊断信号会静默归零。
+            if card.get("source_tampered"):
+                tampered_count += 1
+                continue
             if len(selected_items) >= count:
                 break
             add_unique(card, ORIGIN_WHITELIST)
@@ -767,10 +845,15 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
         "whitelist": sum(1 for it in selected_items if it.get("origin") == ORIGIN_WHITELIST),
         "synthetic_llm": sum(1 for it in selected_items if it.get("origin") == ORIGIN_SYNTHETIC_LLM),
         "placeholder": 0,
+        # [C3] 被防篡改闸门排除的卡片数（>0 说明题库里有题干与 ID 不符的卡片）
+        "tampered": tampered_count,
     }
     if not real_items and not allow_placeholder:
         diag = _material_diagnostics(subject, subj_folder)
         diag["mistake"] = mistake_count
+        # [C3 复查 P2] 诊断里的 tampered 改用组卷侧已算好的总数 —— 含白名单卡
+        # **与**错题卡两类（_material_diagnostics 只扫白名单，会漏报错题卡）。
+        diag["tampered"] = tampered_count
         guidance = _build_refusal_guidance(subject, subj_name, subj_folder, diag, count)
         return {
             "success": False,
@@ -827,12 +910,28 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
         lines.append(
             f"> ⚠️ **变式声明**：本卷 {_llm_count} 题为【私教自拟变式】——按薄弱点雷达由大模型命制，"
             f"附参考答案但**并非真题**，仅作针对性巩固。")
+    # [C3 复查 P1] 成功出卷路径也必须呈现防篡改闸门的排除信号 —— 此前只在
+    # 「无题可出」的拒绝引导里可见；库里坏卡导致题量缩水时，卷面却引导学员去
+    # "补充真题"（归因错误），学员无从知道真正原因是卡片被改动过。
+    if tampered_count:
+        lines.append(
+            f"> ⚠️ **题源完整性声明**：另有 {tampered_count} 张题源卡因**题干与题源ID 校验和不符**"
+            f"被防篡改闸门排除（白名单卡在「参考资料/题库切片_*.md」、错题卡在「错题本/」；"
+            f"卡片被改动过，或身份行残缺）——请改回题干，或删掉该卡的「题源ID / 题源校验和」"
+            f"两行后运行 `python tools/backfill_source_ids.py` 重新盖章。")
     if shortfall:
+        if tampered_count:
+            _excluded = (f"另有 {tampered_count} 张题源卡被防篡改闸门排除"
+                         f"（见上行「题源完整性声明」）")
+            _fix_hint = "修复上述卡片后重新组卷即可恢复题量。"
+        else:
+            _excluded = "本地「参考资料/」未命中更多真题"
+            _fix_hint = "补充真题后运行 `ky ingest` 即可扩充题源；"
         lines.append(
             f"> ⚠️ **题量声明**：本次请求 {count} 题，实际仅 {len(selected_items)} 题来自真实题源"
             f"（错题本 {source_breakdown['mistake']} 题 / 白名单真题 {source_breakdown['whitelist']} 题 / "
-            f"大模型变式 {_llm_count} 题），其余 {shortfall} 题已省略 —— 本地「参考资料/」未命中更多真题，"
-            f"系统拒绝用考纲模板句凑数。补充真题后运行 `ky ingest` 即可扩充题源；"
+            f"大模型变式 {_llm_count} 题），其余 {shortfall} 题已省略 —— {_excluded}，"
+            f"系统拒绝用考纲模板句凑数。{_fix_hint}"
             f"如确需占位题热身，可加 `--allow-placeholder`。")
     lines.extend([
         f"> **作答要求**：请在各题【学员作答区】下方独立书写推导或最终结论，拒绝查阅笔记！",

@@ -19,7 +19,7 @@
    距初试天数推荐的「备考节律」主题。用户手动选过主题时 localStorage 优先，
    否则用节律主题 —— 两者都在首次绘制前确定，避免闪一下再跳变。 */
 var KY_PRESETS=[{"k":"dark","n":"曜石黑","m":"dark"},{"k":"light","n":"晨曦白","m":"light"},{"k":"eye-green","n":"护眼绿","m":"light"},{"k":"pink","n":"樱粉","m":"light"},{"k":"hc","n":"高对比（无障碍）","m":"dark"}];
-var KY_RHYTHM={"p":"light","label":"冲刺期","days":86};
+var KY_RHYTHM={"p":"light","label":"冲刺期","days":85};
 var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
 (function(){
   try{
@@ -29,7 +29,7 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   }catch(e){}
 })();
 </script>
-<title>考研学习看板 · 倒计时 86 天</title>
+<title>考研学习看板 · 倒计时 85 天</title>
 <link rel="stylesheet" href="assets/vendor/katex/0.16.9/dist/katex.min.css">
 <style>
 /* ── 主题变量（由 tools/theme 从语义 token 编译注入，勿手工编辑） ──────
@@ -54,14 +54,20 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --focus-ring:#6d28d9;
   --acc-grad-from:#a78bfa;
   --acc-grad-to:#7c3aed;
-  --sh:0 4px 12px rgba(139, 92, 246, 0.06),0 1px 3px rgba(0,0,0,.04);
-  --sh2:0 8px 24px rgba(139, 92, 246, 0.12),0 2px 6px rgba(0,0,0,.03);
+  --elev-1:0 4px 12px rgba(139, 92, 246, 0.06),0 1px 3px rgba(0,0,0,.04);
+  --elev-2:0 8px 24px rgba(139, 92, 246, 0.12),0 2px 6px rgba(0,0,0,.03);
+  --elev-3:0 16px 48px rgba(139, 92, 246, 0.18),0 4px 12px rgba(0,0,0,.05);
+  --chart-1:#2563eb;
+  --chart-2:#059669;
+  --chart-3:#b45309;
+  --chart-4:#be185d;
   --radius:16;
   --radius-sm:8;
   --density:1.0;
   --font-scale:1.0;
   --focus-w:2;
-  --font-family:"Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --icon-stroke:1.75;
+  --font-family:"Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
   --dur-fast:180ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -78,6 +84,25 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --grid-line:#e2e8f0;
   --acc-hover:#6834ca;
   --acc-press:#592faf;
+  --fs-xl:18px;
+  --fs-lg:16px;
+  --fs-base:13px;
+  --fs-sm:12px;
+  --fs-hero:40px;
+  --fs-title:20px;
+  --fs-body:14px;
+  --fs-caption:12px;
+  --space-1:4px;
+  --space-2:8px;
+  --space-3:12px;
+  --space-4:16px;
+  --space-5:24px;
+  --space-6:32px;
+  --icon-sm:16px;
+  --icon-md:20px;
+  --icon-lg:24px;
+  --sh:0 4px 12px rgba(139, 92, 246, 0.06),0 1px 3px rgba(0,0,0,.04);
+  --sh2:0 8px 24px rgba(139, 92, 246, 0.12),0 2px 6px rgba(0,0,0,.03);
   --acc-grad: linear-gradient(135deg, #a78bfa, #7c3aed);
 }
 :root[data-t=dark]{
@@ -97,14 +122,20 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --focus-ring:#c4b5fd;
   --acc-grad-from:#c4b5fd;
   --acc-grad-to:#a78bfa;
-  --sh:0 1px 3px rgba(0,0,0,.3);
-  --sh2:0 8px 24px rgba(0,0,0,.4);
+  --elev-1:0 1px 3px rgba(0,0,0,.3);
+  --elev-2:0 8px 24px rgba(0,0,0,.4);
+  --elev-3:0 16px 48px rgba(0,0,0,.55);
+  --chart-1:#60a5fa;
+  --chart-2:#34d399;
+  --chart-3:#fbbf24;
+  --chart-4:#f472b6;
   --radius:16;
   --radius-sm:8;
   --density:1.0;
   --font-scale:1.0;
   --focus-w:2;
-  --font-family:"Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --icon-stroke:1.75;
+  --font-family:"Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
   --dur-fast:180ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -121,6 +152,25 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --grid-line:#1e293b;
   --acc-hover:#b69ffa;
   --acc-press:#c1affb;
+  --fs-xl:18px;
+  --fs-lg:16px;
+  --fs-base:13px;
+  --fs-sm:12px;
+  --fs-hero:40px;
+  --fs-title:20px;
+  --fs-body:14px;
+  --fs-caption:12px;
+  --space-1:4px;
+  --space-2:8px;
+  --space-3:12px;
+  --space-4:16px;
+  --space-5:24px;
+  --space-6:32px;
+  --icon-sm:16px;
+  --icon-md:20px;
+  --icon-lg:24px;
+  --sh:0 1px 3px rgba(0,0,0,.3);
+  --sh2:0 8px 24px rgba(0,0,0,.4);
   --acc-grad: linear-gradient(135deg, #c4b5fd, #a78bfa);
 }
 :root[data-t=light]{
@@ -140,14 +190,20 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --focus-ring:#6d28d9;
   --acc-grad-from:#a78bfa;
   --acc-grad-to:#7c3aed;
-  --sh:0 4px 12px rgba(139, 92, 246, 0.06),0 1px 3px rgba(0,0,0,.04);
-  --sh2:0 8px 24px rgba(139, 92, 246, 0.12),0 2px 6px rgba(0,0,0,.03);
+  --elev-1:0 4px 12px rgba(139, 92, 246, 0.06),0 1px 3px rgba(0,0,0,.04);
+  --elev-2:0 8px 24px rgba(139, 92, 246, 0.12),0 2px 6px rgba(0,0,0,.03);
+  --elev-3:0 16px 48px rgba(139, 92, 246, 0.18),0 4px 12px rgba(0,0,0,.05);
+  --chart-1:#2563eb;
+  --chart-2:#059669;
+  --chart-3:#b45309;
+  --chart-4:#be185d;
   --radius:16;
   --radius-sm:8;
   --density:1.0;
   --font-scale:1.0;
   --focus-w:2;
-  --font-family:"Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --icon-stroke:1.75;
+  --font-family:"Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
   --dur-fast:180ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -164,6 +220,25 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --grid-line:#e2e8f0;
   --acc-hover:#6834ca;
   --acc-press:#592faf;
+  --fs-xl:18px;
+  --fs-lg:16px;
+  --fs-base:13px;
+  --fs-sm:12px;
+  --fs-hero:40px;
+  --fs-title:20px;
+  --fs-body:14px;
+  --fs-caption:12px;
+  --space-1:4px;
+  --space-2:8px;
+  --space-3:12px;
+  --space-4:16px;
+  --space-5:24px;
+  --space-6:32px;
+  --icon-sm:16px;
+  --icon-md:20px;
+  --icon-lg:24px;
+  --sh:0 4px 12px rgba(139, 92, 246, 0.06),0 1px 3px rgba(0,0,0,.04);
+  --sh2:0 8px 24px rgba(139, 92, 246, 0.12),0 2px 6px rgba(0,0,0,.03);
   --acc-grad: linear-gradient(135deg, #a78bfa, #7c3aed);
 }
 @media(prefers-color-scheme:dark){:root:not([data-t=light]){
@@ -183,14 +258,20 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --focus-ring:#c4b5fd;
   --acc-grad-from:#c4b5fd;
   --acc-grad-to:#a78bfa;
-  --sh:0 1px 3px rgba(0,0,0,.3);
-  --sh2:0 8px 24px rgba(0,0,0,.4);
+  --elev-1:0 1px 3px rgba(0,0,0,.3);
+  --elev-2:0 8px 24px rgba(0,0,0,.4);
+  --elev-3:0 16px 48px rgba(0,0,0,.55);
+  --chart-1:#60a5fa;
+  --chart-2:#34d399;
+  --chart-3:#fbbf24;
+  --chart-4:#f472b6;
   --radius:16;
   --radius-sm:8;
   --density:1.0;
   --font-scale:1.0;
   --focus-w:2;
-  --font-family:"Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --icon-stroke:1.75;
+  --font-family:"Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
   --dur-fast:180ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -207,6 +288,25 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --grid-line:#1e293b;
   --acc-hover:#b69ffa;
   --acc-press:#c1affb;
+  --fs-xl:18px;
+  --fs-lg:16px;
+  --fs-base:13px;
+  --fs-sm:12px;
+  --fs-hero:40px;
+  --fs-title:20px;
+  --fs-body:14px;
+  --fs-caption:12px;
+  --space-1:4px;
+  --space-2:8px;
+  --space-3:12px;
+  --space-4:16px;
+  --space-5:24px;
+  --space-6:32px;
+  --icon-sm:16px;
+  --icon-md:20px;
+  --icon-lg:24px;
+  --sh:0 1px 3px rgba(0,0,0,.3);
+  --sh2:0 8px 24px rgba(0,0,0,.4);
   --acc-grad: linear-gradient(135deg, #c4b5fd, #a78bfa);
 }}
 /* ── 主题预设（由 tools/theme 编译注入，勿手工编辑） ───────────────── */
@@ -227,14 +327,20 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --focus-ring:#1f5f3c;
   --acc-grad-from:#4b9c6a;
   --acc-grad-to:#2f7d4f;
-  --sh:0 4px 12px rgba(47, 125, 79, 0.08),0 1px 3px rgba(0,0,0,.04);
-  --sh2:0 8px 24px rgba(47, 125, 79, 0.14),0 2px 6px rgba(0,0,0,.03);
+  --elev-1:0 4px 12px rgba(47, 125, 79, 0.08),0 1px 3px rgba(0,0,0,.04);
+  --elev-2:0 8px 24px rgba(47, 125, 79, 0.14),0 2px 6px rgba(0,0,0,.03);
+  --elev-3:0 16px 48px rgba(47, 125, 79, 0.2),0 4px 12px rgba(0,0,0,.05);
+  --chart-1:#1d4ed8;
+  --chart-2:#1f7a3d;
+  --chart-3:#a16207;
+  --chart-4:#9d174d;
   --radius:16;
   --radius-sm:8;
   --density:1.0;
   --font-scale:1.0;
   --focus-w:2;
-  --font-family:"Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --icon-stroke:1.75;
+  --font-family:"Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
   --dur-fast:180ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -251,6 +357,25 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --grid-line:#d5e3cb;
   --acc-hover:#2b6e46;
   --acc-press:#296240;
+  --fs-xl:18px;
+  --fs-lg:16px;
+  --fs-base:13px;
+  --fs-sm:12px;
+  --fs-hero:40px;
+  --fs-title:20px;
+  --fs-body:14px;
+  --fs-caption:12px;
+  --space-1:4px;
+  --space-2:8px;
+  --space-3:12px;
+  --space-4:16px;
+  --space-5:24px;
+  --space-6:32px;
+  --icon-sm:16px;
+  --icon-md:20px;
+  --icon-lg:24px;
+  --sh:0 4px 12px rgba(47, 125, 79, 0.08),0 1px 3px rgba(0,0,0,.04);
+  --sh2:0 8px 24px rgba(47, 125, 79, 0.14),0 2px 6px rgba(0,0,0,.03);
   --acc-grad: linear-gradient(135deg, #4b9c6a, #2f7d4f);
 }
 :root[data-t='pink']{
@@ -270,14 +395,20 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --focus-ring:#9d174d;
   --acc-grad-from:#db2777;
   --acc-grad-to:#be185d;
-  --sh:0 4px 12px rgba(190, 24, 93, 0.07),0 1px 3px rgba(0,0,0,.04);
-  --sh2:0 8px 24px rgba(190, 24, 93, 0.13),0 2px 6px rgba(0,0,0,.03);
+  --elev-1:0 4px 12px rgba(190, 24, 93, 0.07),0 1px 3px rgba(0,0,0,.04);
+  --elev-2:0 8px 24px rgba(190, 24, 93, 0.13),0 2px 6px rgba(0,0,0,.03);
+  --elev-3:0 16px 48px rgba(190, 24, 93, 0.18),0 4px 12px rgba(0,0,0,.05);
+  --chart-1:#1d4ed8;
+  --chart-2:#15803d;
+  --chart-3:#b45309;
+  --chart-4:#be185d;
   --radius:16;
   --radius-sm:8;
   --density:1.0;
   --font-scale:1.0;
   --focus-w:2;
-  --font-family:"Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --icon-stroke:1.75;
+  --font-family:"Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
   --dur-fast:180ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -294,6 +425,25 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --grid-line:#f3d9e5;
   --acc-hover:#a61954;
   --acc-press:#941a4d;
+  --fs-xl:18px;
+  --fs-lg:16px;
+  --fs-base:13px;
+  --fs-sm:12px;
+  --fs-hero:40px;
+  --fs-title:20px;
+  --fs-body:14px;
+  --fs-caption:12px;
+  --space-1:4px;
+  --space-2:8px;
+  --space-3:12px;
+  --space-4:16px;
+  --space-5:24px;
+  --space-6:32px;
+  --icon-sm:16px;
+  --icon-md:20px;
+  --icon-lg:24px;
+  --sh:0 4px 12px rgba(190, 24, 93, 0.07),0 1px 3px rgba(0,0,0,.04);
+  --sh2:0 8px 24px rgba(190, 24, 93, 0.13),0 2px 6px rgba(0,0,0,.03);
   --acc-grad: linear-gradient(135deg, #db2777, #be185d);
 }
 :root[data-t='hc']{
@@ -313,14 +463,20 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --focus-ring:#00ffff;
   --acc-grad-from:#ffff66;
   --acc-grad-to:#ffff00;
-  --sh:none;
-  --sh2:none;
+  --elev-1:none;
+  --elev-2:none;
+  --elev-3:none;
+  --chart-1:#60a5fa;
+  --chart-2:#4ade80;
+  --chart-3:#fde047;
+  --chart-4:#f472b6;
   --radius:16;
   --radius-sm:8;
   --density:1.0;
   --font-scale:1.0;
   --focus-w:2;
-  --font-family:"Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --icon-stroke:1.75;
+  --font-family:"Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
   --dur-fast:180ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -337,6 +493,25 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --grid-line:#ffffff;
   --acc-hover:#ffff2e;
   --acc-press:#ffff52;
+  --fs-xl:18px;
+  --fs-lg:16px;
+  --fs-base:13px;
+  --fs-sm:12px;
+  --fs-hero:40px;
+  --fs-title:20px;
+  --fs-body:14px;
+  --fs-caption:12px;
+  --space-1:4px;
+  --space-2:8px;
+  --space-3:12px;
+  --space-4:16px;
+  --space-5:24px;
+  --space-6:32px;
+  --icon-sm:16px;
+  --icon-md:20px;
+  --icon-lg:24px;
+  --sh:none;
+  --sh2:none;
   --acc-grad: linear-gradient(135deg, #ffff66, #ffff00);
 }
 
@@ -346,7 +521,7 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
    键盘完全无法操作。此处统一焦点样式，并只对键盘交互展示（:focus-visible），
    鼠标点击不出现焦点环，避免视觉噪音。 */
 :focus-visible{
-  outline:var(--focus-w) solid var(--focus-ring);
+  outline:calc(var(--focus-w) * 1px) solid var(--focus-ring);
   outline-offset:2px;
   border-radius:6px;
 }
@@ -378,42 +553,24 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   }
 }
 
-/* ── Responsive Layout ── */
-.app-container { display: flex; flex-direction: column; min-height: 100vh; }
-.sidebar-header { display: none; }
-.bar{position:fixed;left:0;right:0;bottom:0;z-index:40;
+/* ══ 布局外壳（移动优先） ══════════════════════════════════════════
+   [缺陷修复·媒体查询反向覆盖] 改造前桌面端规则写在前部、基础规则写在后部且
+   特异性相同，于是桌面规则被基础规则覆盖 —— 两处实证：
+     · .wrap 的 max-width:1080px/margin-left:240px 被后面的
+       .wrap{max-width:820px;margin:0 auto} 吃掉（1440px 视口下内容只占约 790px）；
+     · .bar button 的 flex:none;padding:12px 16px 被后面的
+       flex:1;padding:9px 4px 10px 吃掉 → 侧栏 6 项纵向平分视口，
+       激活项变成约 130px 的巨型高亮块。
+   现统一为「基础/移动优先规则在前，桌面媒体查询集中在 <style> 末尾」，
+   两者不再互相覆盖（顺序本身即修复的一部分，勿把桌面段前移）。 */
+:root{--sbw:240px}                 /* 侧栏宽度：桌面 .sidebar 与 .wrap 共用同一真源 */
+.sidebar{position:fixed;left:0;right:0;bottom:0;z-index:40}
+.brand{display:none}                /* 品牌区只在桌面侧栏出现（移动端底栏无空间） */
+.bar{display:flex;
  background:color-mix(in srgb,var(--surf) 90%,transparent);
  backdrop-filter:saturate(180%) blur(24px);-webkit-backdrop-filter:saturate(180%) blur(24px);
- border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -4px 16px rgba(0,0,0,.03)}
-
-/* Tablet */
-@media(min-width: 768px) {
-  .bar { top: 0; bottom: auto; padding: 0 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); border-top: none; border-bottom: 1px solid var(--line); }
-  .wrap { margin-top: 60px; padding: 0 32px; }
-}
-
-/* Desktop */
-@media(min-width: 1024px) {
-  .bar { 
-    position: fixed; left: 0; top: 0; bottom: 0; right: auto; 
-    width: 240px; flex-direction: column; padding: 24px 16px; 
-    background: var(--surf); border-right: 1px solid var(--line); 
-    border-bottom: none; justify-content: flex-start; align-items: flex-start; gap: 8px;
-    box-shadow: none;
-  }
-  .bar button {
-    flex: none; display: flex; align-items: center; gap: 12px;
-    padding: 12px 16px; border-radius: 12px; width: 100%; text-align: left;
-    background: transparent; color: var(--mut); margin: 0;
-  }
-  .bar button:hover { background: var(--surf2); }
-  .bar button.on { background: var(--acc-sub); color: var(--acc); font-weight: 700; }
-  .bar button i { margin: 0; font-size: 18px; display: flex; align-items: center; justify-content: center; width: 24px; }
-  
-  .sidebar-header { display: block; margin-bottom: 32px; padding: 0 16px; font-size: 18px; font-weight: 800; color: var(--fg); letter-spacing: -0.02em; }
-  
-  .wrap { max-width: 1080px; margin: 0 auto; margin-left: 240px; padding: 32px 40px; width: calc(100% - 240px); }
-}
+ border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);
+ box-shadow:0 -4px 16px rgba(0,0,0,.03)}
 
 /* Primary buttons and progress bar gradients */
 .pfill{height:100%;border-radius:99px;background:var(--acc-grad);transition:width var(--dur-slow) var(--ease-std)}
@@ -421,64 +578,156 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{overscroll-behavior-y:none}
+/* [P1 字体栈] 消费设计系统 token var(--font-family)（此前全仓无消费点，
+   body 用的是另一套硬编码栈 → token 改了页面也不会变）。var() 带兜底值：
+   tools/theme 不可用时（兜底 CSS 无该变量）仍落到系统栈，不会退化成 serif。 */
 body{margin:0;background:var(--bg);color:var(--fg);
- font:14.5px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
- -webkit-font-smoothing:antialiased;padding-bottom:calc(76px + env(safe-area-inset-bottom));transition:background var(--dur-base) var(--ease-std),color var(--dur-base) var(--ease-std)}
-.wrap{max-width:820px;margin:0 auto;padding:0 18px}
+ font-size:var(--fs-body);line-height:1.6;
+ font-family:var(--font-family,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif);
+ -webkit-font-smoothing:antialiased;padding-bottom:calc(76px + env(safe-area-inset-bottom));
+ transition:background var(--dur-base) var(--ease-std),color var(--dur-base) var(--ease-std)}
+/* [P1 布局] .wrap 不再设 1080/820 宽度上限：内容填满可用宽度（宽屏由 .dash
+   的 12 栏网格分配，窄屏降级单列）。 */
+.wrap{max-width:none;margin:0;padding:0 var(--space-4)}
 
-/* ── 顶部 ── */
-header{padding:22px 0 6px}
-.hd{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
-.hl{line-height:1}
-.hl .lb{font-size:11.5px;letter-spacing:.12em;color:var(--mut);text-transform:uppercase;margin-bottom:7px;display:flex;align-items:center;gap:6px}
-.hl .lb::before{content:"";width:7px;height:7px;border-radius:99px;background:var(--ok);display:inline-block}
-.hl .big{font-size:56px;font-weight:850;letter-spacing:-.04em;font-variant-numeric:tabular-nums;color:var(--fg)}
-.hl .big i{font-size:20px;font-weight:600;color:var(--mut);font-style:normal;margin-left:4px}
-.hr2{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
-.tbtn-theme{background:var(--surf2);border:1px solid var(--line);border-radius:99px;padding:6px 12px;font-size:12px;color:var(--fg);cursor:pointer;display:flex;align-items:center;gap:5px;box-shadow:var(--sh);transition:var(--dur-fast)}
-.tbtn-theme:hover{background:var(--surf)}
-.hr-info{font-size:11.5px;color:var(--mut);text-align:right;line-height:1.6}
-.hr-info b{color:var(--fg);font-weight:700}
+/* ══ 首屏：倒计时 hero 卡 ══════════════════════════════════════════
+   改造前页头是「56px 数字 + 右上角 4 组信息 + 全宽进度行」的堆叠，信息挤在
+   一角、主次不分。现改为一张渐变 hero 卡：环形进度 + 大数字倒计时 +
+   初试日期 + 备考进度条，科目归档条收进卡内底部。
+   渐变方向取 315deg（左下浅 → 右上深）：文字所在的左上角落在 acc-grad-to
+   一端，五套预设下 on-acc 对它的对比度均 ≥5:1；若沿用 135deg，浅色预设的
+   文字会压在 acc-grad-from（#a78bfa）上，实测仅 2.72:1，不达 AA。 */
+.hero{position:relative;overflow:hidden;color:var(--on-acc);
+ background:linear-gradient(315deg,var(--acc-grad-from),var(--acc-grad-to));
+ border-radius:calc(var(--radius) * 1px);box-shadow:var(--elev-2);
+ padding:var(--space-5) var(--space-4) var(--space-4)}
+.hero::after{content:"";position:absolute;right:-56px;bottom:-72px;width:200px;height:200px;
+ border-radius:50%;background:color-mix(in srgb,var(--on-acc) 10%,transparent);pointer-events:none}
+.hero-in{position:relative;display:flex;align-items:center;gap:var(--space-4);flex-wrap:wrap}
+.hero-ring{position:relative;flex:0 0 auto;width:112px;height:112px}
+.hero-ring svg{display:block;width:100%;height:100%;transform:rotate(-90deg)}
+/* pathLength=100 把圆周长归一到 100，故 dasharray/dashoffset 可直接按百分比算 */
+.ring-track{fill:none;stroke:color-mix(in srgb,var(--on-acc) 22%,transparent);stroke-width:8}
+.ring-fill{fill:none;stroke:var(--on-acc);stroke-width:8;stroke-linecap:round;
+ transition:stroke-dashoffset var(--dur-slow) var(--ease-std)}
+.hero-ring-c{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:2px}
+.hero-num{font-size:var(--fs-hero);font-weight:850;letter-spacing:-.04em;
+ font-variant-numeric:tabular-nums;line-height:1}
+.hero-unit{font-size:var(--fs-caption);font-weight:700;align-self:flex-end;margin-bottom:5px}
+.hero-info{flex:1 1 190px;min-width:0}
+.hero-lb{display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-caption);
+ font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.hero-title{margin-top:var(--space-2);font-size:var(--fs-title);font-weight:800;
+ letter-spacing:-.01em;line-height:1.3}
+.hero-meta{margin-top:var(--space-1);font-size:var(--fs-body);font-weight:600}
+/* hero 内的进度条改走 on-acc：底色上的 .pfill 原本也是 acc-grad，会与卡底同色隐形 */
+.hero .plan{margin:var(--space-4) 0 0}
+.hero .pt{color:var(--on-acc);font-size:var(--fs-caption)}
+.hero .ptrack{background:color-mix(in srgb,var(--on-acc) 22%,transparent);border-color:transparent}
+.hero .pfill{background:var(--on-acc)}
+.hero-subs{position:relative;margin-top:var(--space-4)}
 
-.plan{margin:14px 0 4px}
-.plan .pt{display:flex;justify-content:space-between;font-size:11px;color:var(--mut);margin-bottom:6px;font-weight:600}
+/* ══ KPI 卡（近 7 日） ════════════════════════════════════════════
+   [P1] 落实「给数字配上下文」：指标名 + 数值 + 7 日 sparkline + 一句昨日对比。
+   数据全部取自内联的 D.trend（completion_history），不新增构建期占位符；
+   无数据时走空状态三件套（图标 / 说明 / CTA，见 DESIGN.md §6.4）。 */
+/* 首屏网格：移动端单列堆叠，桌面端升级为 12 栏（见文件末尾覆盖段） */
+.dash{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-3)}
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3)}
+.kpi{min-width:0;display:flex;flex-direction:column;gap:var(--space-2);
+ background:var(--surf);border:1px solid var(--line);border-radius:calc(var(--radius) * 1px);
+ box-shadow:var(--elev-1);padding:var(--space-3);
+ transition:border-color var(--dur-fast) var(--ease-std),box-shadow var(--dur-fast) var(--ease-std)}
+.kpi:hover{border-color:var(--acc-line);box-shadow:var(--elev-2)}
+.kpi-h{display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-caption);
+ color:var(--mut);font-weight:700}
+.kpi-h .ic{flex:0 0 auto;color:var(--c,var(--acc))}
+.kpi-v{font-size:var(--fs-title);font-weight:850;letter-spacing:-.02em;
+ font-variant-numeric:tabular-nums;line-height:1.1;color:var(--fg)}
+.kpi-v .u{font-size:var(--fs-caption);font-weight:700;color:var(--mut);margin-left:2px}
+.kpi-spark{height:28px;color:var(--c,var(--acc))}
+.spark{display:block;width:100%;height:28px;overflow:visible}
+.spark-base{stroke:var(--line);stroke-width:2;stroke-dasharray:4 4}
+.kpi-ctx{font-size:var(--fs-caption);color:var(--mut);line-height:1.45}
+.kpi-ctx b{color:var(--fg);font-weight:700}
+.kpi-ctx.up b{color:var(--ok)}
+.kpi-ctx.down b{color:var(--bad)}
+.kpi-ctx.warn b{color:var(--warn)}
+.kpi-empty{display:flex;flex-direction:column;align-items:flex-start;gap:var(--space-2)}
+.kpi-empty .ed{font-size:var(--fs-caption);color:var(--mut);line-height:1.45}
+
+/* ══ 内容面板卡 ══════════════════════════════════════════════════ */
+.panel{margin-top:var(--space-3);background:var(--surf);border:1px solid var(--line);
+ border-radius:calc(var(--radius) * 1px);box-shadow:var(--elev-1);overflow:hidden}
+.panel-h{display:flex;align-items:center;gap:var(--space-2);
+ padding:var(--space-3) var(--space-4);background:var(--surf2);border-bottom:1px solid var(--line)}
+.panel-h .ic{display:flex;flex:0 0 auto;color:var(--acc)}
+.panel-h h2{margin:0;font-size:var(--fs-body);font-weight:800;letter-spacing:-.01em}
+.panel-h .sp{margin-left:auto;display:flex;align-items:center;gap:var(--space-2)}
+.panel-b{padding:0}
+/* 面板内的学科块拍平成「分区 + 细分隔线」，避免卡中卡 */
+.panel-b .blk{margin:0;border:0;border-radius:0;box-shadow:none;background:transparent}
+.panel-b .blk + .blk{border-top:1px solid var(--line)}
+
+/* ── 顶部工具条（主题 / 动效） ────────────────────────────────────
+   [P1 信息层级] 改造前主题按钮、动效开关、初试首日、备考天数 4 组信息全部
+   挤在右上角 .hr2 里，还叠着一条全宽进度行，主次不分。现拆开：
+   考期信息进 hero 卡，只留两个紧凑 pill 在右上工具条。 */
+.topbar{display:flex;justify-content:flex-end;align-items:center;gap:var(--space-2);
+ padding:var(--space-3) 0 var(--space-2)}
+.tbtn-theme,.fx-btn{display:inline-flex;align-items:center;gap:var(--space-1);
+ background:var(--surf);border:1px solid var(--line);border-radius:99px;
+ padding:var(--space-1) var(--space-3);font:inherit;font-size:var(--fs-caption);
+ color:var(--mut);cursor:pointer;box-shadow:var(--elev-1);
+ transition:color var(--dur-fast) var(--ease-std),border-color var(--dur-fast) var(--ease-std)}
+.tbtn-theme:hover,.fx-btn:hover{border-color:var(--acc-line);color:var(--fg)}
+.tbtn-theme .ic,.fx-btn .ic{display:flex;color:var(--acc)}
+.fx-btn[aria-pressed="false"]{opacity:.7}
+
+/* ── 备考进度条（hero 卡与图谱摘要共用） ────────────────────────── */
+.plan{margin:var(--space-4) 0 var(--space-1)}
+.plan .pt{display:flex;justify-content:space-between;font-size:var(--fs-caption);
+ color:var(--mut);margin-bottom:var(--space-2);font-weight:600}
 .ptrack{height:7px;background:var(--surf2);border-radius:99px;overflow:hidden;border:1px solid var(--line)}
 
-/* ── 学科小卡 ── */
-/* 列宽必须用 minmax(0,1fr) 而非 1fr：1fr 的自动下限是 min-content，
-   四张卡片的固有最小宽度之和会直接把页面撑破（实测 390px 视口下文档宽 825px，
+/* ── 科目归档条（hero 卡内） ──────────────────────────────────────
+   列宽必须用 minmax(0,1fr) 而非 1fr：1fr 的自动下限是 min-content，
+   卡片固有最小宽度之和会直接把页面撑破（实测 390px 视口下文档宽 825px，
    手机端出现横向滚动、卡片被裁切）。 */
-.subs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0 8px}
-.sub{min-width:0;background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);padding:12px 10px;
- text-align:center;box-shadow:var(--sh);transition:transform var(--dur-fast),box-shadow var(--dur-fast)}
-.sub:hover{transform:translateY(-1px);box-shadow:var(--sh2)}
-.sub .si{font-size:16px;font-weight:800;color:var(--c);line-height:1.2}
-.sub .sn{font-size:11.5px;color:var(--mut);margin-top:4px;font-weight:600}
-.sub .sv{font-size:16px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums;color:var(--fg)}
-.sub .su{font-size:10px;color:var(--mut);margin-top:2px}
-/* 窄屏（手机）：四列挤在一屏会让卡片被裁切，改为 2×2 两行 */
-@media(max-width: 520px){
-  .subs{grid-template-columns:repeat(2,minmax(0,1fr))}
-}
+.subs{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:var(--space-2)}
+.sub{min-width:0;display:flex;align-items:center;gap:var(--space-2);
+ background:var(--surf);border:1px solid var(--line);
+ border-radius:calc(var(--radius-sm) * 1px);padding:var(--space-2) var(--space-3);
+ box-shadow:var(--elev-1);transition:border-color var(--dur-fast) var(--ease-std)}
+.sub:hover{border-color:var(--acc-line)}   /* DESIGN.md §6.1：悬停不位移，避免布局抖动 */
+.sub .si{display:flex;flex:0 0 auto;font-size:var(--icon-md);font-weight:800;color:var(--c);line-height:1}
+.sub .sn{flex:1;min-width:0;font-size:var(--fs-caption);color:var(--mut);font-weight:600;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub .sv{font-size:var(--fs-body);font-weight:800;font-variant-numeric:tabular-nums;color:var(--fg)}
+.sub .su{font-size:10px;color:var(--mut)}
+@media(max-width:520px){.sub .su{display:none}}
 @media(prefers-color-scheme:dark){:root:not([data-t=light]) .sub .si{color:var(--cd)}}
 :root[data-t=dark] .sub .si{color:var(--cd)}
 
-/* ── 页签 ── */
+/* ── 页签（移动端：底部标签栏） ── */
 /* [UX 升级] 动效时长统一走 Token（200~350ms 区间），并显式声明焦点行为 */
 .pane{display:none;animation:fade var(--dur-base) var(--ease-std)}
 .pane.on{display:block}
 .pane:focus{outline:none}
 @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 
-.bar button{flex:1;background:none;border:0;color:var(--mut);font:inherit;font-size:11.5px;
- padding:9px 4px 10px;cursor:pointer;line-height:1.3;transition:color var(--dur-fast) var(--ease-std)}
-.bar button i{display:block;font-style:normal;font-size:18px;margin-bottom:2px;
+.bar button{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;
+ background:none;border:0;color:var(--mut);font:inherit;font-size:var(--fs-caption);
+ padding:var(--space-2) var(--space-1) 10px;cursor:pointer;line-height:1.3;
+ transition:color var(--dur-fast) var(--ease-std)}
+.bar button i{display:flex;align-items:center;justify-content:center;
+ width:var(--icon-lg);height:var(--icon-lg);font-style:normal;
  transition:transform var(--dur-base) var(--ease-emph)}
 .bar button.on{color:var(--acc);font-weight:700}
 .bar button.on i{transform:translateY(-2px) scale(1.1)}
 
 /* ── 通用卡片块 ── */
-.blk{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);margin:14px 0;
+.blk{background:var(--surf);border:1px solid var(--line);border-radius:calc(var(--radius) * 1px);margin:14px 0;
  overflow:hidden;box-shadow:var(--sh)}
 .blk-h{padding:12px 18px;font-size:12.5px;color:var(--fg);font-weight:700;
  border-bottom:1px solid var(--line);background:var(--surf2);display:flex;align-items:center}
@@ -506,8 +755,32 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .mask-active td:nth-child(n+2):not(:last-child){filter:blur(6px);user-select:none;cursor:pointer;transition:filter var(--dur-base) var(--ease-std);background:color-mix(in srgb,var(--acc-sub) 30%,transparent)}
 .mask-active td:nth-child(n+2):not(:last-child).revealed{filter:none;background:transparent}
 
-.empty{text-align:center;color:var(--mut);padding:56px 20px;font-size:13.5px}
-.empty .ei{font-size:36px;margin-bottom:10px;opacity:.6}
+/* ══ 空状态三件套（DESIGN.md §6.4：图标 + 说明 + CTA，禁止裸奔） ═══ */
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;
+ color:var(--mut);padding:var(--space-6) var(--space-4);font-size:var(--fs-body)}
+.empty .ei{display:flex;align-items:center;justify-content:center;width:56px;height:56px;
+ border-radius:50%;background:var(--surf2);color:var(--mut);margin-bottom:var(--space-3)}
+.empty-t{font-size:var(--fs-body);font-weight:700;color:var(--fg);margin-bottom:var(--space-1)}
+.empty-d{font-size:var(--fs-caption);color:var(--mut);line-height:1.6;max-width:34em}
+.empty .cta{margin-top:var(--space-3)}
+.empty-help{margin-top:var(--space-3);max-width:40em;text-align:left;
+ font-size:var(--fs-caption);color:var(--mut);background:var(--surf2);
+ border:1px solid var(--line);border-radius:calc(var(--radius-sm) * 1px);padding:var(--space-3)}
+.empty-help[hidden]{display:none}
+.empty-help b{color:var(--fg)}
+.empty-help ol{margin:var(--space-2) 0 0;padding-left:1.3em}
+.empty-help li{margin:var(--space-1) 0;line-height:1.6}
+.empty-help code{background:var(--surf);padding:1px 5px;border-radius:5px;
+ font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+
+/* 主按钮（空状态 CTA）：DESIGN.md §6.2 主按钮 = acc 底 + on-acc 字 */
+.cta{display:inline-flex;align-items:center;gap:var(--space-1);font:inherit;
+ font-size:var(--fs-caption);font-weight:700;color:var(--on-acc);background:var(--acc);
+ border:0;border-radius:99px;padding:var(--space-2) var(--space-4);cursor:pointer;
+ box-shadow:var(--elev-1);transition:background var(--dur-fast) var(--ease-std)}
+.cta:hover{background:var(--acc-hover)}
+.cta .ic{display:flex}
+
 .extra{margin:18px 0 8px}
 .extra summary{cursor:pointer;font-size:12.5px;color:var(--mut);padding:10px 14px;
  background:var(--surf);border:1px solid var(--line);border-radius:12px;list-style:none;transition:background var(--dur-fast)}
@@ -577,7 +850,7 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .tbtn.on{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:700}
 
 /* ── 指标条 ── */
-.mgrp{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);margin:14px 0;
+.mgrp{background:var(--surf);border:1px solid var(--line);border-radius:calc(var(--radius) * 1px);margin:14px 0;
  padding:14px 18px 8px;box-shadow:var(--sh)}
 .mgrp h3{margin:0 0 12px;font-size:12.5px;color:var(--mut);font-weight:700;
  display:flex;align-items:center;gap:7px}
@@ -601,7 +874,7 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .leg i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 
 /* ── 知识图谱 (S3-4) ── */
-.map-summary{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;margin-bottom:14px;box-shadow:var(--sh)}
+.map-summary{background:var(--surf);border:1px solid var(--line);border-radius:calc(var(--radius) * 1px);padding:14px 18px;margin-bottom:14px;box-shadow:var(--sh)}
 .map-badges{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
 .mbadge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:11.5px;font-weight:700}
 .mbadge.A{background:rgba(16,185,129,.12);color:var(--ok);border:1px solid rgba(16,185,129,.3)}
@@ -609,7 +882,7 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .mbadge.C{background:rgba(245,158,11,.12);color:var(--warn);border:1px solid rgba(245,158,11,.3)}
 .mbadge.D{background:rgba(239,68,68,.12);color:var(--bad);border:1px solid rgba(239,68,68,.3)}
 .mbadge.U{background:rgba(148,163,184,.12);color:#64748b;border:1px solid rgba(148,163,184,.35)}
-.map-chap{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:12px;overflow:hidden;box-shadow:var(--sh)}
+.map-chap{background:var(--surf);border:1px solid var(--line);border-radius:calc(var(--radius) * 1px);margin-bottom:12px;overflow:hidden;box-shadow:var(--sh)}
 .map-chap-h{padding:12px 18px;font-weight:700;font-size:13.5px;background:var(--surf2);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
 .map-point{padding:10px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
 .map-point:last-child{border-bottom:0}
@@ -618,11 +891,11 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .map-err{font-size:11px;color:var(--bad);font-weight:600}
 
 /* ── 趋势曲线 (S3-4) ── */
-.trend-card{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;margin-bottom:16px;box-shadow:var(--sh)}
+.trend-card{background:var(--surf);border:1px solid var(--line);border-radius:calc(var(--radius) * 1px);padding:14px 18px;margin-bottom:16px;box-shadow:var(--sh)}
 .trend-card h3{margin:0 0 10px;font-size:13px;color:var(--mut);font-weight:700;display:flex;align-items:center;gap:6px}
 
 /* ── 招考与考纲变动雷达 (S7) ── */
-.radar-sec{background:var(--surf);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px;box-shadow:var(--sh)}
+.radar-sec{background:var(--surf);border:1px solid var(--line);border-radius:calc(var(--radius) * 1px);padding:16px 18px;margin-bottom:14px;box-shadow:var(--sh)}
 .radar-sec h3{margin:0 0 10px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;color:var(--fg)}
 .radar-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600}
 .radar-badge.add{background:rgba(239,68,68,.12);color:var(--bad);border:1px solid rgba(239,68,68,.25)}
@@ -633,56 +906,360 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)
 .radar-card-h{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:13px;margin-bottom:6px}
 .radar-stat{display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px;margin:8px 0}
 
-footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opacity:.7}
+footer{text-align:center;color:var(--mut);font-size:var(--fs-caption);padding:var(--space-5) 0 var(--space-3);opacity:.7}
+
+/* ══════════════════════════════════════════════════════════════════
+   以下为**响应式覆盖段，必须留在 <style> 末尾**：
+   基础（移动优先）规则写在前部，桌面规则靠后覆盖。
+   顺序一旦反过来，就会出现 P1 根因那种「桌面规则被基础规则吃掉」的
+   反向覆盖（.wrap 宽度上限、.bar button 巨型激活块都由它引起）。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 平板（≥768px）─────────────────────────────────────────────── */
+@media(min-width:768px){
+  .sidebar{top:0;bottom:auto;box-shadow:0 2px 12px rgba(0,0,0,.05)}
+  .bar{padding:0 var(--space-5);border-top:none;border-bottom:1px solid var(--line)}
+  .wrap{padding:0 var(--space-5)}
+  .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+
+/* ── 桌面（≥1100px）：左侧栏 + 12 栏网格 ─────────────────────────
+   阈值取 1100px 而非 1024px：240px 侧栏 + 内容区在 1024px 下只剩 784px，
+   四张 KPI 卡会被压到约 180px。 */
+@media(min-width:1100px){
+  .sidebar{top:0;bottom:0;right:auto;width:var(--sbw);display:flex;flex-direction:column;
+   gap:var(--space-5);padding:var(--space-5) var(--space-3);
+   background:var(--surf);border-right:1px solid var(--line);border-bottom:none;
+   box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+  /* 品牌区（DESIGN.md §6.3：导航分组之上） */
+  .brand{display:flex;align-items:center;gap:var(--space-3);padding:0 var(--space-2)}
+  .brand-mark{display:flex;flex:0 0 auto;align-items:center;justify-content:center;
+   width:36px;height:36px;border-radius:calc(var(--radius-sm) * 1px);
+   background:var(--acc-grad);color:var(--on-acc);box-shadow:var(--elev-1)}
+  .brand-txt{min-width:0}
+  .brand-txt b{display:block;font-size:var(--fs-body);font-weight:800;
+   letter-spacing:-.01em;line-height:1.25}
+  .brand-txt small{display:block;font-size:var(--fs-caption);color:var(--mut)}
+  /* 页签改侧栏导航：标准 40px pill + 左侧 3px 强调条（禁止整块巨型高亮） */
+  .bar{flex-direction:column;gap:var(--space-2);padding:0;
+   background:transparent;border:0;box-shadow:none;
+   backdrop-filter:none;-webkit-backdrop-filter:none}
+  .bar button{flex:none;width:100%;height:40px;flex-direction:row;justify-content:flex-start;
+   gap:var(--space-3);padding:0 var(--space-3);border-left:3px solid transparent;
+   border-radius:calc(var(--radius-sm) * 1px);font-size:var(--fs-body);text-align:left}
+  .bar button:hover{background:var(--surf2)}
+  .bar button i{width:var(--icon-lg);margin:0}
+  .bar button.on{background:var(--acc-sub);color:var(--acc);font-weight:700;
+   border-left-color:var(--acc)}
+  .bar button.on i{transform:none}
+  .wrap{margin-left:var(--sbw);width:calc(100% - var(--sbw));
+   padding:var(--space-5) var(--space-6) var(--space-6)}
+  body{padding-bottom:var(--space-5)}
+  /* 12 栏网格：hero 占 7 栏、KPI 2×2 占 5 栏，首屏一屏内主次分明 */
+  .dash{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));
+   gap:var(--space-4);align-items:start}
+  .hero{grid-column:span 7}
+  .kpis{grid-column:span 5;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hero-in{flex-wrap:nowrap}
+  .hero-ring{width:132px;height:132px}
+}
 </style>
 </head>
 <body>
+<!-- ── 图标 sprite（构建期把 docs/assets/icons.svg 全文注入） ──────────
+     必须内联：<use href="#i-today"> 只认同文档内的 symbol，而 file:// 下
+     跨文件 <use href="assets/icons.svg#..."> 会被浏览器同源策略拒绝。
+     build.py 是单遍 re.sub，注入内容不会被再次扫描，故 sprite 里的任何
+     字符都不会被误当占位符。 -->
+<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="display:none">
+  <!-- 图标子集 · 来源 Lucide v1.48.0（ISC 协议） · 由 tools/theme/icons.py 抽取 · 请勿手工编辑 -->
+  <symbol id="i-today" data-lucide="calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 2v3" />
+      <path d="M16 2v3" />
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M3 9h18" />
+  </symbol>
+  <symbol id="i-memo" data-lucide="brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 18V5" />
+      <path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4" />
+      <path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5" />
+      <path d="M17.997 5.125a4 4 0 0 1 2.526 5.77" />
+      <path d="M18 18a4 4 0 0 0 2-7.464" />
+      <path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517" />
+      <path d="M6 18a4 4 0 0 1-2-7.464" />
+      <path d="M6.003 5.125a4 4 0 0 0-2.526 5.77" />
+  </symbol>
+  <symbol id="i-weak" data-lucide="target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+  </symbol>
+  <symbol id="i-stats" data-lucide="chart-column" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 3v16a2 2 0 0 0 2 2h16" />
+      <path d="M18 17V9" />
+      <path d="M13 17V5" />
+      <path d="M8 17v-3" />
+  </symbol>
+  <symbol id="i-map" data-lucide="map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z" />
+      <path d="M15 5.764v15" />
+      <path d="M9 3.236v15" />
+  </symbol>
+  <symbol id="i-radar" data-lucide="radar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M19.07 4.93A10 10 0 0 0 6.99 3.34" />
+      <path d="M4 6h.01" />
+      <path d="M2.29 9.62A10 10 0 1 0 21.31 8.35" />
+      <path d="M16.24 7.76A6 6 0 1 0 8.23 16.67" />
+      <path d="M12 18h.01" />
+      <path d="M17.99 11.66A6 6 0 0 1 15.77 16.67" />
+      <circle cx="12" cy="12" r="2" />
+      <path d="m13.41 10.59 5.66-5.66" />
+  </symbol>
+  <symbol id="i-sun" data-lucide="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2" />
+      <path d="M12 20v2" />
+      <path d="m4.93 4.93 1.41 1.41" />
+      <path d="m17.66 17.66 1.41 1.41" />
+      <path d="M2 12h2" />
+      <path d="M20 12h2" />
+      <path d="m6.34 17.66-1.41 1.41" />
+      <path d="m19.07 4.93-1.41 1.41" />
+  </symbol>
+  <symbol id="i-moon" data-lucide="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+  </symbol>
+  <symbol id="i-sparkles" data-lucide="sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
+      <path d="M20 2v4" />
+      <path d="M22 4h-4" />
+      <circle cx="4" cy="20" r="2" />
+  </symbol>
+  <symbol id="i-settings" data-lucide="settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+      <circle cx="12" cy="12" r="3" />
+  </symbol>
+  <symbol id="i-refresh" data-lucide="refresh-cw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+      <path d="M8 16H3v5" />
+  </symbol>
+  <symbol id="i-close" data-lucide="x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+  </symbol>
+  <symbol id="i-plus" data-lucide="plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 12h14" />
+      <path d="M12 5v14" />
+  </symbol>
+  <symbol id="i-search" data-lucide="search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m21 21-4.34-4.34" />
+      <circle cx="11" cy="11" r="8" />
+  </symbol>
+  <symbol id="i-info" data-lucide="info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4" />
+      <path d="M12 8h.01" />
+  </symbol>
+  <symbol id="i-check" data-lucide="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 6 9 17l-5-5" />
+  </symbol>
+  <symbol id="i-check-circle" data-lucide="circle-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10" />
+      <path d="m16 9-5.5 5.5L8 12" />
+  </symbol>
+  <symbol id="i-alert" data-lucide="triangle-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+  </symbol>
+  <symbol id="i-alert-circle" data-lucide="circle-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10" />
+      <line x1="12" x2="12" y1="8" y2="12" />
+      <line x1="12" x2="12.01" y1="16" y2="16" />
+  </symbol>
+  <symbol id="i-star" data-lucide="star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
+  </symbol>
+  <symbol id="i-flame" data-lucide="flame" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4" />
+  </symbol>
+  <symbol id="i-award" data-lucide="award" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m15.477 12.89 1.515 8.526a.5.5 0 0 1-.81.47l-3.58-2.687a1 1 0 0 0-1.197 0l-3.586 2.686a.5.5 0 0 1-.81-.469l1.514-8.526" />
+      <circle cx="12" cy="8" r="6" />
+  </symbol>
+  <symbol id="i-hourglass" data-lucide="hourglass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 22h14" />
+      <path d="M5 2h14" />
+      <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22" />
+      <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2" />
+  </symbol>
+  <symbol id="i-timer" data-lucide="timer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="10" x2="14" y1="2" y2="2" />
+      <line x1="12" x2="15" y1="14" y2="11" />
+      <circle cx="12" cy="14" r="8" />
+  </symbol>
+  <symbol id="i-clock" data-lucide="clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" />
+  </symbol>
+  <symbol id="i-trend-up" data-lucide="trending-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 7h6v6" />
+      <path d="m22 7-8.5 8.5-5-5L2 17" />
+  </symbol>
+  <symbol id="i-trend-down" data-lucide="trending-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 17h6v-6" />
+      <path d="m22 17-8.5-8.5-5 5L2 7" />
+  </symbol>
+  <symbol id="i-book" data-lucide="book-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 5v16" />
+      <path d="M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z" />
+  </symbol>
+  <symbol id="i-pen" data-lucide="pen-line" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13 21h8" />
+      <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+  </symbol>
+  <symbol id="i-chat" data-lucide="message-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" />
+  </symbol>
+  <symbol id="i-clipboard" data-lucide="clipboard-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <path d="M12 11h4" />
+      <path d="M12 16h4" />
+      <path d="M8 11h.01" />
+      <path d="M8 16h.01" />
+  </symbol>
+  <symbol id="i-file" data-lucide="file-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
+      <path d="M14 2v5a1 1 0 0 0 1 1h5" />
+      <path d="M10 9H8" />
+      <path d="M16 13H8" />
+      <path d="M16 17H8" />
+  </symbol>
+  <symbol id="i-list" data-lucide="list-checks" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13 5h8" />
+      <path d="M13 12h8" />
+      <path d="M13 19h8" />
+      <path d="m3 17 2 2 4-4" />
+      <path d="m3 7 2 2 4-4" />
+  </symbol>
+  <symbol id="i-folder" data-lucide="folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+  </symbol>
+  <symbol id="i-cap" data-lucide="graduation-cap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z" />
+      <path d="M22 10v6" />
+      <path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5" />
+  </symbol>
+  <symbol id="i-eye" data-lucide="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
+      <circle cx="12" cy="12" r="3" />
+  </symbol>
+  <symbol id="i-eye-off" data-lucide="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" />
+      <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" />
+      <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" />
+      <path d="m2 2 20 20" />
+  </symbol>
+  <symbol id="i-upload" data-lucide="upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3v12" />
+      <path d="m17 8-5-5-5 5" />
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  </symbol>
+  <symbol id="i-send" data-lucide="send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
+      <path d="m21.854 2.147-10.94 10.939" />
+  </symbol>
+  <symbol id="i-external" data-lucide="external-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+  </symbol>
+  <symbol id="i-chevron-right" data-lucide="chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m9 18 6-6-6-6" />
+  </symbol>
+  <symbol id="i-play" data-lucide="play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />
+  </symbol>
+</svg>
+
 <a class="skip-link" href="#main">跳到主要看板内容</a>
 <!-- 屏幕阅读器播报区：页签切换等状态变化在此播报（视觉不可见） -->
 <div id="a11y-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<aside class="sidebar">
+  <!-- 品牌区（桌面侧栏顶部；移动端底栏无空间，CSS 里隐藏） -->
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"><svg class="icn" width="20" height="20" focusable="false"><use href="#i-cap"/></svg></span>
+    <span class="brand-txt"><b>考研学习链</b><small>四科备考中枢</small></span>
+  </div>
+  <nav class="bar" role="tablist" aria-label="看板页签">
+    <button role="tab" id="tab-today" aria-controls="p-today" aria-selected="true" tabindex="0" class="on" data-p="today"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-today"/></svg></i>今日</button>
+    <button role="tab" id="tab-memo" aria-controls="p-memo" aria-selected="false" tabindex="-1" data-p="memo"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-memo"/></svg></i>必背</button>
+    <button role="tab" id="tab-weak" aria-controls="p-weak" aria-selected="false" tabindex="-1" data-p="weak"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-weak"/></svg></i>薄弱</button>
+    <button role="tab" id="tab-stat" aria-controls="p-stat" aria-selected="false" tabindex="-1" data-p="stat"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-stats"/></svg></i>数据</button>
+    <button role="tab" id="tab-map" aria-controls="p-map" aria-selected="false" tabindex="-1" data-p="map"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-map"/></svg></i>图谱</button>
+    <button role="tab" id="tab-radar" aria-controls="p-radar" aria-selected="false" tabindex="-1" data-p="radar"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-radar"/></svg></i>考情</button>
+  </nav>
+</aside>
+
 <div class="wrap">
 
-<header>
-  <div class="hd">
-    <div class="hl">
-      <!-- [前端修复·考期硬编码] 原写死「2026」，改由 EXAM_YEAR 从考期真源注入 -->
-      <div class="lb">2026 研考倒计时</div>
-      <div class="big">86<i>天</i></div>
-    </div>
-    <div class="hr2">
-      <button class="tbtn-theme" id="th-btn" type="button" aria-label="切换主题预设" title="点击切换主题预设"><svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/></svg><span class="th-name">主题</span></button>
-      <div class="hr-info">
-<!-- [UX 升级] 原为可点击 div：键盘不可达、读屏不识别为控件。
-     改为 <button> 并同步 aria-pressed，使其可 Tab 聚焦、Enter/Space 激活。 -->
-<button type="button" id="fx-toggle" aria-pressed="true"
-        style="font-size:11px;color:var(--mut);background:none;border:0;font:inherit;font-size:11px;display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px;padding:2px 0;">✨ 动效已开启 (点击关闭)</button>
+<div class="topbar">
+  <button class="tbtn-theme" id="th-btn" type="button" aria-label="切换主题预设" title="点击切换主题预设"><span class="ic" id="th-ic"><svg class="icn" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-sun"/></svg></span><span class="th-name">主题</span></button>
+  <!-- [UX 升级] 原为可点击 div：键盘不可达、读屏不识别为控件。
+       改为 <button> 并同步 aria-pressed，使其可 Tab 聚焦、Enter/Space 激活。 -->
+  <button class="fx-btn" type="button" id="fx-toggle" aria-pressed="true"><span class="ic"><svg class="icn" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-sparkles"/></svg></span><span class="fx-name">动效已开启</span></button>
+</div>
 
-        <!-- [前端修复·考期硬编码] 原写死「12-19」，改由 EXAM_MMDD 注入 -->
-        初试首日 · <b>12-19</b><br>
-        备考第 <b>95</b> / 181 天
+<main id="main" tabindex="-1">
+<div class="dash">
+<header class="hero">
+  <h1 class="sr-only">考研学习看板 · 距初试还有 85 天</h1>
+  <div class="hero-in">
+    <div class="hero-ring" role="img" aria-label="备考日程已推进 53.0%，距初试还有 85 天">
+      <!-- 环形进度：pathLength=100 把周长归一到 100，dashoffset 由 animate() 按
+           53.0 设置（进度 = 备考天数 / 总天数） -->
+      <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false">
+        <circle class="ring-track" cx="60" cy="60" r="52"/>
+        <circle class="ring-fill" id="ring-fill" cx="60" cy="60" r="52" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+      </svg>
+      <div class="hero-ring-c" aria-hidden="true"><span class="hero-num">85</span><span class="hero-unit">天</span></div>
+    </div>
+    <div class="hero-info">
+      <div class="hero-lb"><span class="ic"><svg class="icn" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg></span>2026 研考倒计时</div>
+      <!-- [前端修复·考期硬编码] 原写死「12-19」，改由 EXAM_MMDD 注入 -->
+      <div class="hero-title">初试首日 · <b>12-19</b></div>
+      <div class="hero-meta">备考第 <b>96</b> / 181 天</div>
+      <div class="plan">
+        <div class="pt"><span>备考总日程推进</span><span>53.0%</span></div>
+        <div class="ptrack"><div class="pfill" id="pf" style="width:0"></div></div>
       </div>
     </div>
   </div>
-  <div class="plan">
-    <div class="pt"><span>备考总日程推进</span><span>52.5%</span></div>
-    <div class="ptrack"><div class="pfill" id="pf" style="width:0"></div></div>
-  </div>
+  <div class="hero-subs" id="subs"></div>
 </header>
 
-<main id="main" tabindex="-1">
-<div class="subs" id="subs"></div>
+<section class="kpis" id="kpis" aria-label="近 7 日学习概况"></section>
+</div>
 
 <div id="p-today" class="pane on" role="tabpanel" aria-labelledby="tab-today" tabindex="-1">
-  <div style="display:flex;justify-content:flex-end;margin:8px 0 4px">
-    <button class="tbtn" id="mask-today-btn"><svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/></svg>开启遮罩自测</button>
-  </div>
-  <div class='empty'><div class='ei'><svg viewBox='0 0 24 24' width='36' height='36' stroke='currentColor' stroke-width='1.6' fill='none' style='display:block;margin:0 auto 10px'><rect x='8' y='2' width='8' height='4' rx='1'/><path d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'/><path d='M9 14l2 2 4-4'/></svg></div>今日任务已生成（内容保留在本地完整模式）</div>
+  <section class="panel">
+    <div class="panel-h">
+      <span class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-clipboard"/></svg></span>
+      <h2>今日任务</h2>
+      <div class="sp"><button class="tbtn" id="mask-today-btn" type="button"><span class="ic"><svg class="icn" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-eye"/></svg></span>开启遮罩自测</button></div>
+    </div>
+    <div class="panel-b"><div class='empty'><div class='ei'><svg class='icn' width='24' height='24' aria-hidden='true' focusable='false'><use href='#i-check-circle'/></svg></div><div class='empty-t'>今日任务已生成</div><div class='empty-d'>公开副本不含任务正文，本地完整模式可见</div><button class='cta' type='button' data-help='today-help' aria-expanded='false' aria-controls='today-help'>为什么看不到内容？</button><div class='empty-help' id='today-help' hidden><b>公开副本的脱敏规则</b><ol><li>任务正文属私人学习记录，发布时按脱敏规则移除；</li><li>结构化卡片、指标与倒计时仍照常展示；</li><li>本地完整模式（构建时置 <code>KY_SNAPSHOT_OPT_IN=0</code>）可见正文。</li></ol></div></div></div>
+  </section>
 </div>
 
 <div id="p-memo" class="pane" role="tabpanel" aria-labelledby="tab-memo" tabindex="-1">
   <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px">
     <div class="decks" id="dk-memo"></div>
-    <button class="tbtn" id="mask-memo-btn" style="flex-shrink:0"><svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/></svg>遮罩自测</button>
+    <button class="tbtn" id="mask-memo-btn" style="flex-shrink:0"><span class="ic"><svg class="icn" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-eye"/></svg></span>遮罩自测</button>
   </div>
   <div id="fc-memo"></div>
   
@@ -715,28 +1292,19 @@ footer{text-align:center;color:var(--mut);font-size:11px;padding:24px 0 12px;opa
 
 <div id="p-radar" class="pane" role="tabpanel" aria-labelledby="tab-radar" tabindex="-1">
   <section class='radar-sec'><h3><span><svg viewBox='0 0 24 24' width='16' height='16' stroke='currentColor' stroke-width='2' fill='none'><path d='M12 2v20M2 12h20M12 7a5 5 0 0 0-5 5M12 3a9 9 0 0 0-9 9'/></svg></span>目标院校简章监控雷达 (Admission Watcher)</h3><div style='font-size:12px;color:var(--mut);margin-bottom:8px'>已配置 <b>1</b> 所监控院校，系统自动轮询其研究生院公告并比对哈希指纹变动：</div><div class='radar-card'><div class='radar-card-h'><span>监控中院校（已脱敏）</span><span class='radar-badge del'>指纹轮询正常</span></div><div style='font-size:12px;color:var(--mut);'>院校名称、研究生院官网与简章标题仅保留在本机 <code>.memory/admission_watch.json</code>，不随公开看板发布。</div></div></section>
-<section class='radar-sec'><h3><span><svg viewBox='0 0 24 24' width='16' height='16' stroke='currentColor' stroke-width='2' fill='none'><path d='M3 3v18h18M18 17l-5-5-4 4-6-6'/></svg></span>考纲版本异动与动荡率分析 (Syllabus Diff)</h3><div class='empty' style='padding:16px;'><div class='ei'>📑</div>暂无大纲对比研报<br><small>在终端输入 <code>ky fetch diff --school 目标院校</code> 即可生成逐级 AST 差异透视与突破处方</small></div></section>
+<section class='radar-sec'><h3><span><svg viewBox='0 0 24 24' width='16' height='16' stroke='currentColor' stroke-width='2' fill='none'><path d='M3 3v18h18M18 17l-5-5-4 4-6-6'/></svg></span>考纲版本异动与动荡率分析 (Syllabus Diff)</h3><div class='empty' style='padding:16px;'><div class='ei'><svg class="icn" width="24" height="24" aria-hidden="true" focusable="false"><use href="#i-file"/></svg></div>暂无大纲对比研报<br><small>在终端输入 <code>ky fetch diff --school 目标院校</code> 即可生成逐级 AST 差异透视与突破处方</small></div></section>
 <section class='radar-sec'><h3><span><svg viewBox='0 0 24 24' width='16' height='16' stroke='currentColor' stroke-width='2' fill='none'><path d='M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z'/></svg></span>社媒真实经验与避坑口碑档案 (Community Experiences)</h3><div style='font-size:12px;color:var(--mut);margin-bottom:8px'>聚合知乎、B站、小红书实名学长学姐真实就读体验与避坑指南 (AI 置信度降噪清洗)：</div><div class='radar-card'><div class='radar-card-h'><span>目标院校 · 目标专业 社媒经验档案</span><span class='radar-badge tag'>AI置信清洗</span></div><div style='font-size:12px;margin:4px 0;color:var(--ok);'><b>优势亮点:</b> 正规教育部备案招生单位</div><div style='font-size:12px;margin:4px 0;color:var(--bad);'><b>避坑防线:</b> 需在9月前防范自命题大纲更换 · 需警惕复试差额过高或调剂占用</div><div style='font-size:11.5px;color:var(--mut);margin-top:6px;'>详细经验条目与社媒直通车已归档至 <code>.memory/experiences/（本地隐私目录，不随看板公开）</code></div></div><div class='radar-card'><div class='radar-card-h'><span>目标院校 · 目标专业 社媒经验档案</span><span class='radar-badge tag'>AI置信清洗</span></div><div style='font-size:12px;margin:4px 0;color:var(--ok);'><b>优势亮点:</b> 正规教育部备案招生单位</div><div style='font-size:12px;margin:4px 0;color:var(--bad);'><b>避坑防线:</b> 需在9月前防范自命题大纲更换 · 需警惕复试差额过高或调剂占用</div><div style='font-size:11.5px;color:var(--mut);margin-top:6px;'>详细经验条目与社媒直通车已归档至 <code>.memory/experiences/（本地隐私目录，不随看板公开）</code></div></div></section>
 </div>
 
 </main>
 
-<footer>考研学习看板 · 数据驱动 · 稳扎稳打 · 更新于 2026-09-24 19:33</footer>
+<footer>考研学习看板 · 数据驱动 · 稳扎稳打 · 更新于 2026-09-25 16:39</footer>
 </div>
-
-<nav class="bar" role="tablist" aria-label="看板页签">
-  <button role="tab" id="tab-today" aria-controls="p-today" aria-selected="true" tabindex="0" class="on" data-p="today"><i><svg viewBox='0 0 24 24' width='18' height='18' stroke='currentColor' stroke-width='2' fill='none'><rect x='3' y='4' width='18' height='18' rx='2'/><line x1='16' y1='2' x2='16' y2='6'/><line x1='8' y1='2' x2='8' y2='6'/><line x1='3' y1='10' x2='21' y2='10'/></svg></i>今日</button>
-  <button role="tab" id="tab-memo" aria-controls="p-memo" aria-selected="false" tabindex="-1" data-p="memo"><i>🧠</i>必背</button>
-  <button role="tab" id="tab-weak" aria-controls="p-weak" aria-selected="false" tabindex="-1" data-p="weak"><i>🎯</i>薄弱</button>
-  <button role="tab" id="tab-stat" aria-controls="p-stat" aria-selected="false" tabindex="-1" data-p="stat"><i><svg viewBox='0 0 24 24' width='18' height='18' stroke='currentColor' stroke-width='2' fill='none'><line x1='12' y1='20' x2='12' y2='10'/><line x1='18' y1='20' x2='18' y2='4'/><line x1='6' y1='20' x2='6' y2='16'/></svg></i>数据</button>
-  <button role="tab" id="tab-map" aria-controls="p-map" aria-selected="false" tabindex="-1" data-p="map"><i>🗺️</i>图谱</button>
-  <button role="tab" id="tab-radar" aria-controls="p-radar" aria-selected="false" tabindex="-1" data-p="radar"><i>📡</i>考情</button>
-</nav>
 
 <script src="assets/vendor/katex/0.16.9/dist/katex.min.js"></script>
 <script src="assets/vendor/katex/0.16.9/dist/contrib/auto-render.min.js"></script>
 <script>
-var D = {"memo": [{"id": "eng-memo-0", "subj": "英语", "key": "eng", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "color": "#e11d48", "dark": "#fb7185", "title": "长难句", "cards": [{"f": "While it is easy to ignore...", "b": []}]}, {"id": "pol-memo-1", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "马原", "cards": [{"f": "哲学的基本问题", "b": []}, {"f": "唯物辩证法的实质和核心", "b": []}, {"f": "辩证法的总特征", "b": []}, {"f": "认识的本质", "b": []}, {"f": "实践的三个基本特征", "b": []}, {"f": "检验真理的唯一标准", "b": []}, {"f": "社会存在与发展的决定力量", "b": []}, {"f": "社会历史发展的决定力量", "b": []}, {"f": "阶级斗争 vs 革命", "b": []}, {"f": "人民群众的历史地位", "b": []}, {"f": "商品的二因素", "b": []}, {"f": "剩余价值的唯一源泉", "b": []}, {"f": "资本主义经济危机的根源", "b": []}]}, {"id": "pol-memo-2", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "毛中特", "cards": [{"f": "近代中国社会的主要矛盾（1840—1949）", "b": []}, {"f": "中国革命的基本动力", "b": []}, {"f": "新民主主义革命的领导力量", "b": []}, {"f": "新民主主义革命的前途", "b": []}, {"f": "中国革命的三大法宝", "b": []}, {"f": "党的根本宗旨", "b": []}, {"f": "社会主义的本质", "b": []}, {"f": "社会主义社会的根本任务", "b": []}, {"f": "发展与高质量发展", "b": []}, {"f": "改革开放的根本目的", "b": []}, {"f": "中国共产党的根本保证作用", "b": []}, {"f": "全面深化改革的总目标", "b": []}]}, {"id": "pol-memo-3", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "新思想", "cards": [{"f": "新时代我国社会主要矛盾", "b": []}, {"f": "总体布局（五位一体）", "b": []}, {"f": "战略布局（四个全面）", "b": []}, {"f": "新发展理念", "b": []}, {"f": "中国式现代化的本质要求", "b": []}, {"f": "总任务", "b": []}, {"f": "全面依法治国的总目标", "b": []}, {"f": "人类命运共同体", "b": []}, {"f": "全面从严治党", "b": []}]}, {"id": "pol-memo-4", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "史纲", "cards": [{"f": "近代以来中华民族最伟大的梦想", "b": []}, {"f": "中国近代史的起点", "b": []}, {"f": "新民主主义革命的开端", "b": []}, {"f": "中国共产党成立的标志", "b": []}, {"f": "生死攸关的转折点", "b": []}, {"f": "全民族抗战的起点", "b": []}, {"f": "新中国的成立", "b": []}, {"f": "社会主义制度基本确立", "b": []}, {"f": "改革开放的伟大开端", "b": []}, {"f": "中国特色社会主义进入新时代", "b": []}, {"f": "中国共产党的初心和使命", "b": []}]}, {"id": "pol-memo-5", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "复发易混点", "cards": [{"f": "待做题后归纳", "b": []}]}, {"id": "pro-memo-6", "subj": "专业课", "key": "pro", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "title": "核心概念", "cards": [{"f": "示例考点 1", "b": []}, {"f": "示例考点 2", "b": []}]}], "weak": [{"id": "eng-weak-0", "subj": "英语", "key": "eng", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "color": "#e11d48", "dark": "#fb7185", "title": "题型能力评估", "cards": [{"f": "细节定位", "b": []}, {"f": "主干切分", "b": []}, {"f": "词义推断", "b": []}]}, {"id": "pol-weak-1", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "模块雷达", "cards": [{"f": "马原/毛中特/史纲/思法", "b": []}]}, {"id": "pol-weak-2", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "分析题能力", "cards": [{"f": "原理结合材料", "b": []}]}, {"id": "pol-weak-3", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "下周优先级", "cards": [{"f": "建立首轮选择题得分盘", "b": []}]}, {"id": "pro-weak-4", "subj": "专业课", "key": "pro", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "title": "章节掌握度", "cards": [{"f": "绪论与基本概念", "b": []}, {"f": "核心基础理论 (上)", "b": []}, {"f": "核心基础理论 (下)", "b": []}, {"f": "综合应用与设计", "b": []}]}, {"id": "pro-weak-5", "subj": "专业课", "key": "pro", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "title": "错题重做队列", "cards": [{"f": "暂无待重做错题 (做错题目自动纳入)", "b": []}]}], "metrics": [{"subj": "英语", "key": "eng", "color": "#e11d48", "dark": "#fb7185", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "items": [{"label": "细节定位", "text": "0", "count": 0.0}, {"label": "主干切分", "text": "0", "count": 0.0}, {"label": "词义推断", "text": "0", "count": 0.0}]}, {"subj": "英语", "key": "eng", "color": "#e11d48", "dark": "#fb7185", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "items": [{"label": "定位偏差", "text": "0", "count": 0.0}, {"label": "偷换概念", "text": "0", "count": 0.0}, {"label": "无中生有", "text": "0", "count": 0.0}, {"label": "答非所问", "text": "0", "count": 0.0}]}, {"subj": "政治", "key": "pol", "color": "#d97706", "dark": "#fbbf24", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "items": [{"label": "选择题得分盘", "text": "0", "count": 0.0}]}, {"subj": "政治", "key": "pol", "color": "#d97706", "dark": "#fbbf24", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "items": [{"label": "漏选", "text": "0", "count": 0.0}, {"label": "错选", "text": "0", "count": 0.0}, {"label": "偷换概念", "text": "0", "count": 0.0}, {"label": "绝对化", "text": "0", "count": 0.0}, {"label": "审题偏差", "text": "0", "count": 0.0}, {"label": "答非所问", "text": "0", "count": 0.0}, {"label": "时政脱节", "text": "0", "count": 0.0}]}, {"subj": "专业课", "key": "pro", "color": "#059669", "dark": "#34d399", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "items": [{"label": "概念漏洞", "text": "0", "count": 0.0}, {"label": "审题偏差", "text": "0", "count": 0.0}, {"label": "公式记错", "text": "0", "count": 0.0}, {"label": "计算失误", "text": "0", "count": 0.0}, {"label": "书写丢分", "text": "0", "count": 0.0}]}], "subjects": [{"key": "eng", "name": "英语", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "color": "#e11d48", "dark": "#fb7185", "notes": 0, "ok": true}, {"key": "pol", "name": "政治", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "notes": null, "ok": true}, {"key": "pro", "name": "专业课", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "notes": 0, "ok": true}], "plan": {"day": 95, "total": 181}, "maps": {"eng": {"subject": "eng", "subject_name": "英语", "total_points": 6, "total_topics": 6, "grade_counts": {"A": 0, "B": 0, "C": 0, "D": 0, "U": 6}, "mastery_rate": 0.0, "assessed_count": 0, "unassessed_count": 6, "assessed_rate": 0.0, "syllabus_placeholder": false, "chapters": [{"title": "一、试卷题型与分值结构", "points": [{"name": "第一部分：英语知识运用", "req_type": "掌握", "full_desc": "完形填空 (Cloze) / 20 题，每题 0.5 分，共 **10 分** / 语篇逻辑连贯性、固定搭配、词义辨析、逻辑连接词", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第二部分：阅读理解 Part A", "req_type": "掌握", "full_desc": "传统阅读 (4 篇学术/政经文章) / 20 题，每题 2 分，共 **40 分** / 主旨题、事实细节题、推理判断题、词义猜测题、态度题", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第二部分：阅读理解 Part B", "req_type": "掌握", "full_desc": "新题型 (3 选 1 轮换考查) / 5 题，每题 2 分，共 **10 分** / **7选5填空、排序题、小标题匹配**，抓段落首尾句逻辑链", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第二部分：阅读理解 Part C", "req_type": "掌握", "full_desc": "英译汉 (Translation) / 5 题，每题 2 分，共 **10 分** / **从一篇文章中划出 5 个超长长难句**进行精准汉语转换", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第三部分：写作 Part A", "req_type": "掌握", "full_desc": "应用文短文写作 (小作文) / 1 篇，约 100 词，共 **10 分** / 书信（求职/建议/投诉/道歉/感谢信）、通知、倡议书", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第三部分：写作 Part B", "req_type": "掌握", "full_desc": "议论文短文写作 (大作文) / 1 篇，160~200 词，共 **20 分** / **图画/寓意漫画作文**（描述图画 -> 阐释寓意 -> 联系现实建议）", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "二、大纲核心语言技能要求", "points": []}]}, "pol": {"subject": "pol", "subject_name": "政治", "total_points": 28, "total_topics": 28, "grade_counts": {"A": 0, "B": 0, "C": 0, "D": 0, "U": 28}, "mastery_rate": 0.0, "assessed_count": 0, "unassessed_count": 28, "assessed_rate": 0.0, "syllabus_placeholder": false, "chapters": [{"title": "一、试卷题型与分值分布 (满分 100 分)", "points": [{"name": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)", "req_type": "单项选择题", "full_desc": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)", "req_type": "多项选择题", "full_desc": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)", "req_type": "分析题 (大题)", "full_desc": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "二、五大核心模块考纲与考查重点", "points": []}, {"title": "1. 马克思主义基本原理 (约 24 分，大题第 34 题)", "points": [{"name": "物质与意识的辩证关系", "req_type": "唯物论", "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "世界的物质统一性", "req_type": "唯物论", "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "主观能动性与客观规律性的统一", "req_type": "唯物论", "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）", "req_type": "辩证法 (重中之重)", "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "实践与认识的辩证关系", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "认识的两次飞跃", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "真理的绝对性与相对性", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "真理与价值", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "社会存在与社会意识", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "生产力与生产关系", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "经济基础与上层建筑", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "人民群众是历史的创造者", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "劳动二重性", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "商品二因素", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "价值规律", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "剩余价值理论", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "资本主义基本矛盾与经济危机。", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "2. 毛泽东思想和中国特色社会主义理论体系概论 + 习近平新时代中国特色社会主义思想 (约 30 分，大题第 35 题)", "points": [{"name": "习近平新时代中国特色社会主义思想的核心要义", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "“十四个坚持”", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "“十个明确”", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "“十三个方面成就”", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "新发展理念", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "高质量发展", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "中国式现代化", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "全过程人民民主。", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "3. 中国近现代史纲要 (约 14 分，大题第 36 题)", "points": []}, {"title": "4. 思想道德与法治 (约 16 分，大题第 37 题)", "points": []}, {"title": "5. 形势与政策以及当代世界经济与政治 (约 16 分，大题第 38 题)", "points": []}]}, "pro": {"subject": "pro", "subject_name": "专业课", "total_points": 0, "total_topics": 0, "grade_counts": {"A": 0, "B": 0, "C": 0, "D": 0, "U": 0}, "mastery_rate": 0.0, "assessed_count": 0, "unassessed_count": 0, "assessed_rate": 0.0, "syllabus_placeholder": true, "chapters": []}}, "trend": [{"date": "2026-09-19", "short_date": "09-19", "rate": 0.0, "total": 9, "completed": 0}]};
+var D = {"memo": [{"id": "eng-memo-0", "subj": "英语", "key": "eng", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "color": "#e11d48", "dark": "#fb7185", "title": "长难句", "cards": [{"f": "While it is easy to ignore...", "b": []}]}, {"id": "pol-memo-1", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "马原", "cards": [{"f": "哲学的基本问题", "b": []}, {"f": "唯物辩证法的实质和核心", "b": []}, {"f": "辩证法的总特征", "b": []}, {"f": "认识的本质", "b": []}, {"f": "实践的三个基本特征", "b": []}, {"f": "检验真理的唯一标准", "b": []}, {"f": "社会存在与发展的决定力量", "b": []}, {"f": "社会历史发展的决定力量", "b": []}, {"f": "阶级斗争 vs 革命", "b": []}, {"f": "人民群众的历史地位", "b": []}, {"f": "商品的二因素", "b": []}, {"f": "剩余价值的唯一源泉", "b": []}, {"f": "资本主义经济危机的根源", "b": []}]}, {"id": "pol-memo-2", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "毛中特", "cards": [{"f": "近代中国社会的主要矛盾（1840—1949）", "b": []}, {"f": "中国革命的基本动力", "b": []}, {"f": "新民主主义革命的领导力量", "b": []}, {"f": "新民主主义革命的前途", "b": []}, {"f": "中国革命的三大法宝", "b": []}, {"f": "党的根本宗旨", "b": []}, {"f": "社会主义的本质", "b": []}, {"f": "社会主义社会的根本任务", "b": []}, {"f": "发展与高质量发展", "b": []}, {"f": "改革开放的根本目的", "b": []}, {"f": "中国共产党的根本保证作用", "b": []}, {"f": "全面深化改革的总目标", "b": []}]}, {"id": "pol-memo-3", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "新思想", "cards": [{"f": "新时代我国社会主要矛盾", "b": []}, {"f": "总体布局（五位一体）", "b": []}, {"f": "战略布局（四个全面）", "b": []}, {"f": "新发展理念", "b": []}, {"f": "中国式现代化的本质要求", "b": []}, {"f": "总任务", "b": []}, {"f": "全面依法治国的总目标", "b": []}, {"f": "人类命运共同体", "b": []}, {"f": "全面从严治党", "b": []}]}, {"id": "pol-memo-4", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "史纲", "cards": [{"f": "近代以来中华民族最伟大的梦想", "b": []}, {"f": "中国近代史的起点", "b": []}, {"f": "新民主主义革命的开端", "b": []}, {"f": "中国共产党成立的标志", "b": []}, {"f": "生死攸关的转折点", "b": []}, {"f": "全民族抗战的起点", "b": []}, {"f": "新中国的成立", "b": []}, {"f": "社会主义制度基本确立", "b": []}, {"f": "改革开放的伟大开端", "b": []}, {"f": "中国特色社会主义进入新时代", "b": []}, {"f": "中国共产党的初心和使命", "b": []}]}, {"id": "pol-memo-5", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "复发易混点", "cards": [{"f": "待做题后归纳", "b": []}]}, {"id": "pro-memo-6", "subj": "专业课", "key": "pro", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "title": "核心概念", "cards": [{"f": "示例考点 1", "b": []}, {"f": "示例考点 2", "b": []}]}], "weak": [{"id": "eng-weak-0", "subj": "英语", "key": "eng", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "color": "#e11d48", "dark": "#fb7185", "title": "题型能力评估", "cards": [{"f": "细节定位", "b": []}, {"f": "主干切分", "b": []}, {"f": "词义推断", "b": []}]}, {"id": "pol-weak-1", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "模块雷达", "cards": [{"f": "马原/毛中特/史纲/思法", "b": []}]}, {"id": "pol-weak-2", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "分析题能力", "cards": [{"f": "原理结合材料", "b": []}]}, {"id": "pol-weak-3", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "下周优先级", "cards": [{"f": "建立首轮选择题得分盘", "b": []}]}, {"id": "pro-weak-4", "subj": "专业课", "key": "pro", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "title": "章节掌握度", "cards": [{"f": "绪论与基本概念", "b": []}, {"f": "核心基础理论 (上)", "b": []}, {"f": "核心基础理论 (下)", "b": []}, {"f": "综合应用与设计", "b": []}]}, {"id": "pro-weak-5", "subj": "专业课", "key": "pro", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "title": "错题重做队列", "cards": [{"f": "暂无待重做错题 (做错题目自动纳入)", "b": []}]}], "metrics": [{"subj": "英语", "key": "eng", "color": "#e11d48", "dark": "#fb7185", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "items": [{"label": "细节定位", "text": "0", "count": 0.0}, {"label": "主干切分", "text": "0", "count": 0.0}, {"label": "词义推断", "text": "0", "count": 0.0}]}, {"subj": "英语", "key": "eng", "color": "#e11d48", "dark": "#fb7185", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "items": [{"label": "定位偏差", "text": "0", "count": 0.0}, {"label": "偷换概念", "text": "0", "count": 0.0}, {"label": "无中生有", "text": "0", "count": 0.0}, {"label": "答非所问", "text": "0", "count": 0.0}]}, {"subj": "政治", "key": "pol", "color": "#d97706", "dark": "#fbbf24", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "items": [{"label": "选择题得分盘", "text": "0", "count": 0.0}]}, {"subj": "政治", "key": "pol", "color": "#d97706", "dark": "#fbbf24", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "items": [{"label": "漏选", "text": "0", "count": 0.0}, {"label": "错选", "text": "0", "count": 0.0}, {"label": "偷换概念", "text": "0", "count": 0.0}, {"label": "绝对化", "text": "0", "count": 0.0}, {"label": "审题偏差", "text": "0", "count": 0.0}, {"label": "答非所问", "text": "0", "count": 0.0}, {"label": "时政脱节", "text": "0", "count": 0.0}]}, {"subj": "专业课", "key": "pro", "color": "#059669", "dark": "#34d399", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "items": [{"label": "概念漏洞", "text": "0", "count": 0.0}, {"label": "审题偏差", "text": "0", "count": 0.0}, {"label": "公式记错", "text": "0", "count": 0.0}, {"label": "计算失误", "text": "0", "count": 0.0}, {"label": "书写丢分", "text": "0", "count": 0.0}]}], "subjects": [{"key": "eng", "name": "英语", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "color": "#e11d48", "dark": "#fb7185", "notes": 0, "ok": true}, {"key": "pol", "name": "政治", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "notes": null, "ok": true}, {"key": "pro", "name": "专业课", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "notes": 0, "ok": true}], "plan": {"day": 96, "total": 181}, "maps": {"eng": {"subject": "eng", "subject_name": "英语", "total_points": 6, "total_topics": 6, "grade_counts": {"A": 0, "B": 0, "C": 0, "D": 0, "U": 6}, "mastery_rate": 0.0, "assessed_count": 0, "unassessed_count": 6, "assessed_rate": 0.0, "syllabus_placeholder": false, "chapters": [{"title": "一、试卷题型与分值结构", "points": [{"name": "第一部分：英语知识运用", "req_type": "掌握", "full_desc": "完形填空 (Cloze) / 20 题，每题 0.5 分，共 **10 分** / 语篇逻辑连贯性、固定搭配、词义辨析、逻辑连接词", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第二部分：阅读理解 Part A", "req_type": "掌握", "full_desc": "传统阅读 (4 篇学术/政经文章) / 20 题，每题 2 分，共 **40 分** / 主旨题、事实细节题、推理判断题、词义猜测题、态度题", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第二部分：阅读理解 Part B", "req_type": "掌握", "full_desc": "新题型 (3 选 1 轮换考查) / 5 题，每题 2 分，共 **10 分** / **7选5填空、排序题、小标题匹配**，抓段落首尾句逻辑链", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第二部分：阅读理解 Part C", "req_type": "掌握", "full_desc": "英译汉 (Translation) / 5 题，每题 2 分，共 **10 分** / **从一篇文章中划出 5 个超长长难句**进行精准汉语转换", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第三部分：写作 Part A", "req_type": "掌握", "full_desc": "应用文短文写作 (小作文) / 1 篇，约 100 词，共 **10 分** / 书信（求职/建议/投诉/道歉/感谢信）、通知、倡议书", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第三部分：写作 Part B", "req_type": "掌握", "full_desc": "议论文短文写作 (大作文) / 1 篇，160~200 词，共 **20 分** / **图画/寓意漫画作文**（描述图画 -> 阐释寓意 -> 联系现实建议）", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "二、大纲核心语言技能要求", "points": []}]}, "pol": {"subject": "pol", "subject_name": "政治", "total_points": 28, "total_topics": 28, "grade_counts": {"A": 0, "B": 0, "C": 0, "D": 0, "U": 28}, "mastery_rate": 0.0, "assessed_count": 0, "unassessed_count": 28, "assessed_rate": 0.0, "syllabus_placeholder": false, "chapters": [{"title": "一、试卷题型与分值分布 (满分 100 分)", "points": [{"name": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)", "req_type": "单项选择题", "full_desc": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)", "req_type": "多项选择题", "full_desc": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)", "req_type": "分析题 (大题)", "full_desc": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "二、五大核心模块考纲与考查重点", "points": []}, {"title": "1. 马克思主义基本原理 (约 24 分，大题第 34 题)", "points": [{"name": "物质与意识的辩证关系", "req_type": "唯物论", "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "世界的物质统一性", "req_type": "唯物论", "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "主观能动性与客观规律性的统一", "req_type": "唯物论", "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）", "req_type": "辩证法 (重中之重)", "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "实践与认识的辩证关系", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "认识的两次飞跃", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "真理的绝对性与相对性", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "真理与价值", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "社会存在与社会意识", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "生产力与生产关系", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "经济基础与上层建筑", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "人民群众是历史的创造者", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "劳动二重性", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "商品二因素", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "价值规律", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "剩余价值理论", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "资本主义基本矛盾与经济危机。", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "2. 毛泽东思想和中国特色社会主义理论体系概论 + 习近平新时代中国特色社会主义思想 (约 30 分，大题第 35 题)", "points": [{"name": "习近平新时代中国特色社会主义思想的核心要义", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "“十四个坚持”", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "“十个明确”", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "“十三个方面成就”", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "新发展理念", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "高质量发展", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "中国式现代化", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "全过程人民民主。", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "3. 中国近现代史纲要 (约 14 分，大题第 36 题)", "points": []}, {"title": "4. 思想道德与法治 (约 16 分，大题第 37 题)", "points": []}, {"title": "5. 形势与政策以及当代世界经济与政治 (约 16 分，大题第 38 题)", "points": []}]}, "pro": {"subject": "pro", "subject_name": "专业课", "total_points": 0, "total_topics": 0, "grade_counts": {"A": 0, "B": 0, "C": 0, "D": 0, "U": 0}, "mastery_rate": 0.0, "assessed_count": 0, "unassessed_count": 0, "assessed_rate": 0.0, "syllabus_placeholder": true, "chapters": []}}, "trend": [{"date": "2026-09-19", "short_date": "09-19", "rate": 0.0, "total": 9, "completed": 0}, {"date": "2026-09-25", "short_date": "09-25", "rate": 0.0, "total": 9, "completed": 0}]};
 
 function fallbackMathUnicode(el){
   if(!el) return;
@@ -799,6 +1367,22 @@ function tex(el){
   fallbackMathUnicode(el);
 }
 function esc(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
+/* 图标统一走内联 sprite（symbol 定义由构建期注入的图标片段提供，见本页头部）。
+   禁止再用 emoji：跨平台字形不一致、无法随主题换色（DESIGN.md §4）。
+   [缺陷修复·sprite 二次注入] 此处原先写有字面量占位符名，而 build() 是
+   「单遍 re.sub 全文替换」——它不认识注释，于是把整份 sprite（约 15KB XML）
+   又注了一遍进这个 JS 注释里：产物体积白白翻倍，且 sprite 内容一旦出现
+   注释终止序列，整个 <script> 块会被提前截断、全页交互报废。
+   故本注释内不得再出现带花括号的占位符名（写进来就会被替换成整份 sprite）。
+   容器一律用 <span class="ic"> 包住 <svg>：check_dashboard 的运行时探针会
+   断言每个 .ic 容器内部真的渲染出了 <svg>（防「图标被转义成裸文本」）。 */
+function iconHtml(name,size){
+  size=size||18;
+  return "<svg class='icn' width='"+size+"' height='"+size+"' aria-hidden='true' focusable='false'><use href='#i-"+name+"'/></svg>";
+}
+function iconBox(name,size){
+  return "<span class='ic'>"+iconHtml(name,size)+"</span>";
+}
 function isDark(){
   var a=document.documentElement.getAttribute('data-t');
   /* 明暗必须查 KY_MODE 而不是写死 t==='dark'：新增的护眼绿/樱粉是浅色、
@@ -808,17 +1392,15 @@ function isDark(){
 }
 function col(o){return isDark()?(o.dark||o.color):(o.color||'#4f46e5');}
 
-/* 遮罩自测按钮的眼睛图标。
-   注意：此处必须用**双引号**包裹（SVG 属性用的是单引号），
-   且必须经 innerHTML 注入 —— 写成单引号字符串会因属性单引号提前闭合
-   而产生 SyntaxError，导致整个 <script> 块失效。 */
-var MASK_EYE_SVG = "<svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/></svg>";
+/* 遮罩自测按钮的眼睛图标（sprite）。注意必须经 innerHTML 注入，
+   直接写 HTML 字符串时引号需成对，否则整个 <script> 块会 SyntaxError。 */
+var MASK_EYE_HTML = iconBox('eye',14);
 
 /* ── 主题切换（5 套预设轮换；未手动选择时按备考节律给出默认） ── */
 (function(){
   var tb=document.getElementById('th-btn');
   if(!tb) return;
-  var nameEl=tb.querySelector('.th-name');
+  var nameEl=tb.querySelector('.th-name'), icEl=document.getElementById('th-ic');
   function idxOf(k){
     for(var i=0;i<KY_PRESETS.length;i++){if(KY_PRESETS[i].k===k) return i;}
     return 0;
@@ -831,6 +1413,8 @@ var MASK_EYE_SVG = "<svg viewBox='0 0 24 24' width='14' height='14' stroke='curr
     tb.setAttribute('title',tip+'　点击切换到下一套');
     tb.setAttribute('aria-label','当前主题 '+p.n+'，点击切换到下一套');
     if(nameEl) nameEl.textContent=p.n;
+    /* 图标随当前预设的明暗切换（sun/moon），不再是一个写死的装饰图标 */
+    if(icEl) icEl.innerHTML=iconHtml(p.m==='dark'?'moon':'sun',14);
   }
   var cur=document.documentElement.getAttribute('data-t')||KY_RHYTHM.p;
   apply(idxOf(cur),false);
@@ -865,7 +1449,8 @@ var MASK_EYE_SVG = "<svg viewBox='0 0 24 24' width='14' height='14' stroke='curr
       pane.classList.toggle('mask-active');
       var on = pane.classList.contains('mask-active');
       btn.classList.toggle('on', on);
-      btn.innerHTML = on ? '✓ 已开启遮罩自测' : MASK_EYE_SVG + '开启遮罩自测';
+      btn.innerHTML = on ? iconBox('check',14)+'已开启遮罩自测'
+                         : iconBox('eye',14)+(btnId==='mask-today-btn'?'开启遮罩自测':'遮罩自测');
     };
     pane.addEventListener('click', function(e){
       var td=e.target.closest('td');
@@ -914,10 +1499,10 @@ function Flash(tab){
   this.render=function(){
     var host=document.getElementById('fc-'+tab); if(!host) return;
     var d=self.deck();
-    if(!d){ host.innerHTML="<div class='empty'><div class='ei'><svg viewBox='0 0 24 24' width='36' height='36' stroke='currentColor' stroke-width='1.6' fill='none' style='display:block;margin:0 auto 10px'><path d='M12 2 2 7l10 5 10-5-10-5z'/><path d='M2 17l10 5 10-5'/><path d='M2 12l10 5 10-5'/></svg></div>暂无卡片数据<br><small>在 _状态/ 中完善表格后会自动生成卡片</small></div>"; return; }
+    if(!d){ host.innerHTML="<div class='empty'><div class='ei'>"+iconHtml('book',24)+"</div><div class='empty-t'>暂无卡片数据</div><div class='empty-d'>在 _状态/ 中完善表格后会自动生成卡片</div></div>"; return; }
     if(!self.order.length){
       host.innerHTML="<div class='tools'>"+self.toolsHtml()+"</div>"
-        +"<div class='empty'><div class='ei'><svg viewBox='0 0 24 24' width='36' height='36' stroke='currentColor' stroke-width='1.6' fill='none' style='display:block;margin:0 auto 10px'><polygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'/></svg></div>暂无标记难点<br><small>翻卡时点击右上角星号标记</small></div>";
+        +"<div class='empty'><div class='ei'>"+iconHtml('star',24)+"</div><div class='empty-t'>暂无标记难点</div><div class='empty-d'>翻卡时点击右上角星号标记</div></div>";
       self.bindTools(); return;
     }
     var i=self.order[self.ci], c=d.cards[i], C=col(d);
@@ -943,7 +1528,7 @@ function Flash(tab){
     + "<div class='stage'><div class='card"+(hasBack?'':' noback')+"' id='cd-"+tab+"' style='--c:"+C+"'>"
     +   "<div class='face'>"
     +     "<div class='f-top'><span class='tag'>"+esc(d.subj)+"</span><span>"+esc(d.title)+"</span>"
-    +       "<button type='button' class='hard"+(hard?' on':'')+"' id='hd-"+tab+"' aria-pressed='"+(hard?'true':'false')+"' aria-label='标记为难点'>"+(hard?'★':'☆')+"</button></div>"
+    +       "<button type='button' class='hard"+(hard?' on':'')+"' id='hd-"+tab+"' aria-pressed='"+(hard?'true':'false')+"' aria-label='标记为难点'>"+iconHtml('star',16)+"</button></div>"
     +     "<div class='f-body'><div class='f-q'>"+esc(c.f)+"</div></div>"
     +     "<div class='f-hint'>"+(hasBack?'点击翻转卡片 · 左右轻扫切换':'答案解析已脱敏 · 本地完整模式可见')+"</div>"
     +   "</div>"
@@ -979,9 +1564,9 @@ function Flash(tab){
 
   this.toolsHtml=function(){
     var n=Object.keys(self.hard).filter(function(k){return k.indexOf(self.di+':')===0;}).length;
-    return "<button class='tbtn"+(self.shuffled?' on':'')+"' id='sf-"+self.tab+"'><svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><polyline points='16 3 21 3 21 8'/><line x1='4' y1='20' x2='21' y2='3'/><polyline points='21 16 21 21 16 21'/><line x1='15' y1='15' x2='21' y2='21'/><line x1='4' y1='4' x2='9' y2='9'/></svg>随机打乱</button>"
-         + "<button class='tbtn"+(self.onlyHard?' on':'')+"' id='oh-"+self.tab+"'> 重点难点 "+(n?'('+n+')':'')+"</button>"
-         + "<button class='tbtn' id='rs-"+self.tab+"'><svg viewBox='0 0 24 24' width='14' height='14' stroke='currentColor' stroke-width='2' fill='none' style='margin-right:4px;vertical-align:-2px'><polyline points='1 4 1 10 7 10'/><path d='M3.51 15a9 9 0 1 0 2.13-9.36L1 10'/></svg>从头开始</button>";
+    return "<button class='tbtn"+(self.shuffled?' on':'')+"' id='sf-"+self.tab+"'>"+iconBox('refresh',14)+"随机打乱</button>"
+         + "<button class='tbtn"+(self.onlyHard?' on':'')+"' id='oh-"+self.tab+"'>"+iconBox('star',14)+"重点难点 "+(n?'('+n+')':'')+"</button>"
+         + "<button class='tbtn' id='rs-"+self.tab+"'>"+iconBox('refresh',14)+"从头开始</button>";
   };
   this.bindTools=function(){
     var a=document.getElementById('sf-'+self.tab),b=document.getElementById('oh-'+self.tab),c=document.getElementById('rs-'+self.tab);
@@ -1031,7 +1616,7 @@ document.addEventListener('keydown',function(e){
 (function(){
   var host=document.getElementById('stat');
   if(!host) return;
-  if(!D.metrics.length){ host.innerHTML="<div class='empty'><div class='ei'><svg viewBox='0 0 24 24' width='36' height='36' stroke='currentColor' stroke-width='1.6' fill='none' style='display:block;margin:0 auto 10px'><line x1='12' y1='20' x2='12' y2='10'/><line x1='18' y1='20' x2='18' y2='4'/><line x1='6' y1='20' x2='6' y2='16'/></svg></div>暂无可视化指标数据<br><small>在薄弱点雷达中记录错因即可生成</small></div>"; return; }
+  if(!D.metrics.length){ host.innerHTML="<div class='empty'><div class='ei'>"+iconHtml('stats',24)+"</div><div class='empty-t'>暂无可视化指标数据</div><div class='empty-d'>在薄弱点雷达中记录错因即可生成</div></div>"; return; }
   var h='';
   D.metrics.forEach(function(g){
     var C=col(g);
@@ -1064,7 +1649,11 @@ document.addEventListener('keydown',function(e){
 
 function animate(){
   var pf=document.getElementById('pf');
-  if(pf) pf.style.width='52.5%';
+  if(pf) pf.style.width='53.0%';
+  /* hero 环形进度：pathLength=100 → dashoffset = 100 - 进度百分比。
+     进度即「备考天数 / 总天数」，与进度条、53.0 同源。 */
+  var rf=document.getElementById('ring-fill');
+  if(rf) rf.style.strokeDashoffset=String(100-Math.max(0,Math.min(100,53.0)));
   document.querySelectorAll('#stat .mfl').forEach(function(el,i){
     setTimeout(function(){ el.style.width=el.dataset.w+'%'; }, 40+i*22);
   });
@@ -1085,7 +1674,7 @@ function renderTrend(){
   if(!host) return;
   var trend = D.trend || [];
   if(!trend.length){
-    host.innerHTML = "<div class='trend-card'><h3>📈 近 7 日完成率趋势</h3><div style='font-size:12px;color:var(--mut);text-align:center;padding:12px 0;'>暂无历史打卡记录，坚持复习将在此汇聚成长曲线。</div></div>";
+    host.innerHTML = "<div class='trend-card'><h3>"+iconBox('trend-up',16)+"近 7 日完成率趋势</h3><div style='font-size:var(--fs-caption);color:var(--mut);text-align:center;padding:var(--space-3) 0;'>暂无历史打卡记录，坚持复习将在此汇聚成长曲线。</div></div>";
     return;
   }
   /* [前端修复·趋势图字号 1:1] 先落卡片骨架，再量「卡片内容盒」宽度作为 viewBox 宽。
@@ -1093,7 +1682,7 @@ function renderTrend(){
      于是 viewBox 宽 > SVG 实际渲染宽 → 整体仍被等比缩小，字号继续随视口漂移。
      .trend-slot 是纯块级 div，宽度天然等于卡片内容盒宽度，无需新增 CSS。 */
   if(!host.querySelector('.trend-card')){
-    host.innerHTML = "<div class='trend-card'><h3>📈 近 7 日任务完成率趋势 (Trend)</h3><div class='trend-slot'></div></div>";
+    host.innerHTML = "<div class='trend-card'><h3>"+iconBox('trend-up',16)+"近 7 日任务完成率趋势 (Trend)</h3><div class='trend-slot'></div></div>";
   }
   var slot = host.querySelector('.trend-slot');
   if(!slot) return;
@@ -1131,6 +1720,103 @@ function renderTrend(){
 renderTrend();
 window.addEventListener('resize', renderTrend);
 
+/* ── 近 7 日 KPI 卡（含 7 日 sparkline） ───────────────────────────
+   [P1 首屏] 四张卡：完成率 / 完成任务 / 计划任务 / 待办积压。
+   每张 = 指标名 + 数值 + 7 日 sparkline（内联 SVG polyline）+ 一句上下文
+   （「给数字配上下文」）；无任何打卡记录时走空状态三件套（图标/说明/CTA）。
+   数据全部取自内联的 D.trend（ky_config.json 的 completion_history），
+   不新增构建期占位符。上下文一律带**真实日期**：trend 的最后一条未必是
+   昨天（学员可能断更数日），写死「昨日」会给出错误信息。 */
+(function(){
+  var host=document.getElementById('kpis');
+  if(!host) return;
+  var tr=(D.trend||[]).slice().sort(function(a,b){
+    return String(a.date||'')<String(b.date||'')?-1:1;
+  });
+  function n(v){ v=Number(v); return isFinite(v)?v:0; }
+  function pct(v){ return Math.max(0,Math.min(100,n(v))); }
+  function sum(a){ return a.reduce(function(s,v){ return s+n(v); },0); }
+  function avg(a){ return a.length?sum(a)/a.length:0; }
+  function day(d){ return d && (d.short_date||String(d.date||'').slice(5)) || ''; }
+
+  var series={
+    rate: tr.map(function(d){ return pct(d.rate); }),
+    done: tr.map(function(d){ return n(d.completed); }),
+    plan: tr.map(function(d){ return n(d.total); }),
+    left: tr.map(function(d){ return Math.max(0,n(d.total)-n(d.completed)); })
+  };
+  var last=tr.length?tr[tr.length-1]:null;
+  var prev=tr.length>1?tr[tr.length-2]:null;
+
+  /* 7 日 sparkline：polyline + preserveAspectRatio=none 横向拉伸铺满卡片；
+     vector-effect=non-scaling-stroke 让描边不随拉伸变粗变细。
+     只有一个数据点时画不出线，退化为一条虚线基线（不假装有趋势）。 */
+  function spark(vals){
+    var w=100,h=28,pad=4;
+    var open="<svg class='spark' viewBox='0 0 "+w+" "+h+"' preserveAspectRatio='none' aria-hidden='true' focusable='false'>";
+    if(vals.length<2){
+      return open+"<line class='spark-base' x1='0' y1='"+(h/2)+"' x2='"+w+"' y2='"+(h/2)+"'/></svg>";
+    }
+    var mn=Math.min.apply(null,vals), mx=Math.max.apply(null,vals), span=(mx-mn)||1;
+    var pts=vals.map(function(v,i){
+      var x=i/(vals.length-1)*w;
+      var y=h-pad-((v-mn)/span)*(h-pad*2);
+      return x.toFixed(1)+','+y.toFixed(1);
+    }).join(' ');
+    return open+"<polyline points='"+pts+"' fill='none' stroke='currentColor' stroke-width='2'"
+         + " vector-effect='non-scaling-stroke' stroke-linecap='round' stroke-linejoin='round'/></svg>";
+  }
+
+  function card(o){
+    var head="<div class='kpi-h'>"+iconBox(o.icon,16)+esc(o.label)+"</div>";
+    var body;
+    if(!last){
+      body="<div class='kpi-empty'><div class='ed'>"+esc(o.empty)+"</div>"
+         + "<button class='cta' type='button' data-goto='today'>去完成今日任务</button></div>";
+    }else{
+      body="<div class='kpi-v'>"+o.value+"<span class='u'>"+o.unit+"</span></div>"
+         + "<div class='kpi-spark'>"+spark(o.series)+"</div>"
+         + "<div class='kpi-ctx "+o.tone+"'>"+o.ctx+"</div>";
+    }
+    return "<div class='kpi' style='--c:var(--chart-"+o.ci+")'>"+head+body+"</div>";
+  }
+
+  var cards=[];
+  if(!last){
+    cards=[
+      {ci:1,icon:'trend-up',label:'近 7 日完成率',empty:'打卡 2 天后生成趋势曲线'},
+      {ci:2,icon:'check-circle',label:'完成任务',empty:'完成今日任务后开始统计'},
+      {ci:3,icon:'clipboard',label:'计划任务',empty:'生成今日任务后开始统计'},
+      {ci:4,icon:'hourglass',label:'待办积压',empty:'有打卡记录后开始统计'}
+    ];
+  }else{
+    var cur=pct(last.rate);
+    var dTxt, dTone='';
+    if(prev){
+      var diff=Math.round((cur-pct(prev.rate))*10)/10;
+      if(Math.abs(diff)<0.05){ dTxt='与 '+day(prev)+' 持平'; }
+      else{
+        dTxt='较 '+day(prev)+' <b>'+(diff>0?'+':'')+diff+' 个百分点</b>';
+        dTone=diff>0?'up':'down';
+      }
+    }else{
+      dTxt='首日记录 '+day(last)+' · 趋势待积累';
+    }
+    var leftNow=Math.max(0,n(last.total)-n(last.completed));
+    cards=[
+      {ci:1,icon:'trend-up',label:'近 7 日完成率',value:Math.round(cur),unit:'%',
+       series:series.rate,tone:dTone,ctx:dTxt},
+      {ci:2,icon:'check-circle',label:'完成任务',value:n(last.completed),unit:'项',
+       series:series.done,tone:'',ctx:'7 日累计 <b>'+sum(series.done)+' 项</b>'},
+      {ci:3,icon:'clipboard',label:'计划任务',value:n(last.total),unit:'项',
+       series:series.plan,tone:'',ctx:'日均计划 <b>'+(Math.round(avg(series.plan)*10)/10)+' 项</b>'},
+      {ci:4,icon:'hourglass',label:'待办积压',value:leftNow,unit:'项',
+       series:series.left,tone:leftNow>0?'warn':'',ctx:'7 日累计遗留 <b>'+sum(series.left)+' 项</b>'}
+    ];
+  }
+  host.innerHTML=cards.map(card).join('');
+})();
+
 /* ── 知识图谱渲染 (S3-4) ── */
 (function(){
   /* [P5 残留修复·图谱 tab 数据驱动] 改造前这里硬编码了 4 个 tab
@@ -1166,7 +1852,7 @@ window.addEventListener('resize', renderTrend);
 
     if(!m || !m.chapters || !m.chapters.length){
       sumBox.innerHTML = '';
-      treeBox.innerHTML = "<div class='empty'><div class='ei'>🗺️</div>暂无该科目考纲图谱数据</div>";
+      treeBox.innerHTML = "<div class='empty'><div class='ei'>"+iconHtml('map',24)+"</div><div class='empty-t'>暂无该科目考纲图谱数据</div><div class='empty-d'>在考纲文件里补齐章节与考点后会自动生成</div></div>";
       return;
     }
 
@@ -1195,7 +1881,7 @@ window.addEventListener('resize', renderTrend);
       if(chap.points && chap.points.length){
         chap.points.forEach(function(pt){
           var g = pt.grade || 'A';
-          var errTag = pt.error_count > 0 ? ("<span class='map-err'>⚠ " + pt.error_count + " 错题</span>") : "";
+          var errTag = pt.error_count > 0 ? ("<span class='map-err'>"+iconHtml('alert',12)+" " + pt.error_count + " 错题</span>") : "";
           h += "<div class='map-point'>"
              + "<div class='map-point-l'>"
              + "<span class='mbadge " + g + "'>" + g + "</span>"
@@ -1262,10 +1948,12 @@ if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) animate(); el
 (function(){
   var fx = document.getElementById('fx-toggle');
   if (!fx) return;
+  var nameEl = fx.querySelector('.fx-name');
   function render(){
     var off = localStorage.getItem('ky-confetti-off') === '1';
     fx.setAttribute('aria-pressed', off ? 'false' : 'true');
-    fx.textContent = off ? '✨ 动效已关闭 (点击开启)' : '✨ 动效已开启 (点击关闭)';
+    if (nameEl) nameEl.textContent = off ? '动效已关闭' : '动效已开启';
+    fx.setAttribute('title', off ? '点击开启动效' : '点击关闭动效');
   }
   fx.addEventListener('click', function(){
     var off = localStorage.getItem('ky-confetti-off') === '1';
@@ -1274,6 +1962,28 @@ if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) animate(); el
   });
   render();
 })();
+
+/* 空状态 CTA：data-goto 切页签；data-help 展开/收起说明面板。
+   用事件委托统一处理 —— 空状态可能出现在构建期注入的正文里，
+   逐个绑监听会漏（且 Flash/图谱的空状态是运行时重建的 DOM）。 */
+document.addEventListener('click', function(e){
+  var t = e.target;
+  if(!t || !t.closest) return;
+  var go = t.closest('[data-goto]');
+  if(go){
+    var btn = document.querySelector('.bar button[data-p="' + go.getAttribute('data-goto') + '"]');
+    if(btn) btn.click();
+    return;
+  }
+  var hp = t.closest('[data-help]');
+  if(hp){
+    var box = document.getElementById(hp.getAttribute('data-help'));
+    if(!box) return;
+    var opening = box.hasAttribute('hidden');
+    if(opening){ box.removeAttribute('hidden'); } else { box.setAttribute('hidden',''); }
+    hp.setAttribute('aria-expanded', opening ? 'true' : 'false');
+  }
+});
 try{
   var t=localStorage.getItem('kytab');
   if(t&&t!=='today'){var el=document.querySelector('.bar button[data-p="'+t+'"]'); if(el)el.click();}

@@ -35,8 +35,10 @@ def var_block(theme: Theme, indent: str = "  ") -> str:
     """把一套主题渲染成 ``--key:value`` 声明块（预设规则与基础变量块共用）。"""
     lines: List[str] = []
     for key, value in theme.to_flat().items():
-        if key.startswith("fs-") or key.startswith("pad") or key.endswith("-px"):
-            continue          # 像素字面量是 Qt 侧便捷 token，Web 用原值
+        if key.startswith("pad") or key.endswith("-px"):
+            # pad* 是 Qt 侧便捷 token（QSS 直接内联），Web 用原值/自算；
+            # *-px 是给 QSS 的「已带单位」副本，Web 用无单位原值 + 自行拼单位。
+            continue
         lines.append(f"{indent}--{key}:{value};")
     # 看板 CSS 里既有 `--acc-grad` 整体渐变变量，单独合成一个保持兼容
     grad = (f"linear-gradient(135deg, {theme.get('acc-grad-from')}, "
@@ -83,7 +85,7 @@ def render_preset_gallery() -> str:
     for key, display_name, mode in list_presets():
         theme = build_theme(key)
         body = "\n".join(f"  --{k}:{v};" for k, v in theme.to_flat().items()
-                         if not k.startswith(("fs-", "pad")) and not k.endswith("-px"))
+                         if not k.startswith("pad") and not k.endswith("-px"))
         blocks.append(f"/* {display_name} ({mode}) */\n.theme-{key}{{\n{body}\n}}")
     return "\n".join(blocks)
 

@@ -114,7 +114,7 @@ def build_radar_html(root_path: pathlib.Path) -> str:
                 w_html.append("</ul></div>")
             w_html.append("</div>")
     else:
-        w_html.append("<div class='empty' style='padding:16px;'><div class='ei'>📡</div>暂未配置实时监控高校<br><small>在终端输入 <code>ky fetch watch 目标高校</code> 即可开启招生简章动态指纹轮询</small></div>")
+        w_html.append("<div class='empty' style='padding:16px;'><div class='ei'><svg class=\"icn\" width=\"24\" height=\"24\" aria-hidden=\"true\" focusable=\"false\"><use href=\"#i-radar\"/></svg></div>暂未配置实时监控高校<br><small>在终端输入 <code>ky fetch watch 目标高校</code> 即可开启招生简章动态指纹轮询</small></div>")
     w_html.append("</section>")
     sections.append("".join(w_html))
 
@@ -152,7 +152,7 @@ def build_radar_html(root_path: pathlib.Path) -> str:
             diff_html.append("<div style='font-size:11.5px;color:var(--mut);'>详见本地报告: <code>04-专业课/" + html.escape(diff_name) + "</code></div>")
             diff_html.append("</div>")
     else:
-        diff_html.append("<div class='empty' style='padding:16px;'><div class='ei'>📑</div>暂无大纲对比研报<br><small>在终端输入 <code>ky fetch diff --school 目标院校</code> 即可生成逐级 AST 差异透视与突破处方</small></div>")
+        diff_html.append("<div class='empty' style='padding:16px;'><div class='ei'><svg class=\"icn\" width=\"24\" height=\"24\" aria-hidden=\"true\" focusable=\"false\"><use href=\"#i-file\"/></svg></div>暂无大纲对比研报<br><small>在终端输入 <code>ky fetch diff --school 目标院校</code> 即可生成逐级 AST 差异透视与突破处方</small></div>")
     diff_html.append("</section>")
     sections.append("".join(diff_html))
 
@@ -193,7 +193,7 @@ def build_radar_html(root_path: pathlib.Path) -> str:
             exp_html.append(f"<div style='font-size:11.5px;color:var(--mut);margin-top:6px;'>详细经验条目与社媒直通车已归档至 <code>{html.escape(rel_exp)}</code></div>")
             exp_html.append("</div>")
     else:
-        exp_html.append("<div class='empty' style='padding:16px;'><div class='ei'>💡</div>暂无沉淀的社媒经验贴<br><small>在终端输入 <code>ky fetch info 目标院校 目标专业 --save</code> 即可自动清洗并归档学长学姐实名经验</small></div>")
+        exp_html.append("<div class='empty' style='padding:16px;'><div class='ei'><svg class=\"icn\" width=\"24\" height=\"24\" aria-hidden=\"true\" focusable=\"false\"><use href=\"#i-chat\"/></svg></div>暂无沉淀的社媒经验贴<br><small>在终端输入 <code>ky fetch info 目标院校 目标专业 --save</code> 即可自动清洗并归档学长学姐实名经验</small></div>")
     exp_html.append("</section>")
     sections.append("".join(exp_html))
 

@@ -5,10 +5,15 @@
 [本文件职责] 只做「组装界面 + 事件分发 + 生命周期」。
 
 分层（对应 agent.md 的单一职责与领域物理隔离）：
-    views/        构建控件与连线（header / function_cards / 四个页签）
+    views/        构建控件与连线（header / nav_rail / 四个页面视图）
     services/     取数据与调后端，纯数据、无 Qt 控件、可离屏单测
     theme_apply   主题解析应用 + QSettings 偏好持久化
-    widgets/      可复用控件（FunctionCard 等）
+    widgets/      可复用控件（KYNavRail / KYCard / ChatView / FunctionCard …）
+
+[P2 导航架构] 原「顶部 10 卡 2×5 平铺 + 4 页签」两套导航收敛为
+**左侧 rail（视图组 + 工具组）+ 命令面板（Ctrl+K）**。页面容器仍是 QTabWidget
+（tabBar 隐藏、导航交给 rail），故 ``win.tabs`` / ``win.tab_widget`` 的
+count()==4 等既有契约零破坏。
 
 改造前这里同时承担布局、业务、样式三件事（700 行；10 处内联 setStyleSheet
 把颜色写死在控件上，导致浅色主题被压过而实际不可用；倒计时是局部变量、
@@ -27,10 +32,9 @@ from datetime import date
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
-# QTextCursor 用于流式输出时把光标移到末尾；否则 append 会另起段落，流式片段会断成多行。
-from PySide6.QtGui import QIcon, QTextCursor
+from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox,
+    QApplication, QFileDialog, QHBoxLayout, QInputDialog, QMainWindow, QMessageBox,
     QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -50,7 +54,8 @@ except ImportError:  # pragma: no cover
 
 CONFIG_FILE = ROOT / "ky_config.json"
 
-TAB_TITLES = ("私教对话", "今日任务", "错题本", "研招情报")
+#: 页面标题的唯一真源在 views/nav_rail.NAV_VIEWS（rail 的「视图」组同源）
+TAB_TITLES = tuple(title for _icon, title in views.nav_rail.NAV_VIEWS)
 
 
 class MainWindow(QMainWindow):
@@ -134,10 +139,21 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(18, 16, 18, 16)
 
         main_layout.addWidget(views.header.build(self))
-        main_layout.addWidget(views.function_cards.build(self), stretch=1)
 
+        body = QHBoxLayout()
+        body.setSpacing(14)
+
+        # 左侧分组导航 rail（视图组切页 + 工具组触发动作），回填 _feature_buttons 契约
+        self.nav_rail = views.nav_rail.build(self)
+        body.addWidget(self.nav_rail)
+
+        # 页面容器：仍是 QTabWidget，但 tabBar 隐藏、导航交给 rail ——
+        # 既保留 win.tabs / win.tab_widget（count()==4、tabBar().count()==4）契约，
+        # 又不再出现「rail + 横向页签」两套并列导航。
         self.tabs = QTabWidget()
         self.tab_widget = self.tabs          # 对外契约名
+        self.tabs.tabBar().hide()
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         for builder, title in zip(
             (views.chat_tab.build, views.task_tab.build,
              views.error_tab.build, views.intel_tab.build),
@@ -145,7 +161,61 @@ class MainWindow(QMainWindow):
         ):
             self.tabs.addTab(builder(self), title)
         self.tabs.setCurrentIndex(self._restore_last_tab())
-        main_layout.addWidget(self.tabs, stretch=3)
+        body.addWidget(self.tabs, stretch=1)
+
+        main_layout.addLayout(body, stretch=1)
+
+        # Ctrl+K 命令面板（惰性创建后长期复用，见 _open_command_palette）
+        self._palette = None
+        self._palette_shortcut = QShortcut(QKeySequence("Ctrl+K"), self)
+        self._palette_shortcut.activated.connect(self._open_command_palette)
+
+    def _on_tab_changed(self, index: int):
+        """页面切换 → 同步 rail 激活态（rail 点击 / 工具动作 / 恢复上次页 都走这里）。"""
+        rail = getattr(self, "nav_rail", None)
+        if rail is not None:
+            rail.set_active_index(index)
+
+    def _on_nav_view_clicked(self, index: int):
+        """rail「视图」组点击 → 切页。"""
+        if 0 <= index < self.tabs.count():
+            self.tabs.setCurrentIndex(index)
+
+    def _on_example_prompt(self, prompt: str):
+        """对话页空状态示例：只填入输入框（不直接发送，避免误触发起计费调用）。"""
+        self.input_box.setText(prompt)
+        self.input_box.setFocus()
+
+    # ════════════════════════════════════════════════════════════
+    # 命令面板（Ctrl+K）
+    # ════════════════════════════════════════════════════════════
+
+    def _open_command_palette(self):
+        """打开命令面板：列出全部页面与工具动作，回车执行（Raycast 模式）。
+
+        复用同一实例（同 ``_wechat_dialog`` 的理由：避免每次弹窗都留一个隐藏子对象）；
+        用 ``open()`` 而非 ``exec()`` —— 窗口模态但**不阻塞调用方**，
+        离屏测试可以直接驱动它。
+        """
+        if self._palette is None:
+            self._palette = views.nav_rail.build_palette(self)
+        self._palette.input.clear()
+        self._palette.refresh("")
+        self._palette.open()
+        self._palette.input.setFocus()
+
+    def _on_palette_activated(self, key: str):
+        """命令面板执行：``view:`` 前缀切页，``tool:`` 前缀走既有动作分发。"""
+        view_prefix = views.nav_rail.VIEW_PREFIX
+        tool_prefix = views.nav_rail.TOOL_PREFIX
+        if key.startswith(view_prefix):
+            try:
+                index = int(key[len(view_prefix):])
+            except ValueError:            # pragma: no cover - 防御非法 key
+                return
+            self._on_nav_view_clicked(index)
+        elif key.startswith(tool_prefix):
+            self._on_card_clicked(key[len(tool_prefix):])
 
     def _restore_last_tab(self) -> int:
         try:
@@ -184,8 +254,16 @@ class MainWindow(QMainWindow):
         self.theme_btn.setText("深色" if self._theme.mode == "light" else "浅色")
 
     def _refresh_card_icons(self):
-        """用当前主题的主色重渲染所有功能卡片图标（SVG 跟随主题色）。"""
+        """用当前主题的主色重渲染导航图标（SVG 跟随主题色）。
+
+        rail 已覆盖全部功能卡（``win.feature_cards`` 即 ``rail.tool_items``）
+        与 4 个视图项；无 rail 时（理论上不会发生）退回旧路径。
+        """
         color = self._theme.color("acc")
+        rail = getattr(self, "nav_rail", None)
+        if rail is not None:
+            rail.refresh_icons(color)
+            return
         for card in getattr(self, "feature_cards", []):
             card.refresh_icon(color)
 
@@ -241,17 +319,43 @@ class MainWindow(QMainWindow):
         self._refresh_intel_tab()
 
     def _load_today_task_progress(self):
-        """刷新各科今日任务进度条（与 CLI / TUI 同源的共享解析器）。"""
-        for subject in services.subject_progress(self.workspace_root):
+        """刷新各科今日任务进度条与概览统计块（与 CLI / TUI 同源的共享解析器）。"""
+        subjects = tuple(services.subject_progress(self.workspace_root))
+        for subject in subjects:
             bar = self.task_progress_bars.get(subject.key)
             label = self.task_count_labels.get(subject.key)
             if bar is not None:
                 bar.setValue(subject.pct)
             if label is not None:
                 label.setText(subject.summary_text)
+        self._sync_task_stat_tiles(subjects)
+
+    def _sync_task_stat_tiles(self, subjects):
+        """概览统计块（大数字 + caption）：今日完成度 / 待复测错题 / 初试倒计时。"""
+        tiles = getattr(self, "task_stat_tiles", None)
+        if not tiles:
+            return
+        pcts = [subject.pct for subject in subjects]
+        average = int(round(sum(pcts) / len(pcts))) if pcts else 0
+        if "progress" in tiles:
+            tiles["progress"].set_value(f"{average}%")
+        if "due" in tiles:
+            tiles["due"].set_value(str(len(services.error_queue_cards(self.workspace_root))))
+        if "countdown" in tiles:
+            tiles["countdown"].set_value(str(services.header_info(self.workspace_root)["days_left"]))
 
     def _refresh_error_tab(self):
+        """刷新错题本：卡片列表（主视图）+ Markdown 原始档案（折叠兜底）。"""
         self.error_info.setMarkdown(services.error_queue_markdown(self.workspace_root))
+        try:
+            from tools.gui.views.error_tab import render_error_cards
+        except ImportError:  # pragma: no cover - 脚本式运行
+            from gui.views.error_tab import render_error_cards  # type: ignore
+        render_error_cards(self)
+
+    def _toggle_error_raw(self, visible: bool):
+        """切换「原始档案」Markdown 视图（默认折叠，卡片视图为主）。"""
+        self.error_info.setVisible(bool(visible))
 
     def _refresh_intel_tab(self):
         self.intel_display.setMarkdown(services.intel_markdown(self.workspace_root))
@@ -579,7 +683,7 @@ class MainWindow(QMainWindow):
                 return
 
         self.input_box.clear()
-        self.chat_display.append(f"\n你: {text}\n私教:")
+        self.chat_display.add_user_message(text)
 
         try:
             from tools.gui.workers.agent_worker import AgentWorker
@@ -597,26 +701,17 @@ class MainWindow(QMainWindow):
         self.agent_worker.start()
 
     def _on_agent_step(self, step_text: str):
-        """私教动作/思考链实时上屏，免除查看外部命令行黑框。"""
+        """私教动作/思考链实时上屏（系统气泡），免除查看外部命令行黑框。"""
         if not step_text:
             return
-        cur = self.chat_display.textCursor()
-        cur.movePosition(QTextCursor.MoveOperation.End)
-        self.chat_display.setTextCursor(cur)
-        self.chat_display.insertPlainText(f"\n{step_text}\n")
-        self.chat_display.ensureCursorVisible()
+        self.chat_display.append(step_text.strip())
 
     def _on_agent_chunk(self, chunk: str):
-        """流式片段：直接插入光标处，不另起段落（保持一段话连续）。
-        """
+        """流式片段：续写当前私教气泡（不另起一条，保持一段话连续）。"""
         if not chunk:
             return
         self._streamed = True
-        cur = self.chat_display.textCursor()
-        cur.movePosition(QTextCursor.MoveOperation.End)
-        self.chat_display.setTextCursor(cur)
-        self.chat_display.insertPlainText(chunk)
-        self.chat_display.ensureCursorVisible()
+        self.chat_display.append_agent_chunk(chunk)
 
     def _on_agent_finished(self):
         """[P1 修复·D1] 线程结束后只释放"当前活跃"语义，不再 deleteLater。"""
@@ -629,14 +724,14 @@ class MainWindow(QMainWindow):
             self.agent_worker = None
 
     def _on_agent_reply(self, reply: str):
-        """收尾：已流式输出过就不再重复整段；未流式（本地兜底路径）才整段补上。
+        """收尾：已流式输出过就只封口当前气泡；未流式（本地兜底路径）才整条补上。
 
         这样两类路径都能正确显示，且不会把答案打两遍。
         """
         if getattr(self, "_streamed", False):
-            self.chat_display.append("\n" + "-" * 50)
+            self.chat_display.finish_agent_message()
         else:
-            self.chat_display.append(f"\n{reply}\n" + "-" * 50)
+            self.chat_display.add_agent_message(reply)
         self._streamed = False
 
     # ════════════════════════════════════════════════════════════

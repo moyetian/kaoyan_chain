@@ -132,6 +132,10 @@ class OpenGradeResult:
     rubric: List[Dict[str, Any]] = field(default_factory=list)
     reviews: List[ReviewResult] = field(default_factory=list)
     arbitrated: bool = False           # 是否经过 Judge 仲裁
+    #: [C4 可观测性] 主审仲裁结果（未触发仲裁 / 仲裁失败为 None）。
+    #  此前 judge 只体现为 `arbitrated` 布尔标记，其逐点命中与自报分数在聚合
+    #  后即被丢弃，外部（评测 / 审计 / 学员答疑）无法复核仲裁依据。
+    judge: Optional[ReviewResult] = None
     degraded: bool = False             # 是否发生降级（有模型弃权/未仲裁等）
     error: str = ""                    # 降级/失败原因（供排查）
 
@@ -145,6 +149,7 @@ class OpenGradeResult:
             "rubric": self.rubric,
             "reviews": [r.__dict__ for r in self.reviews],
             "arbitrated": self.arbitrated,
+            "judge": (self.judge.__dict__ if self.judge is not None else None),
             "degraded": self.degraded,
             "error": self.error,
         }
@@ -990,6 +995,9 @@ def _finalize(result: OpenGradeResult, valid: List[ReviewResult],
         result.reason = (result.reason or
                          "⚠ 多模型复核无有效结果，已转人工复核（本次不计分，不代表作答错误）")
         return result
+
+    # [C4 可观测性] 暴露主审仲裁详情（逐点命中 / 自报分数 / 错因），供评测与审计复核。
+    result.judge = judge
 
     pass_threshold = float(cfg.get("pass_threshold", 6.0))
     gray = float(cfg.get("gray_zone", 2.0))

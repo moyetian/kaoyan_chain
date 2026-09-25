@@ -208,12 +208,43 @@ def build(offline: bool = False):
             )
         today_out = "".join(th)
     else:
-        today_out = "<div class='empty'><div class='ei'><svg viewBox='0 0 24 24' width='36' height='36' stroke='currentColor' stroke-width='1.6' fill='none' style='display:block;margin:0 auto 10px'><rect x='8' y='2' width='8' height='4' rx='1'/><path d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'/><path d='M9 12h6M9 16h4'/></svg></div>今日任务尚未生成<br><small>去 Antigravity 发「报道」</small></div>"
+        # [P1 空状态三件套] 改造前只有一句「今日任务尚未生成」+ 一行小字，
+        # 属 DESIGN.md §6.4 明令禁止的「裸奔空状态」。现按规范补齐：
+        # ① 图标（sprite，icon-lg，mut 色）② 一句话说明这里会有什么
+        # ③ 一个 CTA（可展开的三步操作说明，纯前端，无外部依赖）。
+        today_out = (
+            "<div class='empty'>"
+            f"<div class='ei'>{sprite_icon('clipboard', 24)}</div>"
+            "<div class='empty-t'>今日任务尚未生成</div>"
+            "<div class='empty-d'>这里会显示四科今日任务清单与勾选状态</div>"
+            "<button class='cta' type='button' data-help='today-help'"
+            " aria-expanded='false' aria-controls='today-help'>如何生成今日任务？</button>"
+            "<div class='empty-help' id='today-help' hidden>"
+            "<b>三步生成今日任务</b>"
+            "<ol><li>在 Agent 会话里发「英语报到」这类口令；</li>"
+            "<li>私教按前一日错题与今日规划派题，并写入各科 "
+            "<code>_状态/今日任务.md</code>；</li>"
+            "<li>回到本页刷新，任务清单会出现在这里。</li></ol>"
+            "</div></div>"
+        )
 
     # Public builds must not embed the private daily task prose. The structured
     # cards/metrics remain available in the sanitized payload above.
     if snapshot_opt_in():
-        today_out = "<div class='empty'><div class='ei'><svg viewBox='0 0 24 24' width='36' height='36' stroke='currentColor' stroke-width='1.6' fill='none' style='display:block;margin:0 auto 10px'><rect x='8' y='2' width='8' height='4' rx='1'/><path d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'/><path d='M9 14l2 2 4-4'/></svg></div>今日任务已生成（内容保留在本地完整模式）</div>"
+        today_out = (
+            "<div class='empty'>"
+            f"<div class='ei'>{sprite_icon('check-circle', 24)}</div>"
+            "<div class='empty-t'>今日任务已生成</div>"
+            "<div class='empty-d'>公开副本不含任务正文，本地完整模式可见</div>"
+            "<button class='cta' type='button' data-help='today-help'"
+            " aria-expanded='false' aria-controls='today-help'>为什么看不到内容？</button>"
+            "<div class='empty-help' id='today-help' hidden>"
+            "<b>公开副本的脱敏规则</b>"
+            "<ol><li>任务正文属私人学习记录，发布时按脱敏规则移除；</li>"
+            "<li>结构化卡片、指标与倒计时仍照常展示；</li>"
+            "<li>本地完整模式（构建时置 <code>KY_SNAPSHOT_OPT_IN=0</code>）可见正文。</li>"
+            "</ol></div></div>"
+        )
 
     def notes_out(tab):
         if snapshot_opt_in():
@@ -326,6 +357,41 @@ _DIR = pathlib.Path(__file__).resolve().parent
 if str(_DIR) not in sys.path:
     sys.path.insert(0, str(_DIR))
 
+#: 图标 sprite 相对仓库根的位置（P0 由 tools/theme/icons.py 抽取产出）
+_SPRITE_CANDIDATES = (
+    ROOT.parent / "docs" / "assets" / "icons.svg",
+    ROOT / "docs" / "assets" / "icons.svg",
+)
+
+
+def sprite_icon(name: str, size: int = 24) -> str:
+    """构建期可用的 sprite 图标（symbol 定义由 ``{{ICON_SPRITE}}`` 注入本页）。
+
+    ``<use href="#i-xxx">`` 只引用**同文档内**的 symbol，故必须与 sprite 同页；
+    这也是 sprite 必须内联、不能用 ``assets/icons.svg#...`` 外链的原因
+    （``file://`` 下跨文件引用会被同源策略拒绝）。
+    """
+    return (f"<svg class='icn' width='{size}' height='{size}' aria-hidden='true' "
+            f"focusable='false'><use href='#i-{name}'/></svg>")
+
+
+def load_icon_sprite() -> str:
+    """读取 Lucide 子集 sprite 全文，注入 ``{{ICON_SPRITE}}``。
+
+    取不到时返回空串并告警（构建不因此中断）：此时图标不可见但页面结构仍完整，
+    且 ``tests/test_dashboard_redesign.py`` 会断言产物里存在 ``<symbol id="i-today"``，
+    把这种「静默隐形」挡在 CI 里。
+    """
+    for cand in _SPRITE_CANDIDATES:
+        try:
+            if cand.exists():
+                return cand.read_text(encoding="utf-8")
+        except OSError as e:  # pragma: no cover - 仅在磁盘异常时触发
+            print(f"[!] 图标 sprite 读取失败 {cand}: {e}")
+    print(f"[!] 未找到图标 sprite（已尝试 {len(_SPRITE_CANDIDATES)} 个路径）："
+          "看板图标将不可见，请先运行 py tools/theme/icons.py")
+    return ""
+
 
 def load_template() -> str:
     """读取 HTML 模板（内含 {{占位符}}）。
@@ -351,6 +417,10 @@ def render_theme_placeholders(offline: bool = False, days_left: int = 0) -> dict
         "{{FALLBACK_MATH_JS}}": load_fallback_math_js(),
         "{{THEME_PRESETS}}": theme_presets_json(),
         "{{RHYTHM}}": theme_rhythm_json(days_left),
+        # [P1 图标系统] sprite 全文注入：模板里用 <use href="#i-today"> 消费。
+        # build() 是单遍 re.sub，注入内容不会被再次扫描，故 sprite 里的任何
+        # 字符（含 { }）都不会被误当占位符。
+        "{{ICON_SPRITE}}": load_icon_sprite(),
     }
     mapping.update(asset_map(offline))
     return mapping

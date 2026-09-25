@@ -71,9 +71,11 @@ _HANDLERS_WITH_OWN_HELP: frozenset = frozenset({
     "calc",
     "compare",
     "fetch",
+    "gain",
     "gui",
     "ingest",
     "key",
+    "rag",
     "scout",
     "watch",
 })

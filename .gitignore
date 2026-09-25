@@ -172,6 +172,8 @@ rust_ext/target/
 # 临时分析报告、竞品方案与搜索规划文件
 *审查报告*.md
 *路线图*.md
+# 外部评审/改造方案文档（含内部短板实测，不随仓库公开；C6 推前发现）
+*评审*.md
 /state_snapshot.json
 !docs/state_snapshot.json
 !05-考研看板/docs/state_snapshot.json
@@ -201,6 +203,8 @@ simulation_report.md
 *演示样例*.md
 
 # ── 开源发布整理（2026-09-14）──
+# sync_publish 导出副本的标记文件（工具生成，副本仓库不提交；C6 推前发现）
+.sync_publish_marker
 # 个人本地备份（脱敏前的真实配置，仅本机保留）
 *.local.md
 # 内部审查/调研文档（含本机路径，不随仓库公开）

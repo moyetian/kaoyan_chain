@@ -9,7 +9,102 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 
 ---
 
-## [3.0.0] — 2026-09-24（当前发布版本）
+## [3.1.0] — 2026-09-25（当前发布版本）
+
+> 阶段三「可证」：把护城河变成**可评测资产** —— 六条评测基准（C1–C6）落地，
+> 覆盖考纲守卫 / 引文忠实度 / 题源溯源 / 判分一致 / 检索降级 / 学习增益；
+> 外加四端 UI 设计系统统一（P0–P4）。版本号真源 `pyproject.toml`。
+
+### 🧪 阶段三 · 可证（C1–C6）
+
+- **C1 · 考纲守卫评测**（`--syllabus`）：128 条评测集（否定 / 笔记语境 31.2%）
+  + 共用评测引擎 `tools/benchmarks/runner.py`（退出码 0/1/2 语义全仓统一）。
+  建集时实测修复 hook 真缺陷：口语否定词缺失（「别讲曲面积分」等 7 变体被误拦）。
+- **C2 · 引文忠实度评测**（`--ragas`）：109 条评测集，覆盖无据引用 / 伪造 URL /
+  跨校混淆 / 过期数据 / 二手源冒充五类；双指标（拦截侧必须 100%、放行侧 ≥98%）。
+  建集时修复 `citation_engine` 对非法字段载体的契约逃逸（统一收敛为 fail-closed）。
+- **C3 · 题源溯源 ID**：`tools/skills/question_source.py` —— 每张题卡携带
+  `source_id`（来源 + 题干指纹）与独立校验和；渲染侧注入、解析侧校验，
+  不符 → 排除出卷；`tools/backfill_source_ids.py` 提供补录 CLI（--dry-run/--json）。
+- **C4 · 判分评测 pilot**（`--grading`）：30 份 AI 预标 + 真实 LLM 响应快照
+  （一次性采集后冻结，回放零网络零成本）；首份真实基线：采分点命中一致率
+  Jaccard 92.78% / 总分 MAE 0.69 / 错因一致率 56.67%。**不进 CI**（无人工金标准前
+  测的是「与预标一致率」，元测试钉住）。
+- **C5 · RAG 显式降级**：`SearchOutcome` 让降级成为「一次检索」的属性，
+  四条降级原因如实（sqlite-vec 未加载 / ONNX 模型缺失 / 非预期异常 / 显式关闭），
+  互不误报；新增用户可达入口 `ky rag`（别名 `ky search`）与 REPL `/rag`、`/search`，
+  safe 只读白名单放行、不代为建库。
+- **C6 · 学习增益代理指标**：`ky gain` / REPL `/gain` —— 错题复测通过率周趋势
+  （通过 = good/easy）/ 同类错因复发（跨 ≥2 天弱判据）/ 计划完成率（加权）；
+  报告本地落盘 `.memory/learning_gain_report.md`、不上传、非门禁（退出码只有 0/2）。
+
+### 🎨 改进 · 四端 UI 设计系统（P0–P4）
+
+- **P0 设计地基**：`tools/theme/tokens.py` 五类 token 扩展 + Lucide 图标系统
+  （42 图标，可复现抽取）+ `DESIGN.md`；对比度门禁新增 chart 色 ≥3:1（五套预设最低 3.8:1）。
+- **P1 Web 看板重构**：修复媒体查询反向覆盖根因（桌面规则被同特异性基础规则覆盖）；
+  hero 环形进度卡 + KPI 卡 + 品牌侧栏；sprite 内联（file:// 同源策略下外链 `<use>` 被拒）。
+- **P2 GUI 改造**：左侧导航 rail + Ctrl+K 命令面板 + 卡片族 + 对话气泡（自建组件族，
+  零新依赖）；修复 QSS 全局 `min-height` 静默覆盖 rail 项的真缺陷。
+- **P3 CLI / TUI**：CLI 全面 Rich 化（`rich` 升为核心依赖，README「零依赖」承诺同步更正）；
+  修复 textual 8.x 高亮死选择器（`.--highlight` → `-highlight`）。
+- **P4 回归守护**：四端截图基线 + 看板守卫（31 图标容器全 SVG / 真实 390px 视口
+  无横向溢出 / 5 套预设轮换）。
+
+### 🔒 修复 · 隐私与可用性
+
+- `privacy_policy` 补漏 `.memory`（任意深度排除）：此前 `should_publish('.memory/...')`
+  返回 True，清扫层（`purge_leaked_files_in_dst`）对嵌套 `.memory/` 残留会放行不删。
+- REPL `/gain --no-save` 曾被静默忽略（硬编码落盘）→ 已解析参数。
+- `ky --help` 子命令列表 / REPL 指令大盘 / `_HANDLERS_WITH_OWN_HELP` 三处补齐
+  `rag`、`gain`（详版帮助可达）。
+- 报告类 Markdown 表格转义 `|`（错因名含管道符曾破表）。
+- **公开副本「占位值 → 占位值」自指改写修复**：副本的 `ky_config.json` 是占位值时，
+  重跑脱敏会生成自指规则（如 `待诊断 → 待诊断薄弱点`），把 7 个副本文件（含
+  `tools/study_planner.py` 与 GUI 功能代码）改写、元测试变红（公开用户初始化后
+  跑 pytest 必红）。现由 `privacy_policy.is_placeholder_value()` 统一闸门拦下
+  （校名 / 专业 / 自命题科目 / 薄弱点 / 书目五类字段，6 处规则生成点接入）。
+
+### ✅ 质量
+
+- pytest **1889 通过 + 3 跳过**（收集 1892）；`test_ky_suite` 305 项；
+  `test_new_features` 131 项；合计 **2325 项通过**。
+- 新增评测集：syllabus 128 / citation 109 / grading 30 份；
+  评测门禁 `ci_evaluate_gate` 三路径全绿。
+
+---
+
+## [3.0.1] — 2026-09-25（上一发布版本）
+
+> 导出缺陷修复：公开仓库副本的 CI 配置与 Rust 源码长期被冻结在旧版本 ——
+> 3.0.0 及更早的公开副本从未收到 `.github/workflows/test.yml` 与
+> `rust_ext/` 的任何更新。版本号真源 `pyproject.toml`。
+
+### 🔧 修复 · 公开副本导出冻结（sync_publish）
+
+- **根因**：`tools/sync_publish.py` 把 `.github`（CI 配置）与 `rust_ext`
+  （Rust 加速源码）列为「公开副本自有、不由私有工作区镜像」的保留内容
+  （`PUBLIC_PRESERVE_ROOTS`）—— 既不复制、也不删除。而 `rust_ext` 还被
+  `privacy_policy.BUILD_ARTIFACT_DIRS` 误分类为「构建产物」（它实际是源码
+  目录，`.gitignore` 明示「源码保留、二进制产物不入库」）。两者叠加的后果：
+  副本里的旧版本被 `--force` 永久保护，私有侧的后续修改**永远到不了公开仓库**。
+- **实际影响**（实测）：公开副本 `rust_ext` 停在 v2.7.0（A2 的 tokenizer
+  五类单价同步 `3f34665` 从未到达，同一向量在 Python / Rust 两侧算出不同
+  结果）；`test.yml` 停在 `2de15ea`（A4 的评测门禁与 rust-ext 硬门禁
+  `9b0bb14` 从未到达）。外部复评报告据此判定「CHANGELOG 与实现漂移」——
+  本地实现为真，漂移在副本侧。
+- **修复**：`rust_ext` 移出 `BUILD_ARTIFACT_DIRS`、`.github` 移出
+  `sync_publish.EXCLUDE_DIRS`、`PUBLIC_PRESERVE_ROOTS` 收窄为
+  （错题本 / 每日作业）；新增 `rust_ext/target` 排除（Cargo 构建产物，
+  含数百 MB 二进制，与源码放行配套）。
+- **验证**：临时目标真实 `--force` 导出（492 文件）后逐字节比对 ——
+  `.github/workflows/*.yml` 与 `rust_ext/src/*.rs` 均与本地真源一致、
+  `rust_ext/target` 未泄漏、副本已有骨架保留；身份残留探针 0 命中
+  （exit 0）；新增 7 项锁定测试（含三条阴性对照：把任一排除规则改回去必红）。
+
+---
+
+## [3.0.0] — 2026-09-24（上一发布版本）
 
 > 阶段二「可靠（Reliability）」：B1–B4 四批（B2、B3 各拆 2 个子批）并入本版。
 > 本版集中解决四类**会静默发生**的问题：长会话丢约束、沙箱边界靠自觉、

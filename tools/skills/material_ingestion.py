@@ -21,6 +21,11 @@ try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方
 except ImportError:  # pragma: no cover
     from tools.ky_io import atomic_write_text, read_text_fallback  # noqa: E402
 
+try:  # [C3 题源溯源] 渲染侧与解析侧共用同一题干提取口径（见 question_source 模块）
+    from skills.question_source import backfill_markdown_text  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.skills.question_source import backfill_markdown_text  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 
 # 尝试加载 Rust 极速题目切片扩展，失败时透明降级为纯 Python
@@ -637,7 +642,14 @@ class MaterialIngestionPipeline:
             ""
         ])
 
-        return "\n".join(lines)
+        card_text = "\n".join(lines)
+        # [C3 题源溯源] 注入「题源ID + 题源校验和」两行。题干提取走
+        # question_source 的共享函数（与 exam_composer 解析侧**同一正则**）——
+        # 两处若各自实现，渲染侧算出的 checksum 必然在解析侧校验失败。
+        # 注：来源认证戳（[VERIFIED] / [USER_IMPORTED]）由上方各行承担，
+        # 解析侧从卡片文本读回，本注入只负责身份两行。
+        card_text, _ = backfill_markdown_text(card_text, kind="whitelist")
+        return card_text
 
     def ingest_text(
         self,

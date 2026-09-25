@@ -122,6 +122,10 @@ REQUIRED_PAIRS: Tuple[Tuple[str, str, float, str], ...] = (
 )
 
 
+#: 学科色板 token（存在才校验；图表/进度环属非文字界面元素，阈值 3:1）
+CHART_KEYS: Tuple[str, ...] = ("chart-1", "chart-2", "chart-3", "chart-4")
+
+
 def validate_tokens(tokens: Dict[str, object]) -> List[str]:
     """校验 token 集合的可读性，返回违规说明列表（空列表 = 通过）。
 
@@ -140,4 +144,20 @@ def validate_tokens(tokens: Dict[str, object]) -> List[str]:
             problems.append(
                 f"{desc} 对比度不足: {fg_key}={fg} / {bg_key}={bg} "
                 f"= {ratio:.2f}:1（要求 ≥ {threshold}:1）")
+
+    # 学科色板：图表/进度环在主表面上必须可辨（非文字元素 3:1）
+    surf = tokens.get("surf")
+    if is_hex(surf):
+        for key in CHART_KEYS:
+            val = tokens.get(key)
+            if not is_hex(val):
+                continue
+            try:
+                ratio = contrast_ratio(str(val), str(surf))
+            except ValueError:
+                continue
+            if ratio + 1e-9 < CONTRAST_LARGE:
+                problems.append(
+                    f"学科色板 / 表面 对比度不足: {key}={val} / surf={surf} "
+                    f"= {ratio:.2f}:1（要求 ≥ {CONTRAST_LARGE}:1）")
     return problems

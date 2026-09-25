@@ -123,6 +123,15 @@ try:
 except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
     from tools.fsrs_scheduler import compute_next_interval
 
+# [C3 题源溯源] 错题卡身份读取：backfill 补录过「题源ID / 题源校验和」的错题卡，
+# 在进组卷/复测队列前必须校验题干与身份是否一致（与白名单卡同一防篡改闸门）。
+try:
+    from question_source import ORIGIN_MISTAKE as _ORIGIN_MISTAKE
+    from question_source import has_declared_identity, source_from_card
+except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
+    from tools.skills.question_source import ORIGIN_MISTAKE as _ORIGIN_MISTAKE
+    from tools.skills.question_source import has_declared_identity, source_from_card
+
 
 # ── 终端框线宽度工具 ──────────────────────────────────────────────
 # 中文/全角/emoji 在等宽终端占 2 列，直接用 f"{s:<20}" 按字符数补白会
@@ -427,6 +436,17 @@ def scan_error_records(subject=None):
                         return ""
                     return text[:200]
 
+                question_text = q_text or _clean_fallback_stem(detail_text)
+                # [C3 题源溯源] 身份闭环：backfill 给错题卡补录过「题源ID / 题源校验和」
+                # 的，声明过的身份必须与题干自洽 —— 否则卡片被改动过，标记
+                # ``source_tampered`` 供组卷侧排除（与白名单卡同一闸门）。
+                # 未声明过身份的存量卡：惰性构建（不落盘），进卷身份 = 当前题干。
+                src = (source_from_card(sec, origin=_ORIGIN_MISTAKE, kind="mistake",
+                                        fallback_stem=question_text)
+                       if question_text else None)
+                tampered = bool(has_declared_identity(sec, kind="mistake")
+                                and (src is None or not src.verify(question_text)))
+
                 results.append({
                     "subject": s,
                     "subject_name": get_subject_name(s, SUBJECT_NAMES.get(s, s)),
@@ -438,9 +458,13 @@ def scan_error_records(subject=None):
                     "error_type": err_type,
                     "stage": stage,
                     "next_due": next_due,
-                    "question": q_text or _clean_fallback_stem(detail_text),
+                    "question": question_text,
                     "detail": detail_text or q_text or "",
                     "standard_answer": std_ans,
+                    # [C3 题源溯源] 题源身份（落盘读回或惰性构建）
+                    "source_id": src.source_id if src else "",
+                    "source_checksum": src.checksum if src else "",
+                    "source_tampered": tampered,
                     "raw_section": sec
                 })
 

@@ -11,6 +11,7 @@ from .actions import (
 from .dashboard import (
     SUBJECT_DIRS,
     countdown_days,
+    error_queue_cards,
     error_queue_markdown,
     header_info,
     intel_markdown,
@@ -30,6 +31,7 @@ __all__ = [
     # dashboard
     "SUBJECT_DIRS",
     "countdown_days",
+    "error_queue_cards",
     "error_queue_markdown",
     "header_info",
     "intel_markdown",

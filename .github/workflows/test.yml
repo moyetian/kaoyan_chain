@@ -90,8 +90,17 @@ jobs:
       # pymupdf 只是「测试侧造 PDF 样本」的可选工具：产品侧 material_ingestion
       # 对 `import fitz` 有降级、测试侧对 `import pymupdf` 有 skip 守卫，
       # 故 macOS 卸载它即可；Linux/Windows 保留，PDF 覆盖不减少。
+      #
+      # [A4·留痕] 本步骤此前是**静默卸载**：CI 日志里看不出 macOS 的 PDF 用例
+      # 其实已被降级，容易误以为三平台覆盖一致。现补 ::warning:: 明示。
+      #   影响面：仅 macOS 矩阵；只减少「测试侧造 PDF 样本 / 依赖 pymupdf 的
+      #   用例」，Linux/Windows 覆盖完整（主平台不减少）。
+      #   何时可去掉：待上游发布修复 macOS arm64 import 期段错误的版本，且在
+      #   macos-latest 上验证 `pip install pymupdf && python -c "import pymupdf"`
+      #   不再 exit 139 后，删除本步骤即可恢复 macOS 的 PDF 覆盖。
       if: runner.os == 'macOS'
       run: |
+        echo "::warning::macOS 已卸载 pymupdf：其 arm64 wheel 在 import 期段错误（exit 139）会带走整个 pytest 进程。本平台 PDF 相关用例因此降级跳过（Linux/Windows 不受影响）；待上游修复后删除本步骤。"
         pip uninstall -y pymupdf
 
     - name: Run Ky Doctor Self-Check
@@ -131,6 +140,42 @@ jobs:
       run: |
         python -m pytest tests/ -q -p no:cacheprovider
 
+    - name: Evaluate Pipeline Gate · FSRS 校准度（夹具 0/1/2 三条路径）
+      # [A4 门禁收紧] 此前 evaluate_pipeline.py 只有单测覆盖，CI 从不运行它。
+      # 不能直接跑真实数据：A1 修复后真实 .memory/review_log.jsonl 大概率返回 2
+      # （样本不足；该文件被 .gitignore 排除，CI 全新检出时根本不存在），故改用
+      # **已提交的夹具日志** tests/fixtures/srs_log_*.jsonl 跑通三条路径：
+      #   退出码 0（达标）→ 通过；1（不达标）→ ::error:: 判红；
+      #   2（样本不足）→ ::warning:: 跳过、不算失败；其他（含崩溃）→ 判红。
+      # 每条夹具都按「应得退出码」断言：ok 必须 0；fail 必须 1（这是**阴性验证**
+      # ——证明门禁真能识别不达标，而不是把 1 当成 CI 失败）；insufficient /
+      # 全 stage0 残留必须 2（证明样本不足确实走告警跳过）。断言不符才判红。
+      # 判定逻辑全部收在 tools/ci_evaluate_gate.py 的单个 Python 进程里：矩阵含
+      # Windows，pwsh 下多行 run 的退出码由**最后一条命令**决定，前一条命令失败
+      # 会被静默掩盖；而 continue-on-error 又无法区分「真不达标」与「样本不足」。
+      run: |
+        python tools/ci_evaluate_gate.py --fixtures
+
+    - name: Evaluate Pipeline Gate · 引文忠实度 (--ragas)
+      # [C2 可证] 反幻觉闸门的功能评测：tests/benchmarks/citation_faithfulness.jsonl
+      # （109 条，覆盖无据引用 / 伪造 URL / 过期数据 / 跨校混淆 / 二手源冒充），
+      # 按 kind 分发到 citation_engine.verify_citations / evidence_engine.build_evidence
+      # / resolve_conflicts / DocumentExtractor 四个被测对象。完全离线（无网络 /
+      # LLM / API Key、不计费）。双阈值：拦截侧必须 100%（漏放一条编造引用即红线
+      # 失守）、放行侧 ≥98%（误拦容错）。0/1/2 语义与 --srs 相同。
+      run: |
+        python tools/ci_evaluate_gate.py --ragas
+
+    - name: Evaluate Pipeline Gate · 考纲守卫 (--syllabus)
+      # [C1 可证] 考纲红线拦截的功能评测：tests/benchmarks/syllabus_guard.jsonl
+      # （128 条 = math1/2/3/396 × 正/负样本，否定/笔记语境 ≥30%），逐条跑
+      # agent.hooks 的 syllabus_guard_hook。完全离线（纯正则 + 本地 Hook，
+      # 无网络 / LLM / API Key、不计费）。达标阈值 98%：
+      #   退出码 0（达标）→ 通过；1（不达标）→ ::error:: 判红；
+      #   2（评测集缺失/损坏）→ ::warning:: 跳过（数据问题不当产品缺陷判红）。
+      run: |
+        python tools/ci_evaluate_gate.py --syllabus
+
     - name: Workspace Pollution Guard (tests must not dirty the tree)
       # [P2 加固] 「测试不得污染工作区」此前只靠约定：单个用例用 tmp_path 隔离
       # 是自觉行为，没人守门。这里在**全部测试跑完之后**断言工作区必须干净 ——
@@ -165,14 +210,14 @@ jobs:
   rust-ext:
     # [S-6] Rust 原生加速扩展 (ky_rust_ext) 此前从未在 CI 中编译验证过 ——
     # 一旦 PyO3 版本升级或源码失效，只有用户在本地编译时才会发现。
-    # 该项目声明 Rust 为**可选**依赖、缺失时透明降级为纯 Python 等价实现，
-    # 故此处只做「编译可用性验证」而非硬门禁：continue-on-error 让失败仅告警、
-    # 不阻塞合并（编译结果仍可在 log 中查证）。
-    # 若希望它成为硬门禁（合并前必须可编译），删除下面这行 continue-on-error 即可。
+    # [A4 门禁收紧] 现为**硬门禁**（此前 continue-on-error: true，编译失效无人
+    # 发现，审查结论 G8 明确要求收紧）：编译失败将阻塞合并。
+    # 与「运行期可选依赖」不矛盾：运行时 Rust 缺失仍透明降级为纯 Python 等价
+    # 实现（因此不把 Rust 列为安装前提），但**源码与构建配置必须始终可编译**，
+    # 这是源码级的可维护性要求，不能再靠「失败仅告警」蒙混。
     runs-on: ubuntu-latest
-    continue-on-error: true
-    # [P2 加固·超时] continue-on-error 时挂起表现为「一直在跑」而非快速失败，
-    # 更需要显式上限兜底（默认 6 小时会白占 runner）。
+    # [P2 加固·超时] 挂起时表现为「一直在跑」而非快速失败，需要显式上限兜底
+    # （默认 6 小时会白占 runner）；25 分钟覆盖冷启动拉取 Rust 工具链 + 全量编译。
     timeout-minutes: 25
     steps:
     - name: Check out repository
@@ -190,3 +235,16 @@ jobs:
         maturin build --release
         echo "[OK] ky_rust_ext 编译通过，产物："
         ls -l target/wheels/
+
+    - name: Install built wheel and verify it actually works
+      # [A4] 此前只验证「编译出了 wheel 文件」（ls 到即算通过），产物能否被安装、
+      # 导入、且结果与标准库一致从未验证 —— 编译成功但 ABI 标签错误或扩展未正确
+      # 打包的 wheel，只有用户装上才会发现。成本很低（一次 pip install + 一次哈希
+      # 比对，约十几秒），故补上；断言口径与 tools/test_new_features.py 的
+      # 「Rust vs Python 双模一致性」一致：sha256_hash 必须与标准库 hashlib 逐位相同
+      # （样本含中文与长串，覆盖 UTF-8 与分块路径）。
+      env:
+        PYTHONIOENCODING: utf-8
+      run: |
+        pip install rust_ext/target/wheels/ky_rust_ext-*.whl
+        python -c "import hashlib, ky_rust_ext as r; samples = ['hello world', '考研数学二高等数学导数中值定理', '', 'A' * 10000]; assert all(r.sha256_hash(s) == hashlib.sha256(s.encode('utf-8')).hexdigest() for s in samples), 'sha256_hash 与 hashlib 不一致'; print('[OK] wheel 可安装、可导入，sha256_hash 与标准库 hashlib 逐位一致')"

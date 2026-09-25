@@ -359,7 +359,14 @@ def detect_repl_safe_mode_violation(cmd: str, arg: str = "") -> Optional[str]:
     c = (cmd or "").lower()
     a = (arg or "").lower()
     readonly_ok = {"/skills", "/status", "/today", "/tasks", "/task", "/pdf",
-                   "/fatigue", "/doctor", "/map", "/exit", "/quit"}
+                   "/fatigue", "/doctor", "/map", "/exit", "/quit",
+                   # [C5] /rag 是纯检索（入口先判库存在再打开，不代为建库），
+                   # 只读模式下应当允许；否则考生在 safe 模式下无法查资料。
+                   "/rag", "/search",
+                   # [C6] /gain 的落盘由 learning_gain 模块内部按只读模式
+                   # 自行跳过（is_read_only_mode() 为真时不写 .memory/），
+                   # 故只读模式下允许查看报告。
+                   "/gain"}
     if c in readonly_ok:
         if c == "/map" and "--save" in a:
             return "/map --save"

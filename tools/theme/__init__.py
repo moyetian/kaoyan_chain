@@ -64,6 +64,14 @@ from .tokens import (
     load_theme,
     validate_all_presets,
 )
+from .icons import (
+    ICONS,
+    ICON_USAGE,
+    extract_sprite,
+    load_sprite,
+    missing_icons,
+    sprite_path,
+)
 from .preset_rules import (
     RHYTHM_STAGES,
     preset_meta,
@@ -92,6 +100,13 @@ __all__ = [
     "preset_meta",
     "rhythm_preset",
     "rhythm_label",
+    # 图标系统（Lucide 子集 sprite 单一真源）
+    "ICONS",
+    "ICON_USAGE",
+    "extract_sprite",
+    "load_sprite",
+    "missing_icons",
+    "sprite_path",
     # 色彩与可读性
     "contrast_ratio",
     "relative_luminance",

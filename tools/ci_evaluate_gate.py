@@ -22,7 +22,8 @@
 
 用法：
   py tools/ci_evaluate_gate.py --fixtures      # CI 用：夹具自检，一次跑通 0/1/2 三条路径
-  py tools/ci_evaluate_gate.py --ragas         # CI 用：引文忠实度门禁（内置用例，完全离线）
+  py tools/ci_evaluate_gate.py --ragas         # CI 用：引文忠实度门禁（C2：109 条评测集，完全离线）
+  py tools/ci_evaluate_gate.py --syllabus      # CI 用：考纲守卫门禁（128 条评测集，完全离线）
   py tools/ci_evaluate_gate.py --srs           # 生产门禁：读真实 .memory/review_log.jsonl
   py tools/ci_evaluate_gate.py --srs --log <path> [--expect N]   # 指定日志 / 断言退出码（阴性验证）
 """
@@ -109,13 +110,15 @@ def main() -> int:
     parser.add_argument("--srs", action="store_true",
                         help="FSRS 校准度门禁（默认读真实 .memory/review_log.jsonl）")
     parser.add_argument("--ragas", action="store_true",
-                        help="引文忠实度门禁（内置带标注用例，完全离线，无网络 / LLM 调用）")
+                        help="引文忠实度门禁（C2：tests/benchmarks/citation_faithfulness.jsonl，完全离线）")
+    parser.add_argument("--syllabus", action="store_true",
+                        help="考纲守卫门禁（C1：tests/benchmarks/syllabus_guard.jsonl，完全离线）")
     parser.add_argument("--log", type=str, default="", help="[--srs] 指定复测事件日志路径")
     parser.add_argument("--expect", type=int, default=None,
                         help="断言流水线退出码（夹具阴性验证用）；省略则按生产门禁语义判定")
     args = parser.parse_args()
 
-    if not (args.fixtures or args.srs or args.ragas):
+    if not (args.fixtures or args.srs or args.ragas or args.syllabus):
         args.fixtures = True
 
     passed = True
@@ -127,6 +130,8 @@ def main() -> int:
         passed = run_pipeline(extra, args.expect, label) and passed
     if args.ragas:
         passed = run_pipeline(["--ragas"], args.expect, "--ragas（引文忠实度）") and passed
+    if args.syllabus:
+        passed = run_pipeline(["--syllabus"], args.expect, "--syllabus（考纲守卫）") and passed
 
     print()
     if not passed:

@@ -15,7 +15,15 @@ GUI 视图层（每个页签/区域一个模块）
 
 from __future__ import annotations
 
-from . import chat_tab, error_tab, function_cards, header, intel_tab, task_tab
+from . import (
+    chat_tab,
+    error_tab,
+    function_cards,
+    header,
+    intel_tab,
+    nav_rail,
+    task_tab,
+)
 
 __all__ = [
     "chat_tab",
@@ -23,5 +31,6 @@ __all__ = [
     "function_cards",
     "header",
     "intel_tab",
+    "nav_rail",
     "task_tab",
 ]

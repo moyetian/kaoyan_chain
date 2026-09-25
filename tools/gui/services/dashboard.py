@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -112,6 +113,75 @@ def error_queue_markdown(workspace_root: Path) -> str:
     return "\n".join(lines)
 
 
+#: 错题本文件里每道错题以 ``## 📌 [YYYY-MM-DD] 标题`` 起头（格式真源见
+#: ``tools/skills/error_logger.py::scan_error_records``，本模块只做**只读**解析，
+#: 不改写任何文件，故不复用那个绑定在真实仓库根上的扫描器）。
+_ERROR_SECTION_RE = re.compile(r"\n(?=##\s+📌)")
+_ERROR_HEADER_RE = re.compile(r"##\s+📌\s*\[(\d{4}-\d{2}-\d{2})\]\s*(.*)")
+_ERROR_STATUS_RE = re.compile(r"\*\*掌握状态\*\*[：:]\s*`?\[?([^\]`\n]*)\]?`?")
+_ERROR_TYPE_RE = re.compile(r"\*\*错因分类\*\*[：:]\s*`?([^`\n(]*)`?")
+_ERROR_QUESTION_RE = re.compile(
+    r"\*\*题干\s*设问\*\*[：:]\s*```(?:text)?\s*(.*?)\s*```", re.DOTALL)
+_ERROR_DUE_RE = re.compile(r"下次到期\s*`?(\d{4}-\d{2}-\d{2})`?")
+
+#: 非错题档案（模板/索引/自测卷）文件名特征
+_ERROR_SKIP_MARKERS = ("模板", "索引")
+
+
+def error_queue_cards(workspace_root: Path) -> List[Dict[str, str]]:
+    """扫描各科错题本，返回**结构化**待复测错题列表（供卡片列表渲染）。
+
+    每项字段：``subject`` / ``subject_name`` / ``date`` / ``title`` /
+    ``status`` / ``error_type`` / ``next_due`` / ``question`` / ``file_name``。
+    解析失败的文件整体跳过（界面按空态渲染，绝不因个别脏文件崩）。
+    """
+    label_of = {folder: label for _key, folder, label in subject_labels(workspace_root)}
+    records: List[Dict[str, str]] = []
+
+    for folder, default_name in SUBJECT_DIRS:
+        subject_name = label_of.get(folder, default_name)
+        mistake_dir = workspace_root / folder / "错题本"
+        if not mistake_dir.exists() and folder == "02-英语":
+            mistake_dir = workspace_root / folder / "错题与长难句本"
+        if not mistake_dir.exists():
+            continue
+        for md_file in sorted(mistake_dir.glob("*.md")):
+            if md_file.stem.startswith(("_", "自测卷_")) or \
+                    any(marker in md_file.name for marker in _ERROR_SKIP_MARKERS):
+                continue
+            try:
+                content = md_file.read_text(encoding="utf-8", errors="ignore")
+            except Exception as exc:  # pragma: no cover - 磁盘异常
+                _LOG.warning("错题档案读取失败: %s -> %s", md_file, exc)
+                continue
+            for section in _ERROR_SECTION_RE.split(content):
+                if not section.lstrip().startswith("## 📌"):
+                    continue
+                header = _ERROR_HEADER_RE.search(section)
+                if not header:
+                    continue
+                records.append({
+                    "subject": folder,
+                    "subject_name": subject_name,
+                    "date": header.group(1),
+                    "title": header.group(2).strip(),
+                    "status": _first_group(_ERROR_STATUS_RE, section) or "待复测",
+                    "error_type": _first_group(_ERROR_TYPE_RE, section),
+                    "next_due": _first_group(_ERROR_DUE_RE, section),
+                    "question": _first_group(_ERROR_QUESTION_RE, section),
+                    "file_name": md_file.name,
+                })
+
+    # 到期日由近及远；无到期日的排最后
+    records.sort(key=lambda r: (r["next_due"] == "", r["next_due"], r["subject"], r["date"]))
+    return records
+
+
+def _first_group(pattern, text: str) -> str:
+    match = pattern.search(text)
+    return match.group(1).strip() if match else ""
+
+
 # ── 研招监控情报 ────────────────────────────────────────────────
 
 def intel_markdown(workspace_root: Path) -> str:
@@ -174,6 +244,7 @@ def header_info(workspace_root: Path) -> Dict[str, Any]:
 __all__ = [
     "SUBJECT_DIRS",
     "countdown_days",
+    "error_queue_cards",
     "error_queue_markdown",
     "header_info",
     "intel_markdown",

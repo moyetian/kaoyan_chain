@@ -32,6 +32,11 @@ logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
+#: 默认知识库路径（单一真源）。调用方若只想「读」知识库（如 ky rag），
+#: 应先判这个文件是否存在 —— KnowledgeStore() 一构造就会建库建表，
+#: 在空工作区里凭空造出一个空库，对只读语义是副作用。
+DEFAULT_DB_PATH = ROOT / "data" / "knowledge" / "embeddings.db"
+
 
 @dataclass
 class Chunk:
@@ -60,7 +65,7 @@ class KnowledgeStore:
             db_path: 数据库路径，默认为 data/knowledge/embeddings.db
         """
         if db_path is None:
-            db_path = ROOT / "data" / "knowledge" / "embeddings.db"
+            db_path = DEFAULT_DB_PATH
 
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)

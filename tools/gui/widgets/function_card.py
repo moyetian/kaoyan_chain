@@ -66,6 +66,10 @@ class FunctionCard(QFrame):
         desc_label.setObjectName("CardDesc")
         desc_label.setWordWrap(True)
 
+        # 供子类改挂自己的选择器（如 rail 里的 NavToolTitle / NavToolDesc）
+        self._title_label = title_label
+        self._desc_label = desc_label
+
         layout.addLayout(title_row)
         layout.addWidget(desc_label)
 

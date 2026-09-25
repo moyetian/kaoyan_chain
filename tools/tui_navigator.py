@@ -799,7 +799,7 @@ def should_use_textual() -> bool:
 
     条件：textual 已安装 + 处于真实终端 + 未被 KY_TUI_LEGACY 显式禁用。
     任何一条不满足都回落到下面的纯文本循环 —— 降级必须可用，
-    否则「零依赖开箱即用」的承诺就破了。
+    否则「TUI 层开箱即用」的承诺就破了。
     """
     if os.environ.get("KY_TUI_LEGACY"):
         return False

@@ -1044,6 +1044,46 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
             elif cmd == "/status":
                 print_status_summary()
                 continue
+            elif cmd in ("/rag", "/search"):
+                # [C5] 本地知识库检索：与 ky rag 共用同一实现（含降级提示）。
+                # 惰性导入：不进 REPL 主路径的启动开销。
+                try:
+                    from tools.cli.commands.search import run_rag_search
+                except ImportError:
+                    from cli.commands.search import run_rag_search  # type: ignore
+                _top = 5
+                _src = ""
+                _kw = []
+                for _a in arg.split():
+                    if _a.startswith("--top="):
+                        try:
+                            _top = int(_a.split("=", 1)[1])
+                        except ValueError:
+                            print(colorize(f"[!] --top 需要整数，收到: {_a}", C.RED))
+                            _top = 5
+                    elif _a.startswith("--source="):
+                        _src = _a.split("=", 1)[1].strip()
+                    else:
+                        _kw.append(_a)
+                run_rag_search(" ".join(_kw), top_k=_top, source_filter=_src)
+                continue
+            elif cmd == "/gain":
+                # [C6] 学习增益代理指标：与 ky gain 共用同一实现。
+                # 惰性导入：不进 REPL 主路径的启动开销。落盘交给模块内部判定
+                # （safe 模式自动跳过，不是错误），REPL 侧不重复实现该逻辑。
+                try:
+                    from tools.benchmarks.learning_gain import run_learning_gain
+                    from tools.cli.repl import renderer
+                except ImportError:
+                    from benchmarks.learning_gain import run_learning_gain  # type: ignore
+                    from cli.repl import renderer  # type: ignore
+                # [U1 端到端修复] 解析 ``--no-save``：此前硬编码 save=True，
+                # 用户输入 ``/gain --no-save`` 被静默忽略、仍然落盘（与 CLI 侧
+                # 语义不一致）。落盘与否最终仍由模块内部按只读模式兜底。
+                _save = "--no-save" not in arg.split()
+                _report, _ = run_learning_gain(save=_save)
+                renderer.print_learning_gain(_report)
+                continue
             else:
                 print(colorize(f"未知指令 {cmd}，输入 /skills 查看可用技能，或输入 /math /eng /pol /pro", C.RED))
                 continue

@@ -26,7 +26,7 @@ except ImportError:
         from version import get_version
     except ImportError:
         def get_version() -> str:
-            return "3.0.0"
+            return "3.1.0"
 
 
 def _cmd_version(args: List[str]) -> None:
@@ -78,6 +78,8 @@ def _cmd_help(args: List[str]) -> None:
   exam-submit <试卷路径> <作答文本>           自动判卷并输出正答率、采分点与错题归因
   key [list|set] <试卷编号> [题号] ["标准答案"]  管理自测卷的加密标准答案（判卷自动采分依赖它）
   variant <考点关键词>                        四科白名单同类真题变式检索与防幻觉溯源
+  rag <关键词> [--top=5] [--source=科目]     本地知识库混合检索（向量不可用时显式降级；别名: search）
+  gain [--no-save]                           学习增益代理指标周趋势报告（本地落盘 .memory/，不上传、非门禁）
   map [科目] [--json]                         官方考试大纲知识点图谱与掌握度映射
   diagnose <答题卡文本或文件>                 整卷级多题诊断引擎 (章节失分排行与薄弱处方)
   fatigue                                     检查疲劳度与完成率监控警报

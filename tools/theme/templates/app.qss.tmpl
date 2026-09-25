@@ -365,3 +365,323 @@ QToolTip {
     border: 1px solid {{line}};
     padding: {{pad-sm}};
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   P2 组件族：导航 rail / 通用卡片 / 统计块 / 命令面板 / 对话气泡 / 错题卡
+   全部消费 P0 设计系统 token（fs-hero|title|body|caption、space-1..6、icon-*）
+   —— 新增组件只加选择器块，颜色/圆角/字号一律不在控件里写死。
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 左侧导航 rail：视图组（切页）+ 工具组（动作） ─────────────────── */
+#NavRail {
+    background-color: {{surf2}};
+    border: 1px solid {{line}};
+    border-radius: {{radius-sm}}px;
+}
+
+#NavRailScroll, #NavRailCanvas {
+    background-color: transparent;
+    border: none;
+}
+
+#NavBrand {
+    background-color: transparent;
+    color: {{acc-soft}};
+    font-size: {{fs-title}};
+    font-weight: bold;
+}
+
+#NavPaletteBtn {
+    background-color: {{surf}};
+    color: {{mut}};
+    border: 1px solid {{line-strong}};
+    border-radius: {{radius-sm}}px;
+    padding: {{space-1}} {{space-2}};
+    font-size: {{fs-caption}};
+}
+
+#NavPaletteBtn:hover {
+    color: {{acc-soft}};
+    border: 1px solid {{acc}};
+}
+
+#NavGroupTitle {
+    background-color: transparent;
+    color: {{mut}};
+    font-size: {{fs-caption}};
+    font-weight: 600;
+    padding: {{space-1}} {{space-2}};
+}
+
+/* 视图项：紧凑行。激活态 = 左侧 3px 强调条 + acc-sub 底（禁止巨型高亮） */
+#NavItem {
+    background-color: transparent;
+    border: none;
+    border-left: 3px solid transparent;
+    border-radius: {{radius-sm}}px;
+    color: {{fg}};
+    font-size: {{fs-body}};
+    font-weight: 500;
+    text-align: left;
+    padding: {{space-1}} {{space-2}};
+    /* 点区高度：QSS 的 min-height 会覆盖控件 setMinimumHeight（全局 QPushButton
+       规则是 22px），故在此显式声明 30px —— 加 padding 4+4 后渲染高度 38px，
+       与 KYNavItem 的代码意图一致，点击目标不缩水。 */
+    min-height: 30px;
+}
+
+#NavItem:hover {
+    background-color: {{surf3}};
+    color: {{fg-strong}};
+}
+
+#NavItem:checked {
+    background-color: {{acc-sub}};
+    border-left: 3px solid {{acc}};
+    color: {{acc-soft}};
+    font-weight: 600;
+}
+
+/* 工具项：动作卡（图标 + 标题 + 说明） */
+#NavToolItem {
+    background-color: {{surf}};
+    border: 1px solid {{line}};
+    border-radius: {{radius-sm}}px;
+}
+
+#NavToolItem:hover {
+    background-color: {{surf3}};
+    border: 1px solid {{acc}};
+}
+
+#NavToolItem:focus {
+    border: {{focus-w}}px solid {{focus-ring}};
+}
+
+#NavToolTitle {
+    background-color: transparent;
+    color: {{fg-strong}};
+    font-size: {{fs-body}};
+    font-weight: 600;
+}
+
+#NavToolDesc {
+    background-color: transparent;
+    color: {{mut}};
+    font-size: {{fs-caption}};
+}
+
+/* ── 命令面板（Ctrl+K） ──────────────────────────────────────────── */
+#PaletteDialog {
+    background-color: {{bg}};
+    border: 1px solid {{line-strong}};
+}
+
+#PaletteInput {
+    background-color: {{input-bg}};
+    border: 1px solid {{line-strong}};
+    border-radius: {{radius-sm}}px;
+    padding: {{space-2}} {{space-3}};
+    color: {{fg-strong}};
+    font-size: {{fs-body}};
+}
+
+#PaletteInput:focus {
+    border: 1.5px solid {{acc}};
+}
+
+#PaletteList {
+    background-color: transparent;
+    border: none;
+    outline: none;
+}
+
+#PaletteList::item {
+    color: {{fg}};
+    border-radius: {{radius-sm}}px;
+    padding: {{space-2}} {{space-3}};
+    font-size: {{fs-body}};
+}
+
+#PaletteList::item:selected {
+    background-color: {{acc-sub}};
+    color: {{acc-soft}};
+}
+
+#PaletteHint {
+    background-color: transparent;
+    color: {{mut}};
+    font-size: {{fs-caption}};
+}
+
+/* ── 对话页：气泡 + 空状态示例 ──────────────────────────────────── */
+#ChatView {
+    background-color: {{input-bg}};
+    border: 1px solid {{line-strong}};
+    border-radius: {{radius-sm}}px;
+}
+
+#ChatCanvas {
+    background-color: transparent;
+}
+
+#ChatEmptyTitle {
+    background-color: transparent;
+    color: {{fg-strong}};
+    font-size: {{fs-title}};
+    font-weight: 600;
+}
+
+#ChatEmptyHint {
+    background-color: transparent;
+    color: {{mut}};
+    font-size: {{fs-body}};
+}
+
+#ExamplePill {
+    background-color: {{surf2}};
+    color: {{acc-soft}};
+    border: 1px dashed {{acc-line}};
+    border-radius: {{radius-sm}}px;
+    padding: {{space-1}} {{space-3}};
+    font-size: {{fs-sm}};
+    font-weight: 500;
+}
+
+#ExamplePill:hover {
+    background-color: {{surf3}};
+    border: 1px solid {{acc}};
+}
+
+#UserBubble {
+    background-color: {{acc-sub}};
+    border: 1px solid {{acc-line}};
+    border-radius: {{radius-sm}}px;
+    color: {{fg-strong}};
+}
+
+#AgentBubble {
+    background-color: {{surf}};
+    border: 1px solid {{line}};
+    border-radius: {{radius-sm}}px;
+    color: {{fg}};
+}
+
+#SystemBubble {
+    background-color: transparent;
+    border: 1px dashed {{line-strong}};
+    border-radius: {{radius-sm}}px;
+    color: {{mut}};
+}
+
+#BubbleText {
+    background-color: transparent;
+    font-size: {{fs-body}};
+}
+
+#BubbleMeta {
+    background-color: transparent;
+    color: {{mut}};
+    font-size: {{fs-caption}};
+    font-weight: 600;
+}
+
+/* ── 错题本：卡片 + chip ────────────────────────────────────────── */
+#ErrorScroll, #ErrorCanvas {
+    background-color: transparent;
+    border: none;
+}
+
+#KYCard {
+    background-color: {{surf}};
+    border: 1px solid {{line}};
+    border-radius: {{radius-sm}}px;
+}
+
+#KYCard:hover {
+    border: 1px solid {{acc}};
+}
+
+#KYCardHeader, #KYCardTitle, #KYCardMeta {
+    background-color: transparent;
+}
+
+#KYCardTitle {
+    color: {{fg-strong}};
+    font-size: {{fs-body}};
+    font-weight: 600;
+}
+
+#KYCardMeta {
+    color: {{mut}};
+    font-size: {{fs-caption}};
+}
+
+#CardChip {
+    background-color: {{acc-sub}};
+    color: {{acc-soft}};
+    border: 1px solid {{acc-line}};
+    border-radius: {{radius-sm}}px;
+    padding: 1px {{space-2}};
+    font-size: {{fs-caption}};
+    font-weight: 600;
+}
+
+#DueChip {
+    background-color: transparent;
+    color: {{warn}};
+    border: 1px solid {{line-strong}};
+    border-radius: {{radius-sm}}px;
+    padding: 1px {{space-2}};
+    font-size: {{fs-caption}};
+}
+
+#ErrChip {
+    background-color: transparent;
+    color: {{bad}};
+    border: 1px solid {{line-strong}};
+    border-radius: {{radius-sm}}px;
+    padding: 1px {{space-2}};
+    font-size: {{fs-caption}};
+}
+
+#EmptyHint {
+    background-color: transparent;
+    color: {{mut}};
+    font-size: {{fs-body}};
+    padding: {{space-3}};
+}
+
+/* ── 今日任务页：概览统计块（大数字 + caption + 可选趋势） ─────────── */
+#StatTile {
+    background-color: {{surf}};
+    border: 1px solid {{line}};
+    border-radius: {{radius-sm}}px;
+}
+
+#StatValue {
+    background-color: transparent;
+    color: {{acc-soft}};
+    font-size: {{fs-hero}};
+    font-weight: bold;
+}
+
+#StatCaption {
+    background-color: transparent;
+    color: {{mut}};
+    font-size: {{fs-caption}};
+}
+
+#StatTrend {
+    background-color: transparent;
+    color: {{ok}};
+    font-size: {{fs-caption}};
+}
+
+#StatTrend[tone="warn"] {
+    color: {{warn}};
+}
+
+#StatTrend[tone="bad"] {
+    color: {{bad}};
+}

@@ -131,6 +131,14 @@ JUNK_DIR_NAMES = frozenset({
     # 于是 ``tools/scratch/**`` 绕过过滤进了发布包 —— 实测旧 dist 里躺着 152 个
     # clip_*.png。这里改为与 __pycache__ 同级的任意深度排除。
     "scratch",
+    # [C6 补漏] 本机运行时状态目录（三级分层记忆 / 会话记录 / 复习日志 /
+    # 加密答案 exam_keys）：复制层早已排除（sync_publish.EXCLUDE_DIRS:69），
+    # 但清扫层（should_publish / purge_leaked_files_in_dst / build_package
+    # 的产物清理）此前不认它 —— 端到端实测 ``should_publish(
+    # ".memory/learning_gain_report.md")`` 返回 True，嵌套的
+    # ``01-数学/.memory/**`` 残留会被放行不删（单一事实源破口）。
+    # 与 scratch 同级任意深度排除。
+    ".memory",
 })
 JUNK_FILE_EXTS: Tuple[str, ...] = (".pyc", ".pyo", ".log", ".tmp")
 
@@ -142,9 +150,16 @@ PRIVATE_CONFIG_FILES = frozenset({
 #: 根级构建产物/依赖目录：是「本机编译出来的东西」，不是源码。
 #: 其中 dist/ 尤其危险 —— 它是上一轮打包的产物，内部可能残留被复制的
 #: 参考资料 PDF，一旦被镜像进公开仓库就等于二次泄漏（P25 实测命中）。
+#: [2026-09-25 导出缺陷修复] ``rust_ext`` 此前被列在本清单里，但它**是源码
+#: 目录**（``src/*.rs`` + ``Cargo.toml``，.gitignore:165 明示「源码保留、
+#: 二进制产物不入库」）—— 误分类使它被整棵排除出导出，而 sync_publish 的
+#: ``PUBLIC_PRESERVE_ROOTS`` 又让副本里的旧版本不被 ``--force`` 删除，于是
+#: 公开副本的 Rust 源码长期冻结在 v2.7.0：A2 的 tokenizer 系数同步
+#: （3f34665）从未到达公开仓库，同一向量在 Python / Rust 两侧算出不同结果。
+#: 现改为只排除其构建产物子目录 ``rust_ext/target``（见 NON_PUBLISH_PATH_PREFIXES）。
 BUILD_ARTIFACT_DIRS = frozenset({
     "dist", "build", "dist_wheels", "node_modules",
-    ".venv", "venv", "rust_ext", "kaoyan_study_chain.egg-info",
+    ".venv", "venv", "kaoyan_study_chain.egg-info",
     # [R2-E 补漏] Rust 扩展的 CARGO_TARGET_DIR（见 .gitignore:9）。
     # 口径漂移实锤：git 明确忽略它，发布副本却照拷 —— 全新空目录导出实测
     # ../kaoyan_chain_public 里躺着 .cargo_target/（432K 本机编译产物）。
@@ -203,6 +218,10 @@ NON_PUBLISH_PATH_PREFIXES: Tuple[Tuple[str, ...], ...] = (
     ("05-考研看板", "docs"),
     ("scripts", "gui_shots"),
     ("04-专业课", "演示样例"),
+    # [2026-09-25 导出缺陷修复] rust_ext 的 Cargo 构建产物目录（.gitignore:168
+    # 已忽略，含数百 MB 二进制/PDB）。与「rust_ext 移出 BUILD_ARTIFACT_DIRS」
+    # 配套：源码（src/*.rs、Cargo.toml、Cargo.lock）要发布，target/ 不发布。
+    ("rust_ext", "target"),
 )
 
 #: `.gitignore` 已保护、导出层此前未对齐的「本地研报/考纲产物」：
@@ -261,6 +280,10 @@ INTERNAL_DOC_PATTERNS: Tuple[str, ...] = (
     "*路线图*.md",
     "D盘实测_*.md",
     "ORIGINAL_REQUEST.md",
+    # [C6 推前发现] 外部 UI 评审方案（`UI设计评审与升级改造方案.md`）此前不在
+    # 任何清单里，被文件系统遍历原样导出到公开副本 —— 与「审查报告」同类
+    # （含内部短板实测记录），任何位置都不得进入发布物。
+    "*评审*.md",
 )
 
 
@@ -701,10 +724,43 @@ GENERIC_WEAKNESS_VALUES = frozenset({
 GENERIC_BASELINE_VALUES = frozenset({"不考数学"})
 
 #: 只要**包含**其中任一子串即视为通用值（用于「前缀式」的模板取值）。
-GENERIC_VALUE_SUBSTRINGS = frozenset({"待摸底", "暂未放置实体资料"})
+#: ``待诊断`` / ``请放入本地参考资料`` / ``专业课名称`` 是**导出模板值**
+#: （``sync_publish.CONFIG_TEMPLATE`` 写进公开副本的取值）—— 缺了它们会在
+#: 副本内生成「占位值 → 占位值」的自指规则（2026-09-25 实测 7 个文件被改写，
+#: 详见 ``is_placeholder_value``）。
+GENERIC_VALUE_SUBSTRINGS = frozenset({
+    "待摸底", "暂未放置实体资料",
+    "待诊断", "请放入本地参考资料", "专业课名称",
+})
 
 #: 学情自由文本字段的科目前缀（与 ky_config.json 的 study_plan 键名一致）。
 _SUBJECT_FIELD_PREFIXES = ("math", "eng", "pol", "pro")
+
+
+def is_placeholder_value(value: object) -> bool:
+    """字段取值是否已是**占位值/模板值/通用值** —— 命中即**不生成**替换规则。
+
+    **为什么必须有这道闸门（2026-09-25 实测）**：导出产物（公开副本）的
+    ``ky_config.json`` 由 ``sync_publish.CONFIG_TEMPLATE`` 写成占位值
+    （``目标院校`` / ``目标专业 (专业代码-方向)`` / ``待诊断`` …）。副本内再跑
+    ``build_substitutions(副本root)`` 时，这些占位值会被当成「真实身份」生成规则；
+    而规则源字面量恰好也出现在副本自己的源码里（配置模板、首启向导、
+    ``gui/services/settings.is_unconfigured`` 的判据）→「占位值 → 占位值」
+    **自指改写**：实测 7 个副本文件被改写（含 ``tools/study_planner.py``、
+    ``tools/gui/services/settings.py`` 等功能代码），元测试
+    ``test_tests_dir_is_immune_to_py_sanitization`` 因此变红（公开用户初始化后
+    跑 pytest 必红）。
+
+    判据 = 精确命中 ``SCHOOL_PLACEHOLDERS`` / ``MAJOR_PLACEHOLDERS``，或
+    **包含** ``GENERIC_VALUE_SUBSTRINGS`` 任一子串（前缀式模板取值）。
+    宁可少生成 —— 「占位值 → 占位值」的规则本就无脱敏意义。
+    """
+    v = str(value or "").strip()
+    if not v:
+        return True
+    if v in SCHOOL_PLACEHOLDERS or v in MAJOR_PLACEHOLDERS:
+        return True
+    return any(g in v for g in GENERIC_VALUE_SUBSTRINGS)
 
 
 def _personal_text_rules(plan: dict, root: Union[str, Path]) -> List[Tuple[str, str]]:
@@ -731,7 +787,7 @@ def _personal_text_rules(plan: dict, root: Union[str, Path]) -> List[Tuple[str, 
     # 备选院校是**院校名**，与 school 同类：除字面替换外还要覆盖 URL 编码形态与
     # pinyin 域名（备选院校同样是选校轨迹，其官网域名不该随生成物公开）。
     backup = str(plan.get("backup_school") or "").strip()
-    if len(backup) >= 3 and backup not in GENERIC_VALUE_SUBSTRINGS:
+    if len(backup) >= 3 and not is_placeholder_value(backup):
         rules.append((re.escape(backup), "备选院校"))
         _add_url_rule(rules, backup, "备选院校")
         for domain in school_domains(root, backup):
@@ -775,7 +831,7 @@ def identity_substitutions(root: Union[str, Path]) -> List[Tuple[str, str]]:
     rules: List[Tuple[str, str]] = []
 
     school = str(plan.get("school") or "").strip()
-    if school:
+    if school and not is_placeholder_value(school):
         rules.append((re.escape(school), "目标院校"))
         _add_url_rule(rules, school, "目标院校")
         # pinyin 域名（``www.<校名拼音>.edu.cn`` / ``gra.<校名拼音>.edu.cn`` …）：
@@ -786,7 +842,7 @@ def identity_substitutions(root: Union[str, Path]) -> List[Tuple[str, str]]:
                 rules.append((re.escape(domain), placeholder))
 
     major = str(plan.get("major") or "").strip()
-    if major:
+    if major and not is_placeholder_value(major):
         rules.append((re.escape(major), "目标专业 (专业代码)"))
         m = re.match(r"^\s*(\d{3,6})\s*(.+?)\s*$", major)
         if m:
@@ -812,7 +868,7 @@ def identity_substitutions(root: Union[str, Path]) -> List[Tuple[str, str]]:
             _add_url_rule(rules, major_name, "目标专业")
 
     pro_name = str(plan.get("pro_name") or "").strip()
-    if pro_name:
+    if pro_name and not is_placeholder_value(pro_name):
         rules.append((re.escape(pro_name), "自命题专业课科目"))
         # 形如 "618 某自命题科目名 823 另一自命题科目名"
         #   → ("618", "某自命题科目名") / ("823", "另一自命题科目名")
@@ -918,7 +974,9 @@ def identity_name_tokens(root: Union[str, Path]) -> List[str]:
     tokens: List[str] = []
     for key in ("school", "major", "pro_name"):
         value = str(plan.get(key) or "").strip()
-        if value:
+        # 占位值不是身份：不加闸门的话，副本内自检会把中性占位名（「目标院校情报_
+        # 目标院校_目标专业.md」这类由 RENAME_NAME_PATTERNS 产出的合法名）误报成泄漏。
+        if value and not is_placeholder_value(value):
             tokens.append(value)
 
     # 专业代码本身即身份指纹（6 位码几乎不可能是普通数字）。单独取出，
@@ -980,6 +1038,9 @@ def identity_rules_effective(root: Union[str, Path]) -> Tuple[bool, str]:
     school = str(plan.get("school") or "").strip()
     if not school:
         return False, "study_plan.school 为空"
+    if is_placeholder_value(school):
+        return False, (f"study_plan.school 仍是占位值「{school}」"
+                       "（据此生成的是自指空转规则，等于没脱敏）")
 
     rules = identity_substitutions(root)
     if not rules:

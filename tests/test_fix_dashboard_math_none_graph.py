@@ -91,6 +91,7 @@ def _make_workspace(tmp_path: Path, math_key: str, extra_plan: dict | None = Non
     # 只搬运 knowledge_map 链路真正需要的模块（均为纯标准库 / 已声明的三方依赖），
     # 避免拉起 tools.skills 的全部 15 个子模块（sympy / pypdf 等）。
     #   knowledge_map → error_logger → ky_io / note_lock / fsrs_scheduler
+    #                                → question_source（题源身份校验，C3；依赖 ky_io）
     # tools.skills/__init__.py 故意留空：真实那份会 eager 导入全部技能，
     # 而 knowledge_map 只需同级 error_logger，get_subject_name 缺失时它自带回退。
     skills = tmp_path / "tools" / "skills"
@@ -99,7 +100,7 @@ def _make_workspace(tmp_path: Path, math_key: str, extra_plan: dict | None = Non
     for name in ("ky_io.py", "note_lock.py", "fsrs_scheduler.py"):
         shutil.copy2(REPO / "tools" / name, tmp_path / "tools" / name)
     (skills / "__init__.py").write_text("", encoding="utf-8")
-    for name in ("knowledge_map.py", "error_logger.py"):
+    for name in ("knowledge_map.py", "error_logger.py", "question_source.py"):
         shutil.copy2(REPO / "tools" / "skills" / name, skills / name)
 
     plan = {

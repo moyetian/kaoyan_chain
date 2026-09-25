@@ -495,3 +495,91 @@ def test_residual_scan_catches_pinyin_domain(tmp_path):
     hits = pp.scan_residual_identity(dst, src)
     assert "report.md" in hits
     assert "clean.md" not in hits
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# [2026-09-25 修复] 占位值配置不得生成自指规则（公开副本内自指改写）
+# ══════════════════════════════════════════════════════════════════════════
+
+#: 公开副本 ky_config.json 的实际取值（= ``sync_publish.CONFIG_TEMPLATE`` 的
+#: study_plan 子集）。副本内再生成规则时，这些值会造成「占位值 → 占位值」
+#: 自指改写（副本自己的源码里恰好写着这些字面量）。
+TEMPLATE_PLAN = {
+    "school": "目标院校",
+    "major": "目标专业 (专业代码-方向)",
+    "pro_name": "专业课名称 代码",
+    "math_weakness": "待诊断",
+    "eng_weakness": "待诊断",
+    "pol_weakness": "待诊断",
+    "pro_weakness": "待诊断",
+    "math_baseline": "待摸底",
+    "eng_baseline": "待摸底",
+    "pol_baseline": "待摸底",
+    "pro_baseline": "待摸底",
+    "math_books": "[请放入本地参考资料后填写白名单书目]",
+    "eng_books": "[请放入本地参考资料后填写白名单书目]",
+    "pol_books": "[请放入本地参考资料后填写白名单书目]",
+    "pro_books": "[请放入本地参考资料后填写白名单书目]",
+}
+
+
+def test_placeholder_config_generates_no_self_referential_rules(tmp_path):
+    """[2026-09-25] 全占位值配置不得生成任何动态规则 —— 否则副本内自指改写。
+
+    实测危害（公开副本 kaoyan_chain_public）：
+      * 副本的 ky_config.json 由 ``sync_publish.CONFIG_TEMPLATE`` 写成占位值；
+      * 副本内跑 ``build_py_substitutions(副本root)`` 生成 5 类自指规则
+        （``待诊断 → 待诊断薄弱点`` / ``目标专业 (专业代码-方向) → 目标专业
+        (专业代码)`` 等），把 7 个副本文件改写 —— 含 ``tools/study_planner.py``、
+        ``tools/gui/services/settings.py`` 等**功能代码**；
+      * 元测试 ``test_tests_dir_is_immune_to_py_sanitization`` 因此变红：
+        公开用户初始化（生成 ky_config.json）后跑 pytest 必红。
+
+    阴性对照：从 ``is_placeholder_value()`` 的判据里去掉 SCHOOL/MAJOR 名单
+    或 ``待诊断`` 子串，本用例必须变红。
+    """
+    root = _make_root(tmp_path, TEMPLATE_PLAN)
+    assert pp.identity_substitutions(root) == [], (
+        f"占位值配置不得生成动态规则: {pp.identity_substitutions(root)}")
+    assert pp.identity_name_tokens(root) == [], "占位值不得进文件名判据"
+
+    # 端到端：含占位值文本的「副本文件」必须原样通过（不被自指改写）。
+    sample = (
+        'X = "待诊断薄弱点"\n'
+        'Y = "目标专业 (专业代码-方向)"\n'
+        'Z = "专业课名称 代码"\n'
+        'W = "[请放入本地参考资料后填写白名单书目]"\n'
+    )
+    rules = pp.build_py_substitutions(root)
+    assert pp.sanitize_text(sample, rules) == sample
+
+
+def test_placeholder_values_are_gated_across_all_field_types():
+    """闸门覆盖面：五类字段的模板值全部命中；真实取值不得被误拦。"""
+    for value in ("目标院校", "未指定", "报考专业", "目标专业",
+                  "目标专业 (专业代码)", "目标专业 (专业代码-方向)",
+                  "专业课名称 代码", "待诊断", "待诊断薄弱点", "待摸底",
+                  "[请放入本地参考资料后填写白名单书目]"):
+        assert pp.is_placeholder_value(value), value
+    for value in ("中国人民大学", "030100 法学", "610 法学基础 810 法学综合",
+                  "阅读定位不熟练", "多选题易漏选"):
+        assert not pp.is_placeholder_value(value), value
+
+
+def test_config_template_identity_values_are_all_gated():
+    """[防漂移] ``sync_publish.CONFIG_TEMPLATE`` 的身份字段值必须全部命中闸门。
+
+    否则：未来改了配置模板的占位值却忘了同步判据 → 副本内自指改写复燃。
+    公开副本里 ``tools/sync_publish.py`` 是 4 行占位（无 CONFIG_TEMPLATE）→ skip。
+    """
+    sp = pytest.importorskip("tools.sync_publish")
+    template = getattr(sp, "CONFIG_TEMPLATE", None)
+    if template is None:
+        pytest.skip("公开副本里 sync_publish 是占位文件（无 CONFIG_TEMPLATE）")
+    plan = template["study_plan"]
+    fields = [k for k in plan
+              if k in ("school", "major", "pro_name")
+              or k.endswith(("_weakness", "_baseline", "_books"))]
+    assert fields, "配置模板里应至少有一批身份字段"
+    for key in fields:
+        assert pp.is_placeholder_value(plan[key]), (key, plan[key])

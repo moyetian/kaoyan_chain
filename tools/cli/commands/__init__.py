@@ -5,8 +5,10 @@
 """
 
 def load_all_commands() -> None:
-    """按序加载 7 个命令模块，触发其内部 register() 调用"""
+    """按序加载命令模块，触发其内部 register() 调用"""
     try:
-        from tools.cli.commands import system, daily, study, intel, material, misc, session
+        from tools.cli.commands import (system, daily, study, intel, material,
+                                        misc, session, search, gain)
     except ImportError:
-        from cli.commands import system, daily, study, intel, material, misc, session
+        from cli.commands import (system, daily, study, intel, material,
+                                  misc, session, search, gain)

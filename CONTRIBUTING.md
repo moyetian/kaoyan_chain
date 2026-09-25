@@ -193,11 +193,11 @@ python -m pip install -e .
 ```
 安装后，可直接在终端中随时使用 `ky` 命令行工具。
 
-### 3. 安装扩展依赖（可选增强）
+### 3. 安装依赖（核心 rich + 可选增强）
 ```bash
 pip install -r requirements.txt
 ```
-核心功能不依赖任何三方库（纯 Python 标准库零依赖即可运行），扩展依赖仅用于数学高精符号运算 (SymPy)、PDF 提取 (pypdf)、图像批改 (Pillow) 等特定技能。
+核心链路仅依赖 `rich`（CLI REPL 的面板 / 表格 / 语义色渲染，纯 Python 无二进制扩展）；其余依赖仅用于数学高精符号运算 (SymPy)、PDF 提取 (pypdf)、图像批改 (Pillow) 等特定技能。
 
 ### 4. 可选增强模块（v2.8.0 沿用）
 

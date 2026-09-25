@@ -27,6 +27,13 @@ if str(ROOT) not in sys.path:              # 便于以脚本方式运行本文�
     sys.path.insert(0, str(ROOT))
 
 
+#: 设计系统 token 的字体栈首项是 "Inter"，但仓库既不随包分发 Inter 字体文件、
+#: 也不允许引 CDN（离线自包含）。浏览器会为首屏白等一次必然失败的字形查找，
+#: 且该 token 在 Web 端此前**没有任何消费点**（body 用的是另一套硬编码系统栈）。
+#: 这里在 Web 侧如实摘掉这个取不到的字体，保持纯系统栈；token 层保持不动。
+_MISSING_FONT = '"Inter", '
+
+
 def build_theme_css(workspace_root: Path | None = None) -> str:
     """生成注入 ``{{THEME_CSS}}`` 的 CSS 变量块。
 
@@ -44,7 +51,12 @@ def build_theme_css(workspace_root: Path | None = None) -> str:
 
         css = render_css_vars(build_theme("light"), build_theme("dark"))
         rules = preset_rules_css()
-        return css + (("\n" + rules) if rules else "")
+        # [缺陷修复·Inter 残留] 剥离必须发生在**拼接之后**：preset_rules_css()
+        # 为 eye-green / pink / hc 三套预设各自重声明一次 --font-family，
+        # 原先先剥离再拼接，这三块里的 "Inter" 就漏网了（实测产物 7 处
+        # --font-family 中有 3 处仍指向仓库不存在的字体文件）。
+        css = (css + (("\n" + rules) if rules else "")).replace(_MISSING_FONT, "")
+        return css
     except Exception as exc:
         _LOG.warning("主题变量生成失败，看板回落到内置兜底配色: %s", exc)
         return _FALLBACK_CSS

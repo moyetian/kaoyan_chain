@@ -70,6 +70,8 @@ STRUCTURE_TOKENS: Dict[str, Any] = {
     "density": 1.0,          # 1.0 = 舒适，<1 紧凑
     "font-scale": 1.0,       # 字号缩放
     "focus-w": 2,
+    # 图标规范：尺寸三档 + Lucide 线性描边宽度（见 tools/theme/icons.py）
+    "icon-stroke": 1.75,
     # 跨平台字体栈：改造前 GUI 硬编码 "Microsoft YaHei"，Linux/macOS 上会回退到
     # 一个不保证存在中文字形的字体。此处按「现代无衬线 → 各平台中文字体」排列。
     "font-family": ('"Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", '
@@ -134,8 +136,12 @@ PRESETS: Dict[str, Dict[str, Any]] = {
             "focus-ring": "#c4b5fd",
             "acc-grad-from": "#c4b5fd",
             "acc-grad-to": "#a78bfa",
-            "sh": "0 1px 3px rgba(0,0,0,.3)",
-            "sh2": "0 8px 24px rgba(0,0,0,.4)",
+            "elev-1": "0 1px 3px rgba(0,0,0,.3)",
+            "elev-2": "0 8px 24px rgba(0,0,0,.4)",
+            "elev-3": "0 16px 48px rgba(0,0,0,.55)",
+            # 学科色板（图表/进度环/科目 chip）；对 surf 对比度 ≥3:1（contrast.py 把关）
+            "chart-1": "#60a5fa", "chart-2": "#34d399",
+            "chart-3": "#fbbf24", "chart-4": "#f472b6",
         },
     ),
     "light": _base(
@@ -149,8 +155,11 @@ PRESETS: Dict[str, Dict[str, Any]] = {
             "focus-ring": "#6d28d9",
             "acc-grad-from": "#a78bfa",
             "acc-grad-to": "#7c3aed",
-            "sh": "0 4px 12px rgba(139, 92, 246, 0.06),0 1px 3px rgba(0,0,0,.04)",
-            "sh2": "0 8px 24px rgba(139, 92, 246, 0.12),0 2px 6px rgba(0,0,0,.03)",
+            "elev-1": "0 4px 12px rgba(139, 92, 246, 0.06),0 1px 3px rgba(0,0,0,.04)",
+            "elev-2": "0 8px 24px rgba(139, 92, 246, 0.12),0 2px 6px rgba(0,0,0,.03)",
+            "elev-3": "0 16px 48px rgba(139, 92, 246, 0.18),0 4px 12px rgba(0,0,0,.05)",
+            "chart-1": "#2563eb", "chart-2": "#059669",
+            "chart-3": "#b45309", "chart-4": "#be185d",
         },
     ),
     "eye-green": _base(
@@ -164,8 +173,11 @@ PRESETS: Dict[str, Dict[str, Any]] = {
             "focus-ring": "#1f5f3c",
             "acc-grad-from": "#4b9c6a",
             "acc-grad-to": "#2f7d4f",
-            "sh": "0 4px 12px rgba(47, 125, 79, 0.08),0 1px 3px rgba(0,0,0,.04)",
-            "sh2": "0 8px 24px rgba(47, 125, 79, 0.14),0 2px 6px rgba(0,0,0,.03)",
+            "elev-1": "0 4px 12px rgba(47, 125, 79, 0.08),0 1px 3px rgba(0,0,0,.04)",
+            "elev-2": "0 8px 24px rgba(47, 125, 79, 0.14),0 2px 6px rgba(0,0,0,.03)",
+            "elev-3": "0 16px 48px rgba(47, 125, 79, 0.2),0 4px 12px rgba(0,0,0,.05)",
+            "chart-1": "#1d4ed8", "chart-2": "#1f7a3d",
+            "chart-3": "#a16207", "chart-4": "#9d174d",
         },
     ),
     "pink": _base(
@@ -179,8 +191,11 @@ PRESETS: Dict[str, Dict[str, Any]] = {
             "focus-ring": "#9d174d",
             "acc-grad-from": "#db2777",
             "acc-grad-to": "#be185d",
-            "sh": "0 4px 12px rgba(190, 24, 93, 0.07),0 1px 3px rgba(0,0,0,.04)",
-            "sh2": "0 8px 24px rgba(190, 24, 93, 0.13),0 2px 6px rgba(0,0,0,.03)",
+            "elev-1": "0 4px 12px rgba(190, 24, 93, 0.07),0 1px 3px rgba(0,0,0,.04)",
+            "elev-2": "0 8px 24px rgba(190, 24, 93, 0.13),0 2px 6px rgba(0,0,0,.03)",
+            "elev-3": "0 16px 48px rgba(190, 24, 93, 0.18),0 4px 12px rgba(0,0,0,.05)",
+            "chart-1": "#1d4ed8", "chart-2": "#15803d",
+            "chart-3": "#b45309", "chart-4": "#be185d",
         },
     ),
     "hc": _base(
@@ -194,8 +209,11 @@ PRESETS: Dict[str, Dict[str, Any]] = {
             "focus-ring": "#00ffff",
             "acc-grad-from": "#ffff66",
             "acc-grad-to": "#ffff00",
-            "sh": "none",
-            "sh2": "none",
+            "elev-1": "none",
+            "elev-2": "none",
+            "elev-3": "none",
+            "chart-1": "#60a5fa", "chart-2": "#4ade80",
+            "chart-3": "#fde047", "chart-4": "#f472b6",
         },
     ),
 }
@@ -270,6 +288,25 @@ def derive_tokens(tokens: Mapping[str, Any]) -> Dict[str, Any]:
     t.setdefault("pad-lg", f"{max(6, round(16 * density)):g}px")
     t.setdefault("radius-px", f"{radius:g}px")
     t.setdefault("radius-sm-px", f"{radius_sm:g}px")
+
+    # ── 设计系统扩展（P0）：字阶 / 间距网格 / 图标尺寸 / 阴影别名 ──
+    # 字阶：hero（首屏大数字）> title（卡片标题）> body（正文）> caption（辅助）
+    t.setdefault("fs-hero", f"{round(40 * scale, 1):g}px")
+    t.setdefault("fs-title", f"{round(20 * scale, 1):g}px")
+    t.setdefault("fs-body", f"{round(14 * scale, 1):g}px")
+    t.setdefault("fs-caption", f"{round(12 * scale, 1):g}px")
+    # 间距网格：4px 基准（固定栅格，不随 density —— density 只影响组件内边距 pad*）
+    for _i, _v in enumerate((4, 8, 12, 16, 24, 32), 1):
+        t.setdefault(f"space-{_i}", f"{_v:g}px")
+    # 图标尺寸三档（描边宽度见 icon-stroke，图标集见 tools/theme/icons.py）
+    t.setdefault("icon-sm", "16px")
+    t.setdefault("icon-md", "20px")
+    t.setdefault("icon-lg", "24px")
+    # 阴影标准名是 elev-1/2/3；sh/sh2 保留为兼容别名（既有 QSS/CSS 消费方零改动）
+    if "elev-1" in t:
+        t.setdefault("sh", t["elev-1"])
+    if "elev-2" in t:
+        t.setdefault("sh2", t["elev-2"])
     return t
 
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kaoyan-study-chain"
-version = "3.0.0"
+version = "3.1.0"
 description = "考研全科 AI 私人教师与全自动备考总控系统 (Kaoyan Study Chain)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -34,6 +34,10 @@ classifiers = [
 ]
 dependencies = [
     "PyYAML>=6.0",
+    # CLI 渲染层（tools/cli/repl/renderer.py）的 Panel/Table/语义色渲染依赖；
+    # 纯 Python、MIT 许可、无二进制扩展，自带 NO_COLOR 与非 TTY 降级。
+    # 属核心依赖：CLI 是产品默认入口，不能只靠 [tui] extra 的传递依赖供给。
+    "rich>=13.0",
     # 必须 >= 5.0 且 < 7：代码使用 Scheduler API；4.x 及更早的 fsrs.FSRS 已移除；
     # 7.x 属未验证的大版本区间（曾破坏 Scheduler API），放开前需先跑通 FSRS 用例
     "fsrs>=5.0.0,<7",

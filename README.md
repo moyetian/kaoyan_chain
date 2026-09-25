@@ -16,8 +16,8 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
-  <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v3.0.0-blue?style=flat-square&logo=github&logoColor=white" alt="版本 v3.0.0" />
-  <img src="https://img.shields.io/badge/Tests-2038%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 2038 Passed" />
+  <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v3.1.0-blue?style=flat-square&logo=github&logoColor=white" alt="版本 v3.1.0" />
+  <img src="https://img.shields.io/badge/Tests-2325%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 2325 Passed" />
   <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-6366f1?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
   <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
   <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
@@ -90,13 +90,13 @@
 
 ## 📦 开箱即用：不懂技术也能直接用（推荐）
 
-**v3.0.0 亮点**：新增**会话恢复与分叉**（`ky session`）、**外部文件读取授权**（默认拒绝 + 交互授权）、**长会话压缩不丢约束**、**沙箱脚本执行收紧**等能力（详见 [CHANGELOG.md](CHANGELOG.md)）。本项目同时提供**开箱即用的程序包** —— 你**不需要安装 Python、不需要懂命令行**，下载后跟着界面引导填几项配置就能开始用。
+**v3.1.0 亮点**：阶段三「可证」—— 六条评测基准（C1–C6）把护城河变成**可评测资产**（考纲守卫 128 条 / 引文忠实度 109 条 / 题源溯源 ID / 判分 pilot / RAG 显式降级 `ky rag` / 学习增益 `ky gain`），外加四端 UI 设计系统统一（Lucide 图标 + 设计 token + Rich CLI）。**v3.0.1 亮点**：修复**公开副本导出冻结** —— 此前 `.github`（CI 配置）与 `rust_ext`（Rust 加速源码）被误列为「公开副本自有保留内容」，既不复制也不删除，导致副本里的旧版本被 `--force` 永久保护、后续修改永远到不了公开仓库（现两者已恢复正常同步，构建产物 `rust_ext/target` 仍被排除）。**v3.0.0 亮点**：新增**会话恢复与分叉**（`ky session`）、**外部文件读取授权**（默认拒绝 + 交互授权）、**长会话压缩不丢约束**、**沙箱脚本执行收紧**等能力（详见 [CHANGELOG.md](CHANGELOG.md)）。本项目同时提供**开箱即用的程序包** —— 你**不需要安装 Python、不需要懂命令行**，下载后跟着界面引导填几项配置就能开始用。
 
 ### 三步开始使用
 
 1. **下载**：到 [Releases 页面](https://github.com/moyetian/kaoyan_chain/releases) 下载最新版程序包。
-   当前提供 **`KaoyanStudyChain-v3.0.0.zip`** —— 解压即用的免装目录（压缩包约 380 MB，解压后约 1 GB）。
-   > 安装版（`KaoyanStudyChain_Setup_v3.0.0.exe`）需要用 Inno Setup 编译，当前版本暂未提供，后续补上。
+   当前提供 **`KaoyanStudyChain-v3.1.0.zip`** —— 解压即用的免装目录（压缩包约 380 MB，解压后约 1 GB）。
+   > 安装版（`KaoyanStudyChain_Setup_v3.1.0.exe`）需要用 Inno Setup 编译，当前版本暂未提供，后续补上。
 2. **解压 / 启动**：把 zip 解压到任意文件夹（**不要放在需要管理员权限的目录**，
    如 `C:\Program Files`），运行 `KaoyanStudyChain.exe`，或双击 `调试启动.bat`（带控制台，方便排错）。
 3. **启动并跟随引导配置**：运行 `KaoyanStudyChain`（或双击 `调试启动.bat`），
@@ -140,17 +140,19 @@
 | 网络     | 可选                         | 仅情报类命令（`scout` / `admission` / `watch` / `wechat` / `fetch`）与模型调用需要 |
 | 大模型    | 任意 OpenAI 兼容端点             | DeepSeek / GLM / Qwen / Kimi / OpenAI / 本地 Ollama 均可                |
 
-### 依赖矩阵：核心零依赖，增强按需安装
+### 依赖矩阵：核心依赖仅 rich，增强按需安装
 
 | 依赖                                | 必需性    | 用途                              | 不装会怎样                |
 | --------------------------------- | ------ | ------------------------------- | -------------------- |
-| Python 标准库                        | **必需** | REPL 对话、协议路由、状态管理、看板生成          | —                    |
+| Python 标准库                        | **必需** | 协议路由、状态管理、看板生成                  | —                    |
+| `rich>=13.0`                      | **必需** | CLI REPL 的面板 / 表格 / 语义色渲染        | REPL 无法启动（属核心依赖）     |
 | `pip install -r requirements.txt` | 可选     | PDF 抽取、数学符号验算、图像识别等增强技能         | 对应技能提示安装，其余功能照常      |
 | PySide6                           | 可选     | `ky gui` 桌面可视化界面                | `ky gui` 提示安装，测试自动跳过 |
 | `ky_rust_ext`                     | 可选     | chunk\_text / sha256 / 分词估算原生加速 | 透明回退纯 Python，功能与结果一致 |
 
-> 一句话：**不装任何第三方库也能跑起来**；`pip install -r requirements.txt` 只在你
-> 需要 PDF / 公式 / 图像 / GUI 这类增强能力时才执行。
+> 一句话：核心链路只依赖一个第三方库 `rich`（纯 Python、MIT、无二进制扩展、自带
+> NO_COLOR 与非 TTY 降级），`pip install rich` 即可启动 REPL；`pip install -r
+> requirements.txt` 会一并装上 PDF / 公式 / 图像 / GUI 这类增强能力。
 
 ### 极速 5 步走：
 
@@ -159,7 +161,7 @@
 git clone https://github.com/moyetian/kaoyan_chain.git
 cd kaoyan_chain
 
-# 2. (可选) 安装增强依赖 —— 按需安装，核心功能无需任何第三方库
+# 2. 安装依赖 —— rich 是核心依赖；其余为可选增强
 pip install -r requirements.txt
 
 # 3. 运行跨平台交互式初始化向导 (锁定考研倒计时、科目大纲与提分目标)
@@ -294,8 +296,8 @@ ky
 ├── GEMINI.md                    # Gemini / Antigravity 适配入口
 ├── .cursorrules / .clinerules   # Cursor / Roo·Cline 编辑器适配规则（与 AGENTS.md 同源）
 ├── LICENSE                      # MIT 开源许可证
-├── pyproject.toml               # 打包元数据（Python ≥3.10，当前版本 3.0.0）
-├── requirements.txt             # 可选增强依赖清单（核心功能零依赖）
+├── pyproject.toml               # 打包元数据（Python ≥3.10，当前版本 3.1.0）
+├── requirements.txt             # 依赖清单（核心 rich + 可选增强）
 ├── installer.iss                # Inno Setup 安装包脚本（由构建生成）
 ├── KaoyanStudyChain.spec        # 路径无关的 PyInstaller 打包配置
 ├── ky.bat                       # Windows 一键启动 CLI 私教
@@ -344,7 +346,7 @@ ky
     ├── tui_navigator.py         # 终端全景智能中枢 (TUI)
     ├── ky_gui.py / gui/         # PySide6 桌面可视化操作端
     ├── agent/                   # Agent 内核：沙箱 / 权限 / 记忆 / 生命周期钩子
-    ├── skills/                  # 私教技能：判分 / 错题 / 组卷 / 变式 / 检索 / 切片
+    ├── skills/                  # 私教技能：判分 / 错题 / 组卷 / 变式 / 检索 / 切片 / 题源溯源
     ├── intelligence/            # 研招情报、考纲 Diff、证据链与引文溯源引擎
     ├── study_planner.py         # 个人化方案设计引擎与防疲劳预警
     ├── syllabus_manager.py      # 官方考纲智能匹配与切换管理器
@@ -359,7 +361,9 @@ ky
     ├── note_lock.py             # 笔记只读锁定：frontmatter 声明 locked: true 后禁止被自动改写
     ├── protocol_loader.py       # 顶层协议加载器（兼容源码模式与 wheel 安装模式）
     ├── accel/                   # Rust 加速协同层：能力协商 + 已知缺陷黑名单 + 通用原语降级
-    ├── evaluate_pipeline.py     # 离线评测：FSRS 校准度 (RMSE/LogLoss) 与引文忠实度
+    ├── evaluate_pipeline.py     # 离线评测：FSRS 校准度 / 引文忠实度（C2）/ 考纲守卫（C1）/ 判分一致率（C4 pilot）
+    ├── benchmarks/              # 评测引擎：通用 jsonl runner + 引文 judge（C1/C2）+ 判分 judge（C4）
+    ├── backfill_source_ids.py   # 存量题卡题源 ID 补录（C3：幂等、可预演、可指定工作区）
     ├── lint_check.py            # 零依赖静态检查（语法/裸except/未用导入/导入副作用）
     ├── check_dashboard.py       # 看板产物守卫（构建 + 产物 JS 语法 + 前端契约）
     ├── doctor.py                # 系统体检入口
@@ -501,19 +505,19 @@ python tools/test_ky_suite.py
 # 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、开放题判分等，共 131 项断言)
 python tools/test_new_features.py
 
-# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 1605 项）
+# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 1778 项）
 python -m pytest -q
 ```
 
 > [!NOTE]
-> **测试计数已做成环境无关，但前提仍要写清**（下列数字为 2026-09-24 实测）：
+> **测试计数已做成环境无关，但前提仍要写清**（下列数字为 2026-09-25 实测）：
 >
 > - `test_ky_suite.py`：26 组共 **305 项断言**。Git 工作区内为 305 通过 / 0 跳过；
 > 干净检出（`git archive` 导出、无 `.git`）为 **300 通过 + 5 跳过 = 305** ——
 > 「测试组 7 Git 隐私隔离」的 5 条断言需 `.git`，无 `.git` 时逐条记为跳过，故**两种环境总数恒为 305**。
 > - `test_new_features.py`：**131 项断言**（0 跳过），与是否 Git 工作区无关。
-> - `pytest tests/`：共 **1605 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
-> **含** `dist/` 构建产物，实测 1602 通过 + 3 跳过）。跳过项为联网测试未设
+> - `pytest tests/`：共 **1778 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
+> **含** `dist/` 构建产物，实测 1885 通过 + 3 跳过）。跳过项为联网测试未设
 > `KY_LIVE_TEST=1`（2 条）与一条需特定 registry 探测串的守卫（1 条）。
 > 在**无** `dist/` 的副本里跑，6 条打包断言会转为跳过 —— 收集总数不变，通过数下降。
 > 在**无 `cat` 的 Windows 裸机**（Git usr\bin 未加入 PATH）上，2 条沙箱阴性对照会转为
@@ -527,7 +531,7 @@ python -m pytest -q
 >
 > 改文档里的计数时，请**把对应环境一并写上**，否则下一个人会误判为「数字漂移」。
 
-- **测试保障**：主套件 26 组测试集 **305 项断言** + 新功能专项 **131 项断言** + pytest 单元/进程层 **1602 项**（合计 **2038 项通过**，另有 3 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
+- **测试保障**：主套件 26 组测试集 **305 项断言** + 新功能专项 **131 项断言** + pytest 单元/进程层 **1889 项**（合计 **2325 项通过**，另有 3 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
 - **门禁脚本**：`python tools/lint_check.py`（零依赖静态检查，只卡 ERROR 级问题）、`python tools/check_dashboard.py`（看板产物守卫）已接入 CI；
 - **CI 流水线**：内置 GitHub Actions 多平台 (Linux/Windows) 与多 Python 版本自动化测试保障；
 - **开发者文档**：如需参与贡献或了解完整项目架构树，请参阅 [🛠️ 开发者与贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。

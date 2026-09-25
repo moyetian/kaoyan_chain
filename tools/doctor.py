@@ -136,7 +136,33 @@ def run_doctor(return_summary=False):
     check_item(f"控制台编码: {enc}", True, "UTF-8 输出就绪" if "utf" in enc.lower() else "建议 chcp 65001")
 
     # ── 2. 依赖项检查 ──
-    print(color("\n【2. 考研专有扩展技能依赖 (可选增强)】", C.BOLD))
+    print(color("\n【2. 核心依赖与可选增强技能】", C.BOLD))
+
+    # rich —— 核心依赖（非可选）：CLI REPL 的渲染层（renderer.py）在模块顶部
+    # 直接 `from rich import ...`，缺失时 REPL 连启动都做不到。此前 doctor
+    # 只体检 fsrs 不体检 rich，用户 `pip install` 漏装时只能看到 ImportError 堆栈。
+    try:
+        import rich
+        from rich.console import Console  # noqa: F401 - 存在性即契约
+        # rich 不暴露 __version__（13+ 起），只能从包元数据取
+        try:
+            from importlib.metadata import version as _pkg_version
+            _rich_ver = _pkg_version("rich")
+        except Exception:
+            _rich_ver = "未知"
+        check_item(
+            "终端富文本渲染 (rich)",
+            True,
+            f"已就绪 (v{_rich_ver})，CLI 面板/表格/语义色可用",
+        )
+    except Exception as _e:
+        check_item(
+            "终端富文本渲染 (rich)",
+            False,
+            "",
+            f"未安装 (pip install 'rich>=13.0')；CLI REPL 将无法启动 ({_e})",
+        )
+        issues += 1
 
     # fsrs —— 核心算法依赖（非可选）：错题沉淀/复测间隔计算的主链路依赖它。
     # 此前 doctor 不检查 fsrs，导致 fsrs.FSRS 这类 API 版本错配只在用户

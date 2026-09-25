@@ -143,3 +143,39 @@ def test_non_math_subject_untouched():
     """非数学科目不得被数学红线拦截。"""
     allow, _ = _guard("出一道三重积分的题", subject="pro")
     assert allow is True
+
+
+# ──────────── C1 补漏：口语否定词「别 / 不要 / 不再 / 不做」────────────
+# 背景（C1 建考纲评测集时实测发现）：P19 补了「不用 / 禁用 / 避免 / 不必」，
+# 但「别讲曲面积分」「不要复习概率论」这类最常用的口语否定仍被误判为超纲
+# 派题而硬阻断（与 P19 同类的误伤）。本组做**双向**断言：
+# 该豁免的必须豁免，含「别」的其他词（区别/分别/特别）必须仍被拦截。
+@pytest.mark.parametrize("text", [
+    "别讲曲面积分",
+    "别做曲面积分的题",
+    "不要讲三重积分",
+    "不要复习概率论",
+    "不再讲无穷级数",
+    "不做欧拉方程",
+    "别出三重积分的题",
+    "别刷三重积分",
+])
+def test_colloquial_negation_is_exempted(text):
+    """[C1] 口语否定词（别/不要/不再/不做）必须豁免，不得误伤正常教学对话。"""
+    allow, reason = _guard(text)
+    assert allow is True, f"口语否定语境被误拦: {text} → {reason}"
+
+
+@pytest.mark.parametrize("text", [
+    "区别三重积分与二重积分",
+    "分别计算三重积分",
+    "特别要注意三重积分",
+    "个别同学三重积分不熟",
+])
+def test_negation_lookalike_still_intercepted(text):
+    """[C1] 阴性对照：含「别」的其他词（区别/分别/特别/个别）不得被误认为否定语境。
+
+    若这条变红，说明「别」的匹配过宽 —— 真正该拦的超纲派题会漏网。
+    """
+    allow, reason = _guard(text)
+    assert allow is False, f"含「别」的非否定词被误放行: {text} → {reason}"

@@ -39,7 +39,11 @@ def cli_search(query: str, top_k: int = 5, source_filter: Optional[str] = None) 
                 "source": r.source,
                 "score": r.score,
                 "lexical_rank": r.lexical_rank,
-                "vector_rank": r.vector_rank
+                "vector_rank": r.vector_rank,
+                # [C5] 降级标记随结果一起透出：调用方不应把纯词法结果
+                # 当成「词法+向量融合」结果来宣传。
+                "degraded": r.degraded,
+                "degrade_reason": r.degrade_reason,
             }
             for r in results
         ]
