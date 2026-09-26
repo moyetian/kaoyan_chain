@@ -9,6 +9,36 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 
 ---
 
+## 未发布 · 缺陷修复 — 2026-09-26
+
+### 🩹 Agent 收尾答案 —— 步数耗尽不再返回空串（KaoYanBench 实测 +4.01 分）
+
+- **缺陷**：`AgentRunner.run()` 只在「模型某一步不带 tool_calls」时才把该步
+  content 作为最终答复；模型每一步都在调工具时（KaoYanBench core50 实测
+  45/50 题如此），步数耗尽后直接返回空串 —— 结构化输出类检查成建制判负。
+- **修复**（`tools/agent/loop.py`）：
+  1. 步数耗尽 / 模型空回复 → 追加「禁用工具」的收尾指令再请求一次
+     （`_call_llm(..., allow_tools=False)`，HTTP payload 不含 `tools` / `tool_choice`）；
+  2. 仍无内容 → 回退「最后一条非空 assistant 文本」；
+  3. 都没有 → 返回空串（不伪造答案）；
+  4. API 硬失败不介入，保持空串，让 GUI/REPL 走各自的「未返回有效回复」诊断提示。
+- **测试**：新增 `tests/test_fix_final_answer_recovery.py`（8 项，含 HTTP payload
+  层断言 `allow_tools` 开关真实生效）；两组阴性对照（禁用收尾 / 禁用回退）
+  分别 5 红、2 红，按预期失败；全量 pytest 1897 通过 + 3 跳过。
+- **评测验证**（KaoYanBench core50，同模型同 grader，tag `v3.1.0-recover` 对比 `v3.1.0`）：
+  - 空 `final_answer`：**45/50 → 18/50**（27 题修复，0 题退化）；
+  - 平均分 **48.35 → 52.36**（+4.01），成功率 **30.0% → 34.0%**（+4.0pp），
+    中位分 49.23 → 52.50，P90 80.02 → 85.24；
+  - 来源精确率均值 **50.0% → 72.9%**（+22.9pp）；幻觉率维持 0.0%；
+  - 门禁 4 项全 PASS（任务成功率 +4.0pp / 幻觉率 0.0pp / 耗时 P90 1.34× / 引用跳过），
+    `kaoyanbench regression` 退出码 0；
+  - 代价与收益：平均耗时 110.5s → 137.9s（多一次收尾请求），平均 Token
+    8,078 → 5,204（收尾请求不带工具定义）；
+  - 残留短板：`json_schema`（22/22）与 `numeric`（10/10）仍全灭 —— 收尾答案的
+    **格式遵从**（评测契约要求纯 JSON 输出）是下一步改进方向。
+
+---
+
 ## [3.1.0] — 2026-09-25（当前发布版本）
 
 > 阶段三「可证」：把护城河变成**可评测资产** —— 六条评测基准（C1–C6）落地，

@@ -345,6 +345,13 @@ class AgentRunner:
         # 3. Agent 循环 (最多 max_steps 步)
         step = 0
         final_answer = ""
+        # [收尾答案] 模型若每一步都在调工具，循环会因步数耗尽而退出、final_answer
+        # 保持空串（评测实测 50/50 题如此）。用两个标记支撑收尾恢复：
+        #   last_assistant_text —— 最后一条非空 assistant 文本（兜底回退用）；
+        #   api_failed —— API 硬失败（含重试后仍失败）时置位，此时不做收尾请求，
+        #   保持返回空串，让 GUI/REPL 走各自的「未返回有效回复」诊断提示。
+        last_assistant_text = ""
+        api_failed = False
 
         while step < self.max_steps:
             step += 1
@@ -354,6 +361,7 @@ class AgentRunner:
             # 向 LLM 请求（带 tools 参数）
             response_data = self._call_llm(active_messages)
             if not response_data:
+                api_failed = True
                 break
 
             choice = response_data.get("choices", [{}])[0]
@@ -374,6 +382,10 @@ class AgentRunner:
 
             # ── 情形 A: 模型要求调用外部工具 (Tool Call) ──
             if tool_calls:
+                # [收尾答案] 记录最后一条非空 assistant 文本（模型边调工具边写的
+                # 分析说明），步数耗尽时作为最终答复的兜底回退。
+                if content and content.strip():
+                    last_assistant_text = content
                 # 将 assistant 带 tool_calls 的消息记入上下文
                 assistant_msg = {"role": "assistant", "content": content or None, "tool_calls": tool_calls}
                 active_messages.append(assistant_msg)
@@ -469,6 +481,11 @@ class AgentRunner:
             self._display_final_answer(final_answer)
             break
 
+        # 3.5 [收尾答案] 步数耗尽 / 模型空回复 → 再要一次「禁用工具的最终答复」。
+        # API 硬失败不介入（保持返回空串，见上方 api_failed 注释）。
+        if not final_answer and not api_failed:
+            final_answer = self._recover_final_answer(active_messages, last_assistant_text)
+
         # [B3a] 更新历史：与 session_log.rebuild_history 共用同一 compose_history
         # 语义（最近一条压缩摘要 + 最后 RESUME_TAIL_MESSAGES 条消息），
         # 因此「resume 上下文 == 实时上下文」可逐条断言。
@@ -487,8 +504,58 @@ class AgentRunner:
 
         return final_answer
 
-    def _call_llm(self, messages: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        """调用兼容 OpenAI tools 规范的模型 API"""
+    #: [收尾答案] 步数耗尽时追加的收尾指令：明确要求模型直接作答、禁用工具。
+    FINALIZE_INSTRUCTION = (
+        "（系统提示）本轮工具调用步数已用尽。请立即基于以上已获取到的全部信息，"
+        "直接输出给学员的最终完整答复：不要再调用任何工具，也不要再请求获取新信息；"
+        "若部分信息确实未能获取到，请在答复中如实说明。"
+    )
+
+    def _recover_final_answer(self, messages: List[Dict[str, Any]],
+                              last_assistant_text: str) -> str:
+        """[收尾答案] 步数耗尽 / 模型空回复时，尽量恢复出非空的最终答复。
+
+        恢复顺序：
+        1. 追加一条「禁用工具」的收尾指令（:data:`FINALIZE_INSTRUCTION`），走
+           不带 ``tools`` 的纯文本请求再要一次最终答复；
+        2. 仍无内容时，回退「最后一条非空 assistant 文本」（模型边调工具边写的
+           分析说明）；
+        3. 都没有则返回空串 —— 与旧行为一致，绝不伪造答案。
+
+        整个恢复过程尽力而为：任何异常（含收尾请求网络失败）都静默回退，
+        绝不让收尾环节把已经跑完的 run() 弄崩。
+        """
+        content = ""
+        try:
+            tail = list(messages)
+            tail.append({"role": "user", "content": self.FINALIZE_INSTRUCTION})
+            data = self._call_llm(tail, allow_tools=False)
+            choice = ((data or {}).get("choices") or [{}])[0] or {}
+            message = choice.get("message") or {}
+            content = message.get("content") or ""
+        except Exception:
+            content = ""
+        if isinstance(content, str):
+            # 模型可能仍模拟输出 <tool_call> 降级标签：取标签前文本，
+            # 避免把工具调用语法当成答案回传。
+            if "<tool_call>" in content:
+                content = content.split("<tool_call>")[0].strip()
+            if content.strip():
+                self._display_final_answer(content)
+                return content
+        if last_assistant_text:
+            self._display_final_answer(last_assistant_text)
+            return last_assistant_text
+        return ""
+
+    def _call_llm(self, messages: List[Dict[str, Any]],
+                  allow_tools: bool = True) -> Optional[Dict[str, Any]]:
+        """调用兼容 OpenAI tools 规范的模型 API。
+
+        ``allow_tools=False`` 时不携带 ``tools`` / ``tool_choice`` 字段 ——
+        [收尾答案] 步数耗尽后的收尾请求专用：明确要求模型直接作答、不再规划
+        新的工具调用（见 :meth:`_recover_final_answer`）。
+        """
         raw_base_url = self.config.get("base_url", "https://api.deepseek.com/v1")
         url = normalize_openai_url(raw_base_url, "chat/completions")
         api_key = self.config.get("api_key", "").strip()
@@ -509,7 +576,7 @@ class AgentRunner:
             "Accept-Encoding": accept_enc
         }
 
-        tools_list = self.tool_registry.get_openai_tools()
+        tools_list = self.tool_registry.get_openai_tools() if allow_tools else []
         payload = {
             "model": model,
             "messages": messages,
