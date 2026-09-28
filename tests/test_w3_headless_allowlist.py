@@ -61,6 +61,8 @@ class _FakeResponse:
     def __init__(self, body: bytes):
         self._body = body
         self.headers = {}
+        # [P1] fetch_url 改走两级采集入口（HTTPFetcher 需要 status 判定健康度）
+        self.status = 200
 
     def read(self, n=-1):
         if n is None or n < 0:
@@ -216,6 +218,17 @@ def test_e2e_fetch_url_chain_no_denial_in_trace(tmp_path, monkeypatch):
     monkeypatch.setattr(loop_module, "safe_urlopen", fake_loop_urlopen)
     monkeypatch.setattr(tools_impl_module, "safe_urlopen",
                         lambda req, timeout=None: fake_resp)
+    # [P1] fetch_url 现走 tools/intelligence/fetcher.py 的两级采集入口，其
+    # safe_urlopen 是另一个模块对象的全局名（双导入路径下各不相同），必须
+    # 一并替换，否则该用例会穿透到真实网络（曾拿到 HTTP_404）。
+    import importlib
+    for _name in ("tools.intelligence.fetcher", "intelligence.fetcher"):
+        try:
+            _mod = importlib.import_module(_name)
+        except ImportError:
+            continue
+        monkeypatch.setattr(_mod, "safe_urlopen",
+                            lambda req, timeout=None, context=None: fake_resp)
 
     runner = _make_runner(tmp_path, CONTROLLED_AGENT_CFG)
     answer = runner.run("请查一下招生简章", interactive=False)

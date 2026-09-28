@@ -138,7 +138,10 @@ class WeChatSearchWorker(QThread):
                 save_to_local=self.save,
                 school_name=self.school,
                 source=self.source,
-                time_range=self.time_range
+                time_range=self.time_range,
+                # [P0] 关窗中断：closeEvent 的 requestInterruption 由浏览器兜底链
+                # 在检查点轮询（快速退出并关闭浏览器，不留孤儿 Edge 进程）。
+                should_stop=self.isInterruptionRequested
             )
             self.finished_signal.emit(result)
         except Exception as e:

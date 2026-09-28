@@ -826,38 +826,161 @@ class ToolRegistry:
 
         @self.register(
             name="fetch_url",
-            desc="获取公开网络 URL 的网页文本内容 (例如查询真题解析或考纲最新动态)。自动过滤脚本与排版噪点。",
+            desc=("获取公开网络 URL 的网页文本内容 (例如查询真题解析或考纲最新动态)。自动过滤脚本与排版噪点。"
+                  "mode=auto(默认): HTTP 直连优先，被 403/SPA 空壳挡住时，若浏览器闸门已开启则自动升级渲染；"
+                  "mode=http: 只直连不升级；mode=browser: 只用浏览器渲染。"),
             params_schema={
                 "type": "object",
                 "properties": {
-                    "url": {"type": "string", "description": "目标网页 HTTP/HTTPS URL"}
+                    "url": {"type": "string", "description": "目标网页 HTTP/HTTPS URL"},
+                    "mode": {
+                        "type": "string",
+                        "description": "抓取模式：auto(默认，两级自动升级) / http(仅直连) / browser(仅浏览器渲染)"
+                    }
                 },
                 "required": ["url"]
             },
             level=PermissionLevel.NETWORK
         )
-        def fetch_url(url: str) -> str:
+        def fetch_url(url: str, mode: str = "auto") -> str:
             if not url.startswith(("http://", "https://")):
                 return "Error: 仅支持 http:// 或 https:// 协议"
-            # [P1 修复] 防范 SSRF：不再用字符串黑名单（挡不住 2130706433 / 127.1 /
-            # [::ffff:127.0.0.1] / fd00:: / fe80:: 等写法，也不管重定向），改为
-            # 「解析出真实 IP 再按 ipaddress 判定 + 每次 3xx 重新校验」。
+            mode_n = str(mode or "auto").strip().lower()
+            if mode_n not in ("auto", "http", "browser"):
+                return "Error: mode 仅支持 auto / http / browser"
+            # [P1 两级采集] 统一走 fetch_with_fallback：
+            #   * SSRF 防护（解析真实 IP + 每跳复检）由 net_guard 与 fetcher 共同保证；
+            #   * 浏览器层额外过 S1 入口复检与 S2 route 全量拦截；
+            #   * 升级只在闸门开启且 HTTP 层显式受阻时发生，失败保留 HTTP 原结果。
             try:
-                import re
-                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Kaoyan-Tutor/1.0"})
-                with safe_urlopen(req, timeout=12) as resp:
-                    html_bytes = resp.read(80000)
-                    text = html_bytes.decode("utf-8", errors="ignore")
-                    # 深度过滤 script, style, nav, footer 噪点
-                    text = re.sub(r"<(script|style|nav|footer|header)[^>]*>.*?</\1>", " ", text, flags=re.DOTALL | re.IGNORECASE)
-                    clean_txt = re.sub(r"<[^>]+>", " ", text)
-                    clean_txt = re.sub(r"\s+", " ", clean_txt).strip()
-                    return clean_txt[:3000]
+                try:
+                    from intelligence import fetcher as _fetcher
+                except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
+                    from tools.intelligence import fetcher as _fetcher  # type: ignore
+
+                res = _fetcher.fetch_with_fallback(url, mode=mode_n, timeout=12,
+                                                   browser_timeout_sec=15)
+            except ValueError as e:
+                return f"Error: {e}"
             except UnsafeURLError as e:
                 return f"Error: {e}"
             except Exception as e:
                 return f"Error 访问网页失败: {e}"
 
+            if not res.is_valid:
+                reason = res.escalation or res.access_status
+                detail = f"Error 访问网页失败: access_status={res.access_status}"
+                if res.status_code:
+                    detail += f", http_status={res.status_code}"
+                detail += f", tier={res.tier}, 升级尝试={reason}"
+                if reason == "BROWSER_DISABLED":
+                    detail += "（如需浏览器渲染，请设置环境变量 KY_BROWSER_ACQUISITION=on 并安装 playwright）"
+                return detail
+
+            text = res.content or ""
+            # 深度过滤 script, style, nav, footer 噪点
+            text = re.sub(r"<(script|style|nav|footer|header)[^>]*>.*?</\1>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+            clean_txt = re.sub(r"<[^>]+>", " ", text)
+            clean_txt = re.sub(r"\s+", " ", clean_txt).strip()
+            out = clean_txt[:3000]
+            # [P1 资源嗅探] 页面里若有 PDF/媒体/接口，给 Agent 一条可行动的线索
+            # （只登记 URL 元信息，绝不含响应体）
+            if res.resources:
+                kinds: Dict[str, int] = {}
+                for item in res.resources:
+                    kinds[item.get("kind", "?")] = kinds.get(item.get("kind", "?"), 0) + 1
+                summary = ", ".join(f"{k}×{v}" for k, v in sorted(kinds.items()))
+                out += (f"\n[页面资源线索] {summary}；其中 pdf/doc 可用 download_file 落盘"
+                        f"（示例：{res.resources[0].get('url', '')}）")
+            return out
+
+
+        # [P1] 二进制产物落盘约定：只做「下载 + 落盘 + 引用登记」，不解析内容。
+        # 扩展名白名单是硬约束 —— Agent 不得用本工具把任意可执行文件写进工作区。
+        _DOWNLOAD_EXTS = (".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+                          ".csv", ".txt", ".md", ".json", ".zip")
+        _DOWNLOAD_DIR = "data/downloads"
+        _DOWNLOAD_MAX_BYTES = 15 * 1024 * 1024
+
+        @self.register(
+            name="download_file",
+            desc=("下载公开网络文件（招生简章 / 专业目录 PDF、考纲附件等）到工作区 "
+                  "data/downloads/ 并返回落盘相对路径。仅允许文档类扩展名、单文件上限 15MB；"
+                  "音视频一律拒（短视频只做元数据与链接，媒体下载默认关闭）。"),
+            params_schema={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "文件 URL（http/https，路径需带文档类扩展名）"},
+                    "filename": {"type": "string",
+                                 "description": "可选：保存文件名或子路径（相对 data/downloads/），默认取 URL 末段"}
+                },
+                "required": ["url"]
+            },
+            level=PermissionLevel.NETWORK
+        )
+        def download_file(url: str, filename: str = "") -> str:
+            import urllib.parse as _uparse
+
+            if not url.startswith(("http://", "https://")):
+                return "Error: 仅支持 http:// 或 https:// 协议"
+
+            url_path = _uparse.urlsplit(url).path
+            url_suffix = Path(url_path).suffix.lower()
+
+            name_raw = (filename or "").strip() or Path(url_path).name
+            if not name_raw:
+                return "Error: 无法从 URL 推断文件名，请显式传入 filename"
+            # 显式穿越 / 绝对路径先拒（不静默净化，避免 Agent 以为写到了指定位置）
+            _name_parts = Path(str(name_raw).replace("\\", "/")).parts
+            if ".." in _name_parts:
+                return "Error: 非法的 filename（禁止路径穿越）"
+            if str(name_raw).startswith(("/", "\\")) or re.match(r"^[a-zA-Z]:", str(name_raw)):
+                return "Error: 非法的 filename（必须是不带盘符的相对路径）"
+            # 净化：只取最后一段文件名，目录分隔符与控制字符一律替换
+            name_clean = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_",
+                                Path(str(name_raw).replace("\\", "/")).name).strip()
+            name_clean = name_clean.strip(".") or "download"
+            if ".." in Path(name_clean).parts:
+                return "Error: 非法的 filename（禁止路径穿越）"
+
+            suffix = Path(name_clean).suffix.lower() or url_suffix
+            if suffix not in _DOWNLOAD_EXTS:
+                return (f"Error: 仅允许落盘文档类文件（{'/'.join(_DOWNLOAD_EXTS)}），"
+                        f"收到后缀 [{suffix or '无'}]")
+            if not name_clean.lower().endswith(suffix):
+                name_clean += suffix
+
+            try:
+                base = self.sandbox.resolve_safe_path(_DOWNLOAD_DIR, allow_create=True)
+                dest = self.sandbox.resolve_safe_path(
+                    f"{_DOWNLOAD_DIR}/{name_clean}", allow_create=True)
+            except SecurityException as e:
+                return f"Error: {e}"
+            except Exception as e:
+                return f"Error 路径校验失败: {e}"
+            if base.resolve() not in dest.resolve().parents:
+                return "Error: 非法的 filename（必须落在 data/downloads/ 内）"
+
+            try:
+                try:
+                    from intelligence import fetcher as _fetcher
+                except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
+                    from tools.intelligence import fetcher as _fetcher  # type: ignore
+                ok = _fetcher.HTTPFetcher(timeout=12).download_file(
+                    url, dest, max_bytes=_DOWNLOAD_MAX_BYTES)
+            except Exception as e:
+                return f"Error 下载失败: {e}"
+
+            if not ok or not dest.exists():
+                # 失败原因不外泄细节（download_file 内部已删除半截文件）
+                return "Error 下载失败: 目标非 200 / 超过 15MB 上限 / 被 SSRF 拦截"
+            size = dest.stat().st_size
+            try:
+                self.sandbox.register_written_file(dest)  # [B2a] 引用登记
+            except Exception:
+                pass
+            rel = dest.relative_to(self.sandbox.workspace_root)
+            return f"已下载: {rel.as_posix()} ({size} 字节)"
 
         @self.register(
             name="web_search",

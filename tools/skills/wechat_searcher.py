@@ -43,6 +43,39 @@ USER_AGENT = (
 UNKNOWN_ACCOUNT_LABEL = "未识别（平台未公开）"
 UNKNOWN_DATE_LABEL = "未标注日期"
 
+# ── [P0 浏览器兜底]（可选增强，闸门 KY_BROWSER_ACQUISITION 默认关闭） ──────────
+#: 正文浏览器兜底条数上限（逐条 deadline 12s；搜索链预算见整合方案 §9）
+BROWSER_ARTICLE_LIMIT = 3
+#: 搜狗结果块标题链接选择器（跳转还原：/link?url= 需真实会话 cookie）
+_SOGOU_RESULT_LINK_SELECTOR = "div.txt-box h3 a"
+
+
+def _load_browser_manager():
+    """惰性加载 BrowserPluginManager（双导入兼容）。
+
+    未装 playwright / 模块不可导入时返回 None —— 浏览器兜底是可选增强，
+    任何情况下都不得让检索主链因它导入失败。
+    """
+    try:
+        from tools.intelligence.fetcher import BrowserPluginManager
+    except ImportError:
+        try:
+            from intelligence.fetcher import BrowserPluginManager
+        except ImportError:
+            return None
+    return BrowserPluginManager
+
+
+def _browser_fallback_ready() -> bool:
+    """闸门开启且两级可用（库 + 内核）才为 True。"""
+    manager = _load_browser_manager()
+    if manager is None:
+        return False
+    try:
+        return bool(manager.is_enabled() and manager.is_available())
+    except Exception:
+        return False
+
 
 def _invoke_search(fn, keyword: str, max_results: int, time_range: str):
     """调用搜索函数，**仅当其签名接受 time_range 时才传入**。
@@ -184,7 +217,8 @@ class WeChatSearchEngine(_AccountNameResolver):
         keyword: str,
         max_results: int = 10,
         source: str = "auto",
-        time_range: str = "year"
+        time_range: str = "year",
+        should_stop=None
     ) -> List[WeChatArticleItem]:
         """
         统一检索入口
@@ -192,6 +226,7 @@ class WeChatSearchEngine(_AccountNameResolver):
         :param max_results: 最大结果数
         :param source: "sogou" / "bing" / "auto" (自动降级) / "local"
         :param time_range: "year" (近一年) / "half_year" (近半年) / "three_years" (近三年) / "all" (全部)
+        :param should_stop: 可选停止回调（GUI 关窗中断）；返回 True 时在检查点快速退出
         """
         keyword = keyword.strip()
         if not keyword:
@@ -203,14 +238,27 @@ class WeChatSearchEngine(_AccountNameResolver):
         raw_results: List[WeChatArticleItem] = []
         if source == "auto":
             # 优先搜狗，少于3条时降级 Bing，仍不足则补充本地缓存
-            raw_results = _invoke_search(self._search_sogou, keyword, max_results * 2, time_range)
+            sogou_items = _invoke_search(self._search_sogou, keyword, max_results * 2, time_range)
+            raw_results = list(sogou_items)
+            bing_items: List[WeChatArticleItem] = []
             if len(raw_results) < 3:
-                bing_results = _invoke_search(self._search_bing, keyword, max_results * 2, time_range)
+                bing_items = _invoke_search(self._search_bing, keyword, max_results * 2, time_range)
                 existing_urls = {r.url for r in raw_results}
-                for br in bing_results:
+                for br in bing_items:
                     if br.url not in existing_urls:
                         raw_results.append(br)
                         existing_urls.add(br.url)
+
+            # [P0 浏览器兜底] 搜狗与 Bing 双源均为 0 条且闸门允许时，用真实浏览器
+            # 会话渲染搜狗结果页（含 /link 跳转还原）；结果如实标注来源通道。
+            if not sogou_items and not bing_items:
+                browser_items = self._search_sogou_via_browser(
+                    keyword, max_results * 2, time_range, should_stop)
+                existing_urls = {r.url for r in raw_results}
+                for bi in browser_items:
+                    if bi.url not in existing_urls:
+                        raw_results.append(bi)
+                        existing_urls.add(bi.url)
 
             if len(raw_results) < 2:
                 local_results = self.search_local_cache(keyword, max_results)
@@ -369,6 +417,60 @@ class WeChatSearchEngine(_AccountNameResolver):
         except Exception as e:
             self._note_source_error("Bing", e)
             return []
+
+    def _search_sogou_via_browser(self, keyword: str, max_results: int,
+                                  time_range: str = "year",
+                                  should_stop=None) -> List[WeChatArticleItem]:
+        """[P0] 搜狗搜索浏览器兜底：真实会话渲染 + ``/link`` 跳转还原。
+
+        触发前置条件（调用方判定）：搜狗与 Bing 双源均为 0 条。本方法内部再复检
+        闸门与两级可用性（库 + 内核）—— 任一不满足即返回空列表，行为与现状一致。
+
+        预算（整合方案 §9）：搜索 ≤15s + 跳转还原 ≤10s；验证码特征页由
+        ``fetch_with_browser`` 判 BLOCKED（如实快速失败，不重试轰炸）。
+        """
+        manager = _load_browser_manager()
+        if manager is None:
+            return []
+        try:
+            if not (manager.is_enabled() and manager.is_available()):
+                return []
+        except Exception:
+            return []
+
+        params = {"type": "2", "query": keyword, "ie": "utf-8", "page": "1"}
+        url = f"{self.SOGOU_WX_URL}?{urllib.parse.urlencode(params)}"
+        try:
+            result = manager.fetch_with_browser(
+                url,
+                timeout_sec=15,
+                should_stop=should_stop,
+                resolve_links_selector=_SOGOU_RESULT_LINK_SELECTOR,
+                resolve_limit=5,
+                resolve_budget_sec=10.0,
+            )
+        except Exception as exc:  # fetch_with_browser 承诺不抛；此处双保险
+            self._note_source_error("搜狗微信(浏览器兜底)", exc)
+            return []
+
+        if result.access_status != "OK":
+            self._note_source_error("搜狗微信(浏览器兜底)", RuntimeError(
+                f"浏览器通道未取到结果（{result.access_status}），已如实跳过"))
+            return []
+
+        items = self._parse_sogou_results(result.content)
+        if not items:
+            self._note_source_empty("搜狗微信(浏览器兜底)", len(result.content))
+            return []
+
+        # 跳转还原回填：按原链接精确匹配（避免索引错位导致错链）
+        resolved = result.resolved_links or {}
+        for item in items:
+            final_url = resolved.get(item.url)
+            if final_url:
+                item.url = final_url
+            item.source_platform = "sogou_browser"
+        return items[:max_results]
 
     def search_local_cache(self, keyword: str, max_results: int) -> List[WeChatArticleItem]:
         """检索已沉淀在 .memory/experiences/ 中的本地文章（兼容读取旧 docs/experiences/ 存量）"""
@@ -595,6 +697,39 @@ class WeChatArticleFetcher(_AccountNameResolver):
 
         return item
 
+    def fetch_article_via_browser(self, item: WeChatArticleItem,
+                                  should_stop=None) -> WeChatArticleItem:
+        """[P0] 正文浏览器兜底：HTTP 直连失败后，用真实会话渲染文章页。
+
+        仅在闸门开启且两级可用时生效（内部复检，不依赖调用方）；失败保持 item
+        原状（不改写既有失败标注，也不清空已抓到的部分内容）。
+        """
+        manager = _load_browser_manager()
+        if manager is None or not item.url or not item.url.startswith("http"):
+            return item
+        try:
+            if not (manager.is_enabled() and manager.is_available()):
+                return item
+        except Exception:
+            return item
+
+        try:
+            result = manager.fetch_with_browser(
+                item.url, timeout_sec=12, should_stop=should_stop)
+        except Exception:
+            return item
+        if result.access_status != "OK" or not result.content:
+            return item
+
+        html_text = result.content
+        item.content_html = html_text
+        self._extract_metadata(html_text, item)
+        item.content_markdown = self._html_to_markdown(html_text)
+        item.fetched = bool(item.content_markdown and len(item.content_markdown) > 30)
+        if not item.fetched:
+            item.summary = "[抓取失败或受限]: 浏览器渲染后仍无有效正文"
+        return item
+
     def _extract_metadata(self, html_text: str, item: WeChatArticleItem):
         """从文章 HTML 提取标题、公众号名称、发布时间
 
@@ -777,6 +912,16 @@ def denoise_keyword(keyword: str) -> str:
     return cleaned if cleaned else keyword
 
 
+def _should_stop_now(should_stop) -> bool:
+    """安全轮询停止回调（异常视作停止，fail-closed）。"""
+    if should_stop is None:
+        return False
+    try:
+        return bool(should_stop())
+    except Exception:
+        return True
+
+
 def wechat_search(
     keyword: str,
     max_results: int = 10,
@@ -784,7 +929,8 @@ def wechat_search(
     save_to_local: bool = False,
     school_name: str = "",
     source: str = "auto",
-    time_range: str = "year"
+    time_range: str = "year",
+    should_stop=None
 ) -> Dict[str, Any]:
     """
     微信公众号文章检索与抓取统一入口
@@ -796,6 +942,7 @@ def wechat_search(
     :param school_name: 联动院校侦察引擎的目标校名
     :param source: 检索源 "sogou" / "bing" / "local" / "auto"
     :param time_range: 时间范围 "year" (近一年) / "half_year" (近半年) / "three_years" (近三年) / "all" (全部)
+    :param should_stop: 可选停止回调（GUI 关窗中断）；浏览器兜底链在检查点轮询
     :return: 包含检索状态、结果列表与落盘路径的字典
     """
     # [根因修复] 去噪放在唯一入口，保证 CLI / TUI / GUI 三端行为一致。
@@ -808,13 +955,23 @@ def wechat_search(
     pipeline = WeChatContentPipeline()
 
     # 1. 检索
-    items = engine.search(keyword, max_results, source=source, time_range=time_range)
+    items = engine.search(keyword, max_results, source=source, time_range=time_range,
+                          should_stop=should_stop)
 
     # 2. 抓取正文
     if fetch_content:
+        # [P0 浏览器兜底] HTTP 直连失败的条目再用真实会话渲染（上限条数，逐条
+        # 预算 12s）；闸门 off / 未装 playwright / 半态时 browser_left 恒为 0，
+        # 行为与基线逐字节一致。
+        browser_left = BROWSER_ARTICLE_LIMIT if _browser_fallback_ready() else 0
         for item in items:
+            if _should_stop_now(should_stop):
+                break
             if not item.fetched:
                 fetcher.fetch_article(item)
+            if not item.fetched and browser_left > 0:
+                browser_left -= 1
+                fetcher.fetch_article_via_browser(item, should_stop=should_stop)
 
     # 3. 沉淀与联动
     saved_paths = []
@@ -916,5 +1073,7 @@ def health_check() -> dict:
                 "reason": f"关键词去噪链路失败（{type(e).__name__}: {e}），ky wechat 将不可用"}
     if kw is None:
         return {"status": "UNAVAILABLE", "reason": "关键词去噪产出为空，ky wechat 将不可用"}
-    return {"status": "READY", "reason": "多源检索与 Markdown 清洗可用（零第三方依赖；检索需联网）"}
+    return {"status": "READY",
+            "reason": "多源检索与 Markdown 清洗可用（核心零第三方依赖；检索需联网；"
+                      "浏览器兜底为可选增强，默认关闭）"}
 
