@@ -1,0 +1,102 @@
+{
+  "task_id": "EXAM-002",
+  "category": "exam",
+  "difficulty": "medium",
+  "instruction": "按年份统计各章节命题频次，输出 Top3 章节及各自占比（保留 2 位小数）。仅依据本地 fixture。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "fixture",
+    "deterministic",
+    "aggregate"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "数据结构"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [],
+    "ground_truth": {
+      "top3": [
+        {
+          "chapter": "数据结构",
+          "ratio": 0.1333
+        },
+        {
+          "chapter": "计算机组成原理",
+          "ratio": 0.1167
+        },
+        {
+          "chapter": "操作系统",
+          "ratio": 0.1
+        }
+      ]
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.top3",
+        "schema": {
+          "type": "array",
+          "minLength": 3,
+          "items": {
+            "type": "object",
+            "required": [
+              "chapter",
+              "ratio"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "数据结构"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c3",
+        "type": "regex",
+        "dimension": "factuality",
+        "pattern": "0\\.1[0-9]\\d?"
+      },
+      {
+        "id": "c4",
+        "type": "file_exists",
+        "dimension": "task_completion",
+        "filename": "report.json"
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "file",
+    "filename": "report.json",
+    "schema": {
+      "type": "object",
+      "required": [
+        "top3"
+      ]
+    }
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "task_id": "SEARCH-010",
+  "category": "search",
+  "difficulty": "hard",
+  "instruction": "某专业同时招收脱产就读和在职不脱产两类研究生，两者的初试业务课设置可能不同。请分别说明这两类各自要考哪些业务课，并各自标注证据等级（E4+）。不得把一种就读形式的安排套用到另一种。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "full_time_diff",
+    "citation"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "全日制"
+        ]
+      },
+      {
+        "id": "p2",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "非全日制"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 2,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [
+      "两者考试科目完全相同"
+    ],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "全日制"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "非全日制"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c3",
+        "type": "point_hit",
+        "dimension": "completeness",
+        "any_of": [
+          "科目",
+          "考试"
+        ]
+      },
+      {
+        "id": "c4",
+        "type": "evidence_level",
+        "dimension": "source_quality",
+        "path": "$.answer",
+        "expected_min": "E4"
+      },
+      {
+        "id": "c5",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "两者考试科目完全相同",
+          "全日制与非全日制科目一致"
+        ]
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否分别给出全日制与非全日制的科目差异并标注证据等级？"
+        }
+      ]
+    }
+  },
+  "version": "1.0"
+}

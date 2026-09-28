@@ -1,0 +1,95 @@
+{
+  "task_id": "EXAM-005",
+  "category": "exam",
+  "difficulty": "hard",
+  "instruction": "合并 3 个考点 CSV，按指定 JSON schema 产出知识点频率报告文件（文件名 knowledge_report.json），含 total 与 frequencies 字段。仅依据本地 fixture。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "smoke",
+    "fixture",
+    "deterministic",
+    "merge"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "数据结构"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [],
+    "ground_truth": {
+      "total": 60,
+      "frequencies": [
+        {
+          "chapter": "数据结构",
+          "count": 10
+        }
+      ]
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "file_exists",
+        "dimension": "task_completion",
+        "filename": "knowledge_report.json",
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "file_json_match",
+        "dimension": "factuality",
+        "filename": "knowledge_report.json",
+        "path": "$.total",
+        "op": "eq",
+        "value": 60,
+        "tol": 0.0
+      },
+      {
+        "id": "c3",
+        "type": "file_json_match",
+        "dimension": "completeness",
+        "filename": "knowledge_report.json",
+        "path": "$.frequencies[0].chapter",
+        "op": "eq",
+        "value": "数据结构"
+      },
+      {
+        "id": "c4",
+        "type": "file_json_match",
+        "dimension": "completeness",
+        "filename": "knowledge_report.json",
+        "path": "$.frequencies[0].count",
+        "op": "eq",
+        "value": 10,
+        "tol": 0.0
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "file",
+    "filename": "knowledge_report.json",
+    "schema": {
+      "type": "object",
+      "required": [
+        "total",
+        "frequencies"
+      ]
+    }
+  }
+}

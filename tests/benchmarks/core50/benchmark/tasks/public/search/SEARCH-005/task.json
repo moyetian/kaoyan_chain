@@ -1,0 +1,84 @@
+{
+  "task_id": "SEARCH-005",
+  "category": "search",
+  "difficulty": "medium",
+  "instruction": "考研数学（一）那份官方划定的命题范围文件，其发布页在哪？请给出该文件的官方直链。要求：官方来源（E4+）、显式标注该文件对应年份。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "official_source",
+    "pdf_link"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "大纲"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": true
+      }
+    ],
+    "must_not_claim": [],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "考试大纲",
+          "大纲"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "regex",
+        "dimension": "factuality",
+        "pattern": "https?://[^\\s]+\\.pdf"
+      },
+      {
+        "id": "c3",
+        "type": "year_tag",
+        "dimension": "source_quality",
+        "year": 2026
+      },
+      {
+        "id": "c4",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 1
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否给出官方大纲页与 PDF 直链？"
+        }
+      ]
+    }
+  },
+  "version": "1.0"
+}

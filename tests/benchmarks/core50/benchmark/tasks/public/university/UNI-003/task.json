@@ -1,0 +1,100 @@
+{
+  "task_id": "UNI-003",
+  "category": "university",
+  "difficulty": "medium",
+  "instruction": "同一个专业往往有学术型和专业型两条招生线，我想把它们各自的专业编号和对应的考试科目一起弄清楚，共四组信息。须给出 E4+ 官方来源。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "academic_vs_professional"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "学硕"
+        ]
+      },
+      {
+        "id": "p2",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "专硕"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "学硕"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "专硕"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c3",
+        "type": "set_includes",
+        "dimension": "completeness",
+        "values": [
+          "学硕代码",
+          "学硕科目",
+          "专硕代码",
+          "专硕科目"
+        ],
+        "min_hits": 3
+      },
+      {
+        "id": "c4",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 1
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否区分学硕/专硕的代码与科目共 4 字段？"
+        }
+      ]
+    }
+  },
+  "version": "1.0"
+}

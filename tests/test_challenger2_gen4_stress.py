@@ -23,24 +23,17 @@ Empirical stress tests verifying:
 
 from __future__ import annotations
 
-import base64
-import ctypes
 import gzip
-import io
 import json
 import os
 import shutil
-import socket
 import ssl
 import subprocess
 import sys
-import tempfile
-import time
 import urllib.error
 import urllib.request
 import zlib
 from pathlib import Path
-from typing import Optional
 from unittest.mock import MagicMock, patch
 
 import pytest

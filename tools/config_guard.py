@@ -37,6 +37,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -242,7 +243,7 @@ _LEDGER_THREAD_LOCKS: dict = {}
 _LEDGER_THREAD_LOCKS_GUARD = threading.Lock()
 
 
-def _hold_ledger_lock() -> "contextlib.AbstractContextManager[bool]":
+def _hold_ledger_lock() -> contextlib.AbstractContextManager[bool]:
     """账本互斥（[G6 修复·并发丢条目]）。
 
     旧实现 ``_load_ledger → append → _save_ledger`` 非原子：两进程并发
@@ -250,8 +251,6 @@ def _hold_ledger_lock() -> "contextlib.AbstractContextManager[bool]":
     此处用标准库文件锁（Windows msvcrt / POSIX fcntl）把"读-改-写"包成临界区；
     加锁失败时降级为无锁（返回 False，调用方仍执行，避免单点卡死）。
     """
-    import contextlib
-
     @contextlib.contextmanager
     def _locked():
         # [G6-2 修复] msvcrt 锁是 per-handle 的：同进程多线程各 open 一次，

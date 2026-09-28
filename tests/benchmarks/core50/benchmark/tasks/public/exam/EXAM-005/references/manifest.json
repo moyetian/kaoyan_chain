@@ -1,0 +1,18 @@
+{
+  "files": {
+    "questions_a.csv": {
+      "sha256": "28a4becef31a149c9d99de4733cd4cd9c10da56ce29231ef2738955c62cf7609",
+      "size": 951
+    },
+    "questions_b.csv": {
+      "sha256": "7ff80dca0612fb6dab3ef9da2baf157d347478cce2c1d7bab7aa0073d1e4b259",
+      "size": 946
+    },
+    "questions_c.csv": {
+      "sha256": "a6e7e734a24426951366dc22f12eaf08be93ebcca72f7f2e69037ed4f51f09ca",
+      "size": 925
+    }
+  },
+  "task_id": "EXAM-005",
+  "version": "1.0"
+}

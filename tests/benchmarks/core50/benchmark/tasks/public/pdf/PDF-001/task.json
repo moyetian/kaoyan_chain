@@ -1,0 +1,87 @@
+{
+  "task_id": "PDF-001",
+  "category": "pdf",
+  "difficulty": "easy",
+  "instruction": "从本地招生简章 PDF（5 页）中提取『学制』与『学费』，并给出这两项信息所在的**页码**。仅依据本地 fixture。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "smoke",
+    "fixture",
+    "deterministic",
+    "pdf"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "学制",
+          "3 years"
+        ]
+      },
+      {
+        "id": "p2",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": false,
+        "any_of": [
+          "学费",
+          "8000"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [],
+    "ground_truth": {
+      "duration": "3 years",
+      "tuition": "8000 CNY/year",
+      "page": 1
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "3 years",
+          "3年",
+          "three years"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "8000"
+        ]
+      },
+      {
+        "id": "c3",
+        "type": "numeric",
+        "dimension": "factuality",
+        "path": "$.page",
+        "op": "eq",
+        "value": 1,
+        "tol": 0.0
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

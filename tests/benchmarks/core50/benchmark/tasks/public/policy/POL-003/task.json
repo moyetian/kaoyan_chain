@@ -1,0 +1,96 @@
+{
+  "task_id": "POL-003",
+  "category": "policy",
+  "difficulty": "medium",
+  "instruction": "本地有三份政策文本（虚构，分属不同年度版本）。请判定哪一版最新，并列出其中 2 条相较上一版发生变化的条款。仅依据本地文本。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "fixture",
+    "timeliness",
+    "deterministic"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "16.0%",
+          "16.0"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E1",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [
+      "最新为 2024 版",
+      "最新为 2025 版"
+    ],
+    "ground_truth": {
+      "latest_version": "2026",
+      "ratio": "16.0%",
+      "changed": [
+        "推免比例",
+        "综合成绩权重"
+      ]
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "string_eq",
+        "dimension": "factuality",
+        "path": "$.latest_version",
+        "value": "2026",
+        "case_sensitive": false
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "推免比例",
+          "16.0"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c3",
+        "type": "set_includes",
+        "dimension": "completeness",
+        "values": [
+          "推免比例",
+          "公示期",
+          "综合成绩"
+        ],
+        "min_hits": 2
+      },
+      {
+        "id": "c4",
+        "type": "year_tag",
+        "dimension": "source_quality",
+        "year": 2026
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

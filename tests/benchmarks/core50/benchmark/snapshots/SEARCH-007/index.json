@@ -1,0 +1,15 @@
+{
+  "task_id": "SEARCH-007",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://yz.chsi.com.cn/kyzx/2025/guojiaxian-a-gongxue/",
+      "title": "2025年A区工学门类复试国家分数线_研招网",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "3bde6138143e67ce7031721ecefbc29d76840641a1fb14f79cb5bbc2c578b621",
+      "http_status": 200,
+      "snapshot_path": "pages/3bde6138143e67ce7031721ecefbc29d76840641a1fb14f79cb5bbc2c578b621.html",
+      "bytes": 861
+    }
+  ]
+}

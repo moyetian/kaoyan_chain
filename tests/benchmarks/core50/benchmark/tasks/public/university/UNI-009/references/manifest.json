@@ -1,0 +1,14 @@
+{
+  "files": {
+    "source_01.html": {
+      "sha256": "7b377708c1343470d454307a80bccfe2ef85da3de5a80af0d64124100f9a8a11",
+      "size": 1496
+    },
+    "source_02.html": {
+      "sha256": "56ee861e46139b5ccfe158391ad7e98dcd6b69d8d092e4e24ffdd72be4bd68f5",
+      "size": 820
+    }
+  },
+  "task_id": "UNI-009",
+  "version": "1.0"
+}

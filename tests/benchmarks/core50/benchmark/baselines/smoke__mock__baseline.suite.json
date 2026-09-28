@@ -1,0 +1,1123 @@
+{
+  "schema_version": "1.0",
+  "suite_id": "smoke",
+  "split": "public",
+  "task_count": 6,
+  "agent": "mock",
+  "agent_version": "1.0.0",
+  "model": "mock-model",
+  "runs_per_task": 1,
+  "seed": 42,
+  "tag": "baseline",
+  "created_at": "2026-09-25T02:30:40+00:00",
+  "offline_replay": false,
+  "environment": {
+    "python": "3.12.10",
+    "platform": "win32",
+    "hostname_hash": "affadf1f335dee85",
+    "docker": false
+  },
+  "runs": [
+    {
+      "run_id": "run_20260925T023040_7ed499",
+      "suite_id": "smoke",
+      "attempt": 1,
+      "seed": 42,
+      "agent": "mock",
+      "agent_version": "1.0.0",
+      "model": "mock-model",
+      "model_version": null,
+      "provider": "mock",
+      "task_id": "EXAM-001",
+      "started_at": "2026-09-25T02:30:40+00:00",
+      "ended_at": "2026-09-25T02:30:40+00:00",
+      "duration_ms": 0,
+      "tool_calls": 1,
+      "sources": [],
+      "citations": [],
+      "final_answer": "{\"count\": 10, \"subject\": \"数据结构\"}",
+      "answer_files": {},
+      "errors": [],
+      "usage": {
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null,
+        "cost_usd": null,
+        "usage_source": "none",
+        "estimated": false,
+        "pricing": null
+      },
+      "timed_out": false,
+      "exit_code": 0,
+      "stdout_sha256": "7c01b8bd4818ad86f551923248b5062d8aa363ace418be1c27de40accdc5d844",
+      "stderr_sha256": null,
+      "search_trace": null,
+      "success": null,
+      "environment": {
+        "python": "3.12.10",
+        "platform": "win32",
+        "hostname_hash": "affadf1f335dee85",
+        "docker": false
+      },
+      "offline_replay": false,
+      "grader_mode": "full",
+      "tag": "baseline",
+      "time_limit": 120,
+      "tool_limit": 30
+    },
+    {
+      "run_id": "run_20260925T023040_d64827",
+      "suite_id": "smoke",
+      "attempt": 1,
+      "seed": 42,
+      "agent": "mock",
+      "agent_version": "1.0.0",
+      "model": "mock-model",
+      "model_version": null,
+      "provider": "mock",
+      "task_id": "EXAM-005",
+      "started_at": "2026-09-25T02:30:40+00:00",
+      "ended_at": "2026-09-25T02:30:40+00:00",
+      "duration_ms": 0,
+      "tool_calls": 3,
+      "sources": [],
+      "citations": [],
+      "final_answer": "已合并 3 个 CSV，产出 knowledge_report.json。",
+      "answer_files": {
+        "answer.json": "answer.json"
+      },
+      "errors": [],
+      "usage": {
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null,
+        "cost_usd": null,
+        "usage_source": "none",
+        "estimated": false,
+        "pricing": null
+      },
+      "timed_out": false,
+      "exit_code": 0,
+      "stdout_sha256": "6b9030e25ef98fc3fb004262e91fdac6fa0e7c2c1c58cb82d3db5bd94bdff26e",
+      "stderr_sha256": null,
+      "search_trace": null,
+      "success": null,
+      "environment": {
+        "python": "3.12.10",
+        "platform": "win32",
+        "hostname_hash": "affadf1f335dee85",
+        "docker": false
+      },
+      "offline_replay": false,
+      "grader_mode": "full",
+      "tag": "baseline",
+      "time_limit": 120,
+      "tool_limit": 30
+    },
+    {
+      "run_id": "run_20260925T023040_b7ea40",
+      "suite_id": "smoke",
+      "attempt": 1,
+      "seed": 42,
+      "agent": "mock",
+      "agent_version": "1.0.0",
+      "model": "mock-model",
+      "model_version": null,
+      "provider": "mock",
+      "task_id": "PDF-001",
+      "started_at": "2026-09-25T02:30:40+00:00",
+      "ended_at": "2026-09-25T02:30:40+00:00",
+      "duration_ms": 0,
+      "tool_calls": 1,
+      "sources": [],
+      "citations": [],
+      "final_answer": "{\"duration\": \"3 years\", \"tuition\": \"8000 CNY/year\", \"page\": 1}",
+      "answer_files": {},
+      "errors": [],
+      "usage": {
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null,
+        "cost_usd": null,
+        "usage_source": "none",
+        "estimated": false,
+        "pricing": null
+      },
+      "timed_out": false,
+      "exit_code": 0,
+      "stdout_sha256": "9d2e38435f96c8e09811e6340e485bd9c77668a7a9d9efae4aa718656fdc489f",
+      "stderr_sha256": null,
+      "search_trace": null,
+      "success": null,
+      "environment": {
+        "python": "3.12.10",
+        "platform": "win32",
+        "hostname_hash": "affadf1f335dee85",
+        "docker": false
+      },
+      "offline_replay": false,
+      "grader_mode": "full",
+      "tag": "baseline",
+      "time_limit": 120,
+      "tool_limit": 30
+    },
+    {
+      "run_id": "run_20260925T023040_45c271",
+      "suite_id": "smoke",
+      "attempt": 1,
+      "seed": 42,
+      "agent": "mock",
+      "agent_version": "1.0.0",
+      "model": "mock-model",
+      "model_version": null,
+      "provider": "mock",
+      "task_id": "PLAN-001",
+      "started_at": "2026-09-25T02:30:40+00:00",
+      "ended_at": "2026-09-25T02:30:40+00:00",
+      "duration_ms": 0,
+      "tool_calls": 1,
+      "sources": [],
+      "citations": [],
+      "final_answer": "{\"schedule\": [{\"day\": 1, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 2, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 3, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 4, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 5, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 6, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 7, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 8, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 9, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 10, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 11, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 12, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 13, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 14, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 15, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 16, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 17, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 18, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 19, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 20, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 21, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 22, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 23, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 24, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 25, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 26, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 27, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 28, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 29, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}, {\"day\": 30, \"total_hours\": 4, \"slots\": [{\"subject\": \"英语\", \"hours\": 1, \"start\": 8, \"end\": 9}, {\"subject\": \"数学\", \"hours\": 2, \"start\": 9, \"end\": 11}, {\"subject\": \"专业课\", \"hours\": 1, \"start\": 11, \"end\": 12}]}]}",
+      "answer_files": {},
+      "errors": [],
+      "usage": {
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null,
+        "cost_usd": null,
+        "usage_source": "none",
+        "estimated": false,
+        "pricing": null
+      },
+      "timed_out": false,
+      "exit_code": 0,
+      "stdout_sha256": "4ba422c8201ac8ffc022eb77666f8433e2e07064f94b049f4b7859d88e0e2ebf",
+      "stderr_sha256": null,
+      "search_trace": null,
+      "success": null,
+      "environment": {
+        "python": "3.12.10",
+        "platform": "win32",
+        "hostname_hash": "affadf1f335dee85",
+        "docker": false
+      },
+      "offline_replay": false,
+      "grader_mode": "full",
+      "tag": "baseline",
+      "time_limit": 120,
+      "tool_limit": 30
+    },
+    {
+      "run_id": "run_20260925T023040_25aa9d",
+      "suite_id": "smoke",
+      "attempt": 1,
+      "seed": 42,
+      "agent": "mock",
+      "agent_version": "1.0.0",
+      "model": "mock-model",
+      "model_version": null,
+      "provider": "mock",
+      "task_id": "SEARCH-012",
+      "started_at": "2026-09-25T02:30:40+00:00",
+      "ended_at": "2026-09-25T02:30:40+00:00",
+      "duration_ms": 0,
+      "tool_calls": 1,
+      "sources": [
+        {
+          "url": "https://northplain.edu.example/b",
+          "title": "公告 B",
+          "domain": "northplain.edu.example",
+          "fetched_at": "2026-09-25T02:30:40+00:00",
+          "content_sha256": null,
+          "snapshot_path": null,
+          "evidence_level": "E4",
+          "evidence_reason": "",
+          "year": 2025,
+          "is_official": true,
+          "clicked": null
+        }
+      ],
+      "citations": [],
+      "final_answer": "{\"conflict\": true, \"authoritative\": \"公告 B\", \"url\": \"https://northplain.edu.example/b\", \"line\": 355, \"year\": 2025, \"note\": \"三条公告冲突；公告 B 为 2025 年最新有效，采用 355。\"}",
+      "answer_files": {},
+      "errors": [],
+      "usage": {
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null,
+        "cost_usd": null,
+        "usage_source": "none",
+        "estimated": false,
+        "pricing": null
+      },
+      "timed_out": false,
+      "exit_code": 0,
+      "stdout_sha256": "2b26fae16d8665d8f63c465a4f04191f143e3c277062c32b4eca203230c6dcba",
+      "stderr_sha256": null,
+      "search_trace": null,
+      "success": null,
+      "environment": {
+        "python": "3.12.10",
+        "platform": "win32",
+        "hostname_hash": "affadf1f335dee85",
+        "docker": false
+      },
+      "offline_replay": false,
+      "grader_mode": "full",
+      "tag": "baseline",
+      "time_limit": 120,
+      "tool_limit": 30
+    },
+    {
+      "run_id": "run_20260925T023040_83ffa8",
+      "suite_id": "smoke",
+      "attempt": 1,
+      "seed": 42,
+      "agent": "mock",
+      "agent_version": "1.0.0",
+      "model": "mock-model",
+      "model_version": null,
+      "provider": "mock",
+      "task_id": "UNI-008",
+      "started_at": "2026-09-25T02:30:40+00:00",
+      "ended_at": "2026-09-25T02:30:40+00:00",
+      "duration_ms": 0,
+      "tool_calls": 1,
+      "sources": [],
+      "citations": [],
+      "final_answer": "{\"majors\": [{\"code\": \"081200\", \"name\": \"计算机科学与技术\", \"plan\": 20, \"subject\": \"数学一\"}, {\"code\": \"085404\", \"name\": \"计算机技术\", \"plan\": 23, \"subject\": \"数据结构\"}, {\"code\": \"081000\", \"name\": \"信息与通信工程\", \"plan\": 26, \"subject\": \"操作系统\"}]}",
+      "answer_files": {},
+      "errors": [],
+      "usage": {
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null,
+        "cost_usd": null,
+        "usage_source": "none",
+        "estimated": false,
+        "pricing": null
+      },
+      "timed_out": false,
+      "exit_code": 0,
+      "stdout_sha256": "a9f3215fbc5e2e46e9d65e5f424f5478cdfd75965b8792c59278b48c613bbd7a",
+      "stderr_sha256": null,
+      "search_trace": null,
+      "success": null,
+      "environment": {
+        "python": "3.12.10",
+        "platform": "win32",
+        "hostname_hash": "affadf1f335dee85",
+        "docker": false
+      },
+      "offline_replay": false,
+      "grader_mode": "full",
+      "tag": "baseline",
+      "time_limit": 120,
+      "tool_limit": 30
+    }
+  ],
+  "grades": [
+    {
+      "task_id": "EXAM-001",
+      "run_id": "run_20260925T023040_7ed499",
+      "grader_type": "deterministic",
+      "grader_mode": "full",
+      "degraded_reason": null,
+      "score": {
+        "factuality": 85.0,
+        "source_quality": 0.0,
+        "citation": 0.0,
+        "completeness": 0.0,
+        "tool_execution": 10.0,
+        "task_completion": 0.0,
+        "efficiency": 4.9167,
+        "total": 99.9167,
+        "reallocated": true,
+        "neutral_dimensions": [
+          "citation",
+          "completeness",
+          "source_quality",
+          "task_completion"
+        ],
+        "effective_weights": {
+          "factuality": 0.666667,
+          "source_quality": 0.0,
+          "citation": 0.0,
+          "completeness": 0.0,
+          "tool_execution": 0.222222,
+          "task_completion": 0.0,
+          "efficiency": 0.111111
+        }
+      },
+      "metrics": {
+        "task_success": true,
+        "factuality": 1.0,
+        "source_precision": null,
+        "search_recall": 1.0,
+        "citation_accuracy": null,
+        "hallucination_rate": 0.0,
+        "tool_success_rate": 1.0,
+        "tool_calls": 1,
+        "tokens": null,
+        "latency_seconds": 0.0,
+        "cost_usd": null
+      },
+      "checks": [
+        {
+          "id": "c1",
+          "type": "numeric",
+          "dimension": "factuality",
+          "passed": true,
+          "weight": 1.0,
+          "critical": false,
+          "detail": "$.count = 10，期望 eq 10（tol=0）",
+          "judge": "deterministic"
+        },
+        {
+          "id": "c2",
+          "type": "point_hit",
+          "dimension": "factuality",
+          "passed": true,
+          "weight": 1.0,
+          "critical": false,
+          "detail": "命中：数据结构（要点 p1）",
+          "judge": "deterministic"
+        }
+      ],
+      "citations_judged": 0,
+      "citations_supported": 0,
+      "citations_unjudged": 0,
+      "hallucination_violations": 0,
+      "errors": [],
+      "graded_at": "2026-09-25T02:30:40+00:00",
+      "grader_versions": {
+        "deterministic": "1.0"
+      }
+    },
+    {
+      "task_id": "EXAM-005",
+      "run_id": "run_20260925T023040_d64827",
+      "grader_type": "deterministic",
+      "grader_mode": "full",
+      "degraded_reason": null,
+      "score": {
+        "factuality": 51.0,
+        "source_quality": 0.0,
+        "citation": 0.0,
+        "completeness": 25.5,
+        "tool_execution": 10.0,
+        "task_completion": 8.5,
+        "efficiency": 4.75,
+        "total": 99.75,
+        "reallocated": true,
+        "neutral_dimensions": [
+          "citation",
+          "source_quality"
+        ],
+        "effective_weights": {
+          "factuality": 0.461538,
+          "source_quality": 0.0,
+          "citation": 0.0,
+          "completeness": 0.230769,
+          "tool_execution": 0.153846,
+          "task_completion": 0.076923,
+          "efficiency": 0.076923
+        }
+      },
+      "metrics": {
+        "task_success": true,
+        "factuality": 1.0,
+        "source_precision": null,
+        "search_recall": 0.0,
+        "citation_accuracy": null,
+        "hallucination_rate": 0.0,
+        "tool_success_rate": 1.0,
+        "tool_calls": 3,
+        "tokens": null,
+        "latency_seconds": 0.0,
+        "cost_usd": null
+      },
+      "checks": [
+        {
+          "id": "c1",
+          "type": "file_exists",
+          "dimension": "task_completion",
+          "passed": true,
+          "weight": 1.0,
+          "critical": true,
+          "detail": "产出文件存在：knowledge_report.json",
+          "judge": "deterministic"
+        },
+        {
+          "id": "c2",
+          "type": "file_json_match",
+          "dimension": "factuality",
+          "passed": true,
+          "weight": 1.0,
+          "critical": false,
+          "detail": "knowledge_report.json:$.total = 60（期望 eq 60）",
+          "judge": "deterministic"
+        },
+        {
+          "id": "c3",
+          "type": "file_json_match",
+          "dimension": "completeness",
+          "passed": true,
+          "weight": 1.0,
+          "critical": false,
+          "detail": "knowledge_report.json:$.frequencies[0].chapter = '数据结构'",
+          "judge": "deterministic"
+        },
+        {
+          "id": "c4",
+          "type": "file_json_match",
+          "dimension": "completeness",
+          "passed": true,
+          "weight": 1.0,
+          "critical": false,
+          "detail": "knowledge_report.json:$.frequencies[0].count = 10（期望 eq 10）",
+          "judge": "deterministic"
+        }
+      ],
+      "citations_judged": 0,
+      "citations_supported": 0,
+      "citations_unjudged": 0,
+      "hallucination_violations": 0,
+      "errors": [],
+      "graded_at": "2026-09-25T02:30:40+00:00",
+      "grader_versions": {
+        "deterministic": "1.0"
+      }
+    },
+    {
+      "task_id": "PDF-001",
+      "run_id": "run_20260925T023040_b7ea40",
+      "grader_type": "deterministic",
+      "grader_mode": "full",
+      "degraded_reason": null,
+      "score": {
+        "factuality": 85.0,
+        "source_quality": 0.0,
+        "citation": 0.0,
+        "completeness": 0.0,
+        "tool_execution": 10.0,
+        "task_completion": 0.0,
+        "efficiency": 4.9167,
+        "total": 99.9167,
+        "reallocated": true,
+        "neutral_dimensions": [
+          "citation",
+          "completeness",
+          "source_quality",
+          "task_completion"
+        ],
+        "effective_weights": {
+          "factuality": 0.666667,
+          "source_quality": 0.0,
+          "citation": 0.0,
+          "completeness": 0.0,
+          "tool_execution": 0.222222,
+          "task_completion": 0.0,
+          "efficiency": 0.111111
+        }
+      },
+      "metrics": {
+        "task_success": true,
+        "factuality": 1.0,
+        "source_precision": null,
+        "search_recall": 1.0,
+        "citation_accuracy": null,
+        "hallucination_rate": 0.0,
+        "tool_success_rate": 1.0,
+        "tool_calls": 1,
+        "tokens": null,
+        "latency_seconds": 0.0,
+        "cost_usd": null
+      },
+      "checks": [
+        {
+          "id": "c1",
+          "type": "point_hit",
+          "dimension": "factuality",
+          "passed": true,
+          "weight": 1.0,
+          "critical": true,
+          "detail": "命中：3 years",
+          "judge": "deterministic"
+        },
+        {
+          "id": "c2",
+          "type": "point_hit",
+          "dimension": "factuality",
+          "passed": true,
+          "weight": 1.0,
+          "critical": false,
+          "detail": "命中：8000",
+          "judge": "deterministic"
+        },
+        {
+          "id": "c3",
+          "type": "numeric",
+          "dimension": "factuality",
+          "passed": true,
+          "weight": 1.0,
+          "critical": false,
+          "detail": "$.page = 1，期望 eq 1（tol=0）",
+          "judge": "deterministic"
+        }
+      ],
+      "citations_judged": 0,
+      "citations_supported": 0,
+      "citations_unjudged": 0,
+      "hallucination_violations": 0,
+      "errors": [],
+      "graded_at": "2026-09-25T02:30:40+00:00",
+      "grader_versions": {
+        "deterministic": "1.0"
+      }
+    },
+    {
+      "task_id": "PLAN-001",
+      "run_id": "run_20260925T023040_45c271",
+      "grader_type": "deterministic",
+      "grader_mode": "full",
+      "degraded_reason": null,
+      "score": {
+        "factuality": 0.0,
+        "source_quality": 0.0,
+        "citation": 0.0,
+        "completeness": 63.75,
+        "tool_execution": 10.0,
+        "task_completion": 21.25,
+        "efficiency": 4.9167,
+        "total": 99.9167,
+        "reallocated": true,
+        "neutral_dimensions": [
+          "citation",
+          "factuality",
+          "source_quality"
+        ],
+        "effective_weights": {
+          "factuality": 0.0,
+          "source_quality": 0.0,
+          "citation": 0.0,
+          "completeness": 0.428571,
+          "tool_execution": 0.285714,
+          "task_completion": 0.142857,
+          "efficiency": 0.142857
+        }
+      },
+      "metrics": {
+        "task_success": true,
+        "factuality": null,
+        "source_precision": null,
+        "search_recall": 1.0,
+        "citation_accuracy": null,
+        "hallucination_rate": 0.0,
+        "tool_success_rate": 1.0,
+        "tool_calls": 1,
+        "tokens": null,
+        "latency_seconds": 0.0,
+        "cost_usd": null
+      },
+      "checks": [
+        {
+          "id": "c1",
+          "type": "constraint",
+          "dimension": "task_completion",
+          "passed": true,
+          "weight": 1.0,
+          "critical": true,
+          "detail": "total_days: OK — 实际 30，期望 eq 30 | daily_total_hours: OK — 实际 4，期望 eq 4 | subject_min_hours: OK — 实际 2，期望 eq 2 | subject_min_hours: OK — 实际 1，期望 eq 1 | no_overlap: OK — 无时段重叠",
+          "judge": "deterministic"
+        },
+        {
+          "id": "c2",
+          "type": "json_schema",
+          "dimension": "completeness",
+          "passed": true,
+          "weight": 1.0,
+          "critical": false,
+          "detail": "结构校验通过",
+          "judge": "deterministic"
+        }
+      ],
+      "citations_judged": 0,
+      "citations_supported": 0,
+      "citations_unjudged": 0,
+      "hallucination_violations": 0,
+      "errors": [],
+      "graded_at": "2026-09-25T02:30:40+00:00",
+      "grader_versions": {
+        "deterministic": "1.0"
+      }
+    },
+    {
+      "task_id": "SEARCH-012",
+      "run_id": "run_20260925T023040_25aa9d",
+      "grader_type": "deterministic",
+      "grader_mode": "full",
+      "degraded_reason": null,
+      "score": {
+        "factuality": 51.0,
+        "source_quality": 34.0,
+        "citation": 0.0,
+        "completeness": 0.0,
+        "tool_execution": 10.0,
+        "task_completion": 0.0,
+        "efficiency": 4.9167,
+        "total": 99.9167,
+        "reallocated": true,
+        "neutral_dimensions": [
+          "citation",
+          "completeness",
+          "task_completion"
+        ],
+        "effective_weights": {
+          "factuality": 0.461538,
+          "source_quality": 0.307692,
+          "citation": 0.0,
+          "completeness": 0.0,
+          "tool_execution": 0.153846,
+          "task_completion": 0.0,
+          "efficiency": 0.076923
+        }
+      },
+      "metrics": {
+        "task_success": true,
+        "factuality": 1.0,
+        "source_precision": 1.0,
+        "search_recall": 1.0,
+        "citation_accuracy": null,
+        "hallucination_rate": 0.0,
+        "tool_success_rate": 1.0,
+        "tool_calls": 1,
+        "tokens": null,
+        "latency_seconds": 0.0,
+        "cost_usd": null
+      },
+      "checks": [
+        {
+          "id": "c1",
+          "type": "string_eq",
+          "dimension": "factuality",
+          "passed": true,
+          "weight": 1.0,
+          "critical": false,
+          "detail": "$.conflict = 'true'，期望 'true'",
+          "judge": "deterministic"
+        },
+        {
+          "id": "c2",
+          "type": "point_hit",
+          "dimension": "factuality",
+          "passed": true,
+          "weight": 1.0,
+          "critical": true,
+          "detail": "命中：公告 B",
+          "judge": "deterministic"
+        },
+        {
+          "id": "c3",
+          "type": "point_hit",
+          "dimension": "factuality",
+          "passed": true,
+          "weight": 1.0,
+          "critical": false,
+          "detail": "命中：355",
+          "judge": "deterministic"
+        },
+        {
+          "id": "c4",
+          "type": "must_not_claim",
+          "dimension": "factuality",
+          "passed": true,
+          "weight": 1.0,
+          "critical": true,
+          "detail": "未命中任何禁止断言（共检查 3 条）",
+          "judge": "deterministic"
+        },
+        {
+          "id": "c5",
+          "type": "year_tag",
+          "dimension": "source_quality",
+          "passed": true,
+          "weight": 1.0,
+          "critical": false,
+          "detail": "答案显式出现年份 2025",
+          "judge": "deterministic"
+        }
+      ],
+      "citations_judged": 0,
+      "citations_supported": 0,
+      "citations_unjudged": 0,
+      "hallucination_violations": 0,
+      "errors": [
+        {
+          "code": "CITATION_FAILURE",
+          "stage": "grade",
+          "message": "required_fields 要求来源但未产出任何引用",
+          "task_id": "SEARCH-012",
+          "run_id": "run_20260925T023040_25aa9d",
+          "tool_call_id": null,
+          "at": "2026-09-25T02:30:40+00:00"
+        }
+      ],
+      "graded_at": "2026-09-25T02:30:40+00:00",
+      "grader_versions": {
+        "deterministic": "1.0"
+      }
+    },
+    {
+      "task_id": "UNI-008",
+      "run_id": "run_20260925T023040_83ffa8",
+      "grader_type": "deterministic",
+      "grader_mode": "full",
+      "degraded_reason": null,
+      "score": {
+        "factuality": 56.6667,
+        "source_quality": 0.0,
+        "citation": 0.0,
+        "completeness": 28.3333,
+        "tool_execution": 10.0,
+        "task_completion": 0.0,
+        "efficiency": 4.9167,
+        "total": 99.9167,
+        "reallocated": true,
+        "neutral_dimensions": [
+          "citation",
+          "source_quality",
+          "task_completion"
+        ],
+        "effective_weights": {
+          "factuality": 0.5,
+          "source_quality": 0.0,
+          "citation": 0.0,
+          "completeness": 0.25,
+          "tool_execution": 0.166667,
+          "task_completion": 0.0,
+          "efficiency": 0.083333
+        }
+      },
+      "metrics": {
+        "task_success": true,
+        "factuality": 1.0,
+        "source_precision": null,
+        "search_recall": 1.0,
+        "citation_accuracy": null,
+        "hallucination_rate": 0.0,
+        "tool_success_rate": 1.0,
+        "tool_calls": 1,
+        "tokens": null,
+        "latency_seconds": 0.0,
+        "cost_usd": null
+      },
+      "checks": [
+        {
+          "id": "c1",
+          "type": "point_hit",
+          "dimension": "factuality",
+          "passed": true,
+          "weight": 1.0,
+          "critical": true,
+          "detail": "命中：081200",
+          "judge": "deterministic"
+        },
+        {
+          "id": "c2",
+          "type": "set_includes",
+          "dimension": "completeness",
+          "passed": true,
+          "weight": 1.0,
+          "critical": false,
+          "detail": "命中 3/3（要求 >= 3）：081200、085404、081000",
+          "judge": "deterministic"
+        },
+        {
+          "id": "c3",
+          "type": "json_schema",
+          "dimension": "completeness",
+          "passed": true,
+          "weight": 1.0,
+          "critical": false,
+          "detail": "结构校验通过",
+          "judge": "deterministic"
+        },
+        {
+          "id": "c4",
+          "type": "numeric",
+          "dimension": "factuality",
+          "passed": true,
+          "weight": 1.0,
+          "critical": false,
+          "detail": "$.majors[0].plan = 20，期望 eq 20（tol=0.5）",
+          "judge": "deterministic"
+        }
+      ],
+      "citations_judged": 0,
+      "citations_supported": 0,
+      "citations_unjudged": 0,
+      "hallucination_violations": 0,
+      "errors": [],
+      "graded_at": "2026-09-25T02:30:40+00:00",
+      "grader_versions": {
+        "deterministic": "1.0"
+      }
+    }
+  ],
+  "aggregates": {
+    "n_tasks": 6,
+    "task_success_rate": 1.0,
+    "failure_rate": 0.0,
+    "pass_at_1": 1.0,
+    "pass_at_3": 1.0,
+    "score_mean": 99.888917,
+    "score_median": 99.9167,
+    "score_p90": 99.9167,
+    "factuality_mean": 1.0,
+    "source_precision_mean": 1.0,
+    "search_recall_mean": 0.833333,
+    "citation_accuracy_mean": null,
+    "hallucination_rate_mean": 0.0,
+    "tool_success_rate_mean": 1.0,
+    "tool_calls_mean": 1.333333,
+    "tool_calls_p90": 2.0,
+    "tokens_mean": null,
+    "tokens_p90": null,
+    "latency_seconds_mean": 0.0,
+    "latency_seconds_median": 0.0,
+    "latency_seconds_p90": 0.0,
+    "cost_usd_mean": null,
+    "cost_usd_total": null,
+    "usage_missing_count": 6,
+    "usage_estimated_ratio": null,
+    "degraded_task_count": 0,
+    "grader_mode": "full",
+    "by_category": [
+      {
+        "category": "search",
+        "label": "搜索与信息检索",
+        "task_count": 1,
+        "task_success_rate": 1.0,
+        "score_mean": 99.9167,
+        "factuality_mean": 1.0,
+        "search_recall_mean": 1.0,
+        "source_precision_mean": 1.0,
+        "citation_accuracy_mean": null,
+        "hallucination_rate_mean": 0.0,
+        "latency_seconds_mean": 0.0,
+        "tool_calls_mean": 1.0,
+        "cost_usd_mean": null,
+        "pass_at_1": 1.0,
+        "pass_at_3": 1.0
+      },
+      {
+        "category": "university",
+        "label": "院校与招生信息",
+        "task_count": 1,
+        "task_success_rate": 1.0,
+        "score_mean": 99.9167,
+        "factuality_mean": 1.0,
+        "search_recall_mean": 1.0,
+        "source_precision_mean": null,
+        "citation_accuracy_mean": null,
+        "hallucination_rate_mean": 0.0,
+        "latency_seconds_mean": 0.0,
+        "tool_calls_mean": 1.0,
+        "cost_usd_mean": null,
+        "pass_at_1": 1.0,
+        "pass_at_3": 1.0
+      },
+      {
+        "category": "exam",
+        "label": "真题与数据分析",
+        "task_count": 2,
+        "task_success_rate": 1.0,
+        "score_mean": 99.83335,
+        "factuality_mean": 1.0,
+        "search_recall_mean": 0.5,
+        "source_precision_mean": null,
+        "citation_accuracy_mean": null,
+        "hallucination_rate_mean": 0.0,
+        "latency_seconds_mean": 0.0,
+        "tool_calls_mean": 2.0,
+        "cost_usd_mean": null,
+        "pass_at_1": 1.0,
+        "pass_at_3": 1.0
+      },
+      {
+        "category": "pdf",
+        "label": "PDF/资料处理",
+        "task_count": 1,
+        "task_success_rate": 1.0,
+        "score_mean": 99.9167,
+        "factuality_mean": 1.0,
+        "search_recall_mean": 1.0,
+        "source_precision_mean": null,
+        "citation_accuracy_mean": null,
+        "hallucination_rate_mean": 0.0,
+        "latency_seconds_mean": 0.0,
+        "tool_calls_mean": 1.0,
+        "cost_usd_mean": null,
+        "pass_at_1": 1.0,
+        "pass_at_3": 1.0
+      },
+      {
+        "category": "planning",
+        "label": "学习规划",
+        "task_count": 1,
+        "task_success_rate": 1.0,
+        "score_mean": 99.9167,
+        "factuality_mean": null,
+        "search_recall_mean": 1.0,
+        "source_precision_mean": null,
+        "citation_accuracy_mean": null,
+        "hallucination_rate_mean": 0.0,
+        "latency_seconds_mean": 0.0,
+        "tool_calls_mean": 1.0,
+        "cost_usd_mean": null,
+        "pass_at_1": 1.0,
+        "pass_at_3": 1.0
+      }
+    ],
+    "by_difficulty": [
+      {
+        "difficulty": "easy",
+        "label": "Easy",
+        "task_count": 3,
+        "task_success_rate": 1.0,
+        "score_mean": 99.9167,
+        "factuality_mean": 1.0,
+        "search_recall_mean": 1.0,
+        "source_precision_mean": null,
+        "citation_accuracy_mean": null,
+        "hallucination_rate_mean": 0.0,
+        "latency_seconds_mean": 0.0,
+        "tool_calls_mean": 1.0,
+        "cost_usd_mean": null,
+        "pass_at_1": 1.0,
+        "pass_at_3": 1.0
+      },
+      {
+        "difficulty": "hard",
+        "label": "Hard",
+        "task_count": 2,
+        "task_success_rate": 1.0,
+        "score_mean": 99.83335,
+        "factuality_mean": 1.0,
+        "search_recall_mean": 0.5,
+        "source_precision_mean": null,
+        "citation_accuracy_mean": null,
+        "hallucination_rate_mean": 0.0,
+        "latency_seconds_mean": 0.0,
+        "tool_calls_mean": 2.0,
+        "cost_usd_mean": null,
+        "pass_at_1": 1.0,
+        "pass_at_3": 1.0
+      },
+      {
+        "difficulty": "expert",
+        "label": "Expert",
+        "task_count": 1,
+        "task_success_rate": 1.0,
+        "score_mean": 99.9167,
+        "factuality_mean": 1.0,
+        "search_recall_mean": 1.0,
+        "source_precision_mean": 1.0,
+        "citation_accuracy_mean": null,
+        "hallucination_rate_mean": 0.0,
+        "latency_seconds_mean": 0.0,
+        "tool_calls_mean": 1.0,
+        "cost_usd_mean": null,
+        "pass_at_1": 1.0,
+        "pass_at_3": 1.0
+      }
+    ],
+    "error_counts": [
+      {
+        "code": "CITATION_FAILURE",
+        "count": 1,
+        "ratio": 1.0
+      },
+      {
+        "code": "SEARCH_FAILURE",
+        "count": 0,
+        "ratio": 0.0
+      },
+      {
+        "code": "SOURCE_SELECTION_FAILURE",
+        "count": 0,
+        "ratio": 0.0
+      },
+      {
+        "code": "PARSING_FAILURE",
+        "count": 0,
+        "ratio": 0.0
+      },
+      {
+        "code": "TOOL_FAILURE",
+        "count": 0,
+        "ratio": 0.0
+      },
+      {
+        "code": "PLANNING_FAILURE",
+        "count": 0,
+        "ratio": 0.0
+      },
+      {
+        "code": "CONTEXT_FAILURE",
+        "count": 0,
+        "ratio": 0.0
+      },
+      {
+        "code": "HALLUCINATION",
+        "count": 0,
+        "ratio": 0.0
+      },
+      {
+        "code": "CALCULATION_FAILURE",
+        "count": 0,
+        "ratio": 0.0
+      },
+      {
+        "code": "TIMEOUT",
+        "count": 0,
+        "ratio": 0.0
+      },
+      {
+        "code": "UNKNOWN",
+        "count": 0,
+        "ratio": 0.0
+      }
+    ],
+    "sample_counts": {
+      "score": 6,
+      "factuality": 5,
+      "source_precision": 1,
+      "search_recall": 6,
+      "citation_accuracy": 0,
+      "tool_success_rate": 6,
+      "tokens": 0,
+      "cost_usd": 0
+    }
+  },
+  "score_breakdown_mean": {
+    "factuality": 54.777783,
+    "source_quality": 5.666667,
+    "citation": 0.0,
+    "completeness": 19.597217,
+    "tool_execution": 10.0,
+    "task_completion": 4.958333,
+    "efficiency": 4.888917,
+    "total": 99.888917
+  },
+  "source": {
+    "benchmark_version": "1.0",
+    "config_path": "D:\\KaoYanBench\\config\\default.yaml",
+    "results_dir": "D:\\KaoYanBench\\results",
+    "concurrency": 1,
+    "git_sha": "b433cac",
+    "trace_schema_version": "1.0"
+  }
+}

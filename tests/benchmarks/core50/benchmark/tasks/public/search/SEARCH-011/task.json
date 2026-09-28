@@ -1,0 +1,87 @@
+{
+  "task_id": "SEARCH-011",
+  "category": "search",
+  "difficulty": "hard",
+  "instruction": "在本地快照库中检索『北原大学 2025 年推荐免试研究生接收办法』（虚构院校），输出：①快照 URL；②该快照内容的哈希校验值。仅依据本地快照，不得联网或臆造。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "snapshot",
+    "deterministic"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "推免",
+          "接收办法"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [
+      "2024 年接收办法"
+    ],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "regex",
+        "dimension": "factuality",
+        "critical": true,
+        "pattern": "northplain\\.edu\\.example[^\\s]*"
+      },
+      {
+        "id": "c2",
+        "type": "regex",
+        "dimension": "factuality",
+        "pattern": "https?://[^\\s]*northplain\\.edu\\.example[^\\s]*"
+      },
+      {
+        "id": "c3",
+        "type": "regex",
+        "dimension": "factuality",
+        "pattern": "[0-9a-f]{64}"
+      },
+      {
+        "id": "c4",
+        "type": "string_contains",
+        "dimension": "completeness",
+        "path": "$.answer",
+        "value": "sha256"
+      },
+      {
+        "id": "c5",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "2024 年接收办法"
+        ]
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

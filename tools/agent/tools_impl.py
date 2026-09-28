@@ -18,7 +18,7 @@ import fnmatch
 import subprocess
 import urllib.request
 from pathlib import Path
-from typing import Dict, Any, Callable, List, Optional
+from typing import Dict, Any, Callable, List, Optional, Sequence
 
 from .sandbox import Sandbox, SecurityException
 from .permissions import PermissionLevel, PermissionManager
@@ -261,8 +261,16 @@ class ToolRegistry:
             return func
         return decorator
 
-    def get_openai_tools(self) -> List[Dict[str, Any]]:
-        return [t.to_openai_dict() for t in self.tools.values()]
+    def get_openai_tools(self, names: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
+        """返回工具的 OpenAI schema 列表。
+
+        ``names`` 为 None 时返回全部工具（默认）；传入清单时只返回清单内的工具
+        （收尾兜底等场景需要受限工具集）。清单内不存在的名字静默忽略。
+        """
+        if names is None:
+            return [t.to_openai_dict() for t in self.tools.values()]
+        wanted = [str(n) for n in names]
+        return [self.tools[n].to_openai_dict() for n in wanted if n in self.tools]
 
     def execute_tool(self, name: str, args: Dict[str, Any], interactive: bool = True) -> str:
         """统一执行入口: 经过沙箱与权限验证"""
@@ -330,13 +338,15 @@ class ToolRegistry:
 
         @self.register(
             name="read_file",
-            desc="读取本地文本或PDF文件。若路径为.pdf，将自动提取前若干页或指定页码的文本内容。",
+            desc=("读取本地文本或PDF文件。文本文件用 offset(起始行)/limit(最大行数) 分页；"
+                  "PDF 文件用 offset(起始页, 1-based)/limit(最大字符数) 分页，"
+                  "默认提取第 1 页起最多 20 页，可按页续读长文档。"),
             params_schema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "目标文件相对或绝对路径"},
-                    "offset": {"type": "integer", "description": "起始字符偏移行 (默认0)"},
-                    "limit": {"type": "integer", "description": "最大读取行数/字数 (默认2000)"}
+                    "offset": {"type": "integer", "description": "文本: 起始行；PDF: 起始页 (默认 0/第 1 页)"},
+                    "limit": {"type": "integer", "description": "文本: 最大行数 (默认2000)；PDF: 最大字符数"}
                 },
                 "required": ["path"]
             },
@@ -353,10 +363,25 @@ class ToolRegistry:
             if p.suffix.lower() == ".pdf":
                 pdf_extractor = _get_pdf_extractor()
                 if pdf_extractor:
-                    pdf_info = pdf_extractor.extract_pdf_pages(str(p), max_pages=8)
+                    # [W6 工具改进] offset 对 PDF 解释为「起始页」（1-based），
+                    # limit 解释为最大字符数；默认页数上限 8→20、默认字符上限
+                    # 2000→12000 —— 评测实测 20 页 PDF 的关键字段分布在后段页面，
+                    # 「前 8 页 + 2000 字符」会成建制漏读（PDF-005 类任务因此失分，
+                    # 模型被迫写脚本绕行并撞上脚本执行权限墙）。
+                    try:
+                        start_page = max(1, int(offset) if offset else 1)
+                    except (TypeError, ValueError):
+                        start_page = 1
+                    try:
+                        char_limit = int(limit) if int(limit) != 2000 else 12000
+                    except (TypeError, ValueError):
+                        char_limit = 12000
+                    pdf_info = pdf_extractor.extract_pdf_pages(
+                        str(p), max_pages=20, start_page=start_page)
                     if pdf_info.get("success"):
                         pages_txt = "\n".join([f"--- 第 {pg['page']} 页 ---\n{pg['text']}" for pg in pdf_info.get("pages", [])])
-                        return f"【PDF文档自动提取: {p.name} (共 {pdf_info.get('total_pages', 0)} 页，提取前8页)】\n\n{pages_txt[:limit]}"
+                        return (f"【PDF文档自动提取: {p.name} (共 {pdf_info.get('total_pages', 0)} 页，"
+                                f"本次提取第 {start_page} 页起)】\n\n{pages_txt[:char_limit]}")
                     else:
                         return f"PDF提取失败: {pdf_info.get('error')}"
                 return f"Error: 未检测到 PDF 提取模块"
@@ -613,6 +638,8 @@ class ToolRegistry:
                     f"安全拦截：命令 `{prog}` 不在白名单内。"
                     f"允许：{', '.join(sorted(_allowed_cmds))}。"
                     f"如需执行其他命令，请在宿主机终端手动运行。"
+                    f"【替代路径】读取/查看文件内容请直接用 read_file 工具"
+                    f"（PDF 会自动提取文本），无需切换目录或执行外部命令。"
                 )
 
             # [P0 修复·增强] shell=False 挡不住 Python 自身的任意代码执行：
@@ -621,9 +648,16 @@ class ToolRegistry:
             if prog in ("python", "python3"):
                 first_arg = argv[1] if len(argv) > 1 else ""
                 if first_arg in ("-c", "--command"):
+                    # [W7b 死路修复] 旧文案引导「写入 .py 脚本后运行」，但评测环境
+                    # 的受控目录闸门会再拒绝工作区脚本（output/xxx.py）——模型被
+                    # 引导进「写脚本 → 再被拦」的循环（PDF-003 实测三层拦截后答案
+                    # 残缺）。改为直接引导内置工具，一步到位。
                     return (
                         "安全拦截：`python -c` 可执行任意代码，已被禁用。"
-                        "请将逻辑写入工作区内的 .py 脚本后以 `python 脚本.py` 方式运行。"
+                        "【替代路径】本环境不提供脚本执行；请改用内置工具完成任务："
+                        "读文件用 read_file（PDF 自动提取文本、offset 为起始页可续读），"
+                        "搜索用 grep / search_files，写产物用 write_file，"
+                        "真题抽题用 read_exam_paper。"
                     )
                 if first_arg == "-m" and len(argv) > 2 and argv[2].split(".")[0] in ("pip", "venv", "ensurepip", "pip3"):
                     return "安全拦截：禁止通过 run_command 安装依赖或改动 Python 环境，请在宿主机终端手动运行。"
@@ -650,6 +684,9 @@ class ToolRegistry:
                             f"安全拦截：仅允许执行受控目录"
                             f"（{', '.join(_SCRIPT_EXEC_ALLOWED_PREFIXES)}）下的脚本，"
                             f"已拒绝 [{first_arg}]。工作区其他位置的脚本需人工核对后执行。"
+                            f"【替代路径】读取文件内容请直接用 read_file 工具"
+                            f"（PDF 会自动提取文本，offset 为起始页、可续读长文档），"
+                            f"不要为此编写并执行脚本。"
                         )
 
                     # [B2a ②] 会话污染闸门：本会话被 write_file / edit_file 写过或
@@ -662,7 +699,9 @@ class ToolRegistry:
                             first_arg, {"command": command}, interactive=interactive)
                         if not _approved:
                             return (f"PermissionDenied: 本会话写入的脚本 [{first_arg}] "
-                                    f"执行未获批准 —— {_reason}")
+                                    f"执行未获批准 —— {_reason}"
+                                    f"【替代路径】请改用内置工具完成任务"
+                                    f"（如 read_file 直接读取文件内容），不要反复重试脚本执行。")
 
             # [P0 修复] 位置参数沙箱校验：上面的白名单与参数黑名单都只看「程序名」和
             # 「高危模式」，位置参数里的路径从未过沙箱 —— 于是 `cat /etc/passwd`、
@@ -871,11 +910,21 @@ class ToolRegistry:
                     )
 
                 domain_tuple = tuple(str(d) for d in (domains or []) if str(d).strip())
-                response = SearchService.default().search(SearchQuery(
-                    text=str(query), limit=max(1, int(num_results or 5)),
-                    domains=domain_tuple))
+                # [W6 检索接线] 默认走多路查询规划（改写 → 按来源类别分路检索 →
+                # 融合去重）：单路原始 query 的召回取决于运气，多路覆盖不同来源
+                # 类别（官方站内 / 研招网 / 简章 / 专业目录）。多路失败时回退单路。
+                # show_scores=True 把相关性/权威分显式喂给模型（便于选源）。
+                service = SearchService.default()
+                try:
+                    response = service.search_planned(
+                        str(query), limit=max(1, int(num_results or 5)),
+                        domains=domain_tuple, max_queries=4)
+                except Exception:
+                    response = service.search(SearchQuery(
+                        text=str(query), limit=max(1, int(num_results or 5)),
+                        domains=domain_tuple))
                 if response.has_results:
-                    return format_results(response)
+                    return format_results(response, show_scores=True)
                 # [结构化失败报告] 没结果时必须说清是「确实没有」还是「没搜到」——
                 # 否则模型只能回一句"未找到相关资料"，用户无法据此决定下一步。
                 entities = extract_entities(str(query))

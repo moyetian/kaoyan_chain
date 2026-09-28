@@ -1,0 +1,15 @@
+{
+  "task_id": "UNI-003",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/xueshuo-zhuanshuo-2026",
+      "title": "学硕与专硕专业代码及考试科目对照",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "ba527c50dbe5304c3674ecd830bf5977a6c1bb20721959a413c99a1387a78143",
+      "http_status": 200,
+      "snapshot_path": "pages/ba527c50dbe5304c3674ecd830bf5977a6c1bb20721959a413c99a1387a78143.html",
+      "bytes": 777
+    }
+  ]
+}

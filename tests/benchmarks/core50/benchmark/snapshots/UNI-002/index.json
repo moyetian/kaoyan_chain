@@ -1,0 +1,15 @@
+{
+  "task_id": "UNI-002",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/zsml/081200",
+      "title": "081200计算机科学与技术专业目录",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "ccd17ed74caa9d2157d241e45dc8428c4aee29cd39c6eaeb54da5c150a0bcb40",
+      "http_status": 200,
+      "snapshot_path": "pages/ccd17ed74caa9d2157d241e45dc8428c4aee29cd39c6eaeb54da5c150a0bcb40.html",
+      "bytes": 733
+    }
+  ]
+}

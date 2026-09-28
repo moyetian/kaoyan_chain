@@ -1,0 +1,53 @@
+# semantic_v1.yaml：语义评分（Semantic Grader）配置（B-14）
+# ★ 评测模型与被测模型必须分离（allow_same_model 默认 false，见 config/default.yaml）。
+# temperature 固定 0、prompt_version 固定 v1，保证可复现。
+# 无 API key 时 build_semantic_client 返回 None，grader 自动进入 degraded 模式
+# 并给出 degraded_reason（no_api_key），**不静默假装评过**。
+
+prompt_version: v1
+temperature: 0
+max_tokens: 2000
+
+# 语义判分只覆盖「确定性检查难以量化」的维度（事实性表述、完整性、来源质量表述）
+# 确定性 check 仍是主干（方案 5.3：确定性为主、语义为辅）。
+dimensions:
+  - factuality
+  - completeness
+  - source_quality
+
+# 每个维度的判分问答（交给 LLM judge）；0~100 分制，落盘时归一化到 0~1。
+criteria:
+  - id: sem_factuality
+    dimension: factuality
+    question: "回答中的事实性陈述是否准确、无编造？逐条核对，指出是否存在无依据的数字或结论。"
+    scale: 0_100
+  - id: sem_completeness
+    dimension: completeness
+    question: "回答是否完整覆盖了题目要求的所有要点？缺失哪些要点？"
+    scale: 0_100
+  - id: sem_source_quality
+    dimension: source_quality
+    question: "回答所依据的来源是否权威、时效恰当？是否滥用低可信来源？"
+    scale: 0_100
+
+# 期望 judge 返回的 JSON 结构（键名与 parse_judge_body 对齐）
+response_schema:
+  type: object
+  properties:
+    score:
+      type: number
+    reason:
+      type: string
+    dimension:
+      type: string
+  required:
+    - score
+    - reason
+
+# 温度/重试
+retry:
+  max_attempts: 2
+  backoff_seconds: 1.0
+
+# 单次 judge 超时（秒）
+timeout: 60

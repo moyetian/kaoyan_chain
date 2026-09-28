@@ -1,0 +1,4 @@
+# 评测运行产物（派生数据，可重建）——评测器固定写入 <root>/results/
+# （benchmark.db、outputs/、runs/、suites/*.suite.json、workspaces/），
+# 与上游仓库 .gitignore 的 `results/*` 口径一致，绝不入库。
+results/

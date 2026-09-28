@@ -23,7 +23,7 @@
 用法：
   py tools/ci_evaluate_gate.py --fixtures      # CI 用：夹具自检，一次跑通 0/1/2 三条路径
   py tools/ci_evaluate_gate.py --ragas         # CI 用：引文忠实度门禁（C2：109 条评测集，完全离线）
-  py tools/ci_evaluate_gate.py --syllabus      # CI 用：考纲守卫门禁（128 条评测集，完全离线）
+  py tools/ci_evaluate_gate.py --syllabus      # CI 用：考纲守卫门禁（137 条评测集，完全离线）
   py tools/ci_evaluate_gate.py --srs           # 生产门禁：读真实 .memory/review_log.jsonl
   py tools/ci_evaluate_gate.py --srs --log <path> [--expect N]   # 指定日志 / 断言退出码（阴性验证）
 """

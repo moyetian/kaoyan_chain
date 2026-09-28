@@ -7,7 +7,7 @@
 import sys
 import webbrowser
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List
 
 try:
     from tools.cli.dispatch import Command, register
@@ -44,12 +44,67 @@ def _cmd_notify(args: List[str]) -> None:
 
 
 def _cmd_rollback(args: List[str]) -> None:
+    """[D0] 快照回滚：默认回最近一次；可按检查点 / 按文件精确回滚。
+
+    用法：
+      ky rollback                        回滚最近一次检查点（全部条目）
+      ky rollback --list                 列出全部检查点
+      ky rollback --checkpoint <名称>     回滚指定检查点
+      ky rollback --file <相对路径>       只回滚该文件（取含它的最新检查点）
+      ky rollback --dry-run              只预览，不动磁盘
+    """
     try:
         from tools.agent import PermissionManager
         pm = PermissionManager(workspace_root=ROOT)
-        res = pm.restore_last_checkpoint()
+
+        argv = [str(a) for a in (args[1:] if args else [])]
+        opts: Dict[str, Any] = {"list": False, "checkpoint": None, "file": [], "dry_run": False}
+        i = 0
+        while i < len(argv):
+            tok = argv[i]
+            if tok in ("--list", "-l"):
+                opts["list"] = True
+            elif tok in ("--dry-run", "-n"):
+                opts["dry_run"] = True
+            elif tok in ("--checkpoint", "-c") and i + 1 < len(argv):
+                i += 1
+                opts["checkpoint"] = argv[i]
+            elif tok in ("--file", "-f") and i + 1 < len(argv):
+                i += 1
+                opts["file"].append(argv[i])
+            else:
+                # 位置参数视作 --file（兼容 `ky rollback tools/agent/loop.py`）
+                opts["file"].append(tok)
+            i += 1
+
+        if opts["list"]:
+            ckpts = pm.list_checkpoints()
+            if not ckpts:
+                print(colorize("\n[!] 暂无任何快照检查点（.checkpoint/ 为空）\n", C.YELLOW))
+                return
+            print(colorize(f"\n📦 共 {len(ckpts)} 个快照检查点（新 → 旧）：\n", C.BOLD))
+            for ck in ckpts[:20]:
+                label = f"  [{ck['label']}]" if ck.get("label") else ""
+                print(f"  • {ck['checkpoint']}{label}  {ck.get('created_at', '')}")
+                for f in ck.get("files", [])[:10]:
+                    print(f"      - {f}")
+                extra = len(ck.get("files", [])) - 10
+                if extra > 0:
+                    print(f"      … 其余 {extra} 个文件")
+            print()
+            return
+
+        res = pm.restore_checkpoint(checkpoint=opts["checkpoint"],
+                                    files=opts["file"] or None,
+                                    dry_run=opts["dry_run"])
         if res.get("success"):
-            print(colorize(f"\n[√ 快照回滚成功] {res.get('message')}\n", C.GREEN))
+            print(colorize(f"\n[√ 快照回滚] {res.get('message')}\n", C.GREEN))
+            for f in res.get("restored", []):
+                print(f"   ↩ 已还原 {f}")
+            for f in res.get("deleted", []):
+                print(f"   ✂ 已删除新建文件 {f}")
+            for s in res.get("skipped", []):
+                print(colorize(f"   ! 跳过 {s.get('file')}（{s.get('reason')}）", C.YELLOW))
         else:
             print(colorize(f"\n[!] 快照回滚失败: {res.get('message')}\n", C.YELLOW))
     except Exception as e:
@@ -276,7 +331,7 @@ def _cmd_view(args: List[str]) -> None:
 
 # 注册集成辅助命令
 register(Command('notify', ("notify", "--notify"), '[内容]', '一键推送今日任务/晨报到微信、QQ、钉钉、飞书群', handler=_cmd_notify, write=True))
-register(Command('rollback', ("rollback", "--rollback", "restore", "--restore"), '', '快速回滚 Plan Mode 写入前备份的最近一次文件快照', handler=_cmd_rollback, write=True))
+register(Command('rollback', ("rollback", "--rollback", "restore", "--restore"), '[--list | --checkpoint <名称> | --file <相对路径>] [--dry-run]', '快照回滚：默认回最近一次；可按检查点 / 按文件精确回滚（写前快照，任何模式通用）', handler=_cmd_rollback, write=True))
 register(Command('memory', ("memory", "--memory"), '[status|prune]', '三级分层记忆健康度诊断与滚动修剪归档', handler=_cmd_memory, write=True))
 register(Command('fatigue', ("fatigue", "--fatigue"), '', '检查疲劳度与完成率监控警报', handler=_cmd_fatigue))
 register(Command('relieve', ("relieve", "--relieve"), '[--keep-style] [--off]', '一键启动智能减负模式 (任务下调 25%)；--keep-style 不改风格，--off 恢复', handler=_cmd_relieve, write=True))

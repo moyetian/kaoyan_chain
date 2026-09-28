@@ -1,0 +1,128 @@
+{
+  "task_id": "UNI-007",
+  "category": "university",
+  "difficulty": "hard",
+  "instruction": "请整理某专业 2023–2025 连续三年官方公示的录取分数情况，逐年给出分数区间的下限与居中水平，并落成一个表格文件（≥3 行，含 year/min_score/avg_score/source_url）。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "table",
+    "multi_year"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "最低分"
+        ]
+      },
+      {
+        "id": "p2",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": false,
+        "any_of": [
+          "平均分"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 3,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [],
+    "ground_truth": null,
+    "required_fields": [
+      "year",
+      "min_score",
+      "avg_score",
+      "source_url"
+    ]
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "最低分"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "平均分"
+        ]
+      },
+      {
+        "id": "c3",
+        "type": "file_exists",
+        "dimension": "task_completion",
+        "filename": "report.json"
+      },
+      {
+        "id": "c4",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.rows",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "year",
+              "min_score",
+              "avg_score",
+              "source_url"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c5",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 3
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否产出近三年录取分表格文件并逐年给出官方来源？"
+        }
+      ]
+    }
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "file",
+    "filename": "report.json",
+    "schema": {
+      "type": "object",
+      "required": [
+        "rows"
+      ]
+    }
+  }
+}

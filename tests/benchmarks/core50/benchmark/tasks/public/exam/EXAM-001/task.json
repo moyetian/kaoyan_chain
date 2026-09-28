@@ -1,0 +1,62 @@
+{
+  "task_id": "EXAM-001",
+  "category": "exam",
+  "difficulty": "easy",
+  "instruction": "统计真题 CSV 中考点『数据结构』出现的次数，输出精确整数。仅依据本地 fixture。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "smoke",
+    "fixture",
+    "deterministic",
+    "count"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "数据结构"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [],
+    "ground_truth": {
+      "count": 10,
+      "subject": "数据结构"
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "numeric",
+        "dimension": "factuality",
+        "path": "$.count",
+        "op": "eq",
+        "value": 10,
+        "tol": 0.0
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "point_id": "p1"
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

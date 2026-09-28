@@ -1,0 +1,81 @@
+{
+  "task_id": "PDF-003",
+  "category": "pdf",
+  "difficulty": "medium",
+  "instruction": "在 20 页 PDF 中定位关于研究生二轮考核采取何种形式的那个章节，输出该章节的**页码**与原文片段（≤80 字）。仅依据本地 fixture。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "fixture",
+    "deterministic",
+    "pdf",
+    "locate"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "复试方式",
+          "Retest Method"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [],
+    "ground_truth": {
+      "page": 7,
+      "snippet": "Retest method: on-site interview plus written test. Full score 100; pass threshold 60."
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "numeric",
+        "dimension": "factuality",
+        "path": "$.page",
+        "op": "eq",
+        "value": 7,
+        "tol": 0.0
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "复试方式",
+          "Retest Method",
+          "retest"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c3",
+        "type": "regex",
+        "dimension": "factuality",
+        "pattern": "60"
+      },
+      {
+        "id": "c4",
+        "type": "string_contains",
+        "dimension": "completeness",
+        "path": "$.snippet",
+        "value": ""
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

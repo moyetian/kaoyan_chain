@@ -1,0 +1,126 @@
+{
+  "task_id": "RES-002",
+  "category": "research",
+  "difficulty": "expert",
+  "instruction": "完成选校分析全流程：选校→查招生→查历年→输出对比表→给出可能踩坑的提醒，产出指定 JSON（≥8 个工具调用）。须含 ≥3 所院校对比与 SNAP 来源。仅依据本地 fixture + 快照。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "fixture",
+    "snapshot",
+    "long_horizon",
+    "hybrid"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "风险提示",
+          "风险"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E1",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [],
+    "required_fields": [
+      "comparison",
+      "risks"
+    ]
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "file_exists",
+        "dimension": "task_completion",
+        "filename": "report.json"
+      },
+      {
+        "id": "c2",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.comparison",
+        "schema": {
+          "type": "array",
+          "minLength": 3,
+          "items": {
+            "type": "object",
+            "required": [
+              "university",
+              "major_code",
+              "plan"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c3",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "风险",
+          "risk"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c4",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E1",
+        "min_count": 1
+      },
+      {
+        "id": "c5",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.",
+        "schema": {
+          "type": "object",
+          "required": [
+            "comparison",
+            "risks"
+          ]
+        }
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否完成选校全流程、≥3 校对比并给出风险提示？"
+        }
+      ]
+    }
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "file",
+    "filename": "report.json",
+    "schema": {
+      "type": "object",
+      "required": [
+        "comparison",
+        "risks"
+      ]
+    }
+  }
+}

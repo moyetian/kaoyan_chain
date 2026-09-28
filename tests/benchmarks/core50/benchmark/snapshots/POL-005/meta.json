@@ -1,0 +1,15 @@
+{
+  "task_id": "POL-005",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/kaodian-2026",
+      "title": "2026年报考点（考点）公告",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "93ad841451637ce73a7391c8ece22049511e94c783584861f3ac643c7923fa15",
+      "http_status": 200,
+      "snapshot_path": "pages/93ad841451637ce73a7391c8ece22049511e94c783584861f3ac643c7923fa15.html",
+      "bytes": 686
+    }
+  ]
+}

@@ -1,0 +1,127 @@
+{
+  "task_id": "SEARCH-004",
+  "category": "search",
+  "difficulty": "medium",
+  "instruction": "在某“双一流”高校的研究生院官网，查到指定专业（计算机科学与技术）的：①招生系统里该专业的编号；②该专业统一考试阶段要考哪几门业务课（3 门以上）。输出需覆盖 3 个要点，并给出 E4 及以上官方来源。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "official_source",
+    "major_code"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "专业代码"
+        ]
+      },
+      {
+        "id": "p2",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": false,
+        "any_of": [
+          "初试科目",
+          "考试科目"
+        ]
+      },
+      {
+        "id": "p3",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": false,
+        "any_of": [
+          "数学一",
+          "数学二",
+          "英语一",
+          "英语二",
+          "政治"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": true
+      }
+    ],
+    "must_not_claim": [
+      "据我所知该校代码一定是"
+    ],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "专业代码",
+          "代码"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "初试科目",
+          "考试科目"
+        ]
+      },
+      {
+        "id": "c3",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "数学",
+          "英语",
+          "政治"
+        ]
+      },
+      {
+        "id": "c4",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 1,
+        "critical": true
+      },
+      {
+        "id": "c5",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "据我所知该校代码一定是",
+          "一定是"
+        ]
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否给出专业代码与 3 门初试科目，且来源为官方？"
+        }
+      ]
+    }
+  },
+  "version": "1.0"
+}

@@ -1,0 +1,24 @@
+{
+  "task_id": "POL-002",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/zhengce-2025",
+      "title": "2025年硕士研究生招生政策文件",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "c51ff87504d7d5d7a45297150d0f269611e3bbca34e8e15d7d91987b2c55a41c",
+      "http_status": 200,
+      "snapshot_path": "pages/c51ff87504d7d5d7a45297150d0f269611e3bbca34e8e15d7d91987b2c55a41c.html",
+      "bytes": 671
+    },
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/zhengce-2026",
+      "title": "2026年硕士研究生招生政策文件",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "50cb5582550a926673d31988799c6f756c072e52b8451782999df7b683553543",
+      "http_status": 200,
+      "snapshot_path": "pages/50cb5582550a926673d31988799c6f756c072e52b8451782999df7b683553543.html",
+      "bytes": 742
+    }
+  ]
+}

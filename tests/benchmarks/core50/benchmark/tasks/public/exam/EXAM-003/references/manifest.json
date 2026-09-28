@@ -1,0 +1,10 @@
+{
+  "files": {
+    "admission_scores.csv": {
+      "sha256": "edccb79af2a95f70209769b08860215d1b18f7431aaa09c980b0424cd6b929c0",
+      "size": 226
+    }
+  },
+  "task_id": "EXAM-003",
+  "version": "1.0"
+}

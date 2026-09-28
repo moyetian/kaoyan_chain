@@ -1,0 +1,22 @@
+{
+  "files": {
+    "index.json": {
+      "sha256": "8902062f7d1bc66b8e858a3de3b76df71e3c14f9efda3bbce5d1b44a55c415de",
+      "size": 536
+    },
+    "meta.json": {
+      "sha256": "8902062f7d1bc66b8e858a3de3b76df71e3c14f9efda3bbce5d1b44a55c415de",
+      "size": 536
+    },
+    "pages/01348387d1bddc2192ce10a10ad7bcb6d300daef53d86c8ba4355435f5d1ba27.html": {
+      "sha256": "01348387d1bddc2192ce10a10ad7bcb6d300daef53d86c8ba4355435f5d1ba27",
+      "size": 539
+    },
+    "pages/01348387d1bddc2192ce10a10ad7bcb6d300daef53d86c8ba4355435f5d1ba27.meta.json": {
+      "sha256": "4f5a4d8a77fdec3a7e467e60fcd6b1566f33807ac808b9b63c429da0b27219e1",
+      "size": 441
+    }
+  },
+  "task_id": "SEARCH-011",
+  "version": "1.0"
+}

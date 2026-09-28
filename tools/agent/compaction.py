@@ -12,7 +12,7 @@
 
 现改为**结构化摘要**：
 1. ``goal`` / ``progress`` / ``file_ops`` / ``pending`` 做常规抽取；
-2. ``key_info`` 是核心保护对象：考纲约束、错因、待复习三类**整条保留**
+2. ``key_info`` 是核心保护对象：考纲约束、错因、待复习、来源与引文四类**整条保留**
    （单条上限 400 字符，而非 100），并有独立的分区与渲染上限；
 3. 摘要渲染本身有界（每分区最多 12 条，省略时写明条数），不会反过来撑爆上下文。
 
@@ -40,9 +40,16 @@ SUMMARY_KEYS = ("goal", "progress", "key_info", "file_ops", "pending")
 COMPACT_MODES = ("rule_only", "llm")
 DEFAULT_COMPACT_MODE = "rule_only"
 
-#: key_info 的三个保护类别。
-KEY_INFO_CATEGORIES = ("syllabus", "mistakes", "review")
-KEY_INFO_LABELS = {"syllabus": "考纲约束", "mistakes": "错因", "review": "待复习"}
+#: key_info 的保护类别。前三类为考研教学语义；[W4] 新增 ``citations``：
+#: 来源 URL 与引文行必须存活到压缩之后 —— 评测实测压缩会把网页正文与 URL
+#: 整段丢弃，模型只能凭记忆作答（引用 0 分 + 幻觉的直接机制之一）。
+KEY_INFO_CATEGORIES = ("syllabus", "mistakes", "review", "citations")
+KEY_INFO_LABELS = {"syllabus": "考纲约束", "mistakes": "错因", "review": "待复习",
+                   "citations": "来源与引文"}
+
+#: citations 类别的抽取条数上限（web_search 一次可返回 10+ URL，避免 URL
+#: 洪水把摘要块撑爆；其余类别无此限制，由渲染上限统一收口）。
+CITATION_MAX_ITEMS = 8
 
 #: 渲染时每个分区最多保留的条目数；超出部分以「（另有 N 条已省略）」收尾。
 MAX_SECTION_ITEMS = 12
@@ -68,6 +75,13 @@ _SYLLABUS_PATTERN = re.compile(
 )
 _MISTAKE_PATTERN = re.compile(r"错因|错误原因|易错|失误|卡点|踩坑")
 _REVIEW_PATTERN = re.compile(r"待复习|需复习|复习计划|复盘|背诵清单|再练")
+#: [W4] 来源与引文保护：URL 行、出处/来源标注、引文标注整行保留。
+#: 宁可多保留一行，也不让「模型引用过的 URL」在压缩中蒸发。
+_CITATION_PATTERN = re.compile(
+    r"https?://"
+    r"|来源\s*[:：]|出处\s*[:：]|引自|原文\s*[:：]"
+    r"|据[^，。；：]{0,16}(?:报道|公告|通知|文件|官网|简章)"
+)
 
 #: tool 消息 content 里的文件路径（抽不到就只记工具名）。
 _FILE_PATH_PATTERN = re.compile(
@@ -75,18 +89,18 @@ _FILE_PATH_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-#: LLM 提示词：把历史压缩成结构化 JSON。约束/错因/复习计划要求原文保留。
+#: LLM 提示词：把历史压缩成结构化 JSON。约束/错因/复习计划/来源引文要求原文保留。
 _LLM_PROMPT_TEMPLATE = """你是考研私教系统的上下文压缩器。请把下面的历史对话压缩成结构化 JSON 摘要。
 
 要求：
 1. 只输出一个合法 JSON 对象，不要输出任何解释或 Markdown 代码围栏；
 2. 必须包含五个键：goal / progress / key_info / file_ops / pending；
-3. key_info 是对象，必须包含 syllabus（考纲约束）/ mistakes（错因）/ review（待复习）三个数组；
-4. 考纲约束、错因、复习计划必须逐条**原文保留**，不得改写、不得省略；
+3. key_info 是对象，必须包含 syllabus（考纲约束）/ mistakes（错因）/ review（待复习）/ citations（来源与引文）四个数组；
+4. 考纲约束、错因、复习计划、来源 URL 与引文必须逐条**原文保留**，不得改写、不得省略；
 5. 每个数组元素是字符串，尽量精炼。
 
 JSON 结构示例：
-{"goal": ["学员目标"], "progress": ["已讲解内容"], "key_info": {"syllabus": ["考纲约束原文"], "mistakes": ["错因原文"], "review": ["待复习项"]}, "file_ops": ["read_file → 路径"], "pending": ["未被回应的诉求"]}
+{"goal": ["学员目标"], "progress": ["已讲解内容"], "key_info": {"syllabus": ["考纲约束原文"], "mistakes": ["错因原文"], "review": ["待复习项"], "citations": ["来源：https://…"]}, "file_ops": ["read_file → 路径"], "pending": ["未被回应的诉求"]}
 """
 
 #: LLM 提示词里历史正文的总字符上限与单条上限（压缩的输入也不该无限膨胀）。
@@ -163,11 +177,12 @@ def _pick_with_focus(messages: List[Dict[str, Any]], focus: Optional[str],
 
 
 def extract_key_info(messages: List[Dict[str, Any]]) -> Dict[str, List[str]]:
-    """抽取**不可丢失**的三类关键信息：考纲约束 / 错因 / 待复习。
+    """抽取**不可丢失**的关键信息：考纲约束 / 错因 / 待复习 / 来源与引文。
 
     这是本模块存在的核心理由。按行扫描全部消息（不区分 role —— 约束既可能
     由学员提出，也可能由私教复述），命中即整行保留；单条上限 400 字符，
-    **不做 100 字符截断**，保证完整约束句能进摘要。
+    **不做 100 字符截断**，保证完整约束句能进摘要。[W4] ``citations``
+    类别保护 URL 与出处行（上限 :data:`CITATION_MAX_ITEMS` 条）。
     """
     buckets: Dict[str, List[str]] = {cat: [] for cat in KEY_INFO_CATEGORIES}
     seen: Dict[str, set] = {cat: set() for cat in KEY_INFO_CATEGORIES}
@@ -175,6 +190,7 @@ def extract_key_info(messages: List[Dict[str, Any]]) -> Dict[str, List[str]]:
         ("syllabus", _SYLLABUS_PATTERN),
         ("mistakes", _MISTAKE_PATTERN),
         ("review", _REVIEW_PATTERN),
+        ("citations", _CITATION_PATTERN),
     )
     for msg in messages or []:
         text = _content_of(msg)
@@ -191,6 +207,10 @@ def extract_key_info(messages: List[Dict[str, Any]]) -> Dict[str, List[str]]:
                 if item not in seen[cat]:
                     seen[cat].add(item)
                     buckets[cat].append(item)
+    # [W4] citations 桶单独设上限：web_search 一次可返回 10+ URL，
+    # 不加限会把摘要块撑成 URL 清单；其余类别由渲染上限统一收口。
+    if len(buckets["citations"]) > CITATION_MAX_ITEMS:
+        buckets["citations"] = buckets["citations"][:CITATION_MAX_ITEMS]
     return buckets
 
 
@@ -296,10 +316,15 @@ def render_summary(summary: Dict[str, Any]) -> str:
     key_info = key_info if isinstance(key_info, dict) else {}
     key_items: List[str] = []
     for cat in KEY_INFO_CATEGORIES:
+        if cat == "citations":
+            continue
         for item in (key_info.get(cat) or []):
             if str(item).strip():
                 key_items.append(f"[{KEY_INFO_LABELS[cat]}] {item}")
     _render_section(lines, "[关键信息（考纲约束 / 错因 / 待复习）]", key_items)
+    # [W4] 来源与引文单独一段：URL/引文不与其他关键信息共享 12 条上限，
+    # 保证压缩后模型仍能引用真实来源（引用维度得分与抗幻觉的前置）。
+    _render_section(lines, "[来源与引文（可引用）]", list(key_info.get("citations") or []))
 
     _render_section(lines, "[工具与文件操作]", list(summary.get("file_ops") or []))
     _render_section(lines, "[待处理诉求]", list(summary.get("pending") or []))

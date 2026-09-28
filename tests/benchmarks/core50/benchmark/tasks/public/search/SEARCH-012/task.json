@@ -1,0 +1,101 @@
+{
+  "task_id": "SEARCH-012",
+  "category": "search",
+  "difficulty": "expert",
+  "instruction": "快照库中同一专业存在三条互相冲突的分数线公告（其中一条为官方发布、一条为后续修订、一条为第三方转载）。请判定应以哪一条为准，输出 `conflict` 说明，并给出被采信公告的 URL 与年份。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "smoke",
+    "snapshot",
+    "conflict",
+    "deterministic"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "公告 B",
+          "最新有效"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [
+      "以第三方转载为准"
+    ],
+    "ground_truth": {
+      "authoritative": "B",
+      "line": 355,
+      "year": 2025
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "string_eq",
+        "dimension": "factuality",
+        "path": "$.conflict",
+        "value": true,
+        "case_sensitive": false
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "公告 B",
+          "最新有效"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c3",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "355"
+        ]
+      },
+      {
+        "id": "c4",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "以第三方转载为准",
+          "采用公告 A",
+          "采用 340"
+        ]
+      },
+      {
+        "id": "c5",
+        "type": "year_tag",
+        "dimension": "source_quality",
+        "year": 2025
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

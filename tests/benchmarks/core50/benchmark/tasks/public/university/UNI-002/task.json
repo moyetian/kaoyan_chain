@@ -1,0 +1,87 @@
+{
+  "task_id": "UNI-002",
+  "category": "university",
+  "difficulty": "medium",
+  "instruction": "我想确认某专业初试自命题那门业务课到底考哪一科，请把业务课的编号和正式叫法都写出来。只能依据官方材料，不许凭印象推断。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "subject_code"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "科目代码",
+          "自命题"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "科目代码",
+          "代码"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "科目名称",
+          "名称"
+        ]
+      },
+      {
+        "id": "c3",
+        "type": "regex",
+        "dimension": "factuality",
+        "pattern": "\\b\\d{3,4}\\b"
+      },
+      {
+        "id": "c4",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 1
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否给出自命题科目代码与名称？"
+        }
+      ]
+    }
+  },
+  "version": "1.0"
+}

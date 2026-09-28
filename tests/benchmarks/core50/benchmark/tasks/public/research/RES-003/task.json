@@ -1,0 +1,99 @@
+{
+  "task_id": "RES-003",
+  "category": "research",
+  "difficulty": "expert",
+  "instruction": "为给定背景的用户选定 3 所院校（分别对应冲刺、稳妥、保底三档），输出院校横向对照表 + 官方出处清单（E4+，≥3 条）。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "long_horizon",
+    "official_source"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "冲",
+          "稳",
+          "保"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 3,
+        "dimension": "source_quality",
+        "critical": true
+      }
+    ],
+    "must_not_claim": [],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.schools",
+        "schema": {
+          "type": "array",
+          "minLength": 3,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "level",
+              "reason"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c2",
+        "type": "regex",
+        "dimension": "completeness",
+        "pattern": "(?=[\\s\\S]*冲)(?=[\\s\\S]*稳)(?=[\\s\\S]*保)"
+      },
+      {
+        "id": "c3",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 3,
+        "critical": true
+      },
+      {
+        "id": "c4",
+        "type": "regex",
+        "dimension": "factuality",
+        "pattern": "https?://[^\\s]+"
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否给出冲/稳/保三校对比与官方来源清单？"
+        }
+      ]
+    }
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

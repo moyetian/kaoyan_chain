@@ -19,6 +19,14 @@ sympy>=1.12
 
 # ── 2. 历年真题与参考资料 PDF 抽取技能 (pdf_extractor) ──
 # 支持从本地真题扫描件/教材 PDF 抽取指定页码并切分题号 (cryptography 用于 AES 权限位解密)
+# [审查 P1/P7 说明] 版本兼容矩阵（实测）：
+#   pypdf 6.x + cryptography 50  → 无警告（CI / 新装环境默认组合）；
+#   pypdf 3.x + cryptography 46/47 → ARC4 弃用警告（CryptographyDeprecationWarning，
+#     UserWarning 子类）；已由 pyproject filterwarnings 精确白名单（限定 pypdf 模块）
+#     忽略，测试不判红；
+#   pypdf 3.x + cryptography 48+ → ARC4 被移除，pypdf 3.x 导入即 ImportError
+#     → 真题 PDF 提取不可用（doctor 会如实报"未安装"，装新版 pypdf 即恢复）。
+#   故旧环境如遇 PDF 提取失效，请 `pip install -U pypdf` 升级到 6.x。
 pypdf>=3.17.0
 cryptography>=41.0.0
 

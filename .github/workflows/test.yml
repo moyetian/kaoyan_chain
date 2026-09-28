@@ -190,7 +190,7 @@ jobs:
 
     - name: Evaluate Pipeline Gate · 考纲守卫 (--syllabus)
       # [C1 可证] 考纲红线拦截的功能评测：tests/benchmarks/syllabus_guard.jsonl
-      # （128 条 = math1/2/3/396 × 正/负样本，否定/笔记语境 ≥30%），逐条跑
+      # （137 条 = math1/2/3/396 × 正/负样本，否定/笔记语境 ≥30%），逐条跑
       # agent.hooks 的 syllabus_guard_hook。完全离线（纯正则 + 本地 Hook，
       # 无网络 / LLM / API Key、不计费）。达标阈值 98%：
       #   退出码 0（达标）→ 通过；1（不达标）→ ::error:: 判红；

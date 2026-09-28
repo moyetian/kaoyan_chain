@@ -116,8 +116,14 @@ def extract_pdf_page(pdf_path, page_num=1):
         return f"读取 PDF 异常: {exc}"
 
 
-def extract_pdf_pages(pdf_path, max_pages=8):
-    """批量提取 PDF 前 N 页，返回结构化结果。"""
+def extract_pdf_pages(pdf_path, max_pages=8, start_page=1):
+    """批量提取 PDF 第 ``start_page`` 页起的连续 N 页，返回结构化结果。
+
+    [W6 工具改进] ``start_page``（1-based，默认第 1 页）为起始页：长文档
+    （如 20 页招生简章）的关键字段常分布在文档各处，单次只读前 8 页会成建制
+    漏读；模型可按页续读（评测实测 PDF-005 类任务需要后段页面的表格数据）。
+    越界起始页收敛到最后一页，绝不抛错。
+    """
     path = Path(pdf_path)
     result = {
         "success": False,
@@ -139,8 +145,11 @@ def extract_pdf_pages(pdf_path, max_pages=8):
         reader = pypdf.PdfReader(str(path))
         total = len(reader.pages)
         result["total_pages"] = total
-        cap = min(max_pages, total) if max_pages else total
-        for index in range(cap):
+        start = max(1, int(start_page or 1))
+        if start > total:
+            start = max(1, total)          # 越界收敛到最后一页（空文档除外）
+        cap = min(start - 1 + (max_pages if max_pages else total), total)
+        for index in range(start - 1, cap):
             try:
                 text = reader.pages[index].extract_text() or ""
             except Exception as page_error:

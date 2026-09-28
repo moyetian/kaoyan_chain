@@ -1,0 +1,94 @@
+{
+  "task_id": "UNI-004",
+  "category": "university",
+  "difficulty": "medium",
+  "instruction": "帮我查某学院研究生二轮考核的科目安排及其官方出处（须 E4+）。如果校方并没有公布要读哪些教材，就如实说明这一情况，切勿虚构书名。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "retest",
+    "books"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "复试科目"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": true
+      }
+    ],
+    "must_not_claim": [
+      "官方指定参考书为《"
+    ],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "复试科目",
+          "复试"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "completeness",
+        "any_of": [
+          "参考书目",
+          "书目"
+        ]
+      },
+      {
+        "id": "c3",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 1,
+        "critical": true
+      },
+      {
+        "id": "c4",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "官方指定参考书为《",
+          "指定教材为《"
+        ]
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否给出复试科目与官方出处，未公布时不编造书目？"
+        }
+      ]
+    }
+  },
+  "version": "1.0"
+}

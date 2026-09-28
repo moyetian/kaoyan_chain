@@ -225,6 +225,9 @@ def run_doctor(return_summary=False):
     except ImportError:
         check_item("数学高精符号验算 (sympy)", False, "", "未安装 (pip install sympy)；基础求导仍可运行但高精验算受限", warn=True)
         warnings += 1
+    except Exception as _e:  # [审查 P2] 非导入类异常（如 -W error 下警告升级）不得中断体检
+        check_item("数学高精符号验算 (sympy)", False, "", f"加载失败 (请重装 sympy) ({type(_e).__name__}: {_e})", warn=True)
+        warnings += 1
 
     # pypdf
     has_pypdf = False
@@ -235,6 +238,9 @@ def run_doctor(return_summary=False):
     except ImportError:
         check_item("真题 PDF 提取 (pypdf)", False, "", "未安装 (pip install pypdf)；PDF 真题提取暂不可用", warn=True)
         warnings += 1
+    except Exception as _e:  # [审查 P2] 非导入类异常不得中断体检
+        check_item("真题 PDF 提取 (pypdf)", False, "", f"加载失败 (请重装 pypdf) ({type(_e).__name__}: {_e})", warn=True)
+        warnings += 1
 
     # cryptography
     try:
@@ -242,6 +248,9 @@ def run_doctor(return_summary=False):
         check_item("真题 PDF AES 解密权限 (cryptography)", True, f"已就绪 (v{cryptography.__version__})")
     except ImportError:
         check_item("真题 PDF AES 解密权限 (cryptography)", False, "", "未安装 (pip install cryptography)；加密/带权限位的试卷 PDF 提取可能受限", warn=True)
+        warnings += 1
+    except Exception as _e:  # [审查 P2] 非导入类异常不得中断体检
+        check_item("真题 PDF AES 解密权限 (cryptography)", False, "", f"加载失败 (请重装 cryptography) ({type(_e).__name__}: {_e})", warn=True)
         warnings += 1
 
     # Pillow
@@ -254,6 +263,9 @@ def run_doctor(return_summary=False):
     except ImportError:
         check_item("图像处理与截图 (Pillow)", False, "", "未安装 (pip install Pillow)；多模态拍照批改暂不可用", warn=True)
         warnings += 1
+    except Exception as _e:  # [审查 P2] 非导入类异常不得中断体检
+        check_item("图像处理与截图 (Pillow)", False, "", f"加载失败 (请重装 Pillow) ({type(_e).__name__}: {_e})", warn=True)
+        warnings += 1
 
     # RapidOCR
     try:
@@ -261,6 +273,9 @@ def run_doctor(return_summary=False):
         check_item("本地离线 OCR (rapidocr)", True, "已就绪")
     except ImportError:
         check_item("本地离线 OCR (rapidocr)", False, "", "未安装 (可选，仅用于离线 OCR)", warn=True)
+    except Exception as _e:  # [审查 P2] 非导入类异常不得中断体检
+        check_item("本地离线 OCR (rapidocr)", False, "", f"加载失败 (可选，仅用于离线 OCR) ({type(_e).__name__}: {_e})", warn=True)
+        warnings += 1
 
     # PySide6
     try:
@@ -269,6 +284,9 @@ def run_doctor(return_summary=False):
     except ImportError:
         check_item("GUI 客户端图形界面 (PySide6)", False, "", "未安装 (pip install PySide6)；ky gui 可视化端暂不可用", warn=True)
         warnings += 1
+    except Exception as _e:  # [审查 P2] 非导入类异常不得中断体检
+        check_item("GUI 客户端图形界面 (PySide6)", False, "", f"加载失败 (请重装 PySide6) ({type(_e).__name__}: {_e})", warn=True)
+        warnings += 1
 
     # BeautifulSoup4
     try:
@@ -276,6 +294,9 @@ def run_doctor(return_summary=False):
         check_item("网页情报清洗解析 (beautifulsoup4)", True, f"已就绪 (v{bs4.__version__})")
     except ImportError:
         check_item("网页情报清洗解析 (beautifulsoup4)", False, "", "未安装 (pip install beautifulsoup4)；将降级为纯正则清洗", warn=True)
+        warnings += 1
+    except Exception as _e:  # [审查 P2] 非导入类异常不得中断体检
+        check_item("网页情报清洗解析 (beautifulsoup4)", False, "", f"加载失败 (请重装 beautifulsoup4) ({type(_e).__name__}: {_e})", warn=True)
         warnings += 1
 
     # ── 3. 工作区架构与协议规范 ──
@@ -563,7 +584,6 @@ def run_doctor(return_summary=False):
     # ── 5. 网关与看板构建环境 ──
     print(color("\n【5. Web 伴侣网关与看板系统】", C.BOLD))
     build_script = ROOT / "05-考研看板" / "build.py"
-    html_docs = ROOT / "docs" / "index.html"
     if not check_item("看板编译引擎 (05-考研看板/build.py)", build_script.exists()):
         issues += 1
 

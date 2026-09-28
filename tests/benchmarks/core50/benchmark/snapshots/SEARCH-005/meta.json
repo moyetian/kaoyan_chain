@@ -1,0 +1,15 @@
+{
+  "task_id": "SEARCH-005",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/dagang-2026",
+      "title": "2026年自命题科目考试大纲发布页",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "c5244d879958dc8f7807638d8b2e24722d554b265b9c47815edc25bb831cc40d",
+      "http_status": 200,
+      "snapshot_path": "pages/c5244d879958dc8f7807638d8b2e24722d554b265b9c47815edc25bb831cc40d.html",
+      "bytes": 722
+    }
+  ]
+}

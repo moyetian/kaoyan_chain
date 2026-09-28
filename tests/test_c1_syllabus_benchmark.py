@@ -4,8 +4,9 @@
 背景（升级规划 C1，D2 短板）：考纲红线拦截此前只有 23 个 pytest 用例，
 "拦得住多少"不可度量。C1 把它升级为可评测资产：
 
-  * ``tests/benchmarks/syllabus_guard.jsonl`` —— 128 条评测集
-    （math1/2/3/396 × 正/负样本，否定/笔记语境 ≥30%）；
+  * ``tests/benchmarks/syllabus_guard.jsonl`` —— 137 条评测集
+    （math1/2/3/396 × 正/负样本，否定/笔记语境 ≥30%；含 P3 修复的
+    「否定词+副词」变体与「特别讲/个别讲」后视排除对照）；
   * ``tools/benchmarks/runner.py`` —— 通用 jsonl 评测引擎（C1/C2 共用）；
   * ``evaluate_pipeline.py --syllabus`` + CI 门禁（pass ≥98%）。
 
@@ -168,8 +169,8 @@ def test_injected_out_of_scope_question_is_blocked(text):
 def test_flipped_expectation_fails_gate():
     """[阴性对照] 把评测集里若干样本的期望值翻转 → 门禁必须判红（退出码 1）。
 
-    证明"100% 通过"不是测试空转。注意阈值语义：128 条 × 2% 容差 = 允许 2 条
-    失败，故必须翻转 **3 条** 才能跌破 98%（翻 1 条时通过率 99.22% 仍达标 ——
+    证明"100% 通过"不是测试空转。注意阈值语义：137 条 × 2% 容差 = 允许 2 条
+    失败，故必须翻转 **3 条** 才能跌破 98%（翻 1 条时通过率 99.27% 仍达标 ——
     这正是阈值该有的行为，先断言它不红，再断言 3 条必红）。
     """
     cases, invalid = load_cases(BENCH_FILE)
@@ -184,7 +185,7 @@ def test_flipped_expectation_fails_gate():
     report = run_benchmark(flipped_cases, _judge_with(hm), name="flipped")
     assert report.failed == 3, f"翻转 3 条后应有 3 条失败，实际 {report.failed}"
     assert exit_code(report, threshold=0.98, min_samples=1) == EXIT_FAIL, \
-        "翻转 3 条（通过率 97.66% < 98%）后门禁未判红 —— 评测集未真正接入判定"
+        "翻转 3 条（通过率 97.81% < 98%）后门禁未判红 —— 评测集未真正接入判定"
 
     # 单条翻转仍达标（证明 98% 阈值不是"一票否决"的假门禁）
     single = [dict(c, expect_allow=True) if c["id"] == targets[0] else c for c in cases]

@@ -1,0 +1,147 @@
+{
+  "task_id": "SEARCH-008",
+  "category": "search",
+  "difficulty": "medium",
+  "instruction": "找到同一所高校相邻两届（2024 与 2025）硕士招生简章页面的链接，并指出两版之间至少 2 处不一致之处。每处均须有页面依据（E4+），不得凭空推测。请以 JSON 作答：`versions`（≥2 项，每项含 year/url）与 `changes`（≥2 项，每项含 aspect/before/after）。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "diff",
+    "official_source"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "2024"
+        ]
+      },
+      {
+        "id": "p2",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "2025"
+        ]
+      },
+      {
+        "id": "p3",
+        "weight": 1.0,
+        "dimension": "completeness",
+        "critical": false,
+        "any_of": [
+          "差异",
+          "变化"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 2,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [
+      "完全相同"
+    ],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "json_schema",
+        "dimension": "factuality",
+        "critical": true,
+        "path": "$.versions",
+        "schema": {
+          "type": "array",
+          "minLength": 2,
+          "items": {
+            "type": "object",
+            "required": [
+              "year",
+              "url"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c2",
+        "type": "regex",
+        "dimension": "factuality",
+        "critical": true,
+        "pattern": "20(24|25)"
+      },
+      {
+        "id": "c3",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.changes",
+        "schema": {
+          "type": "array",
+          "minLength": 2,
+          "items": {
+            "type": "object",
+            "required": [
+              "aspect",
+              "before",
+              "after"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c4",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 2
+      },
+      {
+        "id": "c5",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "无任何变化",
+          "完全相同"
+        ]
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否给出两版链接并列出至少 2 处差异？"
+        }
+      ]
+    }
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer",
+    "schema": {
+      "type": "object",
+      "required": [
+        "versions",
+        "changes"
+      ]
+    }
+  }
+}

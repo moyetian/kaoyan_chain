@@ -1,0 +1,15 @@
+{
+  "task_id": "SEARCH-003",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/chafen-2026",
+      "title": "2026年硕士研究生初试成绩查询说明",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "47f0e81a5d5a16c4ed9ae47037ab121da5381148f0be63f84b33ad3f647d2de6",
+      "http_status": 200,
+      "snapshot_path": "pages/47f0e81a5d5a16c4ed9ae47037ab121da5381148f0be63f84b33ad3f647d2de6.html",
+      "bytes": 779
+    }
+  ]
+}

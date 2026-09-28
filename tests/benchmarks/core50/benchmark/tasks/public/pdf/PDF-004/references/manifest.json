@@ -1,0 +1,14 @@
+{
+  "files": {
+    "brief_2025.pdf": {
+      "sha256": "5f2e42243da7b4378658519e36fa3be03060b510551268ca02d75e9433e2f70c",
+      "size": 778
+    },
+    "brief_2026.pdf": {
+      "sha256": "e88e37d08e09ec1b5a9b93cd9f120f517f66567f73d7a5b16fe708614ad0b4f1",
+      "size": 784
+    }
+  },
+  "task_id": "PDF-004",
+  "version": "1.0"
+}

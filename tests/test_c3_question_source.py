@@ -1076,6 +1076,55 @@ def test_scan_error_records_marks_tampered(tmp_path, monkeypatch):
     assert recs[0]["source_id"] == src.source_id  # 落盘身份仍在（供修复对照）
 
 
+# ──────────── 审查 P4：变异测试的补丁生效性（双导入绑定） ────────────
+# 背景：外部代码审查（2026-09-26）发现双导入使同一模块存在两份对象 ——
+# exam_composer 绑定 skills.question_source（对象 A），error_logger 绑定
+# tools.skills.question_source（对象 B），A ≠ B。变异测试（令 verify 恒真）
+# 若把补丁打在「另一份」上会**静默失效**（用例照常通过 = 假阴性）。
+# 以下两条用「patch 实际绑定的类对象 + 断言行为翻转」把风险钉死：
+# 补丁目标一律经模块属性的 __globals__ 定位（不写死导入路径），
+# D2 双导入治理（两份合并为一份）后这两条应保持绿。
+
+def test_verify_patch_on_exam_bound_class_flips_whitelist_gate(tmp_path, monkeypatch):
+    """[审查 P4] 白名单篡改路径：补丁打在 exam 实际绑定的类上必须行为翻转。"""
+    good = QuestionSource.build(_GOOD_STEM, ORIGIN_WHITELIST)
+    bad = QuestionSource.build(_BAD_STEM, ORIGIN_WHITELIST)
+    slice_text = (
+        _card_with_id(_GOOD_STEM, good, card_no=1)
+        + "\n" + _card_with_id("被改动后的题干内容示例文本。", bad, card_no=2)
+    )
+    _setup_ws(tmp_path, monkeypatch, slice_text)
+
+    baseline = _compose(count=2)
+    assert baseline["source_breakdown"]["tampered"] == 1, "基线：篡改卡未被排除"
+
+    # 令 exam 实际使用的 QuestionSource.verify 恒真 → 闸门失效（篡改卡不再被排除）
+    bound_cls = exam.source_from_card.__globals__["QuestionSource"]
+    monkeypatch.setattr(bound_cls, "verify", lambda self, stem: True)
+    flipped = _compose(count=2)
+    assert flipped["source_breakdown"]["tampered"] == 0, (
+        "补丁未生效：verify 恒真后篡改卡仍被排除 —— 变异测试打在了错误的模块"
+        "对象上（双导入分裂，见审查 P4 / 规划 D2）"
+    )
+
+
+def test_verify_patch_on_error_logger_bound_class_flips_mistake_gate(tmp_path, monkeypatch):
+    """[审查 P4 对称面] 错题路径：补丁打在 error_logger 实际绑定的类上必须行为翻转。"""
+    _patch_roots(tmp_path, monkeypatch)
+    src = QuestionSource.build(_MISTAKE_STEM, ORIGIN_MISTAKE)
+    _write_mistake_card(tmp_path, _mistake_card(stem="被改动后的错题题干示例文本。", src=src))
+
+    baseline = error_logger.scan_error_records("pro")
+    assert baseline[0]["source_tampered"] is True, "基线：篡改错题卡未被标记"
+
+    bound_cls = error_logger.source_from_card.__globals__["QuestionSource"]
+    monkeypatch.setattr(bound_cls, "verify", lambda self, stem: True)
+    flipped = error_logger.scan_error_records("pro")
+    assert flipped[0]["source_tampered"] is False, (
+        "补丁未生效：verify 恒真后错题卡仍被标记篡改 —— 变异测试打错了模块对象"
+    )
+
+
 def test_mistake_card_with_valid_identity_passes(tmp_path, monkeypatch):
     """[P2] 自洽错题卡正常进卷，进卷身份 == 落盘身份（不现场重建）。"""
     _patch_roots(tmp_path, monkeypatch)

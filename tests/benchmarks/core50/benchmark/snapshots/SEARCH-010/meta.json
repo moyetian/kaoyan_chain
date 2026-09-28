@@ -1,0 +1,24 @@
+{
+  "task_id": "SEARCH-010",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/feiquanzhizhi-2026",
+      "title": "2026年非全日制硕士研究生业务课设置",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "e48023a0a0be8eaeba81c23564c8f0afc2a05e0c77cde380d8e053c4778d96f7",
+      "http_status": 200,
+      "snapshot_path": "pages/e48023a0a0be8eaeba81c23564c8f0afc2a05e0c77cde380d8e053c4778d96f7.html",
+      "bytes": 773
+    },
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/quanzhizhi-2026",
+      "title": "2026年全日制硕士研究生业务课设置",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "276704eb215261265e8dc09f74d0c4cea940159c7b942f6e0411a2ae11e6cc5b",
+      "http_status": 200,
+      "snapshot_path": "pages/276704eb215261265e8dc09f74d0c4cea940159c7b942f6e0411a2ae11e6cc5b.html",
+      "bytes": 686
+    }
+  ]
+}

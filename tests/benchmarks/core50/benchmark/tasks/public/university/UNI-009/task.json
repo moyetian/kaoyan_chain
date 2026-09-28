@@ -1,0 +1,95 @@
+{
+  "task_id": "UNI-009",
+  "category": "university",
+  "difficulty": "expert",
+  "instruction": "镜像站里，学校主页与下属二级单位页面给出的 081200 专业计划名额对不上。请把这一情况结构化输出 `conflict` 字段（含两处数值与各自来源），并给出你采信的结论。仅依据本地 fixture。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "fixture",
+    "conflict",
+    "deterministic"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "冲突",
+          "不一致"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [
+      "两页完全一致"
+    ],
+    "ground_truth": {
+      "conflict": true,
+      "a_plan": 33,
+      "b_plan": 33
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "string_eq",
+        "dimension": "factuality",
+        "path": "$.conflict",
+        "value": true,
+        "case_sensitive": false
+      },
+      {
+        "id": "c2",
+        "type": "numeric",
+        "dimension": "factuality",
+        "path": "$.a_plan",
+        "op": "eq",
+        "value": 33,
+        "tol": 0.5
+      },
+      {
+        "id": "c3",
+        "type": "numeric",
+        "dimension": "factuality",
+        "path": "$.b_plan",
+        "op": "eq",
+        "value": 33,
+        "tol": 0.5
+      },
+      {
+        "id": "c4",
+        "type": "point_hit",
+        "dimension": "completeness",
+        "any_of": [
+          "冲突",
+          "不一致",
+          "矛盾"
+        ]
+      },
+      {
+        "id": "c5",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "两页完全一致"
+        ]
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

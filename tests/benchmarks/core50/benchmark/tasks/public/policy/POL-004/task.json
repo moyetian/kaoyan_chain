@@ -1,0 +1,93 @@
+{
+  "task_id": "POL-004",
+  "category": "policy",
+  "difficulty": "hard",
+  "instruction": "2026 版政策相对 2025 版拿掉了原先的一条加分规定（关于学科竞赛获奖加分）。请判定该规定目前的状态：是被移除而不再生效，还是这版文件里根本没写过？仅依据本地文本。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "fixture",
+    "deletion",
+    "deterministic"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "竞赛加分",
+          "第六条"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E1",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [
+      "未提及",
+      "仍然适用"
+    ],
+    "ground_truth": {
+      "deleted_clause": "第六条（竞赛加分）",
+      "status": "已删除"
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "string_contains",
+        "dimension": "factuality",
+        "path": "$.answer",
+        "value": "已删除"
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "竞赛加分",
+          "第六条",
+          "加 5 分",
+          "加5分"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c3",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "未提及",
+          "不存在于任何版本",
+          "仍然适用"
+        ]
+      },
+      {
+        "id": "c4",
+        "type": "year_tag",
+        "dimension": "source_quality",
+        "year": 2025
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

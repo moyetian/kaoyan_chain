@@ -545,7 +545,7 @@ def _palette_sections(math_off: bool) -> List[Tuple[str, List[Tuple[str, str]]]]
             ("/memory [status|prune]", "三级分层记忆健康度查看与滚动修剪"),
             ("/rag <关键词>", "本地知识库混合检索（向量不可用时显式降级并给出原因）"),
             ("/gain", "学习增益代理指标周趋势报告（复测通过率/错因复发/计划完成率，本地落盘）"),
-            ("/rollback", "快速回滚 Plan Mode 上一次快照备份"),
+            ("/rollback", "快照回滚：默认回最近一次；`/rollback --list` 查看快照，--file/--checkpoint 精确回滚"),
             ("/plan", "个人专属定制化必考方案向导（时间/考纲/白名单/学情摸底/作息）"),
             ("/status", "查看考研总战役大盘态势、倒计时与四科目标矩阵"),
             ("/config", "分类多选管理菜单：配置大模型 API 与机器人 Webhook"),

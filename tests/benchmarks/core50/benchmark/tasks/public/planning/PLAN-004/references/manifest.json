@@ -1,0 +1,10 @@
+{
+  "files": {
+    "weak_points.csv": {
+      "sha256": "729b7e0adce36b01ec4f34be758fbd6b5ab7932997359738e9392837c1d9e79f",
+      "size": 280
+    }
+  },
+  "task_id": "PLAN-004",
+  "version": "1.0"
+}

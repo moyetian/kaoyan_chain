@@ -1,0 +1,83 @@
+{
+  "task_id": "POL-005",
+  "category": "policy",
+  "difficulty": "hard",
+  "instruction": "检索某省教育考试院发布的考生就地参加考试的受理须知，判断你查到的这一份是否为当前最新版本，并显式标注评估时间 `evaluated_at`（ISO8601）。须 E4+ 来源。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "timeliness",
+    "evaluated_at"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "报考点"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "报考点"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "regex",
+        "dimension": "factuality",
+        "pattern": "evaluated_at"
+      },
+      {
+        "id": "c3",
+        "type": "regex",
+        "dimension": "factuality",
+        "pattern": "\\d{4}-\\d{2}-\\d{2}T"
+      },
+      {
+        "id": "c4",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 1
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否判断版本新旧并标注 evaluated_at？"
+        }
+      ]
+    }
+  },
+  "version": "1.0"
+}

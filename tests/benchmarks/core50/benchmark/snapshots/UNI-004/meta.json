@@ -1,0 +1,15 @@
+{
+  "task_id": "UNI-004",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/kemu-dagang-2026",
+      "title": "2026年自命题科目考试范围说明",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "df97217c0cf59fb9414d67f01a4226236fff43500250ea8a824c1d88f97bb80d",
+      "http_status": 200,
+      "snapshot_path": "pages/df97217c0cf59fb9414d67f01a4226236fff43500250ea8a824c1d88f97bb80d.html",
+      "bytes": 828
+    }
+  ]
+}

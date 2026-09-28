@@ -1,0 +1,111 @@
+{
+  "task_id": "UNI-006",
+  "category": "university",
+  "difficulty": "hard",
+  "instruction": "某校研究生招生的学校主页和下属二级单位页面都写了同一专业今年计划招收多少人，请把两处的数字都核出来对照。如果两处对不上，请明确点出这一出入之处、说明你采信哪一处以及理由。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "cross_check",
+    "conflict"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "研究生院"
+        ]
+      },
+      {
+        "id": "p2",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "学院"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 2,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [
+      "两处完全一致"
+    ],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "研究生院"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "学院"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c3",
+        "type": "point_hit",
+        "dimension": "completeness",
+        "any_of": [
+          "不一致",
+          "冲突",
+          "差异"
+        ]
+      },
+      {
+        "id": "c4",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 2
+      },
+      {
+        "id": "c5",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "两处完全一致",
+          "无任何冲突"
+        ]
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否发现并显式判定研究生院页与学院页的人数冲突？"
+        }
+      ]
+    }
+  },
+  "version": "1.0"
+}

@@ -1,0 +1,110 @@
+{
+  "task_id": "PLAN-003",
+  "category": "planning",
+  "difficulty": "medium",
+  "instruction": "在 PLAN-002 基础上加入两项要求：每周安排一次全真自测；并把备考划分成基础、强化、冲刺三个依次递进的阶段。输出计划并校验阶段边界与各阶段时长占比。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "deterministic",
+    "constraint",
+    "stages"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "模考"
+        ]
+      },
+      {
+        "id": "p2",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": false,
+        "any_of": [
+          "基础",
+          "强化",
+          "冲刺"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "constraint",
+        "dimension": "task_completion",
+        "critical": true,
+        "answer_path": "$.schedule",
+        "rules": [
+          {
+            "kind": "total_days",
+            "op": "eq",
+            "value": 100
+          },
+          {
+            "kind": "daily_total_hours",
+            "op": "eq",
+            "value": 6
+          },
+          {
+            "kind": "no_overlap",
+            "value": true
+          }
+        ]
+      },
+      {
+        "id": "c2",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.stages",
+        "schema": {
+          "type": "array",
+          "minLength": 3,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "start_day",
+              "end_day",
+              "ratio"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c3",
+        "type": "regex",
+        "dimension": "completeness",
+        "path": "$.stages",
+        "pattern": "基础[\\s\\S]*强化[\\s\\S]*冲刺"
+      },
+      {
+        "id": "c4",
+        "type": "regex",
+        "dimension": "factuality",
+        "critical": true,
+        "pattern": "(自测|模拟|模考|全真)"
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

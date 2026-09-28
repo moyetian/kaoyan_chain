@@ -1,0 +1,107 @@
+{
+  "task_id": "EXAM-004",
+  "category": "exam",
+  "difficulty": "hard",
+  "instruction": "对照大纲 TXT 与真题 CSV，输出 2024→2025 新增考点清单（≥3 项）。仅依据本地 fixture。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "fixture",
+    "deterministic",
+    "diff"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "拥塞控制",
+          "死锁检测"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [
+      "2024 年新增了拥塞控制"
+    ],
+    "ground_truth": {
+      "added": [
+        {
+          "point": "拥塞控制",
+          "year": 2025
+        },
+        {
+          "point": "死锁检测",
+          "year": 2025
+        },
+        {
+          "point": "B+ 树",
+          "year": 2025
+        }
+      ]
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.added",
+        "schema": {
+          "type": "array",
+          "minLength": 3,
+          "items": {
+            "type": "object",
+            "required": [
+              "point",
+              "year"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c2",
+        "type": "set_includes",
+        "dimension": "completeness",
+        "values": [
+          "拥塞控制",
+          "死锁检测",
+          "B+ 树",
+          "B+树"
+        ],
+        "min_hits": 2
+      },
+      {
+        "id": "c3",
+        "type": "regex",
+        "dimension": "factuality",
+        "critical": true,
+        "path": "$.added",
+        "pattern": "2025"
+      },
+      {
+        "id": "c4",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "2024 年新增了拥塞控制"
+        ]
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

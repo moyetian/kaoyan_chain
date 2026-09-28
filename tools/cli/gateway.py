@@ -378,6 +378,9 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                 append_live_message("user", f"[微信ClawBot提问]: {user_msg}")
                 append_live_message("assistant", reply)
 
+                # [W1] 不再返回 usage 字段：旧实现用请求/回复的字符长度冒充 token 用量
+                # —— 伪数据比缺失更坏（下游无法区分真假，会当真使用）。
+                # 真实用量需 query_llm_reply 透出上游 usage，属 W8 统一客户端范围。
                 completion_data = {
                     "id": f"chatcmpl-ky-{int(time.time())}",
                     "object": "chat.completion",
@@ -387,8 +390,7 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                         "index": 0,
                         "message": {"role": "assistant", "content": reply},
                         "finish_reason": "stop"
-                    }],
-                    "usage": {"prompt_tokens": len(user_msg), "completion_tokens": len(reply), "total_tokens": len(user_msg) + len(reply)}
+                    }]
                 }
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")

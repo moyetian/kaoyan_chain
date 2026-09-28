@@ -1,0 +1,13 @@
+# private_demo：Private/Public 分离机制演示（DoD #15）
+# v1.0 只交付**机制**，private 集内置 0 题（明确边界，见方案 R6）。
+# 发布流程：private 任务不入公开仓库；CI 用 private_demo 验证 --split private 能正确隔离。
+id: private_demo
+split: private
+version: "1.0"
+description: "Private 集分离机制演示（v1.0 内置 0 题）"
+task_ids: all
+filters: {}
+defaults:
+  runs: 1
+  time_limit: 300
+  tool_limit: 60

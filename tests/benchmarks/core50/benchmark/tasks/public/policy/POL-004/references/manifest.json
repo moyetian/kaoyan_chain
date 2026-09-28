@@ -1,0 +1,14 @@
+{
+  "files": {
+    "policy_2025.txt": {
+      "sha256": "6e30feb206e6134e76d886f505f698a6acf55e33d22e35d7c0edd61888404258",
+      "size": 770
+    },
+    "policy_2026.txt": {
+      "sha256": "7018b887a5cabb64a4b11b6f995c174de481e8a2f459757ebe82c513d748daec",
+      "size": 705
+    }
+  },
+  "task_id": "POL-004",
+  "version": "1.0"
+}

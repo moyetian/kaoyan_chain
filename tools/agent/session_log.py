@@ -12,7 +12,7 @@ B3a 之前 ``AgentRunner.history`` 只活在内存里：进程一退出，上下
 ``AgentEvent`` schema 与 history 重建规则，供后续批次（B3b / C 系列 / E3）复用。
 ``.memory/`` 是本地隐私目录（.gitignore 与导出排除均已覆盖），日志不随公开副本出门。
 
-AgentEvent schema（``SCHEMA_VERSION = 1``）
+AgentEvent schema（``SCHEMA_VERSION = 2``）
 ------------------------------------------
 一条事件是一个 JSON 对象::
 
@@ -22,7 +22,7 @@ AgentEvent schema（``SCHEMA_VERSION = 1``）
       "type": "user",                    # 见 KNOWN_EVENT_TYPES
       "parent": null,                    # 串链：tool_result 指向对应 tool_call 的事件 id
       "payload": {"content": "..."},     # 各类型自定义（见下）
-      "schema_version": 1
+      "schema_version": 2
     }
 
 各类型 payload 约定：
@@ -36,6 +36,13 @@ AgentEvent schema（``SCHEMA_VERSION = 1``）
   —— ``content`` 超过 :data:`TOOL_RESULT_MAX_CHARS` 时截断存储
   （``truncated=True`` 标注）。**截断不破坏 resume 语义**：重建 history 不依赖
   tool 事件，它们只进日志供审计与后续批次分析。
+* ``llm_call``（W1 新增）: ``{"model": str, "allow_tools": bool,
+                        "latency_ms": int, "attempts": int, "ok": bool,
+                        "error_kind": str | None, "usage": dict | None}``
+  —— 每次 LLM 请求一条（含重试与 400 降级路径），``usage`` 为上游返回的
+  原始 usage 字典（不返回时为 ``None``，**绝不伪造**）；``error_kind`` 取值：
+  ``http_<code>`` / ``http_400_downgrade`` / ``network`` / ``too_large`` /
+  ``invalid_response`` / ``exception``。本事件只作观测埋点，**不参与 history 重建**。
 * ``compact``:       ``{"summary": str, "before_messages": int, "after_messages": int}``
 * ``session_end``:   ``{"active_subject": str}``
 
@@ -72,7 +79,8 @@ from typing import Any, Dict, List, Optional, Tuple
 # ── 常量 ────────────────────────────────────────────────────────────────
 
 #: AgentEvent schema 版本。字段结构变化时递增，旧事件保持可读。
-SCHEMA_VERSION = 1
+#: v2（W1）：新增 ``llm_call`` 事件（LLM 调用耗时/用量/错误分类埋点）。
+SCHEMA_VERSION = 2
 
 #: 已知事件类型集合（新增类型须同时更新本文档的 payload 约定）。
 EVENT_SESSION_START = "session_start"
@@ -80,6 +88,7 @@ EVENT_USER = "user"
 EVENT_ASSISTANT = "assistant"
 EVENT_TOOL_CALL = "tool_call"
 EVENT_TOOL_RESULT = "tool_result"
+EVENT_LLM_CALL = "llm_call"
 EVENT_COMPACT = "compact"
 EVENT_SESSION_END = "session_end"
 
@@ -89,6 +98,7 @@ KNOWN_EVENT_TYPES = frozenset({
     EVENT_ASSISTANT,
     EVENT_TOOL_CALL,
     EVENT_TOOL_RESULT,
+    EVENT_LLM_CALL,
     EVENT_COMPACT,
     EVENT_SESSION_END,
 })

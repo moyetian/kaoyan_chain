@@ -1,0 +1,108 @@
+{
+  "task_id": "PDF-005",
+  "category": "pdf",
+  "difficulty": "expert",
+  "instruction": "在长文档 PDF 中回答 6 个字段（学制/学费/招生人数/复试方式/复试权重/参考书目），逐字段给出**页码**与原文引用。引用准确率计入评分。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "fixture",
+    "pdf",
+    "long",
+    "citation",
+    "hybrid"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "学制",
+          "学费"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [
+      "参考书目为《"
+    ],
+    "required_fields": [
+      "学制",
+      "学费",
+      "招生人数",
+      "复试方式",
+      "复试权重",
+      "参考书目"
+    ]
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.fields",
+        "schema": {
+          "type": "array",
+          "minLength": 6,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "value",
+              "page",
+              "quote"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c2",
+        "type": "citation_coverage",
+        "dimension": "citation",
+        "min_citations": 4,
+        "min_supported_ratio": 0.5
+      },
+      {
+        "id": "c3",
+        "type": "regex",
+        "dimension": "factuality",
+        "critical": true,
+        "pattern": "40\\s*%|40％|retest[\\s\\S]{0,20}40"
+      },
+      {
+        "id": "c4",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "参考书目为《",
+          "指定教材为《"
+        ]
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "6 个字段是否完整、且每个字段都给出页码与原文引用？"
+        }
+      ]
+    }
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

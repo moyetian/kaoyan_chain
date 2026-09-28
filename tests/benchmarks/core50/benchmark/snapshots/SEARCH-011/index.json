@@ -1,0 +1,15 @@
+{
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "bytes": 539,
+      "content_sha256": "01348387d1bddc2192ce10a10ad7bcb6d300daef53d86c8ba4355435f5d1ba27",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "http_status": 200,
+      "snapshot_path": "pages/01348387d1bddc2192ce10a10ad7bcb6d300daef53d86c8ba4355435f5d1ba27.html",
+      "title": "北原大学 2025 年推荐免试研究生接收办法",
+      "url": "https://northplain.edu.example/graduate/tuimian-2025"
+    }
+  ],
+  "task_id": "SEARCH-011"
+}

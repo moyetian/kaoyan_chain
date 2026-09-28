@@ -1,0 +1,14 @@
+{
+  "files": {
+    "majors.csv": {
+      "sha256": "a4d0d6d60d3c1e182614fb7568863b0f5cda70301046915dcb6773095407e507",
+      "size": 289
+    },
+    "majors.html": {
+      "sha256": "d8d8dd92c837bd46949efa4b4faa4157d48cc1e3b22bc01eddb911abc5383d6f",
+      "size": 1496
+    }
+  },
+  "task_id": "RES-001",
+  "version": "1.0"
+}

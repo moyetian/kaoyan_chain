@@ -1,0 +1,95 @@
+{
+  "task_id": "HAL-005",
+  "category": "hallucination",
+  "difficulty": "hard",
+  "instruction": "对每条结论标注证据等级（由低到高，最低档表示完全没有出处），并检查是否存在完全没有出处的断言。仅依据本地 fixture HTML。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "fixture",
+    "deterministic",
+    "evidence"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "E0",
+          "无源"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [
+      "所有结论均有官方来源"
+    ],
+    "ground_truth": {
+      "has_e0_claim": true,
+      "levels": [
+        "E0",
+        "E4",
+        "E5"
+      ]
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.claims",
+        "schema": {
+          "type": "array",
+          "minLength": 3,
+          "items": {
+            "type": "object",
+            "required": [
+              "claim",
+              "evidence_level"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "E0"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c3",
+        "type": "evidence_level",
+        "dimension": "source_quality",
+        "path": "$.claims",
+        "expected_min": "E5"
+      },
+      {
+        "id": "c4",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "所有结论均有官方来源"
+        ]
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

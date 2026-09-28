@@ -1,0 +1,15 @@
+{
+  "task_id": "UNI-001",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/jianzhang-2026",
+      "title": "2026年硕士研究生招生简章（学制学费）",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "2833a691215b2bf46c653c59ede5568b4d25471ab7c89a8374ea43592c5657e9",
+      "http_status": 200,
+      "snapshot_path": "pages/2833a691215b2bf46c653c59ede5568b4d25471ab7c89a8374ea43592c5657e9.html",
+      "bytes": 702
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "task_id": "UNI-008",
+  "category": "university",
+  "difficulty": "hard",
+  "instruction": "从虚构院校『北原大学』的本地镜像站页面（研究生院专业目录）中提取 3 个专业的：专业代码、拟招生人数、初试科目。仅依据本地 fixture，不得联网。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "smoke",
+    "fixture",
+    "deterministic",
+    "mirror"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "081200",
+          "085404",
+          "081000"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [
+      "该校实际招生人数为"
+    ],
+    "ground_truth": {
+      "majors": [
+        {
+          "code": "081200",
+          "plan": 20,
+          "subject": "数学一"
+        },
+        {
+          "code": "085404",
+          "plan": 23,
+          "subject": "数据结构"
+        },
+        {
+          "code": "081000",
+          "plan": 26,
+          "subject": "操作系统"
+        }
+      ]
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "081200",
+          "085404",
+          "081000"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "set_includes",
+        "dimension": "completeness",
+        "values": [
+          "081200",
+          "085404",
+          "081000"
+        ],
+        "min_hits": 3
+      },
+      {
+        "id": "c3",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.majors",
+        "schema": {
+          "type": "array",
+          "minLength": 3,
+          "items": {
+            "type": "object",
+            "required": [
+              "code",
+              "plan",
+              "subject"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c4",
+        "type": "numeric",
+        "dimension": "factuality",
+        "path": "$.majors[0].plan",
+        "op": "eq",
+        "value": 20,
+        "tol": 0.5
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

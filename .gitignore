@@ -126,6 +126,14 @@ docs/assets/vendor/**/*.js.map
 *.rar
 *.7z
 
+# [W2] core50 评测数据集的 PDF fixture 必须入库 —— 它们是评测集的一部分
+# （公开 MIT 仓库生成的合成样本，非版权资料），缺一个 validate 就会因
+# fixture 缺失/哈希不匹配而失败。此坑只在全新 clone/CI 里显形（本地文件
+# 一直在，git status 也看不见被忽略的文件）：实测 clone 后 --check 判 2。
+# 若未来数据集新增其他被忽略的后缀（zip/图片等），同样需要在此放行；
+# 漏放会被 CI 的 --check（validate --require-snapshots）抓住。
+!tests/benchmarks/core50/**/*.pdf
+
 # OCR & Temporary Scratch Images
 scratch/
 scratch_*.png

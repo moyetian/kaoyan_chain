@@ -1,0 +1,14 @@
+{
+  "files": {
+    "questions.csv": {
+      "sha256": "4cc2b84e464660e2ffa549f9179be749ced252335cb6114772bad3145de4fd71",
+      "size": 2744
+    },
+    "syllabus.txt": {
+      "sha256": "3f5a48808fa8313c6783b78e22e080bac80a968e1185fcaef8c2682b39f85750",
+      "size": 569
+    }
+  },
+  "task_id": "EXAM-004",
+  "version": "1.0"
+}

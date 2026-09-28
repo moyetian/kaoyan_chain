@@ -1,0 +1,92 @@
+{
+  "task_id": "POL-001",
+  "category": "policy",
+  "difficulty": "easy",
+  "instruction": "2026 年考研报名时间，截至目前官方到底放出来没有？请给出明确结论与官方依据（E4+），并显式标注年份。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "timeliness",
+    "official_source"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "已公布",
+          "尚未公布"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [
+      "报名时间确定为 11 月 1 日"
+    ],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "已公布",
+          "尚未公布",
+          "发布"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "year_tag",
+        "dimension": "source_quality",
+        "year": 2026,
+        "critical": true
+      },
+      {
+        "id": "c3",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 1
+      },
+      {
+        "id": "c4",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "报名时间确定为 11 月 1 日"
+        ]
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否给出已/未公布的明确判断与官方依据？"
+        }
+      ]
+    }
+  },
+  "version": "1.0"
+}

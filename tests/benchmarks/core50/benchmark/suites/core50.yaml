@@ -1,0 +1,21 @@
+# core50：v1.0 完整评测集（50 题，8 类）
+# ★ 完整 core50 不作为 PR 门禁（50 题 × 3 次 × 最长 900s），仅用于 nightly / 发版门禁。
+id: core50
+split: public
+version: "1.0"
+description: "KaoyanBench v1.0 主评测集：8 类 50 题（search 12 / university 9 / policy 5 / exam 5 / pdf 5 / planning 5 / research 4 / hallucination 5）"
+task_ids: all
+filters:
+  categories:
+    - search
+    - university
+    - policy
+    - exam
+    - pdf
+    - planning
+    - research
+    - hallucination
+defaults:
+  runs: 3
+  time_limit: 900
+  tool_limit: 100

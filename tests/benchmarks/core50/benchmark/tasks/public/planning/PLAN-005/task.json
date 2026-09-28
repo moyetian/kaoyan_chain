@@ -1,0 +1,114 @@
+{
+  "task_id": "PLAN-005",
+  "category": "planning",
+  "difficulty": "expert",
+  "instruction": "原计划执行中要插入一段为期三周的外出实践安排，期间每天只能投入两小时。请重排后续计划，输出前后差异说明（changed_from/changed_to）。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "replan",
+    "hybrid",
+    "diff"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "实习"
+        ]
+      },
+      {
+        "id": "p2",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": false,
+        "any_of": [
+          "2 小时",
+          "2h"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "constraint",
+        "dimension": "task_completion",
+        "critical": true,
+        "answer_path": "$.schedule",
+        "rules": [
+          {
+            "kind": "daily_total_hours",
+            "op": "eq",
+            "value": 2
+          },
+          {
+            "kind": "no_overlap",
+            "value": true
+          }
+        ]
+      },
+      {
+        "id": "c2",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.diff",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "changed_from",
+              "changed_to"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c3",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "实习",
+          "2 小时",
+          "2h"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c4",
+        "type": "regex",
+        "dimension": "factuality",
+        "pattern": "(实习|3\\s*周)"
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否按 3 周 2h/天重排并给出前后差异说明？"
+        }
+      ]
+    }
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

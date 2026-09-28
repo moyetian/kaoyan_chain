@@ -1,0 +1,15 @@
+{
+  "task_id": "POL-001",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://yz.chsi.com.cn/kyzx/2026/baoming-shijian/",
+      "title": "2026年硕士研究生报名时间安排_研招网",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "7dfefa0e312b5f037cd18968d9dd528097bf5bd19caf6f67dbc4d26dc71eb919",
+      "http_status": 200,
+      "snapshot_path": "pages/7dfefa0e312b5f037cd18968d9dd528097bf5bd19caf6f67dbc4d26dc71eb919.html",
+      "bytes": 750
+    }
+  ]
+}

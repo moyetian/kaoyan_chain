@@ -1,0 +1,15 @@
+{
+  "task_id": "SEARCH-001",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://yz.chsi.com.cn/kyzx/2026/chusishi/",
+      "title": "2026年全国硕士研究生招生考试初试时间安排_研招网",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "e5f4f71b9b8f7024376da3ec4b90169cc8efcfef9366fd20de0d81fd680064b1",
+      "http_status": 200,
+      "snapshot_path": "pages/e5f4f71b9b8f7024376da3ec4b90169cc8efcfef9366fd20de0d81fd680064b1.html",
+      "bytes": 971
+    }
+  ]
+}

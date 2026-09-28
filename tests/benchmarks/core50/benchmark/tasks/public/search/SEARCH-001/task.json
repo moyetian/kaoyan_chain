@@ -1,0 +1,98 @@
+{
+  "task_id": "SEARCH-001",
+  "category": "search",
+  "difficulty": "easy",
+  "instruction": "请定位研招网上关于当年全国硕士研究生统一考试（初试）何时开考、各场次如何排布的官方说明页，给出该页面的官方 URL 及其适用的招生年份。须至少 1 条官方（E4 及以上）来源，并显式标注年份。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "official_source",
+    "core"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "初试时间",
+          "考试时间"
+        ]
+      },
+      {
+        "id": "p2",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": false,
+        "any_of": [
+          "科目安排",
+          "考试科目"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": true
+      }
+    ],
+    "must_not_claim": [],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "初试时间",
+          "考试时间"
+        ]
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "科目安排",
+          "考试科目"
+        ]
+      },
+      {
+        "id": "c3",
+        "type": "year_tag",
+        "dimension": "source_quality",
+        "year": 2026,
+        "require_explicit": true
+      },
+      {
+        "id": "c4",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 1
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "答案是否给出了官方页面 URL 并明确适用年份？"
+        }
+      ]
+    }
+  },
+  "version": "1.0"
+}

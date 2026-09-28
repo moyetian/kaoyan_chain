@@ -1,0 +1,74 @@
+{
+  "task_id": "EXAM-003",
+  "category": "exam",
+  "difficulty": "medium",
+  "instruction": "计算 2022–2025 年录取最低分的**均值**与**标准差**（总体标准差，保留 2 位小数）。仅依据本地 fixture（Excel，缺失 openpyxl 时降级为 CSV）。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "fixture",
+    "deterministic",
+    "stats"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "均值",
+          "平均"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [],
+    "ground_truth": {
+      "mean": 350.75,
+      "std": 2.68,
+      "years": "2022-2025"
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "numeric",
+        "dimension": "factuality",
+        "path": "$.mean",
+        "op": "eq",
+        "value": 350.75,
+        "tol": 0.01
+      },
+      {
+        "id": "c2",
+        "type": "numeric",
+        "dimension": "factuality",
+        "path": "$.std",
+        "op": "eq",
+        "value": 2.68,
+        "tol": 0.02
+      },
+      {
+        "id": "c3",
+        "type": "string_eq",
+        "dimension": "factuality",
+        "path": "$.years",
+        "value": "2022-2025",
+        "case_sensitive": false
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

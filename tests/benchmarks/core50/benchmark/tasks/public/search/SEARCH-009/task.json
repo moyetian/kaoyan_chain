@@ -1,0 +1,112 @@
+{
+  "task_id": "SEARCH-009",
+  "category": "search",
+  "difficulty": "hard",
+  "instruction": "汇总某专业 2023–2025 三年复试线的官方公告，输出结构化表格：3 行（每年一行）× 4 列（年份、总分线、单科线、来源 URL）。必须逐年给出 E4+ 来源，不得用第三方整理数据代替官方公告。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "table",
+    "multi_year",
+    "official_source"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "all_of": [
+          "2023",
+          "2024",
+          "2025"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 3,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [],
+    "ground_truth": null,
+    "required_fields": [
+      "year",
+      "total",
+      "single",
+      "source_url"
+    ]
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "regex",
+        "dimension": "factuality",
+        "critical": true,
+        "pattern": "2023[\\s\\S]*2024[\\s\\S]*2025"
+      },
+      {
+        "id": "c2",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.rows",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "year",
+              "total",
+              "single",
+              "source_url"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c3",
+        "type": "set_includes",
+        "dimension": "completeness",
+        "values": [
+          "year",
+          "total",
+          "single",
+          "source_url"
+        ],
+        "min_hits": 4
+      },
+      {
+        "id": "c4",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 3
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否输出三年 × 4 字段结构化表格，逐年官方来源？"
+        }
+      ]
+    }
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

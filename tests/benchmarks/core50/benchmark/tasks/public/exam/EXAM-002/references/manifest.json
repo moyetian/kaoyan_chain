@@ -1,0 +1,10 @@
+{
+  "files": {
+    "questions.csv": {
+      "sha256": "4cc2b84e464660e2ffa549f9179be749ced252335cb6114772bad3145de4fd71",
+      "size": 2744
+    }
+  },
+  "task_id": "EXAM-002",
+  "version": "1.0"
+}

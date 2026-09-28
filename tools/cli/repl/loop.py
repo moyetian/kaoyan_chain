@@ -39,9 +39,9 @@ except ImportError:
     )
 
 try:
-    from tools.cli.repl.session import grab_clipboard_image, get_clipboard_text, ReplSession
+    from tools.cli.repl.session import grab_clipboard_image
 except ImportError:
-    from cli.repl.session import grab_clipboard_image, get_clipboard_text, ReplSession
+    from cli.repl.session import grab_clipboard_image
 
 try:
     from tools.cli.repl.router import (
@@ -1018,13 +1018,13 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                 show_bridge_guide()
                 continue
             elif cmd in ("/rollback", "/restore"):
+                # [D0] 与 `ky rollback` 共用同一实现（支持 --list/--checkpoint/
+                # --file/--dry-run）；REPL 里直接 `/rollback --list` 即可查看快照。
                 try:
-                    from tools.agent import PermissionManager
-                    pm = PermissionManager(workspace_root=ROOT)
-                    res = pm.restore_last_checkpoint()
-                    print(colorize(f"\n[√ {res.get('message')}]\n" if res.get("success") else f"\n[!] 失败: {res.get('message')}\n", C.GREEN if res.get("success") else C.YELLOW))
-                except Exception as e:
-                    print(f"回滚失败: {e}")
+                    from tools.cli.commands.misc import _cmd_rollback
+                except ImportError:
+                    from cli.commands.misc import _cmd_rollback
+                _cmd_rollback(["rollback"] + (arg.split() if arg else []))
                 continue
             elif cmd.startswith("/memory"):
                 parts = user_input.strip().split()

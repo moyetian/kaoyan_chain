@@ -11,7 +11,10 @@ Level 5 = Dangerous (删除与破坏性操作)
 """
 
 import json
-from typing import Dict, Any, Tuple
+import shutil
+import time
+from pathlib import Path
+from typing import Dict, Any, Optional, Tuple
 
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
     from ky_io import atomic_write_text  # noqa: E402
@@ -21,6 +24,7 @@ except ImportError:  # pragma: no cover
 try:  # 双导入路径兼容
     from .approval import (  # noqa: E402
         DEFAULT_HEADLESS_POLICY,
+        extract_target_path,
         resolve_headless_allow_tools,
         resolve_headless_policy,
         select_channel,
@@ -29,6 +33,7 @@ try:  # 双导入路径兼容
 except ImportError:  # pragma: no cover
     from agent.approval import (  # type: ignore # noqa: E402
         DEFAULT_HEADLESS_POLICY,
+        extract_target_path,
         resolve_headless_allow_tools,
         resolve_headless_policy,
         select_channel,
@@ -49,6 +54,14 @@ MODE_ALIASES = {"acceptedits": "auto"}
 #: 本会话内所有外部读取不再弹卡；不选 [a] 时按**目录**粒度记忆（见
 #: ``Sandbox.register_authorized_read_dir``）。
 EXTERNAL_READ_TOOL_NAME = "read_file@external"
+
+#: [D0] 写前快照覆盖的文件工具：有 ``path`` 语义、会改动工作区文件。
+#: ``run_command`` 经 shell 也能改文件，但调用前无法预知它会碰哪些文件 ——
+#: 明确不在覆盖范围（文档与帮助文案同步声明）。
+SNAPSHOT_TOOL_NAMES = ("write_file", "edit_file", "delete_file")
+
+#: [D0] 检查点目录名前缀（旧版已用同名前缀，保持不变以便向后兼容）。
+CHECKPOINT_PREFIX = "ckpt_"
 
 
 def normalize_mode(mode: Any) -> str:
@@ -116,6 +129,11 @@ class PermissionManager:
         self.session_allowed_tools = set()  # 会话内用户选择 [a] 记住允许的工具集合
         self.force_allow_all = False        # 测试与全自动沙箱调试开关
         self.checkpoint_dir = self.workspace_root / ".checkpoint"
+        # [D0] 当前写入批次（惰性创建，见 begin_write_batch / _ensure_batch_dir）：
+        # 批次 = 一次 AgentRunner turn / 一次用户动作；批次内同一文件只快照
+        # 首次触碰前的状态。不显式开启时，本进程内隐式共用一个批次。
+        self._batch_dir: Optional[Path] = None
+        self._batch_label: str = ""
         self.config = config if isinstance(config, dict) else {}
         self.headless_policy = resolve_headless_policy(self.config)
         self.headless_allow_tools = resolve_headless_allow_tools(self.config)
@@ -145,7 +163,11 @@ class PermissionManager:
         )
 
     def _checkpoint_for(self, target_file: str):
-        """Plan 卡片用：把相对路径解析成工作区内文件并建快照（不存在则返回 None）。"""
+        """Plan 卡片用：把相对路径解析成工作区内文件并建快照（不存在则返回 None）。
+
+        [D0] 与通用写前钩子共用同一批次目录：同一文件在同一批次里只会被快照
+        一次（首次触碰前的状态），Plan 卡片与权限钩子因此不会重复建快照。
+        """
         try:
             full_target = (self.workspace_root / target_file).resolve()
         except Exception:
@@ -154,74 +176,279 @@ class PermissionManager:
             return None
         return self.create_checkpoint(full_target)
 
-    def create_checkpoint(self, file_path) -> str:
-        """在修改文件前自动创建快照备份 (S3-3 Plan Mode 审计沙箱)"""
-        from pathlib import Path
-        import shutil
-        import time
+    # ── [D0] 写前快照与按文件 / 按批回滚（通用能力，不限 plan 模式） ──────
 
-        fp = Path(file_path).resolve()
-        if not fp.exists():
-            return ""
+    def begin_write_batch(self, label: str = "") -> None:
+        """开启一个写入批次（一次 AgentRunner turn / 一次用户动作）。
 
+        目录**惰性创建**：批次内一次写入都没有时不产生空目录。批次内的多次
+        写入共享同一快照目录，同一文件只记录**首次触碰前**的状态 —— 整批
+        回滚即回到批次开始前。不显式开启时，本进程内隐式共用一个批次。
+        """
+        self._batch_dir = None
+        self._batch_label = str(label or "")
+
+    def end_write_batch(self) -> None:
+        """结束当前写入批次；下一次写入另起一个快照目录。"""
+        self._batch_dir = None
+        self._batch_label = ""
+
+    def _ensure_batch_dir(self) -> Path:
+        """取当前批次目录；没有则按时间戳新建（同秒冲突自动加序号）。"""
+        if self._batch_dir is not None:
+            return self._batch_dir
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         ts = time.strftime("%Y%m%d_%H%M%S")
-        target_ckpt_dir = self.checkpoint_dir / f"ckpt_{ts}"
-        target_ckpt_dir.mkdir(parents=True, exist_ok=True)
+        candidate = self.checkpoint_dir / f"{CHECKPOINT_PREFIX}{ts}"
+        seq = 1
+        while candidate.exists():
+            seq += 1
+            candidate = self.checkpoint_dir / f"{CHECKPOINT_PREFIX}{ts}_{seq:02d}"
+        candidate.mkdir(parents=True, exist_ok=True)
+        self._batch_dir = candidate
+        self._write_manifest(candidate, {
+            "checkpoint": candidate.name,
+            "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "label": self._batch_label,
+            "entries": [],
+        })
+        return candidate
 
+    @staticmethod
+    def _manifest_path(ckpt_dir: Path) -> Path:
+        return ckpt_dir / "manifest.json"
+
+    def _read_manifest(self, ckpt_dir: Path) -> Dict[str, Any]:
+        mf = self._manifest_path(ckpt_dir)
+        if mf.is_file():
+            try:
+                data = json.loads(mf.read_text(encoding="utf-8"))
+            except Exception:
+                data = None
+            if isinstance(data, dict) and isinstance(data.get("entries"), list):
+                data["entries"] = [e for e in data["entries"] if isinstance(e, dict)]
+                return data
+        return {"checkpoint": ckpt_dir.name, "created_at": "", "label": "", "entries": []}
+
+    def _write_manifest(self, ckpt_dir: Path, manifest: Dict[str, Any]) -> None:
+        atomic_write_text(self._manifest_path(ckpt_dir),
+                          json.dumps(manifest, ensure_ascii=False, indent=2))
+
+    def _mirror_meta(self, ckpt_dir: Path, entry: Dict[str, Any]) -> None:
+        """镜像写 ``_meta.json``（最新条目）——旧版工具 / 旧版恢复路径仍可读。"""
+        meta = {
+            "timestamp": ckpt_dir.name[len(CHECKPOINT_PREFIX):],
+            "original_file": entry.get("original_file", ""),
+            "relative_file": entry.get("relative_file", ""),
+            "backup_file": entry.get("backup_file", ""),
+        }
+        atomic_write_text(ckpt_dir / "_meta.json",
+                          json.dumps(meta, ensure_ascii=False, indent=2))
+
+    def _read_entries(self, ckpt_dir: Path) -> list:
+        """读检查点条目；兼容旧格式（只有 ``_meta.json`` 的单条记录）。"""
+        entries = self._read_manifest(ckpt_dir).get("entries") or []
+        if entries:
+            return entries
+        meta_file = ckpt_dir / "_meta.json"
+        if meta_file.is_file():
+            try:
+                one = json.loads(meta_file.read_text(encoding="utf-8"))
+            except Exception:
+                one = None
+            if isinstance(one, dict) and one.get("relative_file"):
+                one.setdefault("existed", True)
+                return [one]
+        return []
+
+    def create_checkpoint(self, file_path, reason: str = "") -> str:
+        """在修改文件前创建快照备份（[D0] 通用能力：任何模式、任何调用方）。
+
+        返回备份文件路径；文件尚不存在（本次将新建）时返回 ``""``，但**仍记录
+        条目**（``existed=False``），回滚时按「删除该新建文件」处理。
+        同一批次内同一文件重复调用只记录一次（首次触碰前的状态），返回既有
+        备份路径 —— Plan 卡片与通用权限钩子因此不会重复建快照。
+        """
+        try:
+            fp = Path(file_path).resolve()
+        except Exception:
+            return ""
         try:
             rel_p = fp.relative_to(self.workspace_root)
         except Exception:
-            rel_p = fp.name
+            # 工作区外不快照：沙箱本就会拒绝写，快照也无处安放。
+            return ""
 
-        backup_file = target_ckpt_dir / str(rel_p)
-        backup_file.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(fp, backup_file)
+        ckpt_dir = self._ensure_batch_dir()
+        manifest = self._read_manifest(ckpt_dir)
+        rel_key = rel_p.as_posix()
+        for entry in manifest["entries"]:
+            if str(entry.get("relative_file")) == rel_key:
+                return str(entry.get("backup_file") or "")
 
-        # 记录元数据
-        meta_file = target_ckpt_dir / "_meta.json"
-        meta = {
-            "timestamp": ts,
+        entry: Dict[str, Any] = {
+            "relative_file": rel_key,
             "original_file": str(fp),
-            "relative_file": str(rel_p),
-            "backup_file": str(backup_file)
+            "existed": fp.is_file(),
+            "backup_file": "",
+            "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
-        atomic_write_text(meta_file, json.dumps(meta, ensure_ascii=False, indent=2))
-        return str(backup_file)
+        if entry["existed"]:
+            backup_file = ckpt_dir / rel_p
+            backup_file.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(fp, backup_file)
+            entry["backup_file"] = str(backup_file)
+        manifest["entries"].append(entry)
+        self._write_manifest(ckpt_dir, manifest)
+        self._mirror_meta(ckpt_dir, entry)
+        return entry["backup_file"]
+
+    def list_checkpoints(self) -> list:
+        """列出全部检查点（新 → 旧），含条目与批次标签。"""
+        if not self.checkpoint_dir.is_dir():
+            return []
+        out = []
+        for d in sorted(self.checkpoint_dir.iterdir(), reverse=True):
+            if not (d.is_dir() and d.name.startswith(CHECKPOINT_PREFIX)):
+                continue
+            manifest = self._read_manifest(d)
+            entries = self._read_entries(d)
+            out.append({
+                "checkpoint": d.name,
+                "created_at": manifest.get("created_at", ""),
+                "label": manifest.get("label", ""),
+                "files": [str(e.get("relative_file") or "") for e in entries],
+                "entries": entries,
+            })
+        return out
+
+    def _resolve_checkpoint(self, name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        for ck in self.list_checkpoints():
+            if name is None or ck["checkpoint"] == str(name):
+                return ck
+        return None
+
+    @staticmethod
+    def _norm_rel(text: str) -> str:
+        return str(text or "").replace("\\", "/").lstrip("./")
+
+    def _entry_matches(self, entry: Dict[str, Any], wanted: list) -> bool:
+        rel = self._norm_rel(entry.get("relative_file") or "")
+        if not rel:
+            return False
+        for w in wanted:
+            if rel == w or rel.endswith("/" + w):
+                return True
+        return False
+
+    def restore_checkpoint(self, checkpoint: Optional[str] = None,
+                           files: Optional[list] = None,
+                           dry_run: bool = False) -> Dict[str, Any]:
+        """按检查点 / 按文件回滚（[D0] 通用能力）。
+
+        * ``checkpoint=None`` → 最近一次检查点；否则按目录名精确指定；
+        * ``files`` 给出时只回滚匹配条目（相对路径精确匹配，或以 ``/`` 为界的
+          后缀匹配，如 ``loop.py``）；从**新到旧**扫描检查点，取第一个命中的；
+        * ``existed=False`` 的条目（快照时尚不存在）回滚 = 删除该文件；
+        * ``dry_run=True`` 只报告将执行的动作，不动磁盘。
+        """
+        if files:
+            wanted = [self._norm_rel(f) for f in files if str(f).strip()]
+            ck: Optional[Dict[str, Any]] = None
+            targets: list = []
+            for cand in self.list_checkpoints():
+                hits = [e for e in cand["entries"] if self._entry_matches(e, wanted)]
+                if hits:
+                    ck, targets = cand, hits
+                    break
+            if ck is None:
+                return {"success": False,
+                        "message": f"未在任何检查点中找到文件：{', '.join(wanted)}"}
+        else:
+            ck = self._resolve_checkpoint(checkpoint)
+            if ck is None:
+                if checkpoint:
+                    return {"success": False, "message": f"未找到检查点 {checkpoint}"}
+                return {"success": False, "message": "未找到任何 Checkpoint 快照备份"}
+            targets = list(ck["entries"])
+        if not targets:
+            return {"success": False, "message": f"检查点 {ck['checkpoint']} 内没有可回滚条目"}
+
+        restored, deleted, skipped = [], [], []
+        for entry in targets:
+            rel = str(entry.get("relative_file") or "")
+            if not rel:
+                skipped.append({"file": rel, "reason": "条目缺少 relative_file"})
+                continue
+            target = (self.workspace_root / Path(rel)).resolve()
+            # 双保险：只动工作区内（防止清单被手工篡改后越界删/写）
+            try:
+                target.relative_to(self.workspace_root)
+            except Exception:
+                skipped.append({"file": rel, "reason": "目标在工作区外，已跳过"})
+                continue
+            if entry.get("existed", True):
+                backup = Path(str(entry.get("backup_file") or ""))
+                if not backup.is_file():
+                    skipped.append({"file": rel, "reason": "备份文件缺失"})
+                    continue
+                if not dry_run:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(backup, target)
+                restored.append(rel)
+            else:
+                if target.is_file():
+                    if not dry_run:
+                        target.unlink()
+                    deleted.append(rel)
+                else:
+                    skipped.append({"file": rel, "reason": "文件不存在（无需删除）"})
+
+        parts = []
+        if restored:
+            parts.append(f"还原 {len(restored)} 个文件")
+        if deleted:
+            parts.append(f"删除 {len(deleted)} 个新建文件")
+        if skipped:
+            parts.append(f"跳过 {len(skipped)} 项")
+        action = "将" if dry_run else "已"
+        message = (f"{action}按检查点 [{ck['checkpoint']}] {'、'.join(parts) or '无动作'}"
+                   + ("（dry-run，未动磁盘）" if dry_run else ""))
+        return {
+            "success": bool(restored or deleted),
+            "checkpoint": ck["checkpoint"],
+            "restored": restored,
+            "deleted": deleted,
+            "skipped": skipped,
+            "dry_run": bool(dry_run),
+            "message": message,
+        }
 
     def restore_last_checkpoint(self) -> Dict[str, Any]:
-        """回滚最近一次 Checkpoint 快照 (S3-3 Plan Mode)"""
-        from pathlib import Path
-        import shutil
+        """回滚最近一次检查点（兼容旧入口：等价于 ``restore_checkpoint()``）。"""
+        res = self.restore_checkpoint()
+        if res.get("success"):
+            names = [Path(p).name for p in res.get("restored", [])]
+            names += [Path(p).name for p in res.get("deleted", [])]
+            res["message"] = (f"成功将 [{', '.join(names)}] 回滚至快照状态"
+                              f" ({res.get('checkpoint')})")
+        return res
 
-        if not self.checkpoint_dir.exists():
-            return {"success": False, "message": "未找到任何 Checkpoint 快照备份"}
+    def _snapshot_before_write(self, tool_name: str, tool_args: Dict[str, Any]) -> None:
+        """[D0] 文件写工具的通用写前快照（任何模式、任何调用方）。
 
-        ckpts = sorted([d for d in self.checkpoint_dir.iterdir() if d.is_dir() and d.name.startswith("ckpt_")])
-        if not ckpts:
-            return {"success": False, "message": "没有可供回滚的快照目录"}
-
-        latest_ckpt = ckpts[-1]
-        meta_file = latest_ckpt / "_meta.json"
-        if not meta_file.exists():
-            return {"success": False, "message": f"快照 {latest_ckpt.name} 缺失元数据"}
-
+        快照失败绝不影响审批与执行（尽力而为）；工作区外目标由
+        :meth:`create_checkpoint` 自行跳过。
+        """
+        if tool_name not in SNAPSHOT_TOOL_NAMES:
+            return
+        target = extract_target_path(tool_args)
+        if not target:
+            return
         try:
-            meta = json.loads(meta_file.read_text(encoding="utf-8"))
-            orig_p = Path(meta["original_file"])
-            backup_p = Path(meta["backup_file"])
-            if not backup_p.exists():
-                return {"success": False, "message": f"备份文件不存在: {backup_p}"}
-
-            orig_p.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(backup_p, orig_p)
-            return {
-                "success": True,
-                "timestamp": meta.get("timestamp"),
-                "restored_file": str(orig_p),
-                "message": f"成功将 [{orig_p.name}] 回滚至快照状态 ({meta.get('timestamp')})"
-            }
-        except Exception as e:
-            return {"success": False, "message": f"回滚异常: {e}"}
+            self.create_checkpoint(self.workspace_root / target)
+        except Exception:
+            pass
 
     def check_permission(self, tool_name: str, level: int, tool_args: Dict[str, Any], interactive: bool = True) -> Tuple[bool, str]:
         """
@@ -231,7 +458,18 @@ class PermissionManager:
         本方法**只负责策略**（该不该问 / 该不该自动放行）；「怎么问」全部委托给
         `agent.approval` 的审批通道 —— 交互终端走 TTY 卡片，GUI / 网关 / 管道
         走 headless 策略（默认 `deny_all`，与接入通道前逐字节一致）。
+
+        [D0] 批准后、执行前，文件写工具（write_file / edit_file / delete_file）
+        一律做**写前快照**（任何模式，不限 plan）——「怎么回滚」见
+        :meth:`restore_checkpoint` / :meth:`restore_last_checkpoint`。
         """
+        allowed, reason = self._decide_permission(tool_name, level, tool_args, interactive)
+        if allowed:
+            self._snapshot_before_write(tool_name, tool_args)
+        return allowed, reason
+
+    def _decide_permission(self, tool_name: str, level: int, tool_args: Dict[str, Any], interactive: bool = True) -> Tuple[bool, str]:
+        """策略判定主体（[D0] 拆出：快照钩子统一挂在 :meth:`check_permission`）。"""
         if self.force_allow_all:
             return True, "force_allow_all 开启，测试放行"
 
@@ -289,7 +527,8 @@ class PermissionManager:
         if not getattr(channel, "is_interactive", False):
             return False, ("本会话写入的脚本禁止在无审批的情况下执行："
                            "非交互（headless）环境无法请求用户审批，"
-                           "需在交互终端批准后才能执行。")
+                           "需在交互终端批准后才能执行。"
+                           "【替代路径】请改用内置工具完成任务（如 read_file 读取文件内容）。")
         return channel.request("run_command", PermissionLevel.DANGEROUS, tool_args)
 
     def check_external_read(self, path_display: str, tool_args: Dict[str, Any],

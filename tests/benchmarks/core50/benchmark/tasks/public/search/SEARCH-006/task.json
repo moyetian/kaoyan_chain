@@ -1,0 +1,85 @@
+{
+  "task_id": "SEARCH-006",
+  "category": "search",
+  "difficulty": "medium",
+  "instruction": "在某高校**二级院系网站**（不是研究生院首页）里，找一份该院系关于研究生二轮考核如何组织与录取的通知，给出其 URL 与发布年份。必须是院系层级页面（E4+）。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "deep_nav",
+    "official_source"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "复试录取办法",
+          "复试办法"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": true
+      }
+    ],
+    "must_not_claim": [],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "复试",
+          "录取办法"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "regex",
+        "dimension": "factuality",
+        "pattern": "https?://[^\\s]+"
+      },
+      {
+        "id": "c3",
+        "type": "year_tag",
+        "dimension": "source_quality",
+        "year": 2025
+      },
+      {
+        "id": "c4",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 1
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否在学院页面定位到复试录取办法通知？"
+        }
+      ]
+    }
+  },
+  "version": "1.0"
+}

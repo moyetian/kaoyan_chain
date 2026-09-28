@@ -1,0 +1,100 @@
+{
+  "task_id": "UNI-005",
+  "category": "university",
+  "difficulty": "medium",
+  "instruction": "看某校的招生简章时我有个疑问：简章里写的计划招收规模，是不是已经把保研（免试）那部分算进去了？请给出计划招收规模、免试录取名额，并说明二者之间的口径关系。须 E4+ 来源。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "enrollment"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "拟招生",
+          "招生人数"
+        ]
+      },
+      {
+        "id": "p2",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": false,
+        "any_of": [
+          "推免"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "拟招生",
+          "招生人数"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "推免"
+        ]
+      },
+      {
+        "id": "c3",
+        "type": "point_hit",
+        "dimension": "completeness",
+        "any_of": [
+          "含",
+          "包含",
+          "不含",
+          "是否包含"
+        ]
+      },
+      {
+        "id": "c4",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 1
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否给出拟招生/推免人数并说明是否包含推免？"
+        }
+      ]
+    }
+  },
+  "version": "1.0"
+}

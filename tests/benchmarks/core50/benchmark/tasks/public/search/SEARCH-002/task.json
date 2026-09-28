@@ -1,0 +1,96 @@
+{
+  "task_id": "SEARCH-002",
+  "category": "search",
+  "difficulty": "easy",
+  "instruction": "2026 年全国硕士研究生招生考试，考生线上填报志愿的窗口从哪天开、到哪天关？请给出官方来源（E4+）与确切的起止日期，并显式标注年份 2026。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "official_source",
+    "date_range"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "网上报名",
+          "报名时间"
+        ]
+      },
+      {
+        "id": "p2",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": false,
+        "any_of": [
+          "begin",
+          "起止",
+          "开始",
+          "截止"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": true
+      }
+    ],
+    "must_not_claim": [],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "网上报名",
+          "预报名"
+        ]
+      },
+      {
+        "id": "c2",
+        "type": "regex",
+        "dimension": "factuality",
+        "pattern": "\\d{4}\\s*年?\\s*\\d{1,2}\\s*月"
+      },
+      {
+        "id": "c3",
+        "type": "year_tag",
+        "dimension": "source_quality",
+        "year": 2026
+      },
+      {
+        "id": "c4",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 1
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否给出官方来源与报名起止日期？"
+        }
+      ]
+    }
+  },
+  "version": "1.0"
+}

@@ -1,0 +1,24 @@
+{
+  "task_id": "SEARCH-008",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/2024/zhaosheng",
+      "title": "2024年硕士研究生招生简章",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "ce3de9063b143a95d1e517c7bdcf053be444f1c3e23c3eb53860207e9f7d172d",
+      "http_status": 200,
+      "snapshot_path": "pages/ce3de9063b143a95d1e517c7bdcf053be444f1c3e23c3eb53860207e9f7d172d.html",
+      "bytes": 663
+    },
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/2025/zhaosheng",
+      "title": "2025年硕士研究生招生简章",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "c4d8baf37563f0f5dc1540f2233ef33abcfc49953de2469078982c8ed1340874",
+      "http_status": 200,
+      "snapshot_path": "pages/c4d8baf37563f0f5dc1540f2233ef33abcfc49953de2469078982c8ed1340874.html",
+      "bytes": 802
+    }
+  ]
+}

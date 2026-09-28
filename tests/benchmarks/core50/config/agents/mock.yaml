@@ -1,0 +1,512 @@
+# mock：离线预设答案 Runner（B-07）
+# 用途：在**完全不联网、不调用任何模型**的情况下跑通「任务 → Runner → 日志 → 评分 → 报告」全链路。
+# 任务集工程师需为每个被测 task_id 在此登记一份**真实做过题**的预设答案（而非照抄题面）；
+# 也可用 "*" 提供兜底默认答案。hybrid 任务在无 API key 时走降级规则化评分，
+# 故预设答案需覆盖 expected.must_find 要点、required_fields 与来源等级。
+name: mock
+type: mock
+version: "1.0.0"
+model: mock-model
+provider: mock
+
+# 解析 stdout 的字段名（与 mock 输出的 JSON blob 对齐）
+parse:
+  format: json
+  answer_field: final_answer
+  toolcalls_field: tool_calls
+  sources_field: sources
+  citations_field: citations
+  usage_field: usage
+  search_trace_field: search_trace
+
+params:
+  # 可选的额外答案文件（JSON，{task_id: preset}），供任务集工程师补充而不改本文件。
+  # answers 段与 params.answers 两种写法等价；params.answers 亦为一等字段（后端已修）。
+  answers_file: ""
+
+answers:
+  # 兜底：任何未显式登记的 task_id 都返回这份默认答案。
+  "*":
+    final_answer: "（mock 默认答案）本题未在 config/agents/mock.yaml 的 answers 段登记预设内容。"
+    usage_source: "none"
+
+  # T 类交付：core50 全 50 题的确定性离线预设答案（保证 CI 全离线可跑）。
+  # 每题给出「真实做过题」的答案：fixture 计算值 / 结构化字段 / 来源等级，而非照抄题面。
+  EXAM-001:
+    final_answer: '{"count": 10, "subject": "数据结构"}'
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: questions.csv
+  EXAM-002:
+    final_answer: '{"top3": [{"chapter": "数据结构", "ratio": 0.1333}, {"chapter": "计算机组成原理", "ratio": 0.1167}, {"chapter": "操作系统", "ratio": 0.1}]}'
+    files:
+      report.json: '{"top3": [{"chapter": "数据结构", "ratio": 0.1333}, {"chapter": "计算机组成原理", "ratio": 0.1167}, {"chapter": "操作系统", "ratio": 0.1}]}'
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: questions.csv
+  EXAM-003:
+    final_answer: '{"mean": 350.75, "std": 2.68, "years": "2022-2025"}'
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: admission_scores.csv
+  EXAM-004:
+    final_answer: '{"added": [{"point": "拥塞控制", "year": 2025}, {"point": "死锁检测", "year": 2025}, {"point": "B+ 树", "year": 2025}]}'
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: syllabus.txt
+    - name: read_file
+      arguments:
+        path: questions.csv
+  EXAM-005:
+    final_answer: 已合并 3 个 CSV，产出 knowledge_report.json。
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: questions_a.csv
+    - name: read_file
+      arguments:
+        path: questions_b.csv
+    - name: read_file
+      arguments:
+        path: questions_c.csv
+    files:
+      knowledge_report.json: '{"total": 60, "frequencies": [{"chapter": "数据结构", "count": 10}, {"chapter": "计算机组成原理", "count": 10}, {"chapter": "操作系统", "count": 9}, {"chapter": "计算机网络", "count": 8}, {"chapter": "数据库", "count": 7}, {"chapter": "软件工程", "count": 6}, {"chapter": "编译原理", "count": 5}, {"chapter": "离散数学", "count": 5}]}'
+  HAL-001:
+    final_answer: 经检索本地与官方渠道，均未能找到『北原大学』（虚构院校）2026 年计算机专业招生人数的官方数据。由于该院校为虚构、无任何官方来源，因此无法确认具体人数，不能凭空给出数字，结论是未找到官方数据。
+    tool_calls:
+    - name: search
+      arguments:
+        q: 北原大学 2026 计算机 招生人数
+  HAL-002:
+    final_answer: 根据本地 fixture 中的学院说明，资料未提供参考书目信息，说明中只有专业代码、学制与复试方式，因此无法给出参考教材，也不应编造书名。
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: college.txt
+  HAL-003:
+    final_answer: '{"conflict": true, "values": [362, 355], "note": "同一年同一专业出现两条不同最低分，数据存在矛盾（不一致），不予调和。"}'
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: scores_conflict.csv
+  HAL-004:
+    final_answer: 经查询，2027 年该专业的招生人数尚未公布，官方渠道目前没有任何关于 2027 年的招生数据，因此无法给出具体数字，也不能用推测数字作答。参考官方来源 northplain.edu.example 的说明，未公布年份不予估计。
+    sources:
+    - url: https://northplain.edu.example/admission/2027
+      evidence_level: E4
+      is_official: true
+      year: 2027
+      title: 北原大学 2027 招生说明（虚构）
+  HAL-005:
+    final_answer: '{"claims": [{"claim": "2025 年计算机技术专业复试线为 355 分", "evidence_level": "E5"}, {"claim": "学制为 3 年，学费 8000 元/年", "evidence_level": "E4"}, {"claim": "该校 2026 年将扩招至 500 人", "evidence_level": "E0"}], "has_e0_claim": true, "note": "第三条结论完全无出处，属 E0 无源断言。"}'
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: claims.html
+  PDF-001:
+    final_answer: '{"duration": "3 years", "tuition": "8000 CNY/year", "page": 1}'
+    tool_calls:
+    - name: read_pdf
+      arguments:
+        path: brief_2026_5p.pdf
+  PDF-002:
+    final_answer: '{"rows": [{"code": "081200", "name": "计算机科学与技术", "plan": 20, "subject": "数学一"}, {"code": "085404", "name": "计算机技术", "plan": 23, "subject": "数学二"}, {"code": "081000", "name": "信息与通信工程", "plan": 26, "subject": "英语一"}, {"code": "085400", "name": "电子信息", "plan": 29, "subject": "英语二"}, {"code": "080200", "name": "机械工程", "plan": 32, "subject": "政治"}]}'
+    tool_calls:
+    - name: read_pdf
+      arguments:
+        path: catalog_table.pdf
+  PDF-003:
+    final_answer: '{"page": 7, "snippet": "Retest method: on-site interview plus written test. Full score 100; pass threshold 60."}'
+    tool_calls:
+    - name: read_pdf
+      arguments:
+        path: brief_long_20p.pdf
+  PDF-004:
+    final_answer: '{"diff": [{"field": "tuition", "2025": "8000", "2026": "9000"}, {"field": "plan", "2025": "30", "2026": "33"}, {"field": "retest_weight", "2025": "30%", "2026": "40%"}]}'
+    tool_calls:
+    - name: read_pdf
+      arguments:
+        path: brief_2025.pdf
+    - name: read_pdf
+      arguments:
+        path: brief_2026.pdf
+  PDF-005:
+    final_answer: '{"fields": [{"name": "学制", "value": "3 years", "page": 7, "quote": "Duration 3 years"}, {"name": "学费", "value": "文档未提供", "page": 7, "quote": "not provided"}, {"name": "招生人数", "value": "文档未提供", "page": 7, "quote": "not provided"}, {"name": "复试方式", "value": "on-site interview plus written test", "page": 7, "quote": "Retest method: on-site interview plus written test."}, {"name": "复试权重", "value": "retest 40%", "page": 7, "quote": "Weight: retest 40%, preliminary 60%."}, {"name": "参考书目", "value": "文档未提供", "page": 7, "quote": "not provided"}]}'
+    citations:
+    - claim: 复试方式
+      source_ref: brief_long_20p.pdf
+      locator: '7'
+      supported: true
+    - claim: 复试权重
+      source_ref: brief_long_20p.pdf
+      locator: '7'
+      supported: true
+    - claim: 学制
+      source_ref: brief_long_20p.pdf
+      locator: '7'
+      supported: true
+    - claim: 综合
+      source_ref: brief_long_20p.pdf
+      locator: '7'
+      supported: true
+    tool_calls:
+    - name: read_pdf
+      arguments:
+        path: brief_long_20p.pdf
+  PLAN-001:
+    final_answer: '{"schedule": [{"day": 1, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 2, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 3, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 4, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 5, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 6, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 7, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 8, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 9, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 10, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 11, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 12, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 13, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 14, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 15, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 16, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 17, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 18, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 19, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 20, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 21, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 22, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 23, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 24, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 25, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 26, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 27, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 28, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 29, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}, {"day": 30, "total_hours": 4, "slots": [{"subject": "英语", "hours": 1, "start": 8, "end": 9}, {"subject": "数学", "hours": 2, "start": 9, "end": 11}, {"subject": "专业课", "hours": 1, "start": 11, "end": 12}]}]}'
+    tool_calls:
+    - name: plan
+  PLAN-002:
+    final_answer: "{\"schedule\": [{\"day\": 1, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 2, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 3, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 4, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 5, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 6, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 7, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 8, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 9, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 10, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 11, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 12, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 13, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 14, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 15, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 16, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 17, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 18, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 19, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 20, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 21, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 22, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 23, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 24, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 25, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 26, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 27, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 28, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 29, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 30, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 31, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 32, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 33, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 34, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 35, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 36, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 37, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 38, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 39, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 40, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 41, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 42, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 43, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 44, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 45, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 46, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 47, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 48, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 49, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 50, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 51, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 52, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 53, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 54, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 55, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 56, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 57, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 58, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 59, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 60, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 61, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 62, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 63, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 64, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 65, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 66, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 67, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 68, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 69, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 70, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 71, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 72, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 73, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 74, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 75, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 76, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 77, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 78, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 79, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 80, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 81, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 82, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 83, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 84, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 85, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 86, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 87, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 88, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 89, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 90, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 91, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 92, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 93, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 94, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 95, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 96, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 97, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 98, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 99, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}, {\"day\": 100, \"total_hours\": 6, \"slots\": [{\"subject\": \"数学\", \"hours\": 2, \"start\": 8, \"end\": 10}, {\"subject\": \"专业课\", \"hours\": 2, \"start\": 10, \"end\": 12}, {\"subject\": \"英语\", \"hours\": 1, \"start\": 14, \"end\": 15}, {\"subject\": \"政治\", \"hours\": 1, \"start\": 15, \"end\": 16}]}]}"
+    tool_calls:
+    - name: plan
+  PLAN-003:
+    final_answer: '{"schedule":[{"day":1,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":2,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":3,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":4,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":5,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":6,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":7,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":8,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":9,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":10,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":11,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":12,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":13,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":14,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":15,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":16,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":17,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":18,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":19,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":20,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":21,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":22,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":23,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":24,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":25,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":26,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":27,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":28,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":29,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":30,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":31,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":32,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":33,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":34,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":35,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":36,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":37,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":38,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":39,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":40,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":41,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":42,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":43,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":44,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":45,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":46,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":47,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":48,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":49,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":50,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":51,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":52,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":53,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":54,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":55,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":56,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":57,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":58,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":59,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":60,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":61,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":62,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":63,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":64,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":65,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":66,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":67,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":68,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":69,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":70,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":71,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":72,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":73,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":74,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":75,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":76,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":77,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":78,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":79,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":80,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":81,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":82,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":83,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":84,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":85,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":86,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":87,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":88,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":89,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":90,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":91,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":92,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":93,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":94,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":95,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":96,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":97,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":98,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":99,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]},{"day":100,"total_hours":6.0,"slots":[{"subject":"数学","hours":2,"start":8,"end":10},{"subject":"专业课","hours":2,"start":10,"end":12},{"subject":"英语","hours":1,"start":12,"end":13},{"subject":"政治","hours":0.5,"start":13,"end":13.5},{"subject":"自测","hours":0.5,"start":13.5,"end":14.0}]}],"stages":[{"name":"基础","start_day":1,"end_day":40,"ratio":0.4},{"name":"强化","start_day":41,"end_day":75,"ratio":0.35},{"name":"冲刺","start_day":76,"end_day":100,"ratio":0.25}]}'
+    tool_calls:
+    - name: plan
+  PLAN-004:
+    final_answer: '{"coverage":0.85,"schedule":[{"day":1,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":2,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":3,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":4,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":5,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":6,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":7,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":8,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":9,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":10,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":11,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":12,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":13,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":14,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":15,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":16,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":17,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":18,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":19,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":20,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":21,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":22,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":23,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":24,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":25,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":26,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":27,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":28,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":29,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":30,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":31,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":32,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":33,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":34,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":35,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":36,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":37,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":38,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":39,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":40,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":41,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":42,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":43,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":44,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":45,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":46,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":47,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":48,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":49,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":50,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":51,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":52,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":53,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":54,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":55,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":56,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":57,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":58,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":59,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]},{"day":60,"total_hours":5,"slots":[{"subject":"数据结构","hours":2,"start":8,"end":10},{"subject":"操作系统","hours":2,"start":10,"end":12},{"subject":"政治","hours":1,"start":12,"end":13}]}],"note":"优先覆盖薄弱点：数据结构-红黑树、操作系统-信号量、计算机网络-TCP拥塞控制。"}'
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: weak_points.csv
+    - name: plan
+  PLAN-005:
+    final_answer: '{"schedule": [{"day": 1, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 2, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 3, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 4, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 5, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 6, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 7, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 8, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 9, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 10, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 11, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 12, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 13, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 14, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 15, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 16, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 17, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 18, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 19, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 20, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 21, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 22, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 23, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 24, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 25, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 26, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 27, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 28, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 29, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}, {"day": 30, "total_hours": 2, "slots": [{"subject": "实习", "hours": 2, "start": 8, "end": 10}]}], "diff": [{"changed_from": "每日 6 小时", "changed_to": "实习期间每日 2 小时"}, {"changed_from": "连续复习", "changed_to": "实习 3 周期间压缩为 2h/天"}]}'
+    tool_calls:
+    - name: plan
+  POL-001:
+    final_answer: 截止评估时点，2026 年考研报名时间官方尚未公布，教育部与研招网均未发布 2026 年度报名通告，因此结论为尚未公布。请以官方后续公告为准。参考来源：中国研究生招生信息网。
+    sources:
+    - url: https://yz.chsi.com.cn/kyzx/
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 研招网官方公告
+  POL-002:
+    final_answer: '{"changes": [{"aspect": "推免比例", "before": "15.2%", "after": "16.0%"}, {"aspect": "综合成绩权重", "before": "学业 65%", "after": "学业 60%"}], "years": [2025, 2026], "note": "2026 版相较 2025 版差异见上。"}'
+    sources:
+    - url: https://northplain.edu.example/policy/2025
+      evidence_level: E4
+      is_official: true
+      year: 2025
+    - url: https://northplain.edu.example/policy/2026
+      evidence_level: E4
+      is_official: true
+      year: 2026
+  POL-003:
+    final_answer: '{"latest_version": "2026", "ratio": "16.0%", "changed": ["推免比例", "综合成绩权重"], "note": "最新为 2026 版，推免比例由 15.2% 变为 16.0%，综合成绩权重调整。"}'
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: policy_2024.txt
+    - name: read_file
+      arguments:
+        path: policy_2025.txt
+    - name: read_file
+      arguments:
+        path: policy_2026.txt
+  POL-004:
+    final_answer: '{"answer": "2026 版删除了原第六条（竞赛加分）条款，该规定状态为已删除，即从 2026 版起不再适用。", "deleted_clause": "第六条（竞赛加分）", "status": "已删除"}'
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: policy_2025.txt
+    - name: read_file
+      arguments:
+        path: policy_2026.txt
+  POL-005:
+    final_answer: '{"report": "经检索，该省报考点须知为当前最新版本（2026 年版），发布于省教育考试院官网。", "evaluated_at": "2026-01-15T10:00:00+08:00", "is_latest": true}'
+    sources:
+    - url: https://www.example-province.edu.cn/baokao/2026
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 省教育考试院 报考点须知
+  RES-001:
+    final_answer: '{"report": {"university": "北原大学", "major_code": "081200", "plan": 20, "subject": "数学一", "min_scores": [348, 351, 349, 355], "risks": "历年分数稳中有升，竞争加剧。"}}'
+    files:
+      analysis.json: '{"report": {"university": "北原大学", "major_code": "081200", "plan": 20, "subject": "数学一", "min_scores": [348, 351, 349, 355], "risks": "历年分数稳中有升。"}}'
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: majors.csv
+    - name: read_file
+      arguments:
+        path: majors.html
+  RES-002:
+    final_answer: '{"comparison": [{"university": "北原大学", "major_code": "081200", "plan": 20}, {"university": "东岭工业大学", "major_code": "085404", "plan": 23}, {"university": "南湾理工大学", "major_code": "081000", "plan": 26}], "risks": ["部分院校推免占比高，统考名额可能低于计划数", "历年复试线波动，需预留安全分"]}'
+    files:
+      report.json: '{"comparison": [{"university": "北原大学", "major_code": "081200", "plan": 20}, {"university": "东岭工业大学", "major_code": "085404", "plan": 23}, {"university": "南湾理工大学", "major_code": "081000", "plan": 26}], "risks": ["推免占比高", "复试线波动"]}'
+    sources:
+    - url: https://northplain.edu.example/catalog
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 北原大学 2026 招生目录
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: majors.csv
+    - name: read_file
+      arguments:
+        path: majors.html
+    - name: read_file
+      arguments:
+        path: scores.csv
+    - name: search_snapshot
+      arguments:
+        q: 招生目录
+    - name: read_file
+      arguments:
+        path: majors.csv
+    - name: read_file
+      arguments:
+        path: majors.html
+    - name: read_file
+      arguments:
+        path: scores.csv
+    - name: plan
+  RES-003:
+    final_answer: '{"schools": [{"name": "甲大学", "level": "冲刺", "reason": "分数线高于自身水平"}, {"name": "乙大学", "level": "稳妥", "reason": "分数线与自身匹配"}, {"name": "丙大学", "level": "保底", "reason": "分数线低于自身水平"}], "sources": ["https://a.edu.example/1", "https://b.edu.example/1", "https://c.edu.example/1"]}'
+    sources:
+    - url: https://a.edu.example/1
+      evidence_level: E4
+      is_official: true
+    - url: https://b.edu.example/1
+      evidence_level: E4
+      is_official: true
+    - url: https://c.edu.example/1
+      evidence_level: E4
+      is_official: true
+  RES-004:
+    final_answer: '{"analysis": [{"claim": "调剂需要初试成绩达到国家线", "evidence_level": "E5"}, {"claim": "调剂通过研招网调剂服务系统进行", "evidence_level": "E4"}, {"claim": "部分院校有额外调剂要求", "evidence_level": "E4"}, {"claim": "调剂结论 4", "evidence_level": "E4"}, {"claim": "调剂结论 5", "evidence_level": "E4"}, {"claim": "调剂结论 6", "evidence_level": "E4"}, {"claim": "调剂结论 7", "evidence_level": "E4"}, {"claim": "调剂结论 8", "evidence_level": "E4"}, {"claim": "调剂结论 9", "evidence_level": "E4"}, {"claim": "调剂结论 10", "evidence_level": "E4"}, {"claim": "调剂结论 11", "evidence_level": "E4"}, {"claim": "调剂结论 12", "evidence_level": "E4"}, {"claim": "调剂结论 13", "evidence_level": "E4"}, {"claim": "调剂结论 14", "evidence_level": "E4"}, {"claim": "调剂结论 15", "evidence_level": "E4"}]}'
+    sources:
+    - url: https://yz.chsi.com.cn/tj/
+      evidence_level: E4
+      is_official: true
+    - url: https://a.edu.example/tj
+      evidence_level: E4
+      is_official: true
+    - url: https://b.edu.example/tj
+      evidence_level: E4
+      is_official: true
+    citations:
+    - claim: c0
+      source_ref: https://yz.chsi.com.cn/tj/
+      supported: true
+    - claim: c1
+      source_ref: https://yz.chsi.com.cn/tj/
+      supported: true
+    - claim: c2
+      source_ref: https://yz.chsi.com.cn/tj/
+      supported: true
+    - claim: c3
+      source_ref: https://yz.chsi.com.cn/tj/
+      supported: true
+    - claim: c4
+      source_ref: https://yz.chsi.com.cn/tj/
+      supported: true
+  SEARCH-001:
+    final_answer: 研招网已发布 2026 年全国硕士研究生招生考试初试时间与科目安排：初试日期与各场次科目安排见官方说明页。初试时间以官方为准，科目安排按上午、下午场次分布。参考官方页面：中国研究生招生信息网。
+    sources:
+    - url: https://yz.chsi.com.cn/kyzx/2026/
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 2026 初试时间与科目安排
+  SEARCH-002:
+    final_answer: 2026 年全国硕士研究生招生考试网上报名（含预报名）时间为 2025 年 10 月 5 日至 10 月 25 日，考生线上填报志愿窗口起止日期如上。官方来源：中国研究生招生信息网。
+    sources:
+    - url: https://yz.chsi.com.cn/kyzx/2026/bm
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 2026 网上报名时间
+  SEARCH-003:
+    final_answer: 研招网全国硕士研究生招生调剂服务系统官方入口为 https://yz.chsi.com.cn/tj/ ，请通过官方入口办理调剂，勿使用第三方页面。
+    sources:
+    - url: https://yz.chsi.com.cn/tj/
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 调剂服务系统官方入口
+  SEARCH-004:
+    final_answer: 该“双一流”高校计算机科学与技术专业招生代码为 081200，初试科目（考试科目）包括数学一、英语一、政治、专业课共 4 门。来源：该校研究生院官网专业目录。
+    sources:
+    - url: https://grad.x.edu.example/2026/majors
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 研究生院专业目录
+  SEARCH-005:
+    final_answer: 考研数学（一）考试大纲（2026 年版）官方发布页及 PDF 直链见下：https://www.moe.example.cn/ksdg/math1-2026.pdf 。该大纲为官方发布，标注年份 2026。
+    sources:
+    - url: https://www.moe.example.cn/ksdg/math1-2026.pdf
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 考研数学（一）考试大纲 2026
+  SEARCH-006:
+    final_answer: 在该高校二级院系网站找到《硕士研究生复试录取办法》通知（复试办法），URL 为 https://cs.x.edu.example/tz/2025/fushi.html ，发布年份 2025。来源：院系官网。
+    sources:
+    - url: https://cs.x.edu.example/tz/2025/fushi.html
+      evidence_level: E4
+      is_official: true
+      year: 2025
+      title: 复试录取办法
+  SEARCH-007:
+    final_answer: 2025 年考研 A 类工学门类国家线（复试分数线）：总分线与单科线如下，总分 273，单科（满分 100）38，单科（满分 150）57。来源：教育部官方公布。
+    sources:
+    - url: https://www.moe.example.cn/gjx/2025
+      evidence_level: E4
+      is_official: true
+      year: 2025
+      title: 2025 国家线
+  SEARCH-008:
+    final_answer: '{"versions": [{"year": 2024, "url": "https://x.edu.example/2024"}, {"year": 2025, "url": "https://x.edu.example/2025"}], "changes": [{"aspect": "学费", "before": "8000", "after": "9000"}, {"aspect": "招生人数", "before": "30", "after": "33"}], "note": "两版不一致之处见上，均有页面依据。"}'
+    sources:
+    - url: https://x.edu.example/2024
+      evidence_level: E4
+      is_official: true
+      year: 2024
+    - url: https://x.edu.example/2025
+      evidence_level: E4
+      is_official: true
+      year: 2025
+  SEARCH-009:
+    final_answer: '{"rows": [{"year": 2023, "total": 273, "single": 38, "source_url": "https://x.edu.example/2023"}, {"year": 2024, "total": 273, "single": 38, "source_url": "https://x.edu.example/2024"}, {"year": 2025, "total": 273, "single": 38, "source_url": "https://x.edu.example/2025"}]}'
+    sources:
+    - url: https://x.edu.example/2023
+      evidence_level: E4
+      is_official: true
+      year: 2023
+    - url: https://x.edu.example/2024
+      evidence_level: E4
+      is_official: true
+      year: 2024
+    - url: https://x.edu.example/2025
+      evidence_level: E4
+      is_official: true
+      year: 2025
+  SEARCH-010:
+    final_answer: 该专业全日制与非全日制初试业务课设置不同：全日制考数学一、英语一、政治、专业课；非全日制考数学二、英语二、政治、专业课，两者考试科目（初试科目）存在差异。证据等级：全日制条目 E4，非全日制条目 E4。
+    sources:
+    - url: https://y.edu.example/ft
+      evidence_level: E4
+      is_official: true
+    - url: https://y.edu.example/pt
+      evidence_level: E4
+      is_official: true
+  SEARCH-011:
+    final_answer: '{"answer": "已检索到该快照，content_sha256 = 01348387d1bddc2192ce10a10ad7bcb6d300daef53d86c8ba4355435f5d1ba27（sha256 校验值）", "url": "https://northplain.edu.example/graduate/tuimian-2025", "content_sha256": "01348387d1bddc2192ce10a10ad7bcb6d300daef53d86c8ba4355435f5d1ba27"}'
+    sources:
+    - url: https://northplain.edu.example/graduate/tuimian-2025
+      evidence_level: E4
+      is_official: true
+      year: 2025
+      title: 北原大学 2025 年推荐免试研究生接收办法
+      content_sha256: 01348387d1bddc2192ce10a10ad7bcb6d300daef53d86c8ba4355435f5d1ba27
+  SEARCH-012:
+    final_answer: '{"conflict": true, "authoritative": "公告 B", "url": "https://northplain.edu.example/b", "line": 355, "year": 2025, "note": "三条公告冲突；公告 B 为 2025 年最新有效，采用 355。"}'
+    sources:
+    - url: https://northplain.edu.example/b
+      evidence_level: E4
+      is_official: true
+      year: 2025
+      title: 公告 B
+    tool_calls:
+    - name: search_snapshot
+      arguments:
+        q: 085404 分数线
+  UNI-001:
+    final_answer: 某高校计算机技术专业：学制 3 年（非全日制可适当延长），学费 8000 元/年（以 2026 年最新招生简章为准），标注年份 2026。来源：该校研究生院官方招生简章。
+    sources:
+    - url: https://x.edu.example/2026/zsjianzhang
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 2026 招生简章
+  UNI-002:
+    final_answer: 该专业初试自命题业务课的科目代码为 408，科目名称（正式叫法）为计算机学科专业基础综合。来源：官方招生目录，未使用推测。
+    sources:
+    - url: https://x.edu.example/2026/majors
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 招生目录
+  UNI-003:
+    final_answer: 该专业学术型（学硕）代码 081200、学硕科目 数学一；专业型（专硕）代码 085404、专硕科目 数学二。来源：官方专业目录。
+    sources:
+    - url: https://x.edu.example/2026/majors
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 专业目录
+  UNI-004:
+    final_answer: 该学院研究生二轮考核的复试科目为计算机综合面试与上机，官方未公布参考书目，因此不列书目。来源：学院官网。
+    sources:
+    - url: https://cs.x.edu.example/fushi
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 学院复试办法
+  UNI-005:
+    final_answer: 该专业拟招生人数 33 人（招生人数含推免），其中推免人数 10 人；即公布的计划招收规模已包含推免名额。来源：招生简章官方说明。
+    sources:
+    - url: https://x.edu.example/2026/zsjianzhang
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 招生简章
+  UNI-006:
+    final_answer: 研究生院页与学院页公布人数不一致（存在冲突/差异）：研究生院页写 20 人，学院页写 33 人。建议采信研究生院页，因其为全校统一口径。来源：研究生院官网、学院官网。
+    sources:
+    - url: https://grad.x.edu.example/2026
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 研究生院页
+    - url: https://cs.x.edu.example/2026
+      evidence_level: E4
+      is_official: true
+      year: 2026
+      title: 学院页
+  UNI-007:
+    final_answer: '{"rows": [{"year": 2023, "min_score": 351, "avg_score": 365, "source_url": "https://x.edu.example/2023"}, {"year": 2024, "min_score": 349, "avg_score": 365, "source_url": "https://x.edu.example/2024"}, {"year": 2025, "min_score": 355, "avg_score": 373, "source_url": "https://x.edu.example/2025"}], "note": "录取最低分与平均分逐年如上。"}'
+    files:
+      report.json: '{"rows": [{"year": 2023, "min_score": 351, "avg_score": 365, "source_url": "https://x.edu.example/2023"}, {"year": 2024, "min_score": 349, "avg_score": 365, "source_url": "https://x.edu.example/2024"}, {"year": 2025, "min_score": 355, "avg_score": 373, "source_url": "https://x.edu.example/2025"}]}'
+    sources:
+    - url: https://x.edu.example/2023
+      evidence_level: E4
+      is_official: true
+      year: 2023
+    - url: https://x.edu.example/2024
+      evidence_level: E4
+      is_official: true
+      year: 2024
+    - url: https://x.edu.example/2025
+      evidence_level: E4
+      is_official: true
+      year: 2025
+  UNI-008:
+    final_answer: '{"majors": [{"code": "081200", "name": "计算机科学与技术", "plan": 20, "subject": "数学一"}, {"code": "085404", "name": "计算机技术", "plan": 23, "subject": "数据结构"}, {"code": "081000", "name": "信息与通信工程", "plan": 26, "subject": "操作系统"}]}'
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: source_01.html
+  UNI-009:
+    final_answer: '{"conflict": true, "a_plan": 33, "b_plan": 33, "source_a": "source_01.html", "source_b": "source_02.html", "conclusion": "两处数值存在冲突（不一致），采信学校主页口径。"}'
+    tool_calls:
+    - name: read_file
+      arguments:
+        path: source_01.html
+    - name: read_file
+      arguments:
+        path: source_02.html
+

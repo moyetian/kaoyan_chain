@@ -1,0 +1,113 @@
+{
+  "task_id": "POL-002",
+  "category": "policy",
+  "difficulty": "medium",
+  "instruction": "对比相邻两年（2025 与 2026）推免政策文件，指出至少 2 处前后不一致的地方，并禁止用旧政策回答新问题。须给出 E4+ 来源。请以 JSON 作答：`changes`（≥2 项，每项含 aspect/before/after）。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "diff",
+    "timeliness"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "2026"
+        ]
+      },
+      {
+        "id": "p2",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": false,
+        "any_of": [
+          "差异",
+          "变化"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 2,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "json_schema",
+        "dimension": "factuality",
+        "critical": true,
+        "path": "$.changes",
+        "schema": {
+          "type": "array",
+          "minLength": 2,
+          "items": {
+            "type": "object",
+            "required": [
+              "aspect",
+              "before",
+              "after"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c2",
+        "type": "regex",
+        "dimension": "completeness",
+        "pattern": "2026"
+      },
+      {
+        "id": "c3",
+        "type": "year_tag",
+        "dimension": "source_quality",
+        "year": 2026
+      },
+      {
+        "id": "c4",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 2
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否比较两年推免政策差异并给出官方来源？"
+        }
+      ]
+    }
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer",
+    "schema": {
+      "type": "object",
+      "required": [
+        "changes"
+      ]
+    }
+  }
+}

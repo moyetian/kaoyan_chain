@@ -1,0 +1,33 @@
+{
+  "task_id": "RES-003",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/school-bao-2026",
+      "title": "保底档院校招生信息",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "d2b136328494d27c6bebebb934dd233171ada9a6121d130aab91341a18b2a875",
+      "http_status": 200,
+      "snapshot_path": "pages/d2b136328494d27c6bebebb934dd233171ada9a6121d130aab91341a18b2a875.html",
+      "bytes": 703
+    },
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/school-ji-2026",
+      "title": "冲刺档院校招生信息",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "a9882f345d845255bbc85afd8229cc2aa367327b406b8ae7d3ccc58705b50d4a",
+      "http_status": 200,
+      "snapshot_path": "pages/a9882f345d845255bbc85afd8229cc2aa367327b406b8ae7d3ccc58705b50d4a.html",
+      "bytes": 682
+    },
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/school-wen-2026",
+      "title": "稳妥档院校招生信息",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "ee5855b4be09b3cd3e13018a4aed9ec3f961deafbc87774f317d880af6eb32b0",
+      "http_status": 200,
+      "snapshot_path": "pages/ee5855b4be09b3cd3e13018a4aed9ec3f961deafbc87774f317d880af6eb32b0.html",
+      "bytes": 679
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "task_id": "HAL-004",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/zhaoshengrenshu-2027",
+      "title": "2027年招生计划说明",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "f4eb668367dec91b34ef7d82f208b4c1adc17b2100d8d957eabbf8f67d2ab20f",
+      "http_status": 200,
+      "snapshot_path": "pages/f4eb668367dec91b34ef7d82f208b4c1adc17b2100d8d957eabbf8f67d2ab20f.html",
+      "bytes": 689
+    }
+  ]
+}

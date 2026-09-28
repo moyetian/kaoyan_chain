@@ -1,0 +1,103 @@
+name: core50 Benchmark Gate
+
+# [W2] core50 评测门禁：数据集入库本仓库（tests/benchmarks/core50/，50 题 /
+# 8 类 / 100 分制 7 维，纯数据），评测器 KaoyanBench（公开仓库
+# moyetian/Kaoyan_chain_Bench）保持独立定位，以 pip 从 git 安装。
+#
+# 触发分工：
+#   PR / push   → smoke 作业：validate 全量 50 题 schema+fixture 哈希，
+#                 再离线 mock 重放 10 题（8 类覆盖）；
+#   夜间 / 手动 → full 作业：全量 50 题离线重放（PR 冒烟只覆盖 10 题，
+#                 其余 40 题的评分管线由夜间兜住）。
+#
+# 离线 mock = 零网络 / 零 LLM / 零计费、确定性重放：任何一题 FAIL 都说明
+# 数据集 / 检查 / 管线被改坏，而不是"模型发挥失常"。三态退出码 0/1/2
+# （通过 / 不达标 / 不可评测）在本工作流内一律按非 0 判红 —— 数据集坏了
+# 必须修，不允许静默跳过。
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    # UTC 18:30 = 北京时间 02:30。避开整点：GitHub 调度高峰（每小时 0 分）
+    # 会延迟甚至丢弃定时任务。
+    - cron: '30 18 * * *'
+  workflow_dispatch:
+
+# 与 test.yml 同口径：只做检出 + 跑评测，显式收敛为只读。
+permissions:
+  contents: read
+
+concurrency:
+  group: core50-${{ github.ref }}
+  # 与 test.yml 一致：PR 上取消在途运行，main 的 push 不取消（避免主分支
+  # 最后一次推送留下"未被验证"的空窗）。
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # 评测器固定 SHA —— 浮动 tag/branch 会被上游静默改写，等于把门禁交给一个
+  # 会漂移的对象（与 test.yml 里 actions 固定 SHA 同理）。
+  # 本 SHA（远端 main，v1.1.0）已于 2026-09-27 本地预演：以该版本 pip 安装后，
+  # 本仓库数据集的 --check / --smoke（10 题）/ --full（50 题）全部通过。
+  # 升级评测器时：只改这一行，并本地重跑三种模式验证。
+  KAOYANBENCH_SHA: 77494e10bf34bac69db32cdccc841305ceebeab7
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
+
+jobs:
+  smoke:
+    # PR / push 触发；夜间与手动走 full 作业（full 已包含 validate）。
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # 挂起时表现为"一直在跑"而非快速失败；pip 构建 + 校验 + 重放本地实测
+    # < 2 分钟，15 分钟足够覆盖冷启动。
+    timeout-minutes: 15
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+      with:
+        python-version: "3.12"
+
+    - name: Install KaoyanBench evaluator (pinned SHA)
+      run: |
+        python -m pip install --upgrade pip
+        pip install "kaoyanbench @ git+https://github.com/moyetian/Kaoyan_chain_Bench@${KAOYANBENCH_SHA}"
+
+    - name: core50 数据集完整性（validate --require-snapshots，全量 50 题）
+      run: |
+        python tools/benchmarks/core50_runner.py --check
+
+    - name: core50 冒烟 · 10 题离线重放（8 类覆盖）
+      run: |
+        python tools/benchmarks/core50_runner.py --smoke
+
+  full:
+    # 夜间定时与手动触发；PR 不跑全量（冒烟已覆盖同一代码路径）。
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+      with:
+        python-version: "3.12"
+
+    - name: Install KaoyanBench evaluator (pinned SHA)
+      run: |
+        python -m pip install --upgrade pip
+        pip install "kaoyanbench @ git+https://github.com/moyetian/Kaoyan_chain_Bench@${KAOYANBENCH_SHA}"
+
+    - name: core50 数据集完整性（validate --require-snapshots，全量 50 题）
+      run: |
+        python tools/benchmarks/core50_runner.py --check
+
+    - name: core50 全量 · 50 题离线重放
+      run: |
+        python tools/benchmarks/core50_runner.py --full

@@ -1,0 +1,94 @@
+{
+  "task_id": "PDF-002",
+  "category": "pdf",
+  "difficulty": "medium",
+  "instruction": "从专业目录 PDF（含表格）中提取表格 5 行 × 4 字段（专业代码/名称/人数/初试科目），输出为 rows 数组。仅依据本地 fixture。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "fixture",
+    "deterministic",
+    "pdf",
+    "table"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "081200"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [],
+    "ground_truth": {
+      "rows": [
+        {
+          "code": "081200",
+          "name": "计算机科学与技术",
+          "plan": 20,
+          "subject": "数学一"
+        }
+      ]
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.rows",
+        "schema": {
+          "type": "array",
+          "minLength": 5,
+          "items": {
+            "type": "object",
+            "required": [
+              "code",
+              "name",
+              "plan",
+              "subject"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c2",
+        "type": "set_includes",
+        "dimension": "completeness",
+        "values": [
+          "081200",
+          "085404",
+          "081000",
+          "085400",
+          "080200"
+        ],
+        "min_hits": 4
+      },
+      {
+        "id": "c3",
+        "type": "numeric",
+        "dimension": "factuality",
+        "path": "$.rows[0].plan",
+        "op": "eq",
+        "value": 20,
+        "tol": 0.0
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

@@ -474,7 +474,13 @@ def test_tty_card_denial_blocks_execution(ws, probe, monkeypatch, capsys):
 # ═══════════ ⑤ 授权记忆不落盘 ═══════════
 
 def test_approval_leaves_no_auth_state_file_in_workspace(ws, probe):
-    """批准后工作区不得多出任何文件（授权状态只存在于进程内存，不落盘）。"""
+    """批准后工作区不得多出任何文件（授权状态只存在于进程内存，不落盘）。
+
+    [D0 口径更新] ``.checkpoint/`` 子树不计入 —— 写前快照是**文件备份**
+    （任何模式下 write_file 批准后自动创建，见 D0 最小事务化），不含任何
+    授权决定；本用例要证的是「授权状态（本会话信任集）不落盘」这一条不变式，
+    故只对非 ``.checkpoint/`` 的新增文件做严格集合断言。
+    """
     fake = _FakeApprovalChannel(approve=True)
     reg = _registry(ws, mode="auto", approval_channel=fake)
     before = _snapshot(ws)
@@ -484,7 +490,8 @@ def test_approval_leaves_no_auth_state_file_in_workspace(ws, probe):
                            interactive=False)
     assert SENTINEL_STDOUT in out, out
 
-    new_files = set(_snapshot(ws)) - set(before)
+    new_files = {f for f in set(_snapshot(ws)) - set(before)
+                 if not f.startswith(".checkpoint/")}
     assert new_files == {"tools/evil.py", SENTINEL_FILE}, (
         f"批准流程写出了额外文件（授权状态疑似落盘）: {sorted(new_files)}")
 

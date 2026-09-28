@@ -1,0 +1,24 @@
+{
+  "task_id": "UNI-006",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/csxy/zhaosheng-2026",
+      "title": "计算机学院2026年招生计划",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "dfb0d967a5dcb128b44152e19d190d10cd2a0086d40b63d5a99b0a05fb862f15",
+      "http_status": 200,
+      "snapshot_path": "pages/dfb0d967a5dcb128b44152e19d190d10cd2a0086d40b63d5a99b0a05fb862f15.html",
+      "bytes": 714
+    },
+    {
+      "url": "https://kaoyan.example.edu.cn/yjsy/zhaosheng-2026",
+      "title": "研究生院2026年招生计划",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "fa55900fd4bfe9a4576527f6fd894260e264b01641d4b2360efbc90aec321267",
+      "http_status": 200,
+      "snapshot_path": "pages/fa55900fd4bfe9a4576527f6fd894260e264b01641d4b2360efbc90aec321267.html",
+      "bytes": 694
+    }
+  ]
+}

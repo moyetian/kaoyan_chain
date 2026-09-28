@@ -126,7 +126,7 @@ ky config
 | 启动命令                   | 模式名称                          | 运行机制与核心场景                                                            |
 | ---------------------- | ----------------------------- | -------------------------------------------------------------------- |
 | `ky`                   | 默认询问模式 (`--permission=ask`)   | 工具修改文件或执行命令前，在终端弹出 Codex 风格卡片：`[y] 批准 / [a] 永久信任 / [n] 拒绝`           |
-| `ky --permission=plan` | **计划模式 (Plan Mode)**          | 写操作前出具变更计划，**自动在 `.checkpoint/` 创建原子快照**；如遇误改可输入 `ky rollback` 秒级撤销！ |
+| `ky --permission=plan` | **计划模式 (Plan Mode)**          | 写操作前出具变更计划，**自动在 `.checkpoint/` 创建原子快照**；如遇误改可输入 `ky rollback` 秒级撤销！（写前快照与回滚在**任何模式**都生效，Plan 模式只是额外多一张审计卡） |
 | `ky --permission=auto` | 极速全自动沙箱 (`--permission=auto`) | 免交互审批（0\~3级工具秒级放行），专为沉浸式连续刷题设计                                       |
 | `ky --permission=safe` | 严格只读模式 (`--permission=safe`)  | 禁止一切文件写入与命令执行，仅供阅读笔记、大纲与定理答疑                                         |
 
@@ -188,8 +188,11 @@ ky relieve
 ky memory status
 ky memory prune
 
-# 秒级回滚 Plan 模式修改的文件快照
+# 秒级回滚写前快照（默认最近一次；可按文件/按检查点精确回滚）
 ky rollback
+ky rollback --list                     # 查看全部快照检查点
+ky rollback --file tools/agent/loop.py # 只回滚单个文件
+ky rollback --checkpoint ckpt_20260926_163012
 
 # 一键系统健康体检
 ky doctor

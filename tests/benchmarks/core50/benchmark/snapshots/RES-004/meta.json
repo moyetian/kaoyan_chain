@@ -1,0 +1,33 @@
+{
+  "task_id": "RES-004",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/tiaoji-liucheng-2026",
+      "title": "2026年调剂流程说明",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "e8d49df9cbf6cddeb22b744bc6b076ca703a7af475e756149c6250ebf2c1722d",
+      "http_status": 200,
+      "snapshot_path": "pages/e8d49df9cbf6cddeb22b744bc6b076ca703a7af475e756149c6250ebf2c1722d.html",
+      "bytes": 679
+    },
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/tiaoji-tiaojian-2026",
+      "title": "2026年调剂条件说明",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "d4fd18afde2e34c6a672a6ee376cebf1619283f36f76bc1c66551ca691e312bc",
+      "http_status": 200,
+      "snapshot_path": "pages/d4fd18afde2e34c6a672a6ee376cebf1619283f36f76bc1c66551ca691e312bc.html",
+      "bytes": 686
+    },
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/tiaoji-zhinan-2026",
+      "title": "2026年调剂指南",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "55457270bd0c8409db6337f0940ccc43c8da8a01b5203ba15ec7dcbb36b1da3b",
+      "http_status": 200,
+      "snapshot_path": "pages/55457270bd0c8409db6337f0940ccc43c8da8a01b5203ba15ec7dcbb36b1da3b.html",
+      "bytes": 676
+    }
+  ]
+}

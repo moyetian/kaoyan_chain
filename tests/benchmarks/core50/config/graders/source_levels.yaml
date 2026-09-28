@@ -1,0 +1,88 @@
+# source_levels.yaml：来源可信度 E0~E5 判定规则（B-12）
+# ★ 规则表**可配置、不硬编码于逻辑**；core/evidence.py 的 DEFAULT_RULES 只是缺失本文件时的兜底。
+# 键名与 core/evidence.py:EvidenceRules 严格对齐（改键名前请同步改代码）。
+#
+# 判定顺序（命中即停，纯函数）：
+#   1) domain_rules 命中指定后缀 → 直接给 level（精确域名优先）
+#   2) official_domains（官方后缀）命中 + 年份匹配当年 → current_year_level
+#   3) official_domains（官方后缀）命中 → official_level
+#   4) high_trust_third_party 命中 → high_trust_level
+#   5) third_party_domains 命中 → third_party_level
+#   6) 全不命中 → default_level
+# 另有 path_rules 对 URL 路径关键词做等级覆盖。
+# 无来源（sources 为空）→ no_source_level(E0)。
+
+default_level: E2
+no_source_level: E0
+official_level: E4
+current_year_level: E5
+third_party_level: E2
+high_trust_level: E3
+
+# 官方后缀（学历/政府属性）
+official_domains:
+  - ".edu.cn"
+  - ".edu"
+  - ".gov.cn"
+  - ".gov"
+  - ".org.cn"
+
+# 高可信第三方（半官方/权威聚合）
+high_trust_third_party:
+  - chsi.com.cn
+  - kaoyan.com
+  - eol.cn
+
+# 普通第三方（论坛/聚合，证据力弱）
+third_party_domains:
+  - zhihu.com
+  - baidu.com
+  - sohu.com
+  - csdn.net
+  - bilibili.com
+  - tieba.baidu.com
+
+# 精确域名规则（优先级最高，可覆盖官方后缀判定）
+domain_rules:
+  - suffix: chsi.com.cn
+    level: E5
+    reason: 中国研究生招生信息网（官方招生平台）
+  - suffix: yz.chsi.com.cn
+    level: E5
+    reason: 研招网统考栏目
+  - suffix: moe.gov.cn
+    level: E5
+    reason: 教育部官网
+  - suffix: kaoyan.example.edu.cn
+    level: E4
+    reason: 虚构示例院校研究生院（benchmark 自建）
+
+# 路径关键词规则（按 URL path 命中）
+path_rules:
+  - pattern: zsml
+    level: E5
+    reason: 招生目录页
+  - pattern: zsjz
+    level: E5
+    reason: 招生简章页
+  - pattern: zhaosheng
+    level: E5
+    reason: 招生栏目页
+  - pattern: admission
+    level: E5
+    reason: 招生（英文）页
+  - pattern: fsx
+    level: E4
+    reason: 复试线栏目页
+  - pattern: notice
+    level: E4
+    reason: 官方公告页
+  - pattern: news
+    level: E3
+    reason: 新闻公告页
+  - pattern: blog
+    level: E1
+    reason: 个人博客
+
+# 来源年份与任务年份差距在此窗口内算「当年」
+year_window: 1

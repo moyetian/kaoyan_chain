@@ -1,0 +1,15 @@
+{
+  "task_id": "SEARCH-006",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/csxy/fushi-2025",
+      "title": "计算机学院2025年硕士研究生复试录取办法",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "ce7d1250b73d938c705b82bcb25dadd6ed112f7fc5cb86acef8550ba1b948702",
+      "http_status": 200,
+      "snapshot_path": "pages/ce7d1250b73d938c705b82bcb25dadd6ed112f7fc5cb86acef8550ba1b948702.html",
+      "bytes": 812
+    }
+  ]
+}

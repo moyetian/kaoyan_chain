@@ -1,0 +1,100 @@
+{
+  "task_id": "PLAN-002",
+  "category": "planning",
+  "difficulty": "medium",
+  "instruction": "帮我排一份 100 天的复习日程。每天总共排 6 小时，其中数学和专业课各不少于 2 小时、英语不少于 1 小时、政治不少于半小时；时段之间不要打架。用 schedule 字段给出 JSON 数组，每天一项（含 day、total_hours、slots）。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "deterministic",
+    "constraint"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "数学",
+          "专业课"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "constraint",
+        "dimension": "task_completion",
+        "critical": true,
+        "answer_path": "$.schedule",
+        "rules": [
+          {
+            "kind": "total_days",
+            "op": "eq",
+            "value": 100
+          },
+          {
+            "kind": "daily_total_hours",
+            "op": "eq",
+            "value": 6
+          },
+          {
+            "kind": "subject_min_hours",
+            "subject": "数学",
+            "op": "ge",
+            "value": 2
+          },
+          {
+            "kind": "subject_min_hours",
+            "subject": "专业课",
+            "op": "ge",
+            "value": 2
+          },
+          {
+            "kind": "subject_min_hours",
+            "subject": "英语",
+            "op": "ge",
+            "value": 1
+          },
+          {
+            "kind": "subject_min_hours",
+            "subject": "政治",
+            "op": "ge",
+            "value": 0.5
+          },
+          {
+            "kind": "no_overlap",
+            "value": true
+          }
+        ]
+      },
+      {
+        "id": "c2",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.schedule",
+        "schema": {
+          "type": "array",
+          "minLength": 100
+        }
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

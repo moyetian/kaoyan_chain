@@ -1,0 +1,77 @@
+# KaoyanBench v1.0 全局配置
+# 本文件只使用 utils/mini_yaml.py 支持的受限 YAML 子集语法：
+#   # 注释、key: value 标量、- item 块序列、任意层级缩进映射（2 空格）。
+# 不使用：锚点 &/*、块标量 |/>、多文档 ---。
+# ${VAR} 为环境变量插值，${VAR:-default} 提供默认值。
+
+benchmark:
+  name: KaoyanBench
+  version: "1.0"
+  tasks_root: benchmark/tasks
+  suites_root: benchmark/suites
+  default_suite: core50
+
+agent:                        # 被测 Agent（引用 config/agents/<name>.yaml）
+  ref: kaoyan_chain
+  version: "2.8.0"
+
+model:                        # 被测模型（★ 与 grader_model 分离）
+  provider: openai_compatible
+  name: deepseek-chat
+  base_url: ${OPENAI_BASE_URL:-}
+  api_key_env: OPENAI_API_KEY
+  temperature: 0
+
+grader_model:                 # 评测模型（★ 不得与 model 相同）
+  provider: openai_compatible
+  name: gpt-4o-mini
+  base_url: ${GRADER_BASE_URL:-}
+  api_key_env: GRADER_API_KEY
+  temperature: 0
+  max_tokens: 2000
+  timeout: 60
+  max_retries: 1             # invalid_response（响应非 JSON/缺字段）最多重试次数
+  prompt_version: v1
+  allow_same_model: false     # true 仅用于 mock/echo 自测
+
+runtime:
+  timeout: 900
+  timeout_grace_sec: 15
+  max_tool_calls: 100
+  concurrency: 1
+  workspace_root: results/workspaces
+  keep_workspace: false
+  env_passthrough: []
+  docker:
+    enabled: false
+    image: ""
+  fail_fast: false
+
+evaluation:
+  runs: 1
+  seed: 42
+  offline_replay: false
+  snapshot_dir: benchmark/snapshots
+  grader_type: hybrid         # deterministic | semantic | hybrid | manual
+  pass_threshold: 60.0
+  weights:                    # 7 维，求和必须 = 1.0
+    factuality: 0.30
+    source_quality: 0.20
+    citation: 0.15
+    completeness: 0.15
+    tool_execution: 0.10
+    task_completion: 0.05
+    efficiency: 0.05
+  strict_warn: false
+
+gates:
+  mode: absolute              # absolute(pp) | relative
+  task_success_rate:      { max_delta_pp: -5.0, level: fail }
+  citation_accuracy_mean: { max_delta_pp: -5.0, level: fail }
+  hallucination_rate_mean:{ max_delta_pp: 3.0, level: fail }
+  latency_seconds_p90:    { max_ratio: 1.5, level: warn }
+
+output:
+  dir: reports
+  format: [json, markdown, html]
+  results_dir: results

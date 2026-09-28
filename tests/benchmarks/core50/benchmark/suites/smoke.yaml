@@ -1,0 +1,19 @@
+# smoke：CI 离线冒烟集（全离线、全确定性、可用 mock Runner 跑通）
+# ★ 这是 CI 与本地「30 秒跑通」的默认目标；全部任务均无网络依赖。
+# 任务由任务集工程师（T 类）提供；本 manifest 用 tag=smoke 从各取一。
+# 当前 6 题：EXAM-001 / EXAM-005 / PLAN-001 / UNI-008 / SEARCH-012 / PDF-001，
+# 覆盖 10 种确定性 check：numeric string_eq file_exists file_json_match
+#                constraint json_schema point_hit set_includes must_not_claim year_tag。
+# 预设答案登记在 config/agents/mock.yaml 的 answers 段。
+id: smoke
+split: public
+version: "1.0"
+description: "CI 冒烟集：5 类 6 题离线确定性任务（exam/pdf/planning/search/university），可由 mock Runner 全流程离线跑通；policy/research/hallucination 覆盖由 core50 nightly 承担（v1.1 计划补齐 8 类 smoke）"
+task_ids: all
+filters:
+  tags:
+    - smoke
+defaults:
+  runs: 1
+  time_limit: 120
+  tool_limit: 30

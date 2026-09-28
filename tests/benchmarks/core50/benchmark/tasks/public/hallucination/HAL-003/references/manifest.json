@@ -1,0 +1,10 @@
+{
+  "files": {
+    "scores_conflict.csv": {
+      "sha256": "7d29022791c7ac15665bff1dd80f3676138ca795cdfe85f211c59b0d0fcac784",
+      "size": 136
+    }
+  },
+  "task_id": "HAL-003",
+  "version": "1.0"
+}

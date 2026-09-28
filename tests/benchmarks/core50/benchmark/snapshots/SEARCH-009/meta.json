@@ -1,0 +1,33 @@
+{
+  "task_id": "SEARCH-009",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/fushixian-2023",
+      "title": "2023年硕士研究生复试分数线",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "f42c6406b5df00aa4c58173ddb2a6326f7219379ddf1b55b381c9d0d1648ea90",
+      "http_status": 200,
+      "snapshot_path": "pages/f42c6406b5df00aa4c58173ddb2a6326f7219379ddf1b55b381c9d0d1648ea90.html",
+      "bytes": 671
+    },
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/fushixian-2024",
+      "title": "2024年硕士研究生复试分数线",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "0ef2a864ff177e9a30ab8824877f52feac5dba6aea37188332f23ef5bbae18e6",
+      "http_status": 200,
+      "snapshot_path": "pages/0ef2a864ff177e9a30ab8824877f52feac5dba6aea37188332f23ef5bbae18e6.html",
+      "bytes": 671
+    },
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/fushixian-2025",
+      "title": "2025年硕士研究生复试分数线",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "c5a2ae67edb730aa4d66f2afa0cf2e1e88ec7a2de58234cdacbc0594d4b00e74",
+      "http_status": 200,
+      "snapshot_path": "pages/c5a2ae67edb730aa4d66f2afa0cf2e1e88ec7a2de58234cdacbc0594d4b00e74.html",
+      "bytes": 671
+    }
+  ]
+}

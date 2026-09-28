@@ -1,0 +1,10 @@
+{
+  "files": {
+    "college.txt": {
+      "sha256": "666b8edf3cb0c2630b368cdac3ce231eae4c03b74957cd52e4f251f17ddc386c",
+      "size": 323
+    }
+  },
+  "task_id": "HAL-002",
+  "version": "1.0"
+}

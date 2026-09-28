@@ -1,0 +1,15 @@
+{
+  "task_id": "UNI-005",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/zhaoshengjihua-2026",
+      "title": "2026年拟招生计划与推免说明",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "d76f573a6800d61325e51cd17e1afc710eab0fdfe8bbf7c05de1500c0e9e2b62",
+      "http_status": 200,
+      "snapshot_path": "pages/d76f573a6800d61325e51cd17e1afc710eab0fdfe8bbf7c05de1500c0e9e2b62.html",
+      "bytes": 837
+    }
+  ]
+}

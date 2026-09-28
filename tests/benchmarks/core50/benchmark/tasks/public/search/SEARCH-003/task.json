@@ -1,0 +1,93 @@
+{
+  "task_id": "SEARCH-003",
+  "category": "search",
+  "difficulty": "easy",
+  "instruction": "初试成绩不理想，想走研招网上那个官方调档补录通道，请给出该官方入口的 URL。必须是官方（E4+）入口，不要给转载页或辅导机构页面。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "official_source",
+    "url"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "调剂服务系统",
+          "调剂系统"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 1,
+        "dimension": "source_quality",
+        "critical": true
+      }
+    ],
+    "must_not_claim": [
+      "培训机构",
+      "付费保过"
+    ],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "调剂",
+          "调剂服务系统"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c2",
+        "type": "regex",
+        "dimension": "factuality",
+        "pattern": "https?://[^\\s]+"
+      },
+      {
+        "id": "c3",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 1
+      },
+      {
+        "id": "c4",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "培训机构",
+          "付费保过",
+          "付费保录"
+        ]
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "页面是否为官方调剂系统入口？"
+        }
+      ]
+    }
+  },
+  "version": "1.0"
+}

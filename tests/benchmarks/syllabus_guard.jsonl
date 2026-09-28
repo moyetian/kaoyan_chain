@@ -102,6 +102,12 @@
 {"id": "neg-24", "math_key": "math2", "subject": "math", "text": "严禁派发曲面积分的题目", "expect_allow": true, "category": "negation"}
 {"id": "neg-25", "math_key": "math2", "subject": "math", "text": "不用学格林公式", "expect_allow": true, "category": "negation"}
 {"id": "neg-26", "math_key": "math2", "subject": "math", "text": "别练空间解析几何", "expect_allow": true, "category": "negation"}
+{"id": "neg-27", "math_key": "math2", "subject": "math", "text": "不要再讲三重积分", "expect_allow": true, "category": "negation"}
+{"id": "neg-28", "math_key": "math2", "subject": "math", "text": "别再讲三重积分", "expect_allow": true, "category": "negation"}
+{"id": "neg-29", "math_key": "math2", "subject": "math", "text": "别再复习概率论", "expect_allow": true, "category": "negation"}
+{"id": "neg-30", "math_key": "math2", "subject": "math", "text": "不要又练三重积分", "expect_allow": true, "category": "negation"}
+{"id": "neg-31", "math_key": "math2", "subject": "math", "text": "别给我安排三重积分的训练", "expect_allow": true, "category": "negation"}
+{"id": "neg-32", "math_key": "math2", "subject": "math", "text": "不要还刷曲面积分", "expect_allow": true, "category": "negation"}
 {"id": "note-01", "math_key": "math2", "subject": "math", "text": "非考点：欧拉方程，跳过", "expect_allow": true, "category": "note_context"}
 {"id": "note-02", "math_key": "math2", "subject": "math", "text": "考纲说明：数二不含概率论", "expect_allow": true, "category": "note_context"}
 {"id": "note-03", "math_key": "math2", "subject": "math", "text": "红线：严禁三重积分", "expect_allow": true, "category": "note_context"}
@@ -126,3 +132,6 @@
 {"id": "pos-04", "math_key": "math2", "subject": "math", "text": "必须安排概率论的复习", "expect_allow": false, "category": "positive_context"}
 {"id": "pos-05", "math_key": "math2", "subject": "math", "text": "熟练掌握欧拉方程", "expect_allow": false, "category": "positive_context"}
 {"id": "pos-06", "math_key": "math2", "subject": "math", "text": "请讲解傅里叶级数的应用", "expect_allow": false, "category": "positive_context"}
+{"id": "pos-07", "math_key": "math2", "subject": "math", "text": "特别讲三重积分", "expect_allow": false, "category": "positive_context"}
+{"id": "pos-08", "math_key": "math2", "subject": "math", "text": "分别讲一下曲线积分和曲面积分", "expect_allow": false, "category": "positive_context"}
+{"id": "pos-09", "math_key": "math2", "subject": "math", "text": "个别讲三重积分", "expect_allow": false, "category": "positive_context"}

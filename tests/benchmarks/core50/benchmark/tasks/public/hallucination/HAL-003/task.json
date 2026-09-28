@@ -1,0 +1,102 @@
+{
+  "task_id": "HAL-003",
+  "category": "hallucination",
+  "difficulty": "medium",
+  "instruction": "fixture CSV 中有一处数据打架（同一年同一专业出现了两条不同的最低分）。请把这一情况如实标记出来，不要强行调和成单一数值。仅依据本地 fixture。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "fixture",
+    "deterministic",
+    "conflict"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "矛盾",
+          "不一致"
+        ]
+      },
+      {
+        "id": "p2",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": false,
+        "any_of": [
+          "362",
+          "355"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [
+      "最终最低分为 358"
+    ],
+    "ground_truth": {
+      "conflict": true,
+      "values": [
+        362,
+        355
+      ]
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "string_eq",
+        "dimension": "factuality",
+        "path": "$.conflict",
+        "value": true,
+        "case_sensitive": false
+      },
+      {
+        "id": "c2",
+        "type": "set_includes",
+        "dimension": "completeness",
+        "values": [
+          "362",
+          "355"
+        ],
+        "min_hits": 2
+      },
+      {
+        "id": "c3",
+        "type": "must_not_claim",
+        "dimension": "factuality",
+        "critical": true,
+        "patterns": [
+          "最终最低分为 358",
+          "以 355 为准即可",
+          "合并为"
+        ]
+      },
+      {
+        "id": "c4",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "矛盾",
+          "不一致",
+          "冲突"
+        ],
+        "critical": true
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

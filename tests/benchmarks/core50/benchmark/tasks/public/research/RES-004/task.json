@@ -1,0 +1,107 @@
+{
+  "task_id": "RES-004",
+  "category": "research",
+  "difficulty": "expert",
+  "instruction": "完成『第一志愿落榜后转向其他院校补录』的可行性分析：≥15 个来源，输出报告 + 逐条证据等级（E0–E5）标注。",
+  "network": "online",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "long_horizon",
+    "citation",
+    "evidence"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "调剂"
+        ]
+      }
+    ],
+    "required_sources": [
+      {
+        "level_min": "E4",
+        "min_count": 3,
+        "dimension": "source_quality",
+        "critical": false
+      }
+    ],
+    "must_not_claim": [],
+    "ground_truth": null
+  },
+  "grader": {
+    "type": "hybrid",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.analysis",
+        "schema": {
+          "type": "array",
+          "minLength": 15,
+          "items": {
+            "type": "object",
+            "required": [
+              "claim",
+              "evidence_level"
+            ]
+          }
+        }
+      },
+      {
+        "id": "c2",
+        "type": "source_level",
+        "dimension": "source_quality",
+        "level_min": "E4",
+        "min_count": 3
+      },
+      {
+        "id": "c3",
+        "type": "evidence_level",
+        "dimension": "source_quality",
+        "path": "$.analysis",
+        "expected_min": "E4"
+      },
+      {
+        "id": "c4",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "调剂"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c5",
+        "type": "citation_coverage",
+        "dimension": "citation",
+        "min_citations": 5,
+        "min_supported_ratio": 0.4
+      }
+    ],
+    "rubric": {
+      "prompt_version": "v1",
+      "criteria": [
+        {
+          "id": "r1",
+          "dimension": "completeness",
+          "weight": 1.0,
+          "question": "是否给出 ≥15 条带证据等级的调剂分析结论？"
+        }
+      ]
+    }
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

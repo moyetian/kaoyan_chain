@@ -1,0 +1,99 @@
+{
+  "task_id": "PLAN-004",
+  "category": "planning",
+  "difficulty": "hard",
+  "instruction": "依据 fixture 薄弱点诊断表，优先分配时间给薄弱知识点，校验薄弱点覆盖率 ≥80%。输出 plan 与 coverage。仅依据本地 fixture。",
+  "network": "offline",
+  "time_limit": 900,
+  "tool_limit": 60,
+  "split": "public",
+  "tags": [
+    "fixture",
+    "deterministic",
+    "constraint"
+  ],
+  "expected": {
+    "must_find": [
+      {
+        "id": "p1",
+        "weight": 1.0,
+        "dimension": "factuality",
+        "critical": true,
+        "any_of": [
+          "数据结构",
+          "红黑树"
+        ]
+      }
+    ],
+    "required_sources": [],
+    "must_not_claim": [],
+    "ground_truth": {
+      "coverage_min": 0.8,
+      "weak_points": [
+        "数据结构-红黑树",
+        "操作系统-信号量",
+        "计算机网络-TCP拥塞控制"
+      ]
+    }
+  },
+  "grader": {
+    "type": "deterministic",
+    "pass_threshold": 60.0,
+    "checks": [
+      {
+        "id": "c1",
+        "type": "numeric",
+        "dimension": "factuality",
+        "path": "$.coverage",
+        "op": "ge",
+        "value": 0.8,
+        "tol": 0.0
+      },
+      {
+        "id": "c2",
+        "type": "constraint",
+        "dimension": "task_completion",
+        "critical": true,
+        "answer_path": "$.schedule",
+        "rules": [
+          {
+            "kind": "total_days",
+            "op": "eq",
+            "value": 60
+          },
+          {
+            "kind": "no_overlap",
+            "value": true
+          }
+        ]
+      },
+      {
+        "id": "c3",
+        "type": "point_hit",
+        "dimension": "factuality",
+        "any_of": [
+          "数据结构",
+          "信号量",
+          "拥塞控制"
+        ],
+        "critical": true
+      },
+      {
+        "id": "c4",
+        "type": "json_schema",
+        "dimension": "completeness",
+        "path": "$.schedule",
+        "schema": {
+          "type": "array",
+          "minLength": 60
+        }
+      }
+    ],
+    "rubric": null
+  },
+  "version": "1.0",
+  "answer_format": {
+    "kind": "json",
+    "path": "answer"
+  }
+}

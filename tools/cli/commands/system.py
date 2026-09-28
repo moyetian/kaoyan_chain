@@ -59,7 +59,7 @@ def _cmd_help(args: List[str]) -> None:
   menu [action] / tui                         启动终端交互中枢导航器 (TUI) 或执行指定动作
   status                                      查看考研总战役大盘态势、倒计时、打卡天数与作息节律
   memory [status|prune]                       三级分层记忆健康度诊断与滚动修剪归档
-  rollback                                    快速回滚 Plan Mode 写入前备份的最近一次文件快照
+  rollback [--list|--checkpoint <名称>|--file <相对路径>] [--dry-run] 快照回滚：默认回最近一次，可按检查点 / 按文件精确回滚（写前快照，任何模式通用）
   today [--json]                              查看今日四科任务清单；加 --json 输出结构化数据
   done <关键词>                               快速将包含关键词的今日任务标记为完成并回写状态
   review [math|eng|pol|pro]                   查看 FSRS 待复测错题列表

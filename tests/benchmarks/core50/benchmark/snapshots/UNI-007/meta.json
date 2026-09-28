@@ -1,0 +1,33 @@
+{
+  "task_id": "UNI-007",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/luqufen-2023",
+      "title": "2023年硕士研究生录取分数统计",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "66f1db7875d43c1c0010c0b0eda4a8c161412bb12b19fe27cc56e28f3cccb94f",
+      "http_status": 200,
+      "snapshot_path": "pages/66f1db7875d43c1c0010c0b0eda4a8c161412bb12b19fe27cc56e28f3cccb94f.html",
+      "bytes": 674
+    },
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/luqufen-2024",
+      "title": "2024年硕士研究生录取分数统计",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "31c5982b28411bb3c0b9d1c9582985afe41e23c8bddb80092e70292118d32ecc",
+      "http_status": 200,
+      "snapshot_path": "pages/31c5982b28411bb3c0b9d1c9582985afe41e23c8bddb80092e70292118d32ecc.html",
+      "bytes": 674
+    },
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/luqufen-2025",
+      "title": "2025年硕士研究生录取分数统计",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "e881884f5d000bbdaa93026c8750246d393d2d5bff73915f8896fbe6dce82a39",
+      "http_status": 200,
+      "snapshot_path": "pages/e881884f5d000bbdaa93026c8750246d393d2d5bff73915f8896fbe6dce82a39.html",
+      "bytes": 674
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "task_id": "SEARCH-004",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://kaoyan.example.edu.cn/yjszs/zsml/085400",
+      "title": "085400计算机技术专业招生目录",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "f205a3a28d2092f3e4d8311e116c26aa8e4284416cb1c4b13778aa6beceaaeaf",
+      "http_status": 200,
+      "snapshot_path": "pages/f205a3a28d2092f3e4d8311e116c26aa8e4284416cb1c4b13778aa6beceaaeaf.html",
+      "bytes": 766
+    }
+  ]
+}

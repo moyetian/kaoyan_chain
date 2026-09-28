@@ -1,0 +1,15 @@
+{
+  "task_id": "SEARCH-002",
+  "captured_at": "2025-01-04T10:00:00+08:00",
+  "pages": [
+    {
+      "url": "https://yz.chsi.com.cn/kyzx/2026/baoming/",
+      "title": "2026年硕士研究生网上报名时间_研招网",
+      "fetched_at": "2025-01-04T10:00:00+08:00",
+      "content_sha256": "df4cb6125fd348eee375ce2c154083fcab6d3c3abf61da7c46f1973767e161e4",
+      "http_status": 200,
+      "snapshot_path": "pages/df4cb6125fd348eee375ce2c154083fcab6d3c3abf61da7c46f1973767e161e4.html",
+      "bytes": 837
+    }
+  ]
+}

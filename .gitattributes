@@ -5,3 +5,9 @@
 *.bat text eol=crlf
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
+
+# [W2] core50 评测数据集：references/manifest.json 与 snapshots index.json 用
+# sha256 逐字节锁定 fixture 与快照，换行符转换会让 Windows 检出后
+# `validate --require-snapshots` 因 hash 不匹配而失败（上游 KaoyanBench 全仓
+# 即 `* -text`，理由同此）。故本子树禁用一切换行符转换：入库即 LF，检出亦 LF。
+tests/benchmarks/core50/** -text
