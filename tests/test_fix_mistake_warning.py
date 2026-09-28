@@ -69,3 +69,42 @@ def test_no_warning_when_not_grading(monkeypatch, capsys):
     """非批改场景（既无「交作业」也无采分点标记）不得告警。"""
     out = _run_warn(monkeypatch, capsys, "今天天气怎么样", "天气不错，适合背书。")
     assert "未能写入错题本" not in out
+
+
+# ── [多角色实测·误报修复 2026-09-28] 教学/出题语境不得误报 ──
+
+def test_no_warning_on_teaching_prompt(monkeypatch, capsys):
+    """出题预告语（采分点/错因/得分点）+ 教学 ⚠️ 陷阱不得误报。
+
+    文科答疑实测场景：AI 出题时预告「写完交作业，我按阅卷采分点逐项赋分并做
+    错因五分类归档」、表格表头「关键词 / 得分点」、教学提示「⚠️ 三个高频陷阱」
+    ——修复前三者叠加触发「批改未归档」误报，误导用户去跑补救路径。
+    """
+    reply = (
+        "## 今日实战练习（10 分）\n\n| 要素 | 关键词 / 得分点 |\n"
+        "⚠️ **三个高频陷阱**\n"
+        "写完直接回复「交作业」，我按阅卷采分点逐项赋分并做错因五分类归档。"
+    )
+    out = _run_warn(monkeypatch, capsys, "请解释新闻价值的五个要素", reply)
+    assert "未能写入错题本" not in out, "出题预告语/教学符号被误判为批改失分"
+
+
+def test_warning_triggers_on_pasted_answer_with_score(monkeypatch, capsys):
+    """用户未输「交作业」但贴答案、模型实际批改（有得分陈述）仍须告警。"""
+    reply = "你的答案得分：6/10 分。采分点2遗漏了关键限定词，扣 1 分。"
+    out = _run_warn(monkeypatch, capsys, "你看我写的对吗", reply)
+    assert "未能写入错题本" in out, "贴答案批改场景漏报"
+
+
+def test_no_warning_on_bare_symbol_without_failure_word(monkeypatch, capsys):
+    """⚠️ 后无失分动词（纯教学提示）不得单独算作失分。"""
+    reply = "⚠️ 注意：本考点为高频出题区，建议重点记忆。"
+    out = _run_warn(monkeypatch, capsys, "什么是剩余价值", reply)
+    assert "未能写入错题本" not in out, "裸警示符号被误判为失分"
+
+
+def test_no_warning_on_jiaozuoye_with_bare_symbol(monkeypatch, capsys):
+    """「交作业」语境下的纯教学 ⚠️（无失分动词）不得算失分。"""
+    reply = "⚠️ 三个高频陷阱：注意区分易混概念。本题为自拟变式，无标准真题出处。"
+    out = _run_warn(monkeypatch, capsys, "交作业", reply)
+    assert "未能写入错题本" not in out, "教学陷阱提示被误判为失分项"

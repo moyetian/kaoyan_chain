@@ -696,3 +696,284 @@ class TestWebSearchDispatchRegression:
                 svc_ok.search(self.QUERY, limit=10)
         assert "去重未启用" not in caplog.text, caplog.text
 
+
+class TestResearchBudgetDeadline:
+    """[多角色实测·卡死修复 2026-09-28] 深度研究总时长预算。
+
+    背景：双校对标串行调用 research_university_profile 两次，每次 max_steps=6 轮
+    × 单请求 90s（重试 3 次）无总预算 → 实测 600s+ 无输出卡死。
+    修复：execute_loop 接受 deadline，超预算提前终止；research_university_profile
+    计算 deadline（budget_s 默认 240s），提前终止后自动走 dynamic_fallback_profile。
+    """
+
+    def test_execute_loop_expired_deadline_breaks_without_llm_call(self):
+        """deadline 已过期：循环不得发起任何 LLM 请求（阴性对照：移除检查则 urlopen 被调用）。"""
+        import time
+        engine = AgenticResearchEngine()
+        mock_urlopen = MagicMock()
+        with patch("urllib.request.urlopen", mock_urlopen):
+            res = engine.execute_loop(
+                "研究指令",
+                api_config={"api_key": "sk-mock-valid-key",
+                            "base_url": "https://api.deepseek.com/v1",
+                            "model": "deepseek-chat"},
+                deadline=time.monotonic() - 1.0,
+            )
+        mock_urlopen.assert_not_called()
+        # break 时 messages 仅 [system, user]，返回最后一条 user 内容（prompt）
+        assert res == "研究指令"
+
+    def test_research_profile_passes_budget_as_deadline(self):
+        """research_university_profile 把 budget_s 换算成 deadline 传给 execute_loop；
+        空输出时走本地降级（不抛异常）。"""
+        import time
+        engine = AgenticResearchEngine()
+        captured = {}
+
+        def fake_loop(prompt, system_prompt=None, custom_tools=None, api_config=None, deadline=None):
+            captured["deadline"] = deadline
+            return ""  # 解析失败 → 应走本地降级
+
+        engine.execute_loop = fake_loop  # type: ignore[method-assign]
+        t0 = time.monotonic()
+        prof = engine.research_university_profile(
+            "北京大学", "马克思主义理论",
+            api_config={"api_key": "sk-mock-valid-key"},
+            budget_s=120.0,
+        )
+        assert captured["deadline"] is not None
+        assert 100.0 < captured["deadline"] - t0 < 140.0, captured["deadline"] - t0
+        assert prof.get("name")
+        assert prof.get("catalog_source")
+
+    def test_budget_floor_is_30s(self):
+        """budget_s 过小被保底为 30s（防止调用方传 0 导致立即放弃在线研究）。"""
+        import time
+        engine = AgenticResearchEngine()
+        captured = {}
+
+        def fake_loop(prompt, system_prompt=None, custom_tools=None, api_config=None, deadline=None):
+            captured["deadline"] = deadline
+            return ""
+
+        engine.execute_loop = fake_loop  # type: ignore[method-assign]
+        t0 = time.monotonic()
+        engine.research_university_profile(
+            "北京大学", "马克思主义理论",
+            api_config={"api_key": "sk-mock-valid-key"},
+            budget_s=0.0,
+        )
+        assert 25.0 < captured["deadline"] - t0 < 35.0
+
+    def test_execute_loop_deadline_checked_between_tool_calls(self):
+        """单轮多工具场景：工具执行中 deadline 过期立即终止，剩余工具不再执行。
+
+        实测背景：单轮内多次微信检索失败重试（每次数十秒）会绕过「每轮 LLM 前」
+        的预算检查；阴性对照：移除工具级检查后本用例变红（3 个工具全部执行）。
+        """
+        import time
+        engine = AgenticResearchEngine()
+        calls = []
+
+        def slow_dispatch(name, **kwargs):
+            calls.append(name)
+            time.sleep(0.35)  # 第一个工具执行即越过 deadline
+            return {"ok": True}
+
+        engine.dispatcher.dispatch = slow_dispatch  # type: ignore[method-assign]
+
+        turn1_resp = {
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "中间说明",
+                    "tool_calls": [
+                        {"id": f"call_{i}", "type": "function",
+                         "function": {"name": "yanzhao_lookup",
+                                      "arguments": json.dumps({"school_name": f"X{i}"})}}
+                        for i in range(3)
+                    ]
+                }
+            }]
+        }
+        mock_urlopen = MagicMock()
+        enter_mock = MagicMock(side_effect=[
+            MagicMock(read=MagicMock(return_value=json.dumps(turn1_resp).encode("utf-8"))),
+        ])
+        mock_urlopen.return_value.__enter__ = enter_mock
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", mock_urlopen):
+            res = engine.execute_loop(
+                "研究指令",
+                api_config={"api_key": "sk-mock-valid-key",
+                            "base_url": "https://api.deepseek.com/v1",
+                            "model": "deepseek-chat"},
+                deadline=time.monotonic() + 0.3,
+            )
+
+        # 不会执行完全部 3 个工具（正常环境=1；极慢环境=0 也可接受）
+        assert len(calls) < 3, calls
+        assert res == "中间说明"
+
+    def test_retry_chain_respects_deadline(self):
+        """重试链受预算约束：剩余预算不足时不再发起下一次请求。
+
+        实测背景：90s×3 的重试链本身即可超过单校预算（真机实测两校 540s+ 仍超
+        480s 上限，预算形同虚设）。本用例锁定「重试间隔也检查预算 + 单请求超时
+        被压缩到剩余预算」。阴性对照：移除重试链检查后 calls 会达到 3（每次 90s）。
+        """
+        import time
+        import urllib.error as _uerr
+        engine = AgenticResearchEngine()
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(timeout)
+            raise _uerr.URLError("模拟网络失败")
+
+        with patch("urllib.request.urlopen", fake_urlopen):
+            with pytest.raises(TimeoutError):
+                engine.execute_loop(
+                    "p",
+                    api_config={"api_key": "sk-mock-valid-key",
+                                "base_url": "https://api.deepseek.com/v1",
+                                "model": "deepseek-chat"},
+                    deadline=time.monotonic() + 0.15,
+                )
+        # 仅发起 1 次请求（第 2 次前预算已耗尽）；且超时被压缩到 ≈ 剩余预算
+        assert len(calls) == 1, calls
+        assert calls[0] <= 0.2, calls
+
+
+class TestRecursionGuardV3:
+    """[多角色实测·递归修复 2026-09-28] compare_schools 递归链与工具执行预算。
+
+    真机证据：研究引擎 LLM 可调 compare_schools → SchoolComparator.compare
+    → _get_school_profile → research_university_profile → execute_loop → LLM
+    再调 compare_schools …… faulthandler 堆栈 34KB 全为重复递归帧，单校
+    480s+ 卡死、微信/Bing 反爬警告刷屏。
+    修复三层：① 引擎工具集剔除 compare_schools（主修复）；② 研究入口线程级
+    递归守卫（防御纵深）；③ 工具执行 daemon 线程 + join(剩余预算)。
+    """
+
+    def test_engine_tools_exclude_compare_schools(self):
+        """引擎工具集剔除 compare_schools；顶层公开 schema 保留（Agent 合法用途）。"""
+        from tools.intelligence.agentic_research import (
+            RESEARCH_ENGINE_TOOLS_SCHEMA, RESEARCH_TOOLS_SCHEMA)
+        engine_names = {t["function"]["name"] for t in RESEARCH_ENGINE_TOOLS_SCHEMA}
+        top_names = {t["function"]["name"] for t in RESEARCH_TOOLS_SCHEMA}
+        assert "compare_schools" not in engine_names
+        assert "compare_schools" in top_names
+        # 仅剔除该工具，其余 5 个不受影响
+        assert top_names - engine_names == {"compare_schools"}
+
+    def test_execute_loop_request_payload_excludes_compare_schools(self):
+        """行为级：execute_loop 实际发出的 LLM 请求 payload 中不含 compare_schools。"""
+        engine = AgenticResearchEngine()
+        captured = {}
+        resp = {"choices": [{"message": {"role": "assistant", "content": "完成"}}]}
+
+        class _Resp:
+            headers = {"Content-Encoding": ""}
+
+            def read(self):
+                return json.dumps(resp).encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def fake_urlopen(req, timeout=None):
+            captured["payload"] = json.loads(req.data.decode("utf-8"))
+            return _Resp()
+
+        with patch("urllib.request.urlopen", fake_urlopen):
+            res = engine.execute_loop(
+                "研究指令",
+                api_config={"api_key": "sk-mock-valid-key",
+                            "base_url": "https://api.deepseek.com/v1",
+                            "model": "deepseek-chat"},
+            )
+        assert res == "完成"
+        names = {t["function"]["name"] for t in captured["payload"]["tools"]}
+        assert "compare_schools" not in names, names
+
+    def test_nested_research_profile_short_circuits(self):
+        """嵌套进入 research_university_profile 时直接降级，不再发起在线研究。
+
+        阴性对照：移除递归守卫后内层会再次调用 execute_loop（loop_calls 变 2）。
+        """
+        engine = AgenticResearchEngine()
+        loop_calls = []
+        inner = {}
+
+        def fake_loop(prompt, system_prompt=None, custom_tools=None, api_config=None, deadline=None):
+            loop_calls.append(prompt)
+            # 模拟研究过程中工具链回调再次进入（同线程嵌套）
+            inner["v"] = engine.research_university_profile(
+                "嵌套校", "嵌套专业",
+                api_config={"api_key": "sk-mock-valid-key"}, budget_s=60.0)
+            return ""
+
+        engine.execute_loop = fake_loop  # type: ignore[method-assign]
+        outer = engine.research_university_profile(
+            "北京大学", "马克思主义理论",
+            api_config={"api_key": "sk-mock-valid-key"}, budget_s=60.0)
+
+        assert len(loop_calls) == 1, loop_calls  # 内层未进入在线循环
+        assert inner["v"].get("name") == "嵌套校"  # 降级画像仍完整返回
+        assert outer.get("name")
+
+    def test_tool_execution_respects_deadline(self):
+        """单个工具执行超长时 join 超时放弃本轮，不等待工具自然结束。
+
+        实测背景：工具内部网络请求（微信反爬/搜索）无 deadline 感知，最后一个
+        工具的尾巴可击穿预算。阴性对照：无 join 超时机制时本用例会等满 5s。
+        """
+        import time
+        import tools.agent.loop  # 预热：execute_loop 内部首次 import 会消耗预算窗口
+        engine = AgenticResearchEngine()
+        started = []
+
+        def slow_dispatch(name, **kwargs):
+            started.append(name)
+            time.sleep(5)
+            return {"ok": True}
+
+        engine.dispatcher.dispatch = slow_dispatch  # type: ignore[method-assign]
+
+        turn1_resp = {
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "中间说明",
+                    "tool_calls": [{"id": "call_1", "type": "function",
+                                    "function": {"name": "web_search",
+                                                 "arguments": json.dumps({"query": "x"})}}]
+                }
+            }]
+        }
+        mock_urlopen = MagicMock()
+        enter_mock = MagicMock(side_effect=[
+            MagicMock(read=MagicMock(return_value=json.dumps(turn1_resp).encode("utf-8"))),
+        ])
+        mock_urlopen.return_value.__enter__ = enter_mock
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        t0 = time.monotonic()
+        with patch("urllib.request.urlopen", mock_urlopen):
+            res = engine.execute_loop(
+                "研究指令",
+                api_config={"api_key": "sk-mock-valid-key",
+                            "base_url": "https://api.deepseek.com/v1",
+                            "model": "deepseek-chat"},
+                deadline=time.monotonic() + 0.8,
+            )
+        dur = time.monotonic() - t0
+        assert started, "工具应已启动"
+        assert dur < 2.5, dur  # 不等待 5s 睡眠
+        assert res == "中间说明"
+

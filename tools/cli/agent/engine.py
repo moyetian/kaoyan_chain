@@ -52,9 +52,21 @@ _MISTAKE_FAIL_MARKERS = (
 _MISTAKE_FAIL_PATTERNS = (
     re.compile(r"扣\s*\d*\s*分"),                     # 扣1分 / 扣 1 分 / 扣分
     re.compile(r"[\[【]\s*[-−]\s*\d+\s*分\s*[\]】]"),   # [-1分] / 【-1分】
-    re.compile(r"[⚠❌✗×]"),                           # 警示符号
+    # [多角色实测·误报修复] 裸警示符号会命中教学语「⚠️ 三个高频陷阱」并触发
+    # 「批改未归档」误报。收紧为「符号 + 同行 12 字符内失分动词」共现；
+    # 纯符号（教学注意点/陷阱提示）不再单独算作失分。
+    re.compile(
+        r"[⚠❌✗×][^\n]{0,12}(?:扣|失分|错误|遗漏|漏掉|缺少|不完整|不规范|有误|瑕疵|待复核|不达标)"
+    ),
 )
 _MISTAKE_GRADE_MARKERS = ("采分点", "错因", "得分")
+# [多角色实测·误报修复] 出题预告语（「我按阅卷采分点逐项赋分并做错因五分类归档」）
+# 与教学表头（「关键词 / 得分点」）会命中 GRADE_MARKERS，但那是「预告批改」而非
+# 「已批改」。真实批改回复必有实际得分陈述（「得分：6/10」「总分 8 分」「6/10 分」），
+# 据此区分——无「交作业」的答疑/出题场景不再误报。
+_MISTAKE_SCORE_STATEMENT = re.compile(
+    r"(?:得分|评分|总分|得分率)\s*[:：]?\s*\d+|\d+\s*/\s*\d+\s*分"
+)
 
 def _count_error_records(subject: str) -> int:
     """当前科目错题库中的记录条数"""
@@ -67,7 +79,10 @@ def _warn_if_mistake_not_archived(user_input: str, reply: str, subject: str, bef
     """批改失分却未落库时给出确定性告警"""
     if before_count < 0 or error_logger is None or not reply:
         return
-    looks_grading = ("交作业" in (user_input or "")) or any(k in reply for k in _MISTAKE_GRADE_MARKERS)
+    looks_grading = ("交作业" in (user_input or "")) or (
+        any(k in reply for k in _MISTAKE_GRADE_MARKERS)
+        and bool(_MISTAKE_SCORE_STATEMENT.search(reply))
+    )
     has_failure = any(k in reply for k in _MISTAKE_FAIL_MARKERS) or any(
         p.search(reply) for p in _MISTAKE_FAIL_PATTERNS
     )

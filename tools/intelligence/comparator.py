@@ -228,8 +228,11 @@ class SchoolComparator:
             }
 
         # 未在内置 TARGET_SCHOOLS_DB 命中的高校/专业，调用 Agentic 深度研究引擎获取真实画像（绝不使用离线虚假数据）
+        # [多角色实测·卡死修复] 每校在线研究限 200s 预算：两校串行最坏约 6.7 分钟，
+        # 超预算自动走本地降级（原无预算实测 600s+ 卡死）。
         from tools.intelligence.agentic_research import research_university_profile
-        profile = research_university_profile(school_name, major_keyword, api_config=api_config)
+        profile = research_university_profile(school_name, major_keyword, api_config=api_config,
+                                              budget_s=200.0)
         return profile
 
     def _analyze_differences(

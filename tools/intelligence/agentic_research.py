@@ -13,12 +13,19 @@ KaoYan Intelligence · 大模型 Tool-Calling 深度招考情报研究引擎 (Ag
 import json
 import logging
 import re
+import threading
 import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 _LOG = logging.getLogger(__name__)
+
+# [多角色实测·递归修复 v3] 线程级递归深度守卫：同一线程嵌套进入在线研究
+# （research → 工具链 → comparator → research）时直接走本地降级，防止
+# 任何工具链意外形成的无界递归（compare_schools 已从引擎工具集剔除，
+# 本守卫是防御纵深，覆盖未来新增工具的回调链）。
+_RESEARCH_DEPTH = threading.local()
 
 # ---------------------------------------------------------------------------
 # 1. 6 大标准化 OpenAI-compatible Tool JSON Schema
@@ -159,6 +166,17 @@ RESEARCH_TOOLS_SCHEMA: List[Dict[str, Any]] = [
             }
         }
     }
+]
+
+# [多角色实测·递归修复 v3] 研究引擎（execute_loop）内部禁用 compare_schools：
+# 该工具会回调 SchoolComparator.compare → _get_school_profile →
+# research_university_profile → execute_loop，形成无深度限制的嵌套递归。
+# 真机实测（2026-09-28）：faulthandler 堆栈 34KB 全为重复递归帧、单校 480s+
+# 卡死、微信/Bing 反爬警告刷屏（每层递归都在跑检索工具）。
+# 双校对比是上层 comparator 的职责，研究引擎只做单校画像，故不暴露该工具。
+RESEARCH_ENGINE_TOOLS_SCHEMA: List[Dict[str, Any]] = [
+    t for t in RESEARCH_TOOLS_SCHEMA
+    if (t.get("function") or {}).get("name") != "compare_schools"
 ]
 
 
@@ -432,7 +450,8 @@ class AgenticResearchEngine:
         prompt: str,
         system_prompt: Optional[str] = None,
         custom_tools: Optional[List[Dict[str, Any]]] = None,
-        api_config: Optional[Dict[str, Any]] = None
+        api_config: Optional[Dict[str, Any]] = None,
+        deadline: Optional[float] = None
     ) -> str:
         """
         执行多轮自主 Tool-Calling 循环 (OpenAI-compatible function calling API)
@@ -445,7 +464,7 @@ class AgenticResearchEngine:
 
         api_base = cfg.get("base_url") or cfg.get("api_base") or "https://api.deepseek.com/v1"
         model = cfg.get("model") or cfg.get("model_name") or "deepseek-chat"
-        tools = custom_tools or RESEARCH_TOOLS_SCHEMA
+        tools = custom_tools or RESEARCH_ENGINE_TOOLS_SCHEMA
 
         try:
             from tools.agent.loop import normalize_openai_url
@@ -499,6 +518,14 @@ class AgenticResearchEngine:
         import http.client
 
         for step in range(self.max_steps):
+            # [多角色实测·卡死修复] 总时长预算检查：超 deadline 提前终止循环
+            # （返回已有内容，调用方解析失败会自动走 dynamic_fallback_profile 本地降级）。
+            # 原实现唯一边界是 max_steps × 单请求超时（最坏 6×270s/校），双校串行
+            # 对标实测 600s+ 无输出卡死。
+            if deadline is not None and time.monotonic() > deadline:
+                _LOG.warning("深度研究总预算耗尽（第 %d/%d 轮），提前终止走本地降级",
+                             step, self.max_steps)
+                break
             payload = {
                 "model": model,
                 "messages": messages,
@@ -511,9 +538,20 @@ class AgenticResearchEngine:
             resp_data = None
             max_retries = 2
             for attempt in range(max_retries + 1):
+                # [多角色实测·卡死修复 v2] 重试链也受总预算约束：90s×3 的重试链
+                # 本身即可超过单校预算（实测两校 540s+ 仍超 480s 上限，预算形同虚设）。
+                # 剩余预算 ≤0 时放弃本轮（异常上抛 → 调用方走本地降级）；
+                # 否则单请求超时取 min(常规超时, 剩余预算)。
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError("深度研究总预算耗尽（LLM 重试链）")
+                    req_timeout = min(self.timeout, remaining)
+                else:
+                    req_timeout = self.timeout
                 req = urllib.request.Request(endpoint, data=req_data, headers=headers, method="POST")
                 try:
-                    with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                    with urllib.request.urlopen(req, timeout=req_timeout) as resp:
                         raw_bytes = resp.read()
                         headers_obj = getattr(resp, "headers", None)
                         enc = headers_obj.get("Content-Encoding", "").lower() if headers_obj and hasattr(headers_obj, "get") else ""
@@ -556,7 +594,13 @@ class AgenticResearchEngine:
                 return msg.get("content", "")
 
             # 执行工具调用并写回结果
-            for tc in tool_calls:
+            for tc_idx, tc in enumerate(tool_calls):
+                # [多角色实测·卡死修复] 单轮内多工具串行（如多次微信检索失败重试）
+                # 也会超预算：每个工具执行前再查一次 deadline，超时立即终止本轮。
+                if deadline is not None and time.monotonic() > deadline:
+                    _LOG.warning("深度研究总预算耗尽（工具执行中，已完成 %d/%d 个工具调用），提前终止",
+                                 tc_idx, len(tool_calls))
+                    return msg.get("content") or ""
                 call_id = tc.get("id", "call_default")
                 func = tc.get("function", {})
                 func_name = func.get("name", "")
@@ -566,7 +610,33 @@ class AgenticResearchEngine:
                 except Exception:
                     args = {}
 
-                result = self.dispatcher.dispatch(func_name, **args)
+                # [多角色实测·递归修复 v3] 工具执行本身也受总预算约束：工具内部
+                # 网络请求（搜索/微信反爬/官网抓取）无 deadline 感知，单次执行可
+                # 长达数十秒；仅"工具前检查"拦不住最后一个工具的尾巴。改为
+                # daemon 线程 + join(剩余预算)：超时放弃本轮（daemon 线程不阻塞
+                # 进程退出；卡住的请求随进程结束被回收）。
+                result: Any
+                if deadline is not None:
+                    _remaining = deadline - time.monotonic()
+                    if _remaining <= 0:
+                        _LOG.warning("深度研究总预算耗尽（工具 %s 执行前），提前终止", func_name)
+                        return msg.get("content") or ""
+                    _box: Dict[str, Any] = {}
+
+                    def _run_tool(_fn: str = func_name, _kw: Dict[str, Any] = args) -> None:
+                        _box["v"] = self.dispatcher.dispatch(_fn, **_kw)
+
+                    _t = threading.Thread(target=_run_tool, daemon=True,
+                                          name=f"ky-research-tool-{func_name}")
+                    _t.start()
+                    _t.join(timeout=_remaining)
+                    if _t.is_alive():
+                        _LOG.warning("工具 %s 执行超预算（%.1fs 未返回），提前终止本轮",
+                                     func_name, _remaining)
+                        return msg.get("content") or ""
+                    result = _box.get("v")
+                else:
+                    result = self.dispatcher.dispatch(func_name, **args)
                 messages.append({
                     "role": "tool",
                     "tool_call_id": call_id,
@@ -582,11 +652,41 @@ class AgenticResearchEngine:
         self,
         school_name: str,
         major_keyword: str = "",
-        api_config: Optional[Dict[str, Any]] = None
+        api_config: Optional[Dict[str, Any]] = None,
+        budget_s: float = 240.0
+    ) -> Dict[str, Any]:
+        """在线深度研究入口（带递归守卫）。
+
+        [多角色实测·递归修复 v3] 同一线程嵌套进入（研究引擎工具链回调
+        comparator 再进入研究）时直接走本地降级：真机实测无守卫时递归深度
+        数十层、单校 480s+ 卡死。守卫为防御纵深，主修复是引擎工具集剔除
+        compare_schools（RESEARCH_ENGINE_TOOLS_SCHEMA）。
+        """
+        _depth = getattr(_RESEARCH_DEPTH, "value", 0)
+        if _depth >= 1:
+            _LOG.warning(
+                "检测到嵌套在线研究（%s）：当前线程已有在线研究进行中，"
+                "直接走本地降级防止递归。", school_name)
+            return self.dynamic_fallback_profile(school_name, major_keyword)
+        _RESEARCH_DEPTH.value = _depth + 1
+        try:
+            return self._research_university_profile_impl(
+                school_name, major_keyword, api_config, budget_s)
+        finally:
+            _RESEARCH_DEPTH.value = _depth
+
+    def _research_university_profile_impl(
+        self,
+        school_name: str,
+        major_keyword: str = "",
+        api_config: Optional[Dict[str, Any]] = None,
+        budget_s: float = 240.0
     ) -> Dict[str, Any]:
         """
         为 comparator 与 scout 提供深度真实考情画像（绝不返回 [OFFLINE_BASELINE]）
         若未配置 API 或离线，自动无缝启动 dynamic_fallback_profile。
+        budget_s: 在线多轮研究的总时长预算（秒），超预算提前终止并自动走本地降级。
+        原实现无总预算（唯一边界 max_steps×90s 单请求超时），双校对标实测 600s+ 卡死。
         """
         cfg = api_config or self.config
         key = (cfg.get("api_key") or "").strip()
@@ -604,7 +704,9 @@ class AgenticResearchEngine:
         )
 
         try:
-            raw_res = self.execute_loop(prompt, api_config=cfg)
+            import time as _time
+            _deadline = _time.monotonic() + max(30.0, float(budget_s))
+            raw_res = self.execute_loop(prompt, api_config=cfg, deadline=_deadline)
             parsed = self._extract_json_block(raw_res)
             if parsed:
                 # [R2-E3] 外部大模型返回值的边界类型收口：模型可能把 majors /
@@ -809,6 +911,8 @@ def get_research_engine() -> AgenticResearchEngine:
         _default_engine = AgenticResearchEngine()
     return _default_engine
 
-def research_university_profile(school_name: str, major_keyword: str = "", api_config: Optional[dict] = None) -> Dict[str, Any]:
-    return get_research_engine().research_university_profile(school_name, major_keyword, api_config=api_config)
+def research_university_profile(school_name: str, major_keyword: str = "", api_config: Optional[dict] = None,
+                                budget_s: float = 240.0) -> Dict[str, Any]:
+    return get_research_engine().research_university_profile(
+        school_name, major_keyword, api_config=api_config, budget_s=budget_s)
 
