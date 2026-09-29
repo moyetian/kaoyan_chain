@@ -40,7 +40,7 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 - **《双校对标》研报整类排除**：进 `NON_PUBLISH_PATH_PATTERNS`（正文含对比
   院校真实域名，脱敏规则只覆盖学员身份院校），与同族 `双校考情对比_*` 同口径。
 
-**测试**：全量 pytest **2344 通过 + 3 跳过**（收集 2347）；
+**测试**：全量 pytest **2346 通过 + 3 跳过**（收集 2349）；
 `test_ky_suite.py` 305 项（副本口径 300+5）；`test_new_features.py` 131 通过。
 新增 `tests/test_w12_report_fixes.py`（10 项）与
 `tests/test_fix_checkpoint_exclusion.py`（14 项，含两次单点变异阴性对照）。
