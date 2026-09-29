@@ -257,3 +257,10 @@ data/universities/exam_subjects.json
 # data/knowledge/embeddings.db 由 KnowledgeStore 首次使用/切片入库时自动创建
 # （sqlite 单文件，可由「切片入库」重建），属本机状态而非源码。
 data/knowledge/
+
+# ── W13-2 R1：影子集 *.shadow.jsonl 不入库（2026-09-29）──
+# 影子集（W14 R1c 落地，含人工种子）是为 canary 与防污染评测预留的资产，只在本机
+# 留存。本规则是排除**双保险**的 git 层 —— 另一层在 tools/privacy_policy.py 的
+# NON_PUBLISH_PATH_PATTERNS（sync_publish 导出走文件系统遍历、不读 .gitignore，
+# 缺任何一层都会漏：只靠 git 层则导出即进公开副本，只靠导出层则 git 层裸奔）。
+*.shadow.jsonl

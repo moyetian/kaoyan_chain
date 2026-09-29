@@ -270,7 +270,13 @@ def _cmd_menu(args: List[str]) -> None:
         print(tui_navigator.render_header())
         print(tui_navigator.render_menu())
     elif action:
-        tui_navigator.execute_action(action, interactive=False, extra=extra)
+        # [W13 R2-4b 修复·退出码分裂] 此前未传 batch=True：同一「未组卷」场景
+        # `ky exam` EXIT 2 而 `ky menu 2` EXIT 0，脚本/CI 无法判定失败。
+        # batch 模式下 execute_action 内部对未组卷 / 执行异常分别
+        # sys.exit(2) / sys.exit(1)（与 ky exam 同口径）；能正常返回（含
+        # action 0 退出）则在此显式以 EXIT 0 收口，不再依赖调用方兜底。
+        tui_navigator.execute_action(action, interactive=False, extra=extra, batch=True)
+        sys.exit(0)
     else:
         tui_navigator.run_tui_loop()
 

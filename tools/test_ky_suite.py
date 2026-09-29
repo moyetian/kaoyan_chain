@@ -2091,9 +2091,27 @@ D. 无度为2的结点
             update_res = run_cli("build", timeout=60)
             runner.assert_true(update_res.returncode == 0 and (ROOT / "docs" / "index.html").stat().st_size > 10000, "CLI smoke：build 真实重编译看板")
 
+            # [W13 双模式·语义更新] ky build 现为**本地完整模式**（env=0，与
+            # 更新看板.bat 一致）：完整快照 meta 无 sanitized 键、opt_in=False。
+            # 发布安全改由「显式脱敏重建」验证：发布链路（sync_publish /
+            # update_dashboard --push / deploy-pages 三道闸）强制脱敏，此处以
+            # env=1 直接重建一次并断言产物为可发布态；docs/ 两产物在套件快照/
+            # 还原范围内（_GUARDED_PATTERNS），运行结束自动恢复运行前内容。
             snapshot = json.loads((ROOT / "docs" / "state_snapshot.json").read_text(encoding="utf-8"))
-            runner.assert_true(snapshot.get("meta", {}).get("sanitized") is True, "CLI smoke：默认 build 产物为脱敏快照")
+            runner.assert_true(snapshot.get("meta", {}).get("opt_in") is False, "CLI smoke：ky build 产出本地完整模式快照（发布脱敏由发布链路负责）")
+
+            _san_res = subprocess.run(
+                [sys.executable, str(ROOT / "05-考研看板" / "build.py")],
+                cwd=str(ROOT / "05-考研看板"),
+                env={**os.environ, "KY_SNAPSHOT_OPT_IN": "1"},
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
+            )
+            snapshot_san = json.loads((ROOT / "docs" / "state_snapshot.json").read_text(encoding="utf-8"))
+            runner.assert_true(
+                _san_res.returncode == 0 and snapshot_san.get("meta", {}).get("sanitized") is True,
+                "发布安全：脱敏重建产物为可发布快照（meta.sanitized=True）")
             public_html = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+            runner.assert_true('data-sanitized="1"' in public_html, "发布安全：脱敏产物携带 data-sanitized 标记")
             private_markers = ("暂未放置实体资料", "题库切片_", "四级已过 / 摸底水平分", "导数中值定理、计算失误")
             runner.assert_true(not any(marker in public_html for marker in private_markers), "发布安全：公开看板 HTML 不包含私有任务/资料文本")
 
@@ -2119,7 +2137,8 @@ D. 无度为2的结点
             )
 
             # 真实产物内容级校验：各 maps.subject_name 必须已泛化为通用短名，且不含 syllabus_warning
-            _snap_data = snapshot.get("data", {})
+            # （读**脱敏重建**后的快照 snapshot_san：完整模式快照的科目名为真实名，不适用本检查）
+            _snap_data = snapshot_san.get("data", {})
             _generic = {s.get("key"): s.get("name") for s in _snap_data.get("subjects", [])}
             _bad = [sk for sk, m in (_snap_data.get("maps") or {}).items()
                     if isinstance(m, dict) and (("syllabus_warning" in m)
@@ -2158,9 +2177,13 @@ D. 无度为2的结点
                 _sh.rmtree(_rroot, ignore_errors=True)
 
             updater_text = (ROOT / "tools" / "update_dashboard.py").read_text(encoding="utf-8")
-            default_guard = '"--push" not in sys.argv' in updater_text
-            explicit_push = 'subprocess.run(["git", "push"]' in updater_text
-            runner.assert_true(default_guard and explicit_push, "发布安全：update_dashboard 默认本地构建，仅 --push 才同步")
+            # [W13 验收修复·判据同步] 实现已重写为 push_mode 分支（仅 `--push`
+            # 且非 `--local` 才提交推送），且 --push 前先脱敏构建、finally 恢复
+            # 本地完整模式 —— 判据同步到新文本，意图不变。
+            default_guard = '"--push" in sys.argv and "--local" not in sys.argv' in updater_text
+            explicit_push = '["git", "push"]' in updater_text
+            restores_local = "正在恢复本地完整模式看板" in updater_text
+            runner.assert_true(default_guard and explicit_push and restores_local, "发布安全：update_dashboard 默认本地构建，仅 --push 才同步（先脱敏后恢复完整）")
 
             updater_res = subprocess.run(
                 [sys.executable, str(ROOT / "tools" / "update_dashboard.py"), "--local"],

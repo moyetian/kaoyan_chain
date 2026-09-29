@@ -15,6 +15,12 @@
 ``task_progress_bars`` / ``task_count_labels`` / 主题 / 头部刷新）、以及 3 处
 **可执行阴性对照**（见各用例 docstring）。
 
+W13-7 追加：命令面板四桶分组标题行（不可选中 / 计数契约不破 / 键盘流跳过）+
+「42 覆盖边界声明」审计（面板可执行别名 ⊆ ``MENU_OPTIONS``，差集与 CLI 注册表对账）。
+
+W13 验收修复追加：命令面板空结果提示行（R3-1：无匹配不再是零提示空白列表）+
+口语搜索别名（R3-2：``PaletteEntry.keywords``，「考情 / 刷题 / 报到」等词可命中）。
+
 本文件不含任何真实身份串（tests/ 对导出脱敏免疫，见
 ``test_privacy_identity_rules.test_tests_dir_is_immune_to_py_sanitization``）。
 """
@@ -35,6 +41,7 @@ if str(ROOT) not in sys.path:
 pytest.importorskip("PySide6", reason="未安装 PySide6，跳过 GUI 改造测试")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QApplication, QLabel, QProgressBar, QTabWidget, QWidget,
 )
@@ -54,6 +61,20 @@ try:  # pragma: no cover - 取决于运行方式
     from gui.widgets.nav_rail import KYNavRail
 except ImportError:  # pragma: no cover
     from tools.gui.widgets.nav_rail import KYNavRail  # type: ignore
+
+try:  # pragma: no cover - 取决于运行方式
+    from gui.views import nav_rail as nav_rail_view
+except ImportError:  # pragma: no cover
+    from tools.gui.views import nav_rail as nav_rail_view  # type: ignore
+
+try:  # pragma: no cover - 取决于运行方式
+    from gui.widgets.command_palette import (
+        EMPTY_HINT_TEXT, CommandPalette, PaletteEntry,
+    )
+except ImportError:  # pragma: no cover
+    from tools.gui.widgets.command_palette import (  # type: ignore
+        EMPTY_HINT_TEXT, CommandPalette, PaletteEntry,
+    )
 
 
 @pytest.fixture(scope="module")
@@ -438,7 +459,290 @@ def test_qss_renders_with_p2_selectors_for_all_presets():
     for preset in PRESET_ORDER:
         qss = render_qss(build_theme(preset))
         for selector in ("#NavRail", "#NavItem:checked", "#NavToolItem", "#PaletteDialog",
-                         "#UserBubble", "#AgentBubble", "#KYCard", "#StatValue",
-                         "#ExamplePill"):
+                         "#PaletteGroupHeader", "#UserBubble", "#AgentBubble", "#KYCard",
+                         "#StatValue", "#ExamplePill"):
             assert selector in qss, f"预设 {preset} 缺少 {selector} 样式块"
         assert "{{" not in qss and "}}" not in qss, f"预设 {preset} 存在未替换占位符"
+
+
+# ── ⑦ W13-7：命令面板分组标题行 + 42 覆盖边界 ──────────────────
+
+def _palette_header_rows(palette) -> list:
+    """当前面板列表里的分组标题行行号（判据：无 UserRole key）。"""
+    return [row for row in range(palette.list.count())
+            if not palette.list.item(row).data(Qt.UserRole)]
+
+
+def test_palette_entries_grouped_into_four_buckets():
+    """W13-7：14 条面板条目按 日常/自测/情报/系统 四桶分桶，且同桶连续。"""
+    entries = nav_rail_view.PALETTE_ENTRIES
+    assert len(entries) == len(TAB_TITLES) + len(CARD_ITEMS) == 14, \
+        "面板条目数必须与「4 视图 + 10 工具」契约一致"
+
+    groups = [entry.group for entry in entries]
+    assert set(groups) == set(nav_rail_view.PALETTE_GROUP_ORDER) == {"日常", "自测", "情报", "系统"}
+    # 同桶连续（面板按 group 切换插入标题行，乱序会让同一标题行重复出现）
+    assert groups == sorted(groups, key=nav_rail_view.PALETTE_GROUP_ORDER.index)
+    for bucket in nav_rail_view.PALETTE_GROUP_ORDER:
+        assert groups.count(bucket) >= 2, f"分组桶 {bucket} 覆盖不足"
+
+    # 工具条目的分桶表覆盖全部 10 个别名（漏一个会 KeyError，这里给出显式断言）
+    tool_aliases = {alias for *_x, alias in CARD_ITEMS}
+    assert tool_aliases == set(nav_rail_view.TOOL_GROUPS)
+    assert {entry.key for entry in entries} == (
+        {f"view:{i}" for i in range(len(TAB_TITLES))}
+        | {f"tool:{alias}" for alias in tool_aliases})
+
+
+def test_palette_group_headers_render_and_are_not_selectable(win, app):
+    """W13-7：空查询渲染 4 个分组标题行；不可选中、无 key、不破坏计数契约。
+
+    阴性对照：标题行 flags 改为可选中 → 本用例的 ``ItemIsSelectable`` 断言必红。
+    """
+    win._open_command_palette()
+    app.processEvents()
+    palette = win._palette
+
+    # 计数契约原样保留（标题行不参与 visible_keys）
+    assert len(palette.visible_keys()) == len(TAB_TITLES) + len(CARD_ITEMS)
+
+    header_rows = _palette_header_rows(palette)
+    assert len(header_rows) == len(nav_rail_view.PALETTE_GROUP_ORDER) == 4, \
+        f"空查询应渲染 4 个分组标题行，实际 {header_rows}"
+    labels = [palette.list.itemWidget(palette.list.item(row)) for row in header_rows]
+    assert [label.text() for label in labels] == list(nav_rail_view.PALETTE_GROUP_ORDER)
+    for row, label in zip(header_rows, labels):
+        item = palette.list.item(row)
+        assert label is not None and label.objectName() == "PaletteGroupHeader"
+        assert not (item.flags() & Qt.ItemIsSelectable), "标题行不得可选中"
+        assert not item.data(Qt.UserRole), "标题行不得携带可执行 key"
+        # 防裁切（实测缺陷）：itemWidget 的几何 = item 文本子区域，会被
+        # #PaletteList::item 的上下 padding 扣除——行高必须补回这一份。
+        assert label.height() >= label.sizeHint().height(), "标题行高度不足，文字被纵向裁切"
+
+    # 初始选中 = 首个可执行行（不是 row 0 的标题行）
+    current = palette.list.currentRow()
+    assert current not in header_rows and current >= 0, "初始选中不得落在标题行"
+    assert palette.list.currentItem().data(Qt.UserRole) == palette.visible_keys()[0]
+
+    # 面板提示告知「完整命令见 ky commands」，条数与声明常量同源
+    assert "ky commands" in palette.hint.text()
+    assert str(nav_rail_view.CLI_MAIN_COMMAND_COUNT) in palette.hint.text()
+    palette.close()
+
+
+def test_palette_keyboard_skips_group_headers(win, app):
+    """W13-7：↑↓ 只落在可执行行；即使被程序化选到标题行，Enter 也不发 "None"。"""
+    from PySide6.QtGui import QKeyEvent
+
+    win._open_command_palette()
+    app.processEvents()
+    palette = win._palette
+    palette.refresh("")
+
+    total = palette.list.count()
+    header_rows = set(_palette_header_rows(palette))
+    assert header_rows, "空查询下应存在分组标题行"
+
+    def press(key):
+        QApplication.sendEvent(palette, QKeyEvent(QKeyEvent.KeyPress, key, Qt.NoModifier))
+
+    # 一路 ↓：全程不落在标题行，最终停在最后一行（末条目）
+    for _ in range(total + 2):
+        assert palette.list.currentRow() not in header_rows, "↓ 不得停在标题行"
+        press(Qt.Key_Down)
+    assert palette.list.currentRow() == total - 1
+
+    # 一路 ↑：回到首个可执行行后不再前移（标题行挡住）
+    first_entry = min(row for row in range(total) if row not in header_rows)
+    for _ in range(total + 2):
+        assert palette.list.currentRow() not in header_rows, "↑ 不得停在标题行"
+        press(Qt.Key_Up)
+    assert palette.list.currentRow() == first_entry
+
+    # 防御：程序化选到标题行时，Enter 不得发出 "None" 或任何 key
+    fired: list = []
+    palette.activated.connect(fired.append)
+    palette.list.setCurrentRow(min(header_rows))
+    assert palette.activate_current() == "", "标题行不得被执行"
+    assert fired == [], "标题行不得发出 activated 信号"
+
+
+def test_w13_palette_command_coverage_boundary_audit():
+    """W13-7 · 42 覆盖边界审计：面板可执行别名 ⊆ MENU_OPTIONS；差集与 CLI 对账。
+
+    本批**不承诺** 42 个 CLI 主命令全部 GUI 可达——可达 10 / 不可达 32 是显式
+    声明（``GUI_REACHABLE_COMMANDS`` / ``GUI_UNREACHABLE_COMMANDS``），此处与
+    ``ky`` CLI 注册表逐一对账，防未来新增命令时静默漏声明。
+    """
+    from tools import tui_navigator
+    from tools.cli import dispatch
+
+    # ① 面板可执行别名 ⊆ TUI 可执行别名（10 ⊆ 11，不含 exit）
+    menu_aliases = {alias for _key, _name, _desc, alias in tui_navigator.MENU_OPTIONS}
+    gui_aliases = set(nav_rail_view.GUI_ACTION_ALIASES)
+    assert gui_aliases == {alias for *_x, alias in CARD_ITEMS}
+    assert gui_aliases <= menu_aliases, (
+        f"面板可执行别名必须全部落在 MENU_OPTIONS：{sorted(gui_aliases - menu_aliases)}")
+
+    # ② 42 主命令：可达 / 不可达声明与 CLI 注册表逐一对账
+    dispatch._init_all_commands()
+    registered = {cmd.name for cmd in dispatch.list_commands()}
+    assert len(registered) == nav_rail_view.CLI_MAIN_COMMAND_COUNT == 42
+    assert nav_rail_view.GUI_REACHABLE_COMMANDS.isdisjoint(nav_rail_view.GUI_UNREACHABLE_COMMANDS)
+    assert nav_rail_view.GUI_REACHABLE_COMMANDS | nav_rail_view.GUI_UNREACHABLE_COMMANDS == registered, (
+        "42 覆盖边界声明与 CLI 注册表漂移：请同步 nav_rail.GUI_REACHABLE/UNREACHABLE_COMMANDS")
+    assert len(nav_rail_view.GUI_UNREACHABLE_COMMANDS) == 32
+
+    # ③ 每个 GUI 动作别名都映射到一个真实注册的主命令
+    assert set(nav_rail_view.GUI_ACTION_TO_COMMAND) == gui_aliases
+    assert set(nav_rail_view.GUI_ACTION_TO_COMMAND.values()) <= registered
+    assert nav_rail_view.GUI_REACHABLE_COMMANDS == set(nav_rail_view.GUI_ACTION_TO_COMMAND.values())
+    # 能在 CLI 注册表直接解析的别名（如 compose→exam）必须解析到声明的规范名；
+    # diff / wechat_search 由 CLI 分发层与 TUI 分发器承接，注册表查不到属预期。
+    resolved = {alias: dispatch.get_command(alias)
+                for alias in nav_rail_view.GUI_ACTION_TO_COMMAND}
+    for alias, cmd in resolved.items():
+        if cmd is not None:
+            assert cmd.name == nav_rail_view.GUI_ACTION_TO_COMMAND[alias], (
+                f"别名 {alias} 解析到 {cmd.name}，与声明的 "
+                f"{nav_rail_view.GUI_ACTION_TO_COMMAND[alias]} 不一致")
+    assert {alias for alias, cmd in resolved.items() if cmd is None} == {
+        "diff", "wechat_search"}, "预期只有这两个别名不在 CLI 注册表直查面"
+
+
+# ── ⑧ W13 验收修复：空结果提示行（R3-1）+ 口语搜索别名（R3-2） ──
+
+@pytest.fixture()
+def palette(app):
+    """独立驱动命令面板（模块契约：面板不触发任何后端，可离屏独立驱动）。"""
+    p = CommandPalette(nav_rail_view.PALETTE_ENTRIES)
+    p.show()
+    app.processEvents()
+    yield p
+    p.close()
+
+
+def _palette_hint_label(palette):
+    """空结果提示行的 QLabel（objectName 判据）；不存在返回 None。"""
+    for row in range(palette.list.count()):
+        label = palette.list.itemWidget(palette.list.item(row))
+        if label is not None and label.objectName() == "PaletteEmptyHint":
+            return label
+    return None
+
+
+def test_palette_empty_result_shows_hint_row(palette):
+    """R3-1（F5）：无匹配查询不再是零提示空白列表，而是插入不可选中的提示行。
+
+    阴性对照：回退 ``refresh()`` 里的 ``_add_empty_hint`` 调用 → 提示行断言必红。
+    """
+    palette.refresh("zzz-不存在的条目-zzz")
+
+    # 计数契约不破：提示行无 key，不参与 visible_keys（W13-7）
+    assert palette.visible_keys() == [], "无命中时可见 key 必须为空列表"
+    assert palette.list.count() == 1, "空结果应恰好渲染一行提示"
+    assert palette.list.currentRow() == -1, "空结果不得默认选中任何行"
+
+    label = _palette_hint_label(palette)
+    assert label is not None, "空结果必须给出提示行（修复前是一片空白）"
+    assert label.text() == EMPTY_HINT_TEXT, "提示文案必须与导出常量同源"
+    assert all(word in label.text() for word in ("错题", "组卷", "看板")), \
+        "提示应给出可用示例词（错题 / 组卷 / 看板）"
+
+    item = palette.list.item(0)
+    assert not (item.flags() & Qt.ItemIsSelectable), "提示行不得可选中"
+    assert not item.data(Qt.UserRole), "提示行不得携带可执行 key"
+    assert label.height() >= label.sizeHint().height(), "提示行高度不足，文字被纵向裁切"
+
+    # 防御：提示行不可被执行（与分组标题行同机制）
+    fired: list = []
+    palette.activated.connect(fired.append)
+    palette.list.setCurrentRow(0)
+    assert palette.activate_current() == "", "提示行不得被执行"
+    assert fired == [], "提示行不得发出 activated 信号"
+
+    # 恢复有结果查询 → 提示行消失（不残留）
+    palette.refresh("错题")
+    assert _palette_hint_label(palette) is None, "有匹配结果时不得残留提示行"
+
+
+def test_palette_hint_absent_for_empty_and_matching_queries(palette):
+    """R3-1 边界：空查询（14 条全量契约）与有匹配查询都**不**出现提示行。"""
+    palette.refresh("")
+    assert len(palette.visible_keys()) == len(TAB_TITLES) + len(CARD_ITEMS) == 14, \
+        "空查询仍是全量 14 条（W13-7 契约）"
+    assert _palette_hint_label(palette) is None, "空查询是合法空态（全量列表），不得显示提示行"
+
+    palette.refresh("看板")
+    assert palette.visible_keys() == ["tool:build"]
+    assert _palette_hint_label(palette) is None, "有匹配时不得显示提示行"
+
+
+#: R3-2 词表抽检（任务书拍板的映射词子集）：每个词至少命中 1 条
+ORAL_QUERY_SAMPLES = ("考情", "工具", "试卷", "刷题", "考试", "报到", "查漏", "计时", "倒计时")
+
+
+@pytest.mark.parametrize("query", ORAL_QUERY_SAMPLES)
+def test_palette_oral_keywords_hit_entries(palette, query):
+    """R3-2（F7）：口语词至少命中 1 条面板条目（修复前这些词全部 0 命中）。
+
+    阴性对照：回退 keywords 并入 ``haystack()`` → 本参数化用例整体变红。
+    """
+    palette.refresh(query)
+    assert palette.visible_keys(), f"口语词 {query!r} 应至少命中 1 条，实际 0 条"
+    assert _palette_hint_label(palette) is None, "有命中时不得显示空结果提示"
+
+
+def test_palette_tool_keyword_hits_all_ten_tools(palette):
+    """R3-2：「工具」统一命中全部 10 条工具条目（视图条目不含该词）。"""
+    palette.refresh("工具")
+    keys = palette.visible_keys()
+    assert len(keys) == len(CARD_ITEMS) == 10, f"「工具」应命中全部 10 条工具，实际 {keys}"
+    assert set(keys) == {f"tool:{alias}" for *_x, alias in CARD_ITEMS}
+
+
+@pytest.mark.parametrize("query", ("交作业", "设置", "主题", "退出", "帮助", "报告", "诊断"))
+def test_palette_unmapped_words_stay_unmatched(palette, query):
+    """R3-2 反向约束：无 GUI 对应动作的词不得被映射（搜到也执行不了＝误导）。
+
+    任务书显式拍板：交作业 / 设置 / 主题 / 退出 / 帮助 / 报告 / 诊断 不映射。
+    """
+    palette.refresh(query)
+    assert palette.visible_keys() == [], f"{query!r} 无对应 GUI 动作，不得命中条目"
+    assert _palette_hint_label(palette) is not None, "无命中应显示提示行"
+
+
+def test_palette_keywords_field_contract():
+    """R3-2：``keywords`` 是末位可选字段（位置参数兼容），词表与条目清单对账。"""
+    # 既有 (key, title, group, hint) 四参位置写法不受影响
+    legacy = PaletteEntry("k", "标题", "分组", "说明")
+    assert legacy.keywords == ""
+    assert "说明" in legacy.haystack()
+
+    entry = PaletteEntry("k2", "标题", "分组", "说明", "口语词")
+    assert "口语词" in entry.haystack(), "keywords 必须并入匹配文本"
+
+    # 词表覆盖全部条目（漏配会在构建 PALETTE_ENTRIES 时 KeyError，这里显式钉住）
+    assert set(nav_rail_view.TOOL_KEYWORDS) == {alias for *_x, alias in CARD_ITEMS}
+    assert set(nav_rail_view.VIEW_KEYWORDS) == {
+        icon for icon, _title in nav_rail_view.NAV_VIEWS}
+    for palette_entry in nav_rail_view.PALETTE_ENTRIES:
+        assert palette_entry.keywords, f"面板条目 {palette_entry.key} 缺少口语别名"
+    # 「工具」统一词：10 条工具条目全部携带（视图条目不携带）
+    for palette_entry in nav_rail_view.PALETTE_ENTRIES:
+        has_tool = "工具" in palette_entry.keywords
+        assert has_tool == palette_entry.key.startswith(nav_rail_view.TOOL_PREFIX), \
+            f"「工具」词只应加在工具条目上：{palette_entry.key}"
+
+
+def test_palette_empty_hint_qss_compiles_for_all_presets():
+    """R3-1：空结果提示样式在全部内置预设下可编译，且消费弱化色主题变量。"""
+    from tools.theme import PRESET_ORDER
+
+    for preset in PRESET_ORDER:
+        theme = build_theme(preset)
+        block = _qss_block(render_qss(theme), "#PaletteEmptyHint")
+        assert "transparent" in block, f"预设 {preset} 的提示行背景应为透明"
+        assert f"color: {theme.color('mut')}" in block, (
+            f"预设 {preset} 的 #PaletteEmptyHint 应使用弱化色 mut")

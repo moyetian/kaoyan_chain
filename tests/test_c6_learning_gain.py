@@ -548,6 +548,30 @@ def test_ky_help_lists_gain_and_rag(capsys):
     assert "gain [--no-save]" in out, "ky help 未列出 gain"
 
 
+def test_ky_help_lists_every_registered_command(capsys):
+    """[W13 R2-1 防漂移钉] ``ky help`` 子命令清单必须覆盖注册表里每个主命令。
+
+    此前 help 子命令区是手写清单：新增命令忘同步即「功能藏起来」；且旧
+    ``_init_all_commands`` 的 early-return 会让「只导入过部分模块」的场景列出
+    残缺清单。现改为动态生成，本测试把「注册表 ⊂ help 输出」钉死。
+    """
+    from cli.commands import system as system_cmd
+    from cli import dispatch
+
+    dispatch._init_all_commands()
+    names = [c.name for c in dispatch.list_commands()]
+    assert names, "命令注册表为空，测试前置条件不成立"
+
+    system_cmd._cmd_help(["help"])
+    out = capsys.readouterr().out
+    missing = [n for n in names if n not in out]
+    assert not missing, f"ky help 未列出注册命令: {missing}"
+
+    # 重复注册回归：双路径导入时同名命令不得出现两次（见 register 的 name 判重）
+    heads = [c.head for c in dispatch.list_commands()]
+    assert len(heads) == len(set(heads)), "注册表出现重复命令"
+
+
 def test_command_palette_lists_gain_and_rag():
     """REPL 指令大盘必须含 /rag 与 /gain。"""
     from cli.repl import renderer

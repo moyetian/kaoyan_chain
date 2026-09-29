@@ -40,6 +40,7 @@ if str(DASHBOARD) not in sys.path:
     sys.path.insert(0, str(DASHBOARD))
 
 import build  # noqa: E402
+from tools.theme import ICONS  # noqa: E402
 
 TEMPLATE_PATH = DASHBOARD / "web" / "template.html"
 SPRITE_PATH = ROOT / "docs" / "assets" / "icons.svg"
@@ -172,11 +173,15 @@ def test_sidebar_has_no_emoji(template_text):
 
 
 def test_sidebar_tabs_all_use_lucide_sprite(template_text):
-    """6 个页签必须全部用 sprite 图标，且引用的 symbol 真实存在于 sprite 文件。"""
+    """5 个底栏页签必须全部用 sprite 图标，且引用的 symbol 真实存在于 sprite 文件。
+
+    [W13-6] 原 6 键（含 map）收敛为 5 键：图谱页下沉为「进度」页内的二级入口
+    （见 test_map_secondary_entry_in_stat_page），不再是 tablist 成员。
+    """
     side = _sidebar_block(template_text)
     btns = re.findall(
         r'<button role="tab"[^>]*data-p="([a-z]+)"[^>]*>(.*?)</button>', side, re.S)
-    assert [k for k, _ in btns] == ["today", "memo", "weak", "stat", "map", "radar"]
+    assert [k for k, _ in btns] == ["today", "memo", "weak", "stat", "radar"]
 
     sprite = SPRITE_PATH.read_text(encoding="utf-8")
     for key, body in btns:
@@ -185,6 +190,38 @@ def test_sidebar_tabs_all_use_lucide_sprite(template_text):
         assert f'id="{uses[0]}"' in sprite, f"页签 {key} 引用了 sprite 中不存在的 {uses[0]}"
         assert "class='ic'" in body or 'class="ic"' in body, \
             f"页签 {key} 的图标未包在 .ic 容器里（运行时探针会判空图标）"
+
+
+def test_map_secondary_entry_in_stat_page(template_text):
+    """图谱页下沉（W13-6）：底栏 5 键不含 map；图谱作为「进度」页内的二级入口。
+
+    入口必须保留 ``data-p="map"`` /「图谱」/ ``data-goto="map"`` 字面量
+    （``check_dashboard`` 前端契约与 ky_suite S3-4 依赖），但**不得带
+    ``role="tab"``**：它不是 tablist 成员，带上会被键盘漫游算进页签循环。
+    """
+    side = _sidebar_block(template_text)
+    assert 'data-p="map"' not in side, "底栏仍残留图谱页签（应已收敛为 5 键）"
+
+    entry = re.search(r'<button[^>]*data-goto="map"[^>]*>', template_text)
+    assert entry, "未找到图谱二级入口（data-goto=map 的按钮）"
+    tag = entry.group(0)
+    assert 'data-p="map"' in tag, "二级入口缺少 data-p=map 字面量（契约依赖）"
+    assert 'role="tab"' not in tag, "二级入口不得带 role=tab（会污染 tablist 键盘漫游）"
+    assert 'aria-current="false"' in tag, "二级入口缺少 aria-current 初始标记"
+    assert "知识图谱" in template_text[entry.end():entry.end() + 200], \
+        "二级入口文案缺失（应含「知识图谱」，其中「图谱」是 ky_suite 契约字面量）"
+
+    # 入口必须位于「进度」页内（p-stat 与 p-map 之间）
+    i_stat = template_text.index('id="p-stat"')
+    i_entry = template_text.index('data-goto="map"')
+    i_map = template_text.index('id="p-map"')
+    assert i_stat < i_entry < i_map, "二级入口不在「进度」页内（应在 p-stat 与 p-map 之间）"
+
+    # 统一查询：kytab 恢复与 data-goto 委托不得再写死 .bar 选择器——
+    # 图谱下沉后那种查询查不到入口，会静默失效。
+    assert "function tabBtn(key)" in template_text, "缺少 tabBtn 统一查询"
+    assert '.bar button[data-p=' not in template_text, \
+        "仍存在写死 .bar 的入口查询——kytab 恢复/data-goto 委托对二级入口不可达"
 
 
 def test_all_sprite_references_resolve(template_text):
@@ -220,7 +257,7 @@ def test_icon_sprite_inlined_exactly_once(built_html):
     """
     assert '<symbol id="i-today"' in built_html, "产物未内联图标 sprite，图标将全部不可见"
     assert built_html.count('<symbol id="i-today"') == 1, "sprite 被注入了多次"
-    assert built_html.count("<symbol ") == 42, "sprite symbol 数量与 icons.py 子集不符"
+    assert built_html.count("<symbol ") == len(ICONS), "sprite symbol 数量与 icons.py 子集不符"
     assert "{{ICON_SPRITE}}" not in built_html
 
     for block in re.findall(r"<script[^>]*>(.*?)</script>", built_html, re.S):
@@ -450,3 +487,42 @@ def test_radar_empty_states_use_sprite():
     assert src.count("class='ei'") == 3, "radar.py 空态数量变了，请同步复核本测试"
     for name in ("#i-radar", "#i-file", "#i-chat"):
         assert name in src, f"radar.py 空态缺少 sprite 引用 {name}"
+
+
+# ── ⑨ [W13 验收修复·F6] 「错题」页签默认 deck ──────────────────
+
+def test_weak_default_deck_prefers_error_queue(tmp_path, monkeypatch):
+    """「错题」页签的第一个 deck 必须是错题相关卡片组（错题重做队列）。
+
+    [F6] 此前 weak 页签的默认 deck 由「科目遍历顺序 + 章节声明顺序」决定，
+    第一个往往是「题型能力评估」这类科目雷达；考生点进「错题」看到的第一屏
+    与错题无关。修复为稳定排序：标题含「错题」/「索引」的 deck 提前，其余保序。
+
+    用假科目 + 临时 md 构造「雷达在前、错题队列在后」的原始顺序，
+    以钉住「排序前它确实不是第一个」这一前提。
+    """
+    monkeypatch.setenv("KY_SNAPSHOT_OPT_IN", "0")
+    (tmp_path / "radar.md").write_text(
+        "## 题型能力评估\n\n| 项目 | 掌握度 |\n|---|---|\n| 阅读 | 60% |\n",
+        encoding="utf-8")
+    (tmp_path / "profile.md").write_text(
+        "## 错题重做队列\n\n| 题目 | 复做次数 |\n|---|---|\n| 极限计算 | 2 |\n",
+        encoding="utf-8")
+    monkeypatch.setattr(build, "SUBJECTS", [{
+        "key": "pro", "name": "专业课", "icon": "", "color": "#000000",
+        "dark": "#111111", "dir": tmp_path, "full": 150, "target": 120,
+        "notes": "每日作业",
+    }])
+    monkeypatch.setattr(build, "SECTIONS", {
+        "pro": [
+            ("radar.md", "题型能力评估", "weak", {"front": 0}),
+            ("profile.md", "错题重做队列", "weak", {"front": 1}),
+        ],
+    })
+
+    _html, data, _warns, _secs = build.build(offline=True)
+
+    titles = [d["title"] for d in data["weak"]]
+    assert len(titles) == 2, f"weak deck 数量异常: {titles}"
+    assert "错题" in titles[0], f"默认 deck 不是错题卡片组: {titles}"
+    assert "题型能力评估" in titles[1], f"其余 deck 未保持原相对顺序: {titles}"

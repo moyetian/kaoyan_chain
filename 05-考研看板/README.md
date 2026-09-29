@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Status-Sprint%207%20Delivered%20%C2%B7%20%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE%E5%B0%B1%E7%BB%AA-success.svg?style=flat-square" alt="Status" />
   <img src="https://img.shields.io/badge/Tests-CLI%20smoke%20%2B%20regression-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
-  <img src="https://img.shields.io/badge/Dashboard-6%20Tabs%20(%E6%96%B0%E5%A2%9E%20%F0%9F%93%A1%20%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE)-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
+  <img src="https://img.shields.io/badge/Dashboard-5%20Tabs%20(%E6%96%B0%E5%A2%9E%20%F0%9F%93%A1%20%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE)-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/Math-KaTeX%20LaTeX-00d084?style=flat-square&logo=latex&logoColor=white" alt="KaTeX" />
   <img src="https://img.shields.io/badge/Mobile-Responsive%20PWA-f59e0b?style=flat-square&logo=pwa&logoColor=white" alt="Mobile" />
@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <a href="#-考研全科自测看板-dashboard-核心全景">📊 6Tab 看板全景</a> •
+  <a href="#-考研全科自测看板-dashboard-核心全景">📊 5Tab 看板全景</a> •
   <a href="#2-独创-👁️-遮罩自测模式--考研碎片时间默写神器">👁️ 遮罩自测</a> •
   <a href="../操作手册.md">📘 学员实操手册</a> •
   <a href="#-四大私教辅导风格按需切换">🎭 辅导风格</a> •
@@ -445,7 +445,7 @@ kaoyan_chain/
 │   ├── assets/                          # 印刷级 SVG 架构图与演示素材
 │   │   ├── intelligence_architecture.svg# 研招情报与证据链架构图
 │   │   ├── school_comparator_matrix.svg # 双校横向对标决策矩阵
-│   │   ├── dashboard_5tabs_architecture.svg # 看板 6Tab 全景架构图（文件名沿用历史命名）
+│   │   ├── dashboard_5tabs_architecture.svg # 看板 5Tab 全景架构图
 │   │   └── ...                          # 技能、记忆、生命周期架构矢量图
 │   ├── index.html                       # 移动端自测看板发布源
 │   ├── live.html                        # 印刷级 KaTeX 实时可视化网页伴侣
@@ -472,7 +472,7 @@ kaoyan_chain/
     ├── ky_cli.py                        # 专有终端私教 (REPL) 与多端 IM 网关 (WeChat/QQ/DingTalk/Feishu)
     ├── study_planner.py                 # 7维度个人定制化方案设计引擎与防疲劳预警
     ├── syllabus_manager.py              # 官方考纲智能匹配与切换管理器
-    ├── test_ky_suite.py                 # 26 组全自动化工程回归测试套件 (共 305 项断言；干净检出为 300 通过 + 5 跳过 = 305)
+    ├── test_ky_suite.py                 # 26 组全自动化工程回归测试套件 (共 307 项断言；干净检出为 302 通过 + 5 跳过 = 307)
     ├── update_dashboard.py              # 本地编译；--push 时才提交并推送
     └── verify_health.py                 # 全科规范与关键文件健康度巡检脚本
 ```

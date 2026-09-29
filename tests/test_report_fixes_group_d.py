@@ -167,6 +167,29 @@ def test_workflow_validates_index_html_in_same_step():
     assert 'data-p="stat"' in step, "未校验看板契约标记 data-p=stat"
 
 
+def test_workflow_requires_sanitized_marker():
+    """[W13 验收修复·发布链路] 部署前必须校验 docs/index.html 携带脱敏标记。
+
+    本地入口（build.py / 更新看板.bat / update_dashboard）已统一为完整模式
+    构建，若把完整版产物推上 Pages，私人学习记录会公开 —— 该断言是发布
+    链路的第三道闸（前两道：sync_publish 镜像前重建、update_dashboard --push
+    先脱敏构建）。
+    """
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert 'data-sanitized="1"' in text, "工作流未校验脱敏标记 data-sanitized"
+
+    start = text.index(_STEP_BEGIN)
+    end = text.index(_STEP_END)
+    step = text[start:end]
+
+    marker_lines = [ln for ln in step.splitlines() if 'data-sanitized="1"' in ln]
+    assert marker_lines, "脱敏标记校验不在 Verify docs/ 步骤内"
+    assert any("grep" in ln for ln in marker_lines), \
+        f"脱敏标记未用 grep 校验: {marker_lines}"
+    assert any("exit 1" in ln for ln in marker_lines), \
+        f"脱敏标记缺失时未拒绝部署: {marker_lines}"
+
+
 # ──────────────────── D4：院校库口径必须与实测真值一致 ────────────────────
 
 

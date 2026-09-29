@@ -44,6 +44,9 @@ jobs:
             test -s docs/index.html || (echo "[❌] docs/index.html 为空，疑似未构建" && exit 1)
             python -c "import pathlib; b=pathlib.Path('docs/index.html').read_bytes(); assert len(b) > 1000, 'docs/index.html 体积异常，疑似未构建'"
             grep -q 'data-p="stat"' docs/index.html || (echo "[❌] docs/index.html 缺少看板契约标记 data-p=stat" && exit 1)
+            # [W13 验收修复·发布链路] 本地入口已改为完整模式构建（含私人学习记录
+            # 正文），发布必须只接受脱敏产物 —— 无标记即拒绝部署。
+            grep -q 'data-sanitized="1"' docs/index.html || (echo "[❌] docs/index.html 未携带脱敏标记（完整模式产物不得部署）" && exit 1)
             python -c "import json; p=json.load(open('docs/state_snapshot.json', encoding='utf-8')); assert p.get('meta', {}).get('sanitized') is True, '拒绝部署未脱敏快照'"
             echo "[✅] docs/ 内容检查通过"
 

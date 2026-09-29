@@ -45,6 +45,85 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 新增 `tests/test_w12_report_fixes.py`（10 项）与
 `tests/test_fix_checkpoint_exclusion.py`（14 项，含两次单点变异阴性对照）。
 
+### 🧪 W13 技术侧 —— 评测资产与检索（W13-0/1/2/3）
+
+- **W13-0 评测口径统一**：C1 / C2 评测集条数口径三源不一已统一，以数据文件实际行数为
+  唯一真源 —— C1 考纲守卫 = **137 条**（`tests/benchmarks/syllabus_guard.jsonl`）、
+  C2 引文忠实度 = **109 条**（`tests/benchmarks/citation_faithfulness.jsonl`）；
+  README 与评测流水线文档中的旧值（128 / 108 条）同步更正，并新增**派生计数测试**
+  （读 jsonl 实际行数断言文档字符串）防再次漂移。v3.1.0 发布段中的历史数字保持原样。
+- **W13-1（R2）C2 双指标契约化**：新增 `citation_recall`（拦截侧通过率）与
+  `citation_precision`（放行侧精度），附**置零规则**（`recall=0 ⇒ precision=0`，
+  防「全放行」0/0 虚高）；`by_category` 按实际 kind 五类分层通过率 + `judge_identity`
+  （`rules:citation_engine@3.1.0`）+ 构念声明（闸门功能口径，禁止与 ALCE 生成侧
+  recall/precision 横向比较）。
+- **W13-2（R1）canary 防污染**：两评测集 246 行**逐行**加 `_canary` 字段（GUID 逐字符
+  一致，禁写注释行）；`.gitignore` + `privacy_policy.NON_PUBLISH_PATH_PATTERNS`
+  双保险排除（sync_publish 不读 .gitignore）。边界：canary 只防「被爬进训练语料」，
+  ≠ 防污染达成；影子集机制留 W14。
+- **W13-3（R5-a）切片去重叠开关**：`search/indexer.py` 的 `chunk_text()` 参数化 ——
+  `KY_RAG_OVERLAP=0` 启用 `overlap=0`，**默认 50 行为不变**；chunk_size 保持 500
+  （不做「512 对齐」，那是英文 token 口径）。阴性断言：各 chunk 拼接 == 原文。
+
+### 🎨 W13 UI 侧 —— 四端可见升级（W13-4/5/6/7）
+
+- **W13-4（U1）结构 token 补档**：新增圆角 `r-xl / r-md / r-pill`、间距
+  `space-7 / space-8`（**整档跳过 20**，偏差表入 DESIGN.md）、`sh-3 / hair / ring`
+  合成值、字阶 `fs-xs / fs-md / fs-2xl / fs-3xl`、`font-num` 等宽数字栈 ——
+  **只补缺档、不改任何现值**（值收敛留后续批次）。
+- **W13-5（U2）`shield` 图标入库**：Web sprite 42→43 symbol（`icons.py --check`
+  43 个全部在位；GUI 走独立图标库，零改动）。
+- **W13-6（U3）看板 6→5 Tab**：底栏收敛为 今日 / 必背 / 错题 / 进度 / 考情 五键，
+  知识图谱下沉为进度页二级入口（保留 `data-p="map"` 字面量契约，不带 `role=tab`）；
+  JS 五触点统一走 `tabBtn()`；**双产物同一次 build 运行内 sha256 相等**
+  （重建前「85 vs 82 天」漂移已消除）。
+- **W13-7（U4）命令面板四桶分组**：Ctrl+K 面板按 日常 / 自测 / 情报 / 系统 分桶
+  （标题行不可选中、键盘流跳过）；**42 命令覆盖边界显式声明**（GUI 可达 10 /
+  不可达 32，audit 测试与 CLI 注册表逐一对账）。
+
+### 📝 W13-8（U6）文档收口
+
+- 命令数 39→42 修正（实测 CLI 注册 42 个主命令；操作手册第 8 章表格同步补
+  `gain` / `rag` / `session` 三行）；测试计数徽章更新至 **2816**（验收修复前口径）；
+  `DESIGN.md` 补信息架构词表（命令面板四桶 / 看板 5 域）与图标清单 42→43。
+
+### 🔐 W13 验收修复 —— 本地完整 / 发布脱敏双模式 + 易用性 6+4
+
+四路用户视角实测（CLI / TUI / GUI / Web）发现 1 P0 + 10 P1 + 25 P2，逐条核实后按
+「必修 6 + 顺手 4」修复；收口时全仓扫描再补 5 处同族缺陷。
+
+- **P0 本地完整 / 发布脱敏双模式**：本地入口（`更新看板.bat` ×2、`ky build`、
+  `update_dashboard` 本地分支、`init_workspace`）此前不设 `KY_SNAPSHOT_OPT_IN`，
+  走缺省脱敏 —— 考生本机看板看不到今日任务正文与卡背答案。现本地入口一律
+  **完整模式**（env=0）；发布链路（`sync_publish` / `update_dashboard --push` /
+  deploy-pages）**强制脱敏**：镜像/推送前自动脱敏重建、事后恢复本地完整版；
+  产物注入机器可读标记 `data-sanitized="1"`，CI 三道闸（文件 + 标记 +
+  `meta.sanitized`）拒绝完整模式产物上线。
+- **收口补漏（5 处同族重建点）**：全仓扫描发现 `check_dashboard` 守卫 / TUI
+  build 动作 / `study_planner` 引导 / REPL 两处口令（「更新看板」与 `/build`）
+  也直调 build.py 且未传 env —— 跑一次守卫即把完整产物覆盖为脱敏版。全部统一
+  完整模式 + 新增 AST 级回归测试（含阴性对照）。
+- **CLI-1 `ky help` 与注册表脱钩**：help 手写 37 条 vs 注册 42 条 → 改为从
+  注册表动态生成 + diff 转发说明；`register()` 按 name 判重（修双路径导入
+  产生的 9 条重复行）。
+- **CLI-2 未知指令推荐错**：不考数学时 `/math` 类指令明确拒绝；未知指令提示
+  「输入 / 展开指令大盘」+ 动态科目串。
+- **CLI-3 `./ky` 探测不足**：逐个候选验证 `version_info >= (3,10)`，全失败给
+  ky.bat 对齐指引；`./ky --version` 从 exit 49 零输出 → 正常输出。
+- **GUI 命令面板空结果**：零提示 → 「未找到匹配命令，试试：错题 / 组卷 / 看板」；
+  口语别名（"看板" 等）并入匹配。
+- **Web 错题页签默认 deck 错位**：错题重做队列/索引置顶（此前首个 deck 是
+  模块掌握度雷达）。
+- **顺手 4 组**：GUI 工具项关键词 / 备考天数估算标注（「按初试前 180 天估算」）/
+  CLI 一行 P2 组（`ky menu` batch、search usage 解释器提示、`/paste` 补档、
+  TUI `[0-10]`）/ 文档残留（操作手册 `ky commands`、SETUP 5 Tab、README 编号）。
+
+**测试**：全量 pytest **2439 通过 + 3 跳过**（收集 2442）；`test_ky_suite.py`
+**307 项**（Git 工作区口径；副本口径 302+5）；`test_new_features.py` 131 通过；
+`ci_evaluate_gate` 三路径全绿；`lint_check` 0 错误；`check_dashboard` 全绿
+（含真浏览器运行时）；模拟真实用户端到端 **27/27**（双模式四段 + 阴性对照 +
+97 个受控文件字节不变）。
+
 ---
 
 ## 未发布 · 缺陷修复 — 2026-09-26

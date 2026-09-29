@@ -501,3 +501,64 @@ def test_b01_save_with_trailing_note_still_archives(monkeypatch, capsys):
     assert calls, "/save <备注> 未触发错题归档（尾随文本把指令挤进了未知分支）"
     assert "SENTINEL_ARCHIVED" in out, "/save <备注> 的归档结果未落地到终端"
     assert "未知指令" not in out, "/save <备注> 落进了未知指令分支"
+
+
+# ── W13 R2-2：不考数学的科目路由与未知指令提示 ─────────────────────────────
+#
+# 任务书《W13 验收修复》路 2：``is_math_disabled`` 为真时
+#   * ``_switch_subject("math")`` 必须拒绝（此前照常切换 + 落盘 + 播报数学报到，
+#     但后续数学路径全被方案禁用，用户困在空科目里）；
+#   * 未知指令提示不得再写死 ``/math``（照敲只会再吃一次拒绝），并给出裸 ``/``
+#     展开指令大盘的出路。
+
+def _math_disabled_cfg() -> dict:
+    """「不考数学」方案的最小配置（中性占位）。"""
+    return {
+        "api_key": "",
+        "model": "deepseek-chat",
+        "active_subject": "eng",
+        "onboarding_completed": True,
+        "study_plan": {"math_key": "none", "math_name": "不考数学"},
+    }
+
+
+def test_w13_r22_switch_math_refused_when_math_disabled(monkeypatch, capsys):
+    """「不考数学」方案下输入「数学报到」：拒绝切换、状态不变、不落盘、不播报。"""
+    def observe(mp):
+        shared = _math_disabled_cfg()
+        saved = []
+        mp.setattr(repl_loop, "load_config", lambda: shared)
+        mp.setattr(repl_loop, "save_config", lambda cfg: saved.append(dict(cfg)))
+        return shared, saved
+
+    shared, saved = _drive_repl_capture(monkeypatch, ["数学报到"], observe)
+    out = capsys.readouterr().out
+
+    assert "不考数学" in out and "无需切换到数学私教" in out, f"未给出拒绝提示: {out[-400:]}"
+    assert "ky subject" in out, "拒绝后应指路 `ky subject` 修改科目设置"
+    assert "报到就绪" not in out, "拒绝后不得再播报数学报到"
+    assert shared["active_subject"] == "eng", "active_subject 不得被改动"
+    assert saved == [], "拒绝路径不得写盘 ky_config.json"
+
+
+def test_w13_r22_unknown_slash_hint_subject_list_follows_math_flag(monkeypatch, capsys):
+    """未知指令提示：不考数学时不含 ``/math``；启用数学时含 ``/math``。"""
+    def observe_off(mp):
+        mp.setattr(repl_loop, "load_config", lambda: _math_disabled_cfg())
+
+    _drive_repl_capture(monkeypatch, ["/nonexist"], observe_off)
+    out_off = capsys.readouterr().out
+    line_off = next(l for l in out_off.splitlines() if "未知指令" in l)
+    assert "/nonexist" in line_off
+    assert "输入 / 展开指令大盘" in line_off, f"未给出裸 `/` 出路: {line_off!r}"
+    assert "/math" not in line_off, f"不考数学时不得提示 /math: {line_off!r}"
+
+    def observe_on(mp):
+        cfg = _math_disabled_cfg()
+        cfg["study_plan"] = {}
+        mp.setattr(repl_loop, "load_config", lambda: cfg)
+
+    _drive_repl_capture(monkeypatch, ["/nonexist"], observe_on)
+    out_on = capsys.readouterr().out
+    line_on = next(l for l in out_on.splitlines() if "未知指令" in l)
+    assert "/math /eng /pol /pro" in line_on, f"启用数学时应含 /math: {line_on!r}"

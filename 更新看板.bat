@@ -12,6 +12,8 @@ echo   考研学习链 (Kaoyan Study Chain) - 本地构建看板
 echo ========================================================
 echo.
 
+rem [W13] Local entry must build in full mode (KY_SNAPSHOT_OPT_IN=0)
+set KY_SNAPSHOT_OPT_IN=0
 echo [1/3] 正在解析四科状态并生成 Web 看板...
 "%PY%" "05-考研看板\build.py"
 if errorlevel 1 (

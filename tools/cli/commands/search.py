@@ -15,12 +15,17 @@ from typing import List, Optional
 
 try:
     from tools.cli.dispatch import Command, register
+    from tools.cli.shared import interpreter_hint
     from tools.cli.repl.renderer import C, colorize, print_rag_results
 except ImportError:
     from cli.dispatch import Command, register
+    from cli.shared import interpreter_hint
     from cli.repl.renderer import C, colorize, print_rag_results
 
-_USAGE = """
+# [W13 R2-4d 修复·解释器名] 建索引命令此前写死 `python tools/search/indexer.py`：
+# 本机 python 是商店 stub（exit 49 零输出），考生照敲必失败。统一改用
+# ``interpreter_hint()``（平台自适应，单源见 tools/cli/shared.py）。
+_USAGE = f"""
 本地知识库检索 (ky rag) —— 词法 + 向量 RRF 融合，降级时显式提示
 用法：
   ky rag <关键词> [--top=5] [--source=关键字]
@@ -31,7 +36,7 @@ _USAGE = """
   检索的是本地知识库 (data/knowledge/embeddings.db)，内容来自「院校库 + 各科
   参考资料/ 目录」的切片索引。建索引：
     1) ky ingest <试题/资料文件>     # 把题卡归档到 参考资料/
-    2) python tools/search/indexer.py  # 切片入知识库（暂无 ky 子命令）
+    2) {interpreter_hint()} tools/search/indexer.py  # 切片入知识库（暂无 ky 子命令）
   向量分支需要 sqlite-vec 扩展 + 本地 ONNX 模型；二者缺失时**自动降级为纯词法
   检索**，并在结果上方给出降级原因（不会静默降级）。
 """
@@ -60,7 +65,7 @@ def run_rag_search(query: str, top_k: int = 5,
         print(colorize(
             f"\n[!] 本地知识库尚未建立: {DEFAULT_DB_PATH}\n"
             "    1) ky ingest <试题/资料文件>        # 题卡归档到 参考资料/\n"
-            "    2) python tools/search/indexer.py   # 切片入知识库\n", C.YELLOW))
+            f"    2) {interpreter_hint()} tools/search/indexer.py   # 切片入知识库\n", C.YELLOW))
         return 2
 
     try:

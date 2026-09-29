@@ -787,7 +787,10 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
             b_script = ROOT / "05-考研看板" / "build.py"
             if b_script.exists():
                 import subprocess
-                subprocess.run([sys.executable, str(b_script)], check=False)
+                # [W13 收口·本地入口分模式] 显式完整模式，与 更新看板.bat / ky build 一致；
+                # 否则走缺省脱敏，把本地完整看板产物覆盖掉。
+                subprocess.run([sys.executable, str(b_script)], check=False,
+                               env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0"})
                 print(colorize("\n[+] 考研看板已构建完成！可打开 docs/index.html 查看。", Colors.GREEN))
             else:
                 print(colorize("\n[!] 未找到 05-考研看板/build.py 脚本", Colors.RED))
@@ -879,7 +882,9 @@ def _run_text_loop():
         print("\n" + render_header())
         print(render_menu())
         try:
-            prompt_str = colorize("⌨️  请输入操作序号 [0-9] 或指令别名: ", Colors.BOLD + Colors.YELLOW)
+            # [W13 R2-4a 修复·文案口径] 菜单实际含 10 项（编号 0-10），此处提示
+            # 与 render_menu/未知编号分支同口径（此前残留 "0-9"）。
+            prompt_str = colorize("⌨️  请输入操作序号 [0-10] 或指令别名: ", Colors.BOLD + Colors.YELLOW)
             choice = input(prompt_str).strip()
             keep_running = execute_action(choice, interactive=True)
             if not keep_running:

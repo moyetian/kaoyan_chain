@@ -73,3 +73,50 @@ def test_no_placeholder_leaks_after_build(build_mod):
     html, _data, _warns, _secs = build_mod.build(offline=True)
     leftovers = set(re.findall(r"\{\{[A-Z0-9_]+\}\}", html))
     assert not leftovers, f"产物残留占位符: {leftovers}"
+
+
+# ── [W13 验收修复] 脱敏标记（R1-1）与起跑日估算标注（R1-6） ──────────
+
+def test_sanitized_attr_marker_only_in_sanitized_build(build_mod, monkeypatch):
+    """脱敏构建产物在 <html> 上带 data-sanitized="1"，完整构建不带。
+
+    该标记是发布链路的第二道闸：sync_publish / update_dashboard --push / CI
+    都据此判定产物是否脱敏（完整模式产物不得镜像、不得部署）。
+    """
+    monkeypatch.setenv("KY_SNAPSHOT_OPT_IN", "1")
+    html_san, _d, _w, _s = build_mod.build(offline=True)
+    assert re.search(r'<html[^>]*data-sanitized="1"', html_san), \
+        "脱敏产物未在 <html> 标签上注入 data-sanitized 标记"
+
+    monkeypatch.setenv("KY_SNAPSHOT_OPT_IN", "0")
+    html_full, _d2, _w2, _s2 = build_mod.build(offline=True)
+    assert 'data-sanitized="1"' not in html_full, "完整模式产物不得携带脱敏标记"
+    assert '<html lang="zh-CN">' in html_full, "完整模式 <html> 标签形态异常"
+
+
+def test_resolve_plan_start_estimated_flag():
+    """config 层：起跑日走「初试前 180 天」回退时 estimated=True，显式配置为 False。"""
+    from web import config as web_config  # noqa: PLC0415
+
+    exam = datetime.date(2026, 12, 19)
+    start, estimated = web_config._resolve_plan_start({}, exam)
+    assert estimated is True, "无 start_date 且无打卡记录时必须走估算分支"
+    assert start == exam - datetime.timedelta(days=180)
+
+    start2, estimated2 = web_config._resolve_plan_start(
+        {"study_plan": {"start_date": "2026-08-09"}}, exam)
+    assert estimated2 is False, "显式 start_date 不得标记为估算"
+    assert start2 == datetime.date(2026, 8, 9)
+
+
+def test_plan_estimated_hint_rendered_only_when_estimated(build_mod, monkeypatch):
+    """build 层：估算态产物含「按初试前 180 天估算」标注，非估算态不含。"""
+    monkeypatch.setenv("KY_SNAPSHOT_OPT_IN", "0")
+
+    monkeypatch.setattr(build_mod, "PLAN_START_ESTIMATED", True)
+    html_est, _d, _w, _s = build_mod.build(offline=True)
+    assert "（按初试前 180 天估算）" in html_est, "估算态产物缺少估算标注"
+
+    monkeypatch.setattr(build_mod, "PLAN_START_ESTIMATED", False)
+    html_real, _d2, _w2, _s2 = build_mod.build(offline=True)
+    assert "（按初试前 180 天估算）" not in html_real, "非估算态产物不应带估算标注"

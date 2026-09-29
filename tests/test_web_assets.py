@@ -110,7 +110,10 @@ def test_placeholder_map_covers_template():
     data_keys = {"DMATH", "DDAY1", "DAYNO", "TOTALDAYS", "PLANPCT", "TODAY",
                  "MEMONOTES", "WEAKNOTES", "RADAR", "DATA", "STAMP",
                  # [前端修复·考期硬编码] 页头考期文案由考期真源注入
-                 "EXAM_YEAR", "EXAM_MMDD"}
+                 "EXAM_YEAR", "EXAM_MMDD",
+                 # [W13 验收修复·发布链路/F8] 脱敏标记与起跑日估算标注，
+                 # 由 build() 的 values 提供（前者随构建模式取值，后者随配置）
+                 "SANITIZED_ATTR", "PLAN_ESTIMATED"}
     assets = {k.strip("{}") for k in mapping}
     missing = declared - data_keys - assets
     assert not missing, f"模板占位符无人提供: {missing}"

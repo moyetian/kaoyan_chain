@@ -5,6 +5,7 @@
 无需任何第三方 pip 依赖，Python 3.8+ 标准库即可运行。
 """
 
+import os
 import sys
 import shutil
 import re
@@ -326,7 +327,12 @@ def build_dashboard():
     build_script = ROOT / "05-考研看板" / "build.py"
     if build_script.exists():
         import subprocess
-        res = subprocess.run([sys.executable, str(build_script)], cwd=str(ROOT / "05-考研看板"), capture_output=True, text=True, encoding="utf-8")
+        # [W13 验收修复·发布链路] 引导完成后的看板是**本地使用**的，必须显式
+        # 完整模式（env=0）：否则走 snapshot_opt_in() 缺省值（=脱敏），
+        # 新用户首屏就看不到今日任务正文，误以为功能缺失。
+        res = subprocess.run([sys.executable, str(build_script)], cwd=str(ROOT / "05-考研看板"),
+                             capture_output=True, text=True, encoding="utf-8",
+                             env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0"})
         if res.returncode == 0:
             print(f"  [√] 看板编译成功！输出路径: {ROOT / 'docs' / 'index.html'}")
         else:

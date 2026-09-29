@@ -17,13 +17,13 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v3.1.0-blue?style=flat-square&logo=github&logoColor=white" alt="版本 v3.1.0" />
-  <img src="https://img.shields.io/badge/Tests-2782%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 2782 Passed" />
+  <img src="https://img.shields.io/badge/Tests-2877%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 2877 Passed" />
   <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-6366f1?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
   <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
   <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
   <img src="https://img.shields.io/badge/KaoYan%20Intelligence-57%2B%E6%89%80%E9%AB%98%E6%A0%A1%E6%A1%A3%E6%A1%88-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white" alt="KaoYan Intelligence" />
   <img src="https://img.shields.io/badge/Terminal%20TUI-%E6%9E%81%E5%AE%A2%E6%8E%A7%E5%88%B6%E5%8F%B0-3b82f6?style=flat-square&logo=gnometerminal&logoColor=white" alt="Terminal TUI" />
-  <img src="https://img.shields.io/badge/Dashboard-6%20Tabs-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
+  <img src="https://img.shields.io/badge/Dashboard-5%20Tabs-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
   <img src="https://img.shields.io/badge/Memory-3--Tier%20Pruning-f59e0b?style=flat-square&logo=speedtest&logoColor=white" alt="Memory" />
   <img src="https://img.shields.io/badge/Privacy-Local--First-10b981?style=flat-square&logo=shield&logoColor=white" alt="Privacy" />
   <img src="https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square" alt="License" />
@@ -84,13 +84,13 @@
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 开发者        | 完整架构树、开发环境、测试与质量门禁、Agent 协议规范、PR 流程                   | **想改代码 / 提 PR 时** |
 | [CHANGELOG.md](CHANGELOG.md)       | 所有人        | 版本历史与升级方式                                             | **升级前后**          |
 
-> 快速直达：安装不上 → [SETUP 第 8 章 FAQ](SETUP.md)；不知道某条命令怎么用 → [操作手册 第 8 章「39 项子命令全景速查」](操作手册.md)；担心隐私 → 本页 [🔒 隐私优先](#-隐私优先与主流-ai-agent-接入) 与 [⚠️ 使用注意事项](#-使用注意事项) 第 7 条。
+> 快速直达：安装不上 → [SETUP 第 8 章 FAQ](SETUP.md)；不知道某条命令怎么用 → [操作手册 第 8 章「42 项子命令全景速查」](操作手册.md)；担心隐私 → 本页 [🔒 隐私优先](#-隐私优先与主流-ai-agent-接入) 与 [⚠️ 使用注意事项](#-使用注意事项) 第 7 条。
 
 ---
 
 ## 📦 开箱即用：不懂技术也能直接用（推荐）
 
-**v3.1.0 亮点**：阶段三「可证」—— 六条评测基准（C1–C6）把护城河变成**可评测资产**（考纲守卫 128 条 / 引文忠实度 109 条 / 题源溯源 ID / 判分 pilot / RAG 显式降级 `ky rag` / 学习增益 `ky gain`），外加四端 UI 设计系统统一（Lucide 图标 + 设计 token + Rich CLI）。**v3.0.1 亮点**：修复**公开副本导出冻结** —— 此前 `.github`（CI 配置）与 `rust_ext`（Rust 加速源码）被误列为「公开副本自有保留内容」，既不复制也不删除，导致副本里的旧版本被 `--force` 永久保护、后续修改永远到不了公开仓库（现两者已恢复正常同步，构建产物 `rust_ext/target` 仍被排除）。**v3.0.0 亮点**：新增**会话恢复与分叉**（`ky session`）、**外部文件读取授权**（默认拒绝 + 交互授权）、**长会话压缩不丢约束**、**沙箱脚本执行收紧**等能力（详见 [CHANGELOG.md](CHANGELOG.md)）。本项目同时提供**开箱即用的程序包** —— 你**不需要安装 Python、不需要懂命令行**，下载后跟着界面引导填几项配置就能开始用。
+**v3.1.0 亮点**：阶段三「可证」—— 六条评测基准（C1–C6）把护城河变成**可评测资产**（考纲守卫 137 条 / 引文忠实度 109 条 / 题源溯源 ID / 判分 pilot / RAG 显式降级 `ky rag` / 学习增益 `ky gain`），外加四端 UI 设计系统统一（Lucide 图标 + 设计 token + Rich CLI）。**v3.0.1 亮点**：修复**公开副本导出冻结** —— 此前 `.github`（CI 配置）与 `rust_ext`（Rust 加速源码）被误列为「公开副本自有保留内容」，既不复制也不删除，导致副本里的旧版本被 `--force` 永久保护、后续修改永远到不了公开仓库（现两者已恢复正常同步，构建产物 `rust_ext/target` 仍被排除）。**v3.0.0 亮点**：新增**会话恢复与分叉**（`ky session`）、**外部文件读取授权**（默认拒绝 + 交互授权）、**长会话压缩不丢约束**、**沙箱脚本执行收紧**等能力（详见 [CHANGELOG.md](CHANGELOG.md)）。本项目同时提供**开箱即用的程序包** —— 你**不需要安装 Python、不需要懂命令行**，下载后跟着界面引导填几项配置就能开始用。
 
 ### 三步开始使用
 
@@ -190,7 +190,7 @@ ky
 > [!TIP]
 > **装完先自检**：执行 `python tools/doctor.py`，一次性核对 Python 版本、可选依赖、四科协议、
 > `ky_config.json`、API 连通性与 Git 隐私隔离是否就绪；如需验证功能完整性，
-> 请在**干净副本**里跑 `python tools/test_ky_suite.py`（26 组 305 项断言，数分钟）。
+> 请在**干净副本**里跑 `python tools/test_ky_suite.py`（26 组 307 项断言，数分钟）。
 
 > [!WARNING]
 > **`tools/test_ky_suite.py` 会真实改写工作区用户数据**（备考方案 / 今日任务 / 大纲等），
@@ -236,13 +236,14 @@ ky
 方向键/鼠标选择、Enter 执行，长任务在后台线程运行不冻结界面，执行输出保留在右侧日志区不再一闪而过；
 - **纯终端极速体验**：数字快捷键 `1`-`9` 秒级穿透，资源占用极低；未安装 `textual`（或非交互式终端）时自动回落到纯文本控制台，功能不缺失；
 
-### 5. 📊 6-Tab 移动端自测看板 (`docs/index.html`)
+### 5. 📊 5-Tab 移动端自测看板 (`docs/index.html`)
 
 - **零服务器依赖**：自包含单文件 HTML，手机浏览器打开即用，支持 **PWA 添加到手机主屏幕**；
 - **独创遮罩自测**：在 `🧠 必背` 页签开启高斯模糊遮罩，触碰卡片秒测数学核心公式、英语高频词与政治帽子词；
 - **5 套主题预设一键轮换**：曜石黑 / 晨曦白 / 护眼绿 / 樱粉 / 高对比（无障碍）随按钮循环切换，选择自动记忆；
 - **备考节律主题**：按距初试天数自动推荐主题（基础期深色 → 强化期护眼绿 → 冲刺期亮色 → 临考月暖粉 → 决战周高对比），手动选择后不再被覆盖；
 - **全科掌握度雷达**：动态提取复习增量与掌握度分值，实时展示考情与学情趋势。
+- **本地完整 / 公开脱敏双模式**：本地入口（`ky build`、`更新看板.bat`、`update_dashboard.py`）默认生成**完整模式**看板（今日任务正文与卡背答案正常显示，仅供本机查看）；发布链路（`tools/sync_publish.py`、`update_dashboard.py --push`）会自动以脱敏模式重建产物后再镜像/提交，公开副本不含任何可识别学情，CI 另以 `data-sanitized` 标记断言兜底。
 
 ### 6. 🏛️ KaoYan Intelligence 招考全景情报与证据链引擎
 
@@ -263,7 +264,7 @@ ky
 
 ## 💬 常用私教交互与指令速查
 
-系统提供 39 个工业级 CLI 子命令与对话交互口令，完整参数说明请参阅 [📘 学员实操手册](操作手册.md)：
+系统提供 42 个工业级 CLI 子命令与对话交互口令，完整参数说明请参阅 [📘 学员实操手册](操作手册.md)：
 
 | 交互场景      | 推荐口令 / 子命令                         | 行为说明                                      |
 | --------- | ---------------------------------- | ----------------------------------------- |
@@ -278,7 +279,7 @@ ky
 | **院校对标**  | `ky compare 示例院校A 示例院校B 计算机`       | 横向深度对标两校招考指标、408/自命题、复试线与一志愿保护            |
 | **考纲比对**  | `ky fetch diff --school=示例院校A`     | 解析新旧大纲 AST，标注考点增删与考查要求跃迁，测算动荡率            |
 | **切片入库**  | `ky ingest 2024真题.md`              | 试卷智能切片与标准化题卡入库 (支持 Rust 毫秒级加速)            |
-| **刷新看板**  | `ky build`                         | 重新编译并刷新本地与移动端自测看板（默认离线构建，`--cdn` 可切回 CDN） |
+| **刷新看板**  | `ky build`                         | 重新编译并刷新本地与移动端自测看板（本地完整模式；默认离线构建，`--cdn` 可切回 CDN） |
 | **系统体检**  | `ky doctor`                        | 7 维度全系统健康诊断（Python/依赖/状态/API/端口/Git隐私/降级评估） |
 
 ---
@@ -327,7 +328,7 @@ ky
 │   ├── web/                     # 构建支撑模块与模板（主题变量、第三方资源、解析与渲染）
 │   └── docs/                    # 看板产物与静态资源
 ├── docs/                        # 发布到 GitHub Pages 的静态看板与配图
-│   ├── index.html               # 6-Tab 自测看板（单文件、可离线）
+│   ├── index.html               # 5-Tab 自测看板（单文件、可离线）
 │   ├── live.html                # 在线演示用看板（脱敏示例数据）
 │   ├── state_snapshot.json      # 看板数据源（仓库内为脱敏示例快照）
 │   ├── BOT_INTEGRATION_GUIDE.md # 微信 / QQ / 钉钉 / 飞书 机器人接入说明
@@ -342,7 +343,7 @@ ky
 ├── build/ dist/                 # 构建产物（PyInstaller / 打包输出，可安全删除）
 ├── rust_ext/                    # Rust (PyO3) 原生加速扩展源码（可选构建）
 └── tools/                       # 全部 Python 源码
-    ├── ky_cli.py                # 主命令行入口，39 个子命令（表驱动分发）
+    ├── ky_cli.py                # 主命令行入口，42 个子命令（表驱动分发）
     ├── tui_navigator.py         # 终端全景智能中枢 (TUI)
     ├── ky_gui.py / gui/         # PySide6 桌面可视化操作端
     ├── agent/                   # Agent 内核：沙箱 / 权限 / 记忆 / 生命周期钩子
@@ -438,19 +439,19 @@ ASCII 字母 18 / 空白 6 / 其余 95，单位 1/100 token，最大实测误差
 12. **提交 PR 前请自测**
 运行 `python tools/test_ky_suite.py` 与 `python tools/test_new_features.py`，确认无失败后再提交。注意 `test_ky_suite.py` 会改写工作区用户数据，**默认拒绝在真实考生工作区运行**（exit 2）—— 请在干净副本里跑，或设 `KY_TEST_ALLOW_REAL_WORKSPACE=1` 显式放行（先备份 `ky_config.json`）。
 更多排查思路见 [SETUP.md](SETUP.md) 与 [操作手册.md](操作手册.md) 第 7 章「常见突发场景速查」。
-12. **看板默认离线，公式断网也能渲染**
-`docs/index.html` 与 `docs/state_snapshot.json` 是**脱敏后的示例快照**（院校、专业等字段为占位符），仅用于展示看板效果；你在本地执行 `ky build` 生成的真实看板默认只落盘本地，不会被提交。
+13. **看板默认离线，公式断网也能渲染**
+`docs/index.html` 与 `docs/state_snapshot.json` 是**脱敏后的示例快照**（院校、专业等字段为占位符），仅用于展示看板效果；你在本地执行 `ky build` 生成的是**完整模式**看板（含今日任务正文与卡背答案），仅供本机查看——发布链路（`tools/sync_publish.py` / `update_dashboard.py --push`）会在镜像/提交前自动以脱敏模式重建产物，公开副本不含任何个人学情。
 `ky build` 默认把 KaTeX 公式渲染资源内联为本地副本（`docs/assets/vendor/`，随仓库分发），
 因此**地铁、图书馆破网、自习室断网**等场景下公式不会退化成 LaTeX 源码串。
 需要改回境外 CDN 时：`ky build --cdn`，或设 `KY_VENDOR_MODE=cdn`。
-13. **应用统计（025200 / 432 统计学）考生说明**
+14. **应用统计（025200 / 432 统计学）考生说明**
 本项目已内置 `432 统计学`通用考纲框架（含参数估计、假设检验、方差分析与回归等 6 大模块），`ky plan` 选择自命题并填入 `432 统计学`即可自动写入 `04-专业课/考试大纲.md`，`ky map pro` 可直接生成 37 项考点图谱。
 数学三（303）与英语二（204）均有官方考纲兜底；`ky variant <考点> --subject=pro` 可优先命中本地 `参考资料/`中的 432 真题。
-14. **未收录院校的降级行为**
+15. **未收录院校的降级行为**
 内置库收录 57 所详细档案 + 1,841 所基础名录（如云南大学 10673：211 / 双一流B类，以 registry.json 为准）。
 若备选院校（如部分新增硕士点高校）未被收录，`ky scout / admission / compare` 会明确标注“未收录 / 待查 / 离线基准”，
 不虚构复试线与报录比，报考前请务必以院校研究生院当年招生简章与专业目录为准。
-15. **Fork 与二次分发**
+16. **Fork 与二次分发**
 若 Fork、镜像或二次分发本项目，请保留 [MIT License](LICENSE) 与作者署名，
 并**不要移除 `.gitignore` 中的隐私规则**，否则可能导致个人学情数据被误传。
 
@@ -497,7 +498,7 @@ ASCII 字母 18 / 空白 6 / 其余 95，单位 1/100 token，最大实测误差
 本项目包含覆盖全链路功能、权限沙箱、研招情报、Rust加速与真实 CLI 进程级 smoke test 的自动化回归套件：
 
 ```bash
-# 运行全套自动化质量回归测试 (26 组全链路回归测试，共 305 项断言)
+# 运行全套自动化质量回归测试 (26 组全链路回归测试，共 307 项断言)
 # ⚠️ 该套件会真实改写工作区用户数据，默认拒绝在真实考生工作区运行；
 #    请在干净副本里跑，或设 KY_TEST_ALLOW_REAL_WORKSPACE=1 显式放行（先备份 ky_config.json）。
 python tools/test_ky_suite.py
@@ -505,19 +506,19 @@ python tools/test_ky_suite.py
 # 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、开放题判分等，共 131 项断言)
 python tools/test_new_features.py
 
-# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 2349 项）
+# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 2442 项）
 python -m pytest -q
 ```
 
 > [!NOTE]
 > **测试计数已做成环境无关，但前提仍要写清**（下列数字为 2026-09-29 实测）：
 >
-> - `test_ky_suite.py`：26 组共 **305 项断言**。Git 工作区内为 305 通过 / 0 跳过；
-> 干净检出（`git archive` 导出、无 `.git`）为 **300 通过 + 5 跳过 = 305** ——
-> 「测试组 7 Git 隐私隔离」的 5 条断言需 `.git`，无 `.git` 时逐条记为跳过，故**两种环境总数恒为 305**。
+> - `test_ky_suite.py`：26 组共 **307 项断言**。Git 工作区内为 307 通过 / 0 跳过；
+> 干净检出（`git archive` 导出、无 `.git`）为 **302 通过 + 5 跳过 = 307** ——
+> 「测试组 7 Git 隐私隔离」的 5 条断言需 `.git`，无 `.git` 时逐条记为跳过，故**两种环境总数恒为 307**。
 > - `test_new_features.py`：**131 项断言**（0 跳过），与是否 Git 工作区无关。
-> - `pytest tests/`：共 **2349 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
-> **含** `dist/` 构建产物，实测 2346 通过 + 3 跳过）。跳过项为联网测试未设
+> - `pytest tests/`：共 **2442 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
+> **含** `dist/` 构建产物，实测 2439 通过 + 3 跳过）。跳过项为联网测试未设
 > `KY_LIVE_TEST=1`（2 条）与一条需特定 registry 探测串的守卫（1 条）。
 > 在**无** `dist/` 的副本里跑，6 条打包断言会转为跳过 —— 收集总数不变，通过数下降。
 > 在**无 `cat` 的 Windows 裸机**（Git usr\bin 未加入 PATH）上，2 条沙箱阴性对照会转为
@@ -531,7 +532,7 @@ python -m pytest -q
 >
 > 改文档里的计数时，请**把对应环境一并写上**，否则下一个人会误判为「数字漂移」。
 
-- **测试保障**：主套件 26 组测试集 **305 项断言** + 新功能专项 **131 项断言** + pytest 单元/进程层 **2346 项**（合计 **2782 项通过**，另有 3 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
+- **测试保障**：主套件 26 组测试集 **307 项断言** + 新功能专项 **131 项断言** + pytest 单元/进程层 **2439 项**（合计 **2877 项通过**，另有 3 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
 - **门禁脚本**：`python tools/lint_check.py`（零依赖静态检查，只卡 ERROR 级问题）、`python tools/check_dashboard.py`（看板产物守卫）已接入 CI；
 - **CI 流水线**：内置 GitHub Actions 多平台 (Linux/Windows) 与多 Python 版本自动化测试保障；
 - **开发者文档**：如需参与贡献或了解完整项目架构树，请参阅 [🛠️ 开发者与贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。

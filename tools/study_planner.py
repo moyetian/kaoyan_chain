@@ -987,7 +987,10 @@ def apply_study_plan(plan, interactive=True):
     if build_py.exists():
         try:
             import subprocess
-            subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"), capture_output=True)
+            # [W13 收口·本地入口分模式] 显式完整模式（与 更新看板.bat / ky build 一致）
+            subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"),
+                           capture_output=True,
+                           env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0"})
         except Exception:
             pass
 

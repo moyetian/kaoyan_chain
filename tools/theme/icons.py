@@ -65,6 +65,7 @@ ICONS: Dict[str, str] = {
     "hourglass": "hourglass",
     "timer": "timer",
     "clock": "clock",
+    "shield": "shield",
     # ── 数据与趋势 ───────────────────────────────────────────
     "trend-up": "trending-up",
     "trend-down": "trending-down",
@@ -114,6 +115,7 @@ ICON_USAGE: Dict[str, str] = {
     "hourglass": "等待 / 待办",
     "timer": "倒计时 / 计时",
     "clock": "时间 / 时长",
+    "shield": "可信 / 防护（题源徽章）",
     "trend-up": "上升趋势",
     "trend-down": "下降趋势",
     "book": "知识 / 教材",

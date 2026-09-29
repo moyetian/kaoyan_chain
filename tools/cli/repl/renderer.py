@@ -40,12 +40,14 @@ from rich.text import Text
 try:
     from tools.cli.shared import (
         ROOT, SUBJECT_DIRS, COACHING_STYLES, load_config, read_text_safe,
-        get_today_tasks_data, is_math_disabled, recommended_checkin_command
+        get_today_tasks_data, is_math_disabled, recommended_checkin_command,
+        interpreter_hint,
     )
 except ImportError:
     from cli.shared import (
         ROOT, SUBJECT_DIRS, COACHING_STYLES, load_config, read_text_safe,
-        get_today_tasks_data, is_math_disabled, recommended_checkin_command
+        get_today_tasks_data, is_math_disabled, recommended_checkin_command,
+        interpreter_hint,
     )
 
 try:
@@ -591,6 +593,9 @@ def _palette_sections(math_off: bool) -> List[Tuple[str, List[Tuple[str, str]]]]
             ("/done <词>", "快速将今日任务标记为完成并同步回写文件"),
             ("/batch", "客观题答题卡批量对题（快速比对选项，统计正确率与错题归因）"),
             ("/img <路径>", "上传草稿纸或截图，逐行批改、采分点打分与 LaTeX 题干提取"),
+            # [W13 R2-4c 修复·大盘缺项] 「交作业」菜单第 1 步推荐 /paste，但指令
+            # 大盘此前没有它 —— 用户在大盘里找不到这个入口。
+            ("/paste", "从剪贴板直接取图批改（截图后无需保存文件，一键提交）"),
             ("/calc <式子>", "数学高精度验算（微分方程/二次型/级数/极限/微积分/矩阵）"),
             ("/dissect <句>", "英语长难句搭积木解剖（主干骨架/从句解构/考点词/润色翻译）"),
             ("/pdf [关键词]", "全文检索四科资料库中的官方教材与历年真题"),
@@ -958,7 +963,7 @@ def print_rag_results(outcome, query: str) -> None:
         # 各科 参考资料/ 目录，并不会写知识库；建索引的是 indexer.build_index()
         # （目前没有 ky 子命令，只能直接跑该脚本）。此处不得写「ky ingest 即可检索」。
         hint.append("\n   知识库是空的/未建索引时：先 ky ingest <文件> 把题卡归档，"
-                    "再执行 python tools/search/indexer.py 建索引。", style=st["muted"])
+                    f"再执行 {interpreter_hint()} tools/search/indexer.py 建索引。", style=st["muted"])
         hint.append("\n   已建索引却搜不到，换个更具体的考点关键词再试。", style=st["muted"])
         console.print(hint)
         console.print()

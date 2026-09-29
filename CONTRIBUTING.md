@@ -30,7 +30,7 @@ kaoyan_chain/
 │   └── experiences/                     # 社媒实名去噪高分经验与避坑档案库
 ├── LICENSE                              # MIT 开源许可证
 ├── README.md                            # 项目门户总说明与快速开箱指引
-├── 操作手册.md                          # 📘 学员专用实操全流程指南（39子命令全景）
+├── 操作手册.md                          # 📘 学员专用实操全流程指南（42子命令全景）
 ├── CONTRIBUTING.md                      # 🛠️ 开发者与贡献指南（架构树、测试与规范）
 ├── SETUP.md                             # 进阶部署配置与看板开发手册
 ├── CHANGELOG.md                         # 版本历史与升级方式
@@ -108,14 +108,14 @@ kaoyan_chain/
 ├── docs/                                # GitHub Pages 发布源镜像与高清矢量图谱
 │   ├── assets/                          # 印刷级 SVG 架构图与演示素材
 │   ├── BOT_INTEGRATION_GUIDE.md         # 多端 IM 机器人（微信/QQ/钉钉/飞书）打通指南
-│   ├── index.html                       # 移动端 6-Tab 自测看板发布源
+│   ├── index.html                       # 移动端 5-Tab 自测看板发布源
 │   ├── live.html                        # 印刷级 KaTeX 实时可视化网页伴侣
 │   └── state_snapshot.json              # 学情脱敏快照数据集
 │
 └── tools/                               # 跨平台运维与管理工具包
     ├── agent/                           # 工业级自主智能体内核 (Loop, Hooks, Memory, MCP, Sandbox)
     ├── accel/                           # Rust PyO3 加速扩展能力协商层（缺失时自动降级纯 Python）
-    ├── cli/                             # 39 子命令 CLI 内核（dispatch / commands / repl / gateway）
+    ├── cli/                             # 42 子命令 CLI 内核（dispatch / commands / repl / gateway）
     ├── gui/                             # [v2.6+] PySide6 桌面 GUI 模块
     │   ├── __init__.py                  # GUI 包入口
     │   ├── main_window.py               # 主窗口：组装界面 + 事件分发（数据/样式已外移）
@@ -150,7 +150,7 @@ kaoyan_chain/
     ├── ky_gui.py                        # [v2.6+] PySide6 GUI 启动入口 (ky gui)
     ├── doctor.py                        # 全系统健康诊断工具 (ky doctor)
     ├── init_workspace.py                # 跨平台工作区全能初始化向导
-    ├── ky_cli.py                        # 专有终端私教与多端 IM 网关入口（39 个子命令）
+    ├── ky_cli.py                        # 专有终端私教与多端 IM 网关入口（42 个子命令）
     ├── ky_io.py                         # 原子写 + 跨进程文件锁 + 只读模式闸门（所有落盘的唯一入口）
     ├── fsrs_scheduler.py                # FSRS 自适应复测调度器（全项目间隔计算唯一真源）
     ├── protocol_loader.py               # 顶层协议加载器（兼容源码模式与 wheel 安装模式）
@@ -170,7 +170,7 @@ kaoyan_chain/
     ├── simulate_workflow.py             # 工作流模拟（开发工具）
     ├── study_planner.py                 # 个人定制化方案设计引擎与防疲劳预警
     ├── syllabus_manager.py              # 官方考纲智能匹配与切换管理器
-    ├── test_ky_suite.py                 # 完整自动化回归测试与 CLI smoke test (26 组, 305 项)
+    ├── test_ky_suite.py                 # 完整自动化回归测试与 CLI smoke test (26 组, 307 项)
     ├── test_new_features.py             # [v2.6+] 新增功能专项测试 (WeChat + Rust + GUI + CLI, 131 项)
     ├── update_dashboard.py              # 自动化看板生成与同步脚本
     └── verify_health.py                 # 全科规范与关键文件健康度巡检脚本
@@ -230,8 +230,8 @@ ky doctor
 #    或先备份 ky_config.json，再设 KY_TEST_ALLOW_REAL_WORKSPACE=1 显式放行。
 python tools/test_ky_suite.py
 ```
-该套件包含 **26 组测试项**（共 **305 测试点**：Git 工作区内 305 通过 + 0 跳过；干净检出无 `.git` 时
-为 300 通过 + 5 跳过 = 305，差在「测试组 7 Git 隐私隔离」需 `.git`，两种环境总数一致），覆盖：
+该套件包含 **26 组测试项**（共 **307 测试点**：Git 工作区内 307 通过 + 0 跳过；干净检出无 `.git` 时
+为 302 通过 + 5 跳过 = 307，差在「测试组 7 Git 隐私隔离」需 `.git`，两种环境总数一致），覆盖：
 - 配置文件解析与默认兜底
 - 四科 Prompt 与防书目幻觉门禁
 - Webhook 格式与模拟并发处理
@@ -245,11 +245,12 @@ python tools/test_ky_suite.py
 ```bash
 python tools/test_new_features.py
 ```
-独立运行 v2.6.0 新增模块的专项测试（4 组 A/B/C/D，共 **130 测试点**，0 跳过；与是否 Git 工作区无关），可选依赖缺失时自动 `[SKIP]`：
+独立运行 v2.6.0 新增模块的专项测试（A–H 8 组，共 **131 测试点**，0 跳过；与是否 Git 工作区无关），可选依赖缺失时自动 `[SKIP]`：
 - **组 A**：微信公众号经验贴检索、HTML→Markdown 清洗、院校档案联动
 - **组 B**：Rust PyO3 扩展与纯 Python 双模一致性校验（需 `ky_rust_ext`，否则跳过）
 - **组 C**：PySide6 GUI 离屏实例化与 QSS 主题完整性（需 `PySide6`，否则跳过）
 - **组 D**：CLI 子命令路由（`ky gui`/`ky wechat`/`ky wx`）与 TUI 菜单挂载
+- **组 E–H**：TUI/GUI 后端契约守卫、开放题多模型判分引擎、判分引擎打磨项回归与代码审查修复项回归
 
 > **计数是环境相关的**（2026-09-22 实测）：上述数字随是否 Git 工作区、是否构建 `dist/`、
 > 是否配置 `study_plan.school` 而变。改文档计数时请连同环境前提一起写。

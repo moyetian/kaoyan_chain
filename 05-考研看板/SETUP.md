@@ -73,17 +73,20 @@ SECTIONS = {
 
 1. **绝对不会被上传的资产**：
    - 四科原始草稿、每日作业全文、教材与真题大体积 PDF 等（全部被根目录 `.gitignore` 阻断在本地）；
-2. **编译产物的公开脱敏 (`KY_SNAPSHOT_OPT_IN`)**：
-   - 默认模式下，生成的 `state_snapshot.json` 自动脱敏，可直接用于公开 GitHub Pages；
-   - 仅需在本地调试且明确接受隐私风险时，设置 `KY_SNAPSHOT_OPT_IN=0` 生成完整快照：
+2. **本地完整 / 发布脱敏双模式 (`KY_SNAPSHOT_OPT_IN`)**：
+   - **本地入口**（`ky build`、`更新看板.bat`、`tools/update_dashboard.py`）自动以完整模式构建
+     （`KY_SNAPSHOT_OPT_IN=0`）：今日任务正文与卡背答案正常显示，仅供本机查看；
+   - **发布链路**（`tools/sync_publish.py` 导出公开副本、`update_dashboard.py --push`）会在镜像/提交前
+     自动以脱敏模式重建产物，公开副本不含任何可识别学情；CI 另以 `data-sanitized` 标记断言兜底
+     （完整模式产物不得部署）；
+   - 直接运行 `python 05-考研看板/build.py` 时默认仍为**脱敏模式**（安全默认）；如需手动指定：
      ```bash
-     # Windows PowerShell
-     $env:KY_SNAPSHOT_OPT_IN="0"; python tools/update_dashboard.py --local
+     # Windows PowerShell：生成完整版
+     $env:KY_SNAPSHOT_OPT_IN="0"; py 05-考研看板/build.py
 
-     # macOS / Linux
-     KY_SNAPSHOT_OPT_IN=0 python tools/update_dashboard.py --local
+     # macOS / Linux：生成完整版
+     KY_SNAPSHOT_OPT_IN=0 python 05-考研看板/build.py
      ```
-     默认构建即为脱敏模式；只有明确设置 `KY_SNAPSHOT_OPT_IN=0` 才会保留完整学情。
 
 ---
 

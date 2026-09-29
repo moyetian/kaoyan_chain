@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import List, Generator
 from dataclasses import dataclass
@@ -86,6 +87,41 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]
         start = new_start if new_start > start else start + max(1, chunk_size)
 
     return chunks
+
+
+#: [W13-3 · R5-a] 切片重叠开关。``KY_RAG_OVERLAP`` 指定 overlap 字符数：
+#: 未设置时用 ``DEFAULT_OVERLAP``（50，保守值，与历史行为一致）；
+#: 设为 0 启用「去重叠」切片（相邻片段无跨块重复文本）。
+#: 边界：中文场景无文献支撑 + 探针样本小 → 本开关只提供机制、不宣称
+#: 「检索质量不降」；去重叠是机制减法，收益待 W14+ 实测观察。
+RAG_OVERLAP_ENV = "KY_RAG_OVERLAP"
+DEFAULT_OVERLAP = 50
+
+
+def resolve_overlap(default: int = DEFAULT_OVERLAP) -> int:
+    """解析切片重叠配置（环境变量 ``KY_RAG_OVERLAP``）。
+
+    - 未设置 / 空串 → ``default``（保守 50，行为与历史一致）；
+    - 合法非负整数 → 原样返回（``0`` 即去重叠）；
+    - 非法值（非整数 / 负数）→ 记 warning 后回退 ``default``。
+
+    ``>= chunk_size`` 的越界值不在此拦截，交由 ``chunk_text`` 内部
+    守卫按既有语义归零（见该函数 B4 注释）。
+    """
+    raw = os.environ.get(RAG_OVERLAP_ENV, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("%s=%r 不是整数，回退默认 overlap=%d",
+                       RAG_OVERLAP_ENV, raw, default)
+        return default
+    if value < 0:
+        logger.warning("%s=%d 为负数，回退默认 overlap=%d",
+                       RAG_OVERLAP_ENV, value, default)
+        return default
+    return value
 
 
 def load_universities() -> Generator[Document, None, None]:
@@ -163,8 +199,10 @@ def load_materials() -> Generator[Document, None, None]:
                     title = line[2:].strip()
                     break
 
-            # 切分长文档
-            chunks = chunk_text(content, chunk_size=500, overlap=50)
+            # 切分长文档（[W13-3 · R5-a] overlap 经 KY_RAG_OVERLAP 开关解析，
+            # 默认 50 行为不变；chunk_size 保持 500，不做 512 对齐——那是
+            # vector.py 的 tokenizer 截断口径，与字符口径不可混算）
+            chunks = chunk_text(content, chunk_size=500, overlap=resolve_overlap())
 
             for i, chunk in enumerate(chunks):
                 chunk_id = f"material-{file_path.stem}-{i}"

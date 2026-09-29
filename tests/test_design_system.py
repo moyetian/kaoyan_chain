@@ -67,7 +67,7 @@ def test_icon_usage_covers_manifest():
 def test_extract_sprite_fails_loudly_on_unknown_icon():
     """阴性：清单里出现源 sprite 没有的图标名 → KeyError（不是静默少一个图标）。"""
     fake_source = '<svg><symbol id="calendar" viewBox="0 0 24 24"><path d="M0 0"/></symbol></svg>'
-    # 源里只有 calendar；清单里还有 brain 等 41 个 → 必然失败
+    # 源里只有 calendar；清单里还有 brain 等 42 个 → 必然失败
     with pytest.raises(KeyError, match="brain"):
         extract_sprite(fake_source)
 
@@ -139,6 +139,55 @@ def test_icon_size_tokens():
 
 
 # ════════════════════════════════════════════════════════════════
+# 第 2.5 层：W13-4 结构 token 补档（只补缺档，不改任何现值）
+# ════════════════════════════════════════════════════════════════
+
+def test_w13_structure_token_backfill():
+    """W13-4：圆角三档 / 间距补档 / sh-3 / hair / ring / 字阶缺档 / 等宽栈。"""
+    t = build_theme("dark")
+    # 圆角：与 radius 同制（无单位数字，非 "20px"）
+    assert t.get("r-xl") == 20
+    assert t.get("r-md") == 12
+    assert t.get("r-pill") == 999
+    # 间距补档：既有 space-5=24 不得被 v4.0 的 20 档覆盖（整档跳过 20）
+    assert t.get("space-5") == "24px"
+    assert t.get("space-7") == "40px"
+    assert t.get("space-8") == "56px"
+    space_values = {t.get(f"space-{i}") for i in range(1, 9)}
+    assert "20px" not in space_values, "20 档与 v4.0 space-5=20 冲突，必须跳过"
+    # 阴影第三档兼容别名
+    assert t.get("sh-3") == t.get("elev-3")
+    # hair / ring：合成值必须引用真实 token（line / bg / focus-ring）
+    assert t.get("hair") == f"1px solid {t.get('line')}"
+    ring = str(t.get("ring"))
+    assert ring.startswith("0 0 0 "), "ring 应为 box-shadow 组合值"
+    assert str(t.get("bg")) in ring, "ring 内圈应引用 bg（隔离带）"
+    assert str(t.get("focus-ring")) in ring, "ring 外圈应引用 focus-ring"
+    # 字阶缺档（fs-md 与 fs-base 值重叠是刻意保留的 v4.0 命名对齐）
+    assert t.get("fs-xs") == "11px"
+    assert t.get("fs-md") == "13px" and t.get("fs-base") == "13px"
+    assert t.get("fs-2xl") == "26px"
+    assert t.get("fs-3xl") == "34px"
+    # 等宽数字栈
+    assert "monospace" in str(t.get("font-num"))
+
+
+def test_w13_radius_px_derivatives_and_font_scale():
+    """W13-4：新圆角三档的 -px 副本按同制派生（含跟随覆盖）；补档字阶随 font-scale。"""
+    t = build_theme("dark")
+    assert t.get("r-xl-px") == "20px"
+    assert t.get("r-md-px") == "12px"
+    assert t.get("r-pill-px") == "999px"
+    overridden = build_theme("dark", {"r-xl": 24})
+    assert overridden.get("r-xl-px") == "24px", "-px 副本必须跟随 r-xl 覆盖重派生"
+
+    scaled = build_theme("dark", {"font-scale": 2.0})
+    assert scaled.get("fs-xs") == "22px"
+    assert scaled.get("fs-2xl") == "52px"
+    assert scaled.get("fs-3xl") == "68px"
+
+
+# ════════════════════════════════════════════════════════════════
 # 第 3 层：学科色板对比度门禁（含阴性）
 # ════════════════════════════════════════════════════════════════
 
@@ -172,6 +221,19 @@ def test_web_compiler_emits_new_tokens_and_still_filters_pad():
         assert probe in css, f"Web 产物缺 {probe}"
     assert "--pad:" not in css, "pad* 是 QSS 专用，不应进 Web 变量"
     assert "--radius-px:" not in css, "*-px 是 QSS 专用，不应进 Web 变量"
+
+
+def test_web_compiler_emits_w13_tokens_and_filters_px_copies():
+    """Web：W13-4 新 token 全部进 CSS 变量；新 *-px 副本仍被过滤（QSS 专用）。"""
+    css = render_css_vars(build_theme("light"), build_theme("dark"))
+    for probe in ("--r-xl:20", "--r-md:12", "--r-pill:999",
+                  "--space-7:40px", "--space-8:56px",
+                  "--sh-3:", "--hair:1px solid", "--ring:0 0 0",
+                  "--fs-xs:11px", "--fs-md:13px", "--fs-2xl:26px", "--fs-3xl:34px",
+                  "--font-num:"):
+        assert probe in css, f"Web 产物缺 {probe}"
+    for px_copy in ("--r-xl-px:", "--r-md-px:", "--r-pill-px:"):
+        assert px_copy not in css, f"{px_copy} 是 QSS 专用，不应进 Web 变量"
 
 
 def test_qt_compiler_still_renders_with_extended_tokens():

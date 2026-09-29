@@ -12,6 +12,8 @@ echo ============================================
 echo.
 
 echo [1/3] Building...
+rem [W13] Local entry must build in full mode (KY_SNAPSHOT_OPT_IN=0)
+set KY_SNAPSHOT_OPT_IN=0
 "%PY%" build.py
 if errorlevel 1 goto :err
 

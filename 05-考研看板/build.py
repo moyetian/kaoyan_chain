@@ -49,6 +49,7 @@ from web.config import (  # noqa: E402
     MATH,
     OUT,
     PLAN_START,
+    PLAN_START_ESTIMATED,
     POL,
     PRO,
     ROOT,
@@ -188,6 +189,10 @@ def build(offline: bool = False):
                     notes_html[tab].append((s, title, md2html(body)))
                 else:
                     parse_warnings.append({"severity": "warn", "subject": s["key"], "kw": kw, "msg": f"[{s['name']}] 章节存在但无可提取内容（kw={kw!r}）。可能：表格为空、或格式不被解析。"})
+
+    # [W13 验收修复·错题默认 deck] 「错题」页签默认 deck 必须是错题相关卡片组
+    # （错题重做队列 / 错题本索引），而不是科目雷达。稳定排序：匹配提前，其余保序。
+    decks["weak"].sort(key=lambda d: 0 if ("错题" in d["title"] or "索引" in d["title"]) else 1)
 
     # 把告警打到 stdout，CI 也能直接看到
     if parse_warnings:
@@ -343,6 +348,13 @@ def build(offline: bool = False):
         "RADAR": radar_out,
         "DATA": payload,
         "STAMP": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        # [W13 验收修复·发布链路] 脱敏产物的机器可读标记（第二道闸）：
+        # 本地入口默认完整模式，发布链路（sync_publish --force / update_dashboard
+        # --push / CI）必须只接受带该标记的产物，防止完整版被误部署。
+        "SANITIZED_ATTR": ' data-sanitized="1"' if snapshot_opt_in() else "",
+        # [W13 验收修复·F8] 起跑日若非配置/打卡记录而来，而是「初试前 180 天」
+        # 的估算值，须在看板上如实标注，避免考生把估算值误当真实起跑时间。
+        "PLAN_ESTIMATED": "（按初试前 180 天估算）" if PLAN_START_ESTIMATED else "",
     }
     # 主题变量/降级脚本/第三方资源地址与数据占位符并入同一次替换（键统一为 {{NAME}}）。
     values.update({k.strip("{}"): v

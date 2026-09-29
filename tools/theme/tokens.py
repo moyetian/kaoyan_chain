@@ -67,6 +67,12 @@ _ACC_DEPENDENT = (
 STRUCTURE_TOKENS: Dict[str, Any] = {
     "radius": 16,
     "radius-sm": 8,
+    # W13-4 补档：圆角扩展三档。与 radius 同制 —— 值为**无单位数字**，
+    # QSS 侧由 derive_tokens 派生 `-px` 副本（r-xl-px 等），Web 侧用
+    # calc(var(--r-xl) * 1px) 自行拼单位（与既有 --radius 消费方式一致）。
+    "r-xl": 20,
+    "r-md": 12,
+    "r-pill": 999,
     "density": 1.0,          # 1.0 = 舒适，<1 紧凑
     "font-scale": 1.0,       # 字号缩放
     "focus-w": 2,
@@ -76,6 +82,10 @@ STRUCTURE_TOKENS: Dict[str, Any] = {
     # 一个不保证存在中文字形的字体。此处按「现代无衬线 → 各平台中文字体」排列。
     "font-family": ('"Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", '
                     '"Noto Sans CJK SC", "Source Han Sans SC", sans-serif'),
+    # W13-4 补档：等宽数字栈（倒计时/分数等跳动数字用，配合 tabular-nums）。
+    # 排列同 font-family 思路：现代等宽 → 各平台系统等宽 → 中文等宽回落。
+    "font-num": ('"JetBrains Mono", "Cascadia Mono", "SF Mono", Menlo, Consolas, '
+                 '"Sarasa Mono SC", "Noto Sans Mono CJK SC", monospace'),
     "dur-fast": "180ms",
     "dur-base": "240ms",
     "dur-slow": "320ms",
@@ -288,6 +298,13 @@ def derive_tokens(tokens: Mapping[str, Any]) -> Dict[str, Any]:
     t.setdefault("pad-lg", f"{max(6, round(16 * density)):g}px")
     t.setdefault("radius-px", f"{radius:g}px")
     t.setdefault("radius-sm-px", f"{radius_sm:g}px")
+    # W13-4 补档：新圆角三档的「已带单位」副本（QSS 直接内联用，Web 侧被过滤）
+    r_xl = _as_float(t.get("r-xl"), 20)
+    r_md = _as_float(t.get("r-md"), 12)
+    r_pill = _as_float(t.get("r-pill"), 999)
+    t.setdefault("r-xl-px", f"{r_xl:g}px")
+    t.setdefault("r-md-px", f"{r_md:g}px")
+    t.setdefault("r-pill-px", f"{r_pill:g}px")
 
     # ── 设计系统扩展（P0）：字阶 / 间距网格 / 图标尺寸 / 阴影别名 ──
     # 字阶：hero（首屏大数字）> title（卡片标题）> body（正文）> caption（辅助）
@@ -295,18 +312,40 @@ def derive_tokens(tokens: Mapping[str, Any]) -> Dict[str, Any]:
     t.setdefault("fs-title", f"{round(20 * scale, 1):g}px")
     t.setdefault("fs-body", f"{round(14 * scale, 1):g}px")
     t.setdefault("fs-caption", f"{round(12 * scale, 1):g}px")
+    # W13-4 补档：字阶缺档（只补缺档，**不改任何现值**；v4.0 建议值与现值的
+    # 收敛留后续批次）。fs-md(13) 与既有 fs-base(13) 值重叠 —— 刻意保留两者，
+    # fs-md 为 v4.0 命名对齐；同机制随 font-scale 联动。
+    t.setdefault("fs-xs", f"{round(11 * scale, 1):g}px")
+    t.setdefault("fs-md", f"{round(13 * scale, 1):g}px")
+    t.setdefault("fs-2xl", f"{round(26 * scale, 1):g}px")
+    t.setdefault("fs-3xl", f"{round(34 * scale, 1):g}px")
     # 间距网格：4px 基准（固定栅格，不随 density —— density 只影响组件内边距 pad*）
-    for _i, _v in enumerate((4, 8, 12, 16, 24, 32), 1):
+    # W13-4 补档 space-7/8。**偏差**：v4.0 的 space-5=20 与项目既有 space-5=24
+    # 语义冲突 → 整档跳过 20（序列 4/8/12/16/24/32/40/56，见 DESIGN.md 偏差表）。
+    for _i, _v in enumerate((4, 8, 12, 16, 24, 32, 40, 56), 1):
         t.setdefault(f"space-{_i}", f"{_v:g}px")
     # 图标尺寸三档（描边宽度见 icon-stroke，图标集见 tools/theme/icons.py）
     t.setdefault("icon-sm", "16px")
     t.setdefault("icon-md", "20px")
     t.setdefault("icon-lg", "24px")
-    # 阴影标准名是 elev-1/2/3；sh/sh2 保留为兼容别名（既有 QSS/CSS 消费方零改动）
+    # 阴影标准名是 elev-1/2/3；sh/sh2/sh-3 保留为兼容别名（既有 QSS/CSS 消费方零改动）
     if "elev-1" in t:
         t.setdefault("sh", t["elev-1"])
     if "elev-2" in t:
         t.setdefault("sh2", t["elev-2"])
+    if "elev-3" in t:
+        t.setdefault("sh-3", t["elev-3"])
+    # ── W13-4 补档：边框与焦点环组合值 ─────────────────────────
+    # hair：「发丝边框」的单一写法（Web `border:var(--hair)`；QSS 直接内联）。
+    # ring：焦点环 box-shadow 组合（内圈 bg 隔离带 + 外圈焦点环，Web 直接消费）。
+    # 二者均为引用既有 token 的合成值 —— line / bg / focus-w / focus-ring
+    # 仍是单一真源，改色/改宽后随之重派生（用户显式给值时 setdefault 不覆盖）。
+    if "line" in t:
+        t.setdefault("hair", f"1px solid {t['line']}")
+    if "focus-ring" in t:
+        _fw = _as_float(t.get("focus-w"), 2)
+        t.setdefault("ring", (f"0 0 0 {_fw:g}px {t.get('bg', 'transparent')}, "
+                              f"0 0 0 {_fw + 2:g}px {t['focus-ring']}"))
     return t
 
 

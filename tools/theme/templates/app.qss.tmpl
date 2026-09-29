@@ -508,6 +508,23 @@ QToolTip {
     color: {{acc-soft}};
 }
 
+/* 分组标题行（W13-7）：不可选中，仅作视觉分桶 */
+#PaletteGroupHeader {
+    background-color: transparent;
+    color: {{mut}};
+    font-size: {{fs-caption}};
+    font-weight: 600;
+    padding: {{space-1}} {{space-3}} 0 {{space-3}};
+}
+
+/* 空结果提示行（W13 验收修复 R3-1）：不可选中，弱化色提示可用示例词 */
+#PaletteEmptyHint {
+    background-color: transparent;
+    color: {{mut}};
+    font-size: {{fs-body}};
+    padding: {{space-2}} {{space-3}};
+}
+
 #PaletteHint {
     background-color: transparent;
     color: {{mut}};

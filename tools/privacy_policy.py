@@ -249,6 +249,11 @@ NON_PUBLISH_PATH_PATTERNS: Tuple[Tuple[Tuple[str, ...], str], ...] = (
     # 前缀留空 = 任意深度（``parts[:0] == ()`` 恒真），对齐 ``build_package``
     # 的 basename 前缀行为（第 247 行），四条出口共用同一判据。
     ((), "双校对标_*.md"),
+    # [W13-2 R1] 影子集（``*.shadow.jsonl``，W14 R1c 落地）整类排除、任意深度：
+    # 含人工种子与 canary 预留资产，只在本机留存。这是排除**双保险**的导出层
+    # （``sync_publish`` 走文件系统遍历、不读 .gitignore）；git 层同规则见
+    # ``.gitignore`` 的「W13-2 R1」段 —— 两层缺一都会漏。
+    ((), "*.shadow.jsonl"),
 )
 
 #: 只在**私有工作区**里才有意义的路径（相对仓库根的 parts 前缀元组）。

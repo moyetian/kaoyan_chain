@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# 考研学习链 · POSIX 启动器 (ky)
+# [W13 R2-3 修复·stub 误选] 此前只做 `command -v` 存在性探测：Windows 上
+# python3/python 会命中微软商店 stub（存在但 exit 49、零输出），启动器把它当
+# 可用解释器选中，`./ky --version` 表现为「零输出」，用户无从判断。现改为候选
+# 逐个**可用性验证**（能执行且 version_info >= 3.10 才采用），全部失败则给出
+# 与 ky.bat 一致的安装指引并以 1 退出。
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if command -v cygpath >/dev/null 2>&1; then
     CLI_PATH="$(cygpath -w "$SCRIPT_DIR/tools/ky_cli.py")"
@@ -6,12 +12,19 @@ else
     CLI_PATH="$SCRIPT_DIR/tools/ky_cli.py"
 fi
 
-if command -v python3 >/dev/null 2>&1; then
-    PYTHON_BIN="python3"
-elif command -v python >/dev/null 2>&1; then
-    PYTHON_BIN="python"
-else
-    PYTHON_BIN="py"
+PYTHON_BIN=""
+for candidate in python3 python py; do
+    if command -v "$candidate" >/dev/null 2>&1 \
+       && "$candidate" -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >/dev/null 2>&1; then
+        PYTHON_BIN="$candidate"
+        break
+    fi
+done
+
+if [ -z "$PYTHON_BIN" ]; then
+    echo "[!] 未检测到可用的 Python 3.10+ 环境"
+    echo "    请访问 https://www.python.org/downloads/ 安装 Python 3.10 或更高版本"
+    exit 1
 fi
 
 "$PYTHON_BIN" "$CLI_PATH" "$@"

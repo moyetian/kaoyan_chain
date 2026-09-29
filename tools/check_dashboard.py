@@ -13,7 +13,9 @@
   2. 抽取全部 ``<script>`` 块，若本机有 Node.js 则执行 ``node --check`` 语法校验
   3. 校验关键 DOM 契约（页签 data-p、KaTeX 降级函数、趋势图容器）
   4. 校验"空图标容器"（``<i></i>`` / 空的 ``.ei``）—— 图标迁移未完成时会留下空壳
-  5. 校验产物不含私有任务正文（发布安全）
+  5. 重建走**本地完整模式**（``KY_SNAPSHOT_OPT_IN=0``，与 更新看板.bat / ky build
+     一致）：本地跑守卫不会把考生的完整看板产物覆盖成脱敏版。发布脱敏由发布链路
+     （sync_publish / update_dashboard --push / deploy-pages 三道闸）负责。
   6. **真浏览器运行时校验**：若本机装有 ``playwright-cli``，则用无头浏览器加载产物，
      逐页签点击后断言 —— 无 pageerror / console 报错、图标容器真正渲染成 SVG
      （历史上曾出现图标被 esc() 转义成裸文本、且其长 token 把 390px 手机视口撑破
@@ -30,6 +32,7 @@ import argparse
 import functools
 import http.server
 import json
+import os
 import re
 import shutil
 import socketserver
@@ -58,9 +61,13 @@ ARTIFACTS = [ROOT / "05-考研看板" / "docs" / "index.html", ROOT / "docs" / "
 REQUIRED_MARKERS = [
     ('data-p="today"', "页签：今日"),
     ('data-p="memo"', "页签：必背"),
-    ('data-p="weak"', "页签：薄弱"),
-    ('data-p="stat"', "页签：数据"),
-    ('data-p="map"', "页签：图谱"),
+    ('data-p="weak"', "页签：错题"),
+    ('data-p="stat"', "页签：进度"),
+    # [W13-6] 图谱页已下沉为「进度」页内的二级入口：底栏不再有它的页签位，
+    # 但两个字面量仍必须存在——data-p="map" 供 ky_suite S3-4 契约，
+    # data-goto="map" 保证入口可达（防「删了页签又没留入口」的静默丢失）。
+    ('data-p="map"', "图谱页（进度页二级入口）"),
+    ('data-goto="map"', "图谱二级入口可达性"),
     ('data-p="radar"', "页签：考情"),
     ("fallbackMathUnicode", "KaTeX 离线降级解析器"),
     ("stat-trend", "7 日完成率趋势容器"),
@@ -77,9 +84,13 @@ def build_dashboard() -> bool:
     if not BUILD_SCRIPT.exists():
         print(f"[!] 未找到构建脚本: {BUILD_SCRIPT}")
         return False
+    # [W13 收口·本地入口分模式] 显式完整模式：此前不传 env，走 snapshot_opt_in()
+    # 缺省（=1 脱敏），本地跑一次守卫就把考生的完整看板产物覆盖成脱敏版
+    # （今日任务正文/卡背答案消失）。与更新看板.bat / ky build 保持一致。
     proc = subprocess.run([sys.executable, str(BUILD_SCRIPT)],
                           cwd=str(BUILD_SCRIPT.parent), capture_output=True, text=True,
-                          encoding="utf-8", errors="replace")
+                          encoding="utf-8", errors="replace",
+                          env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0"})
     ok = proc.returncode == 0
     print(f"  {'✅' if ok else '❌'} 构建看板 (exit={proc.returncode})")
     if not ok:
@@ -127,12 +138,23 @@ async page => {
   });
   await page.goto('__URL__', { waitUntil: 'load', timeout: 30000 });
   await page.waitForTimeout(600);
-  for (const t of ['today', 'memo', 'weak', 'stat', 'map', 'radar']) {
-    await page.evaluate(tt => {
-      const b = document.querySelector('.bar button[data-p="' + tt + '"]');
-      if (b) b.click();
+  /* [W13-6] 页签收敛为 5 键（图谱已下沉为进度页二级入口）。逐键点击并
+     逐键断言面板可见：改造前是 if (b) 静默跳过——按钮缺失时探针照样
+     报绿，与「防静默降级」的目标相悖。 */
+  const tabs = [];
+  for (const t of ['today', 'memo', 'weak', 'stat', 'radar']) {
+    const found = await page.evaluate(tt => {
+      const b = document.querySelector('[role="tab"][data-p="' + tt + '"]');
+      if (!b) return false;
+      b.click();
+      return true;
     }, t);
     await page.waitForTimeout(220);
+    const paneOn = await page.evaluate(tt => {
+      const p = document.getElementById('p-' + tt);
+      return !!(p && p.classList.contains('on'));
+    }, t);
+    tabs.push({ tab: t, found: found, paneOn: paneOn });
   }
   const rawSvg = await page.evaluate(() => {
     const bad = [];
@@ -167,6 +189,40 @@ async page => {
       label: ((document.querySelector('#th-btn .th-name') || {}).textContent || '').trim()
     };
   });
+  /* [W13-6] 图谱二级入口可达性（下沉防静默降级，三重断言）：
+     ① 切到「进度」页后入口可见；② 点击后 #p-map 显示、宿主页签「进度」
+     保持 aria-selected、入口 aria-current=page、kytab 落盘为 map；
+     ③ 预置 kytab=map 刷新 → 仍在图谱页（恢复路径对二级入口可达）。 */
+  const mapEntry = await page.evaluate(async () => {
+    const go = document.querySelector('[data-goto="map"]');
+    if (!go) return { found: false };
+    const statTab = document.querySelector('[role="tab"][data-p="stat"]');
+    if (statTab) statTab.click();
+    await new Promise(r => setTimeout(r, 150));
+    const visible = !!(go.offsetParent || go.getClientRects().length);
+    go.click();
+    await new Promise(r => setTimeout(r, 250));
+    const pane = document.getElementById('p-map');
+    return {
+      found: true,
+      visible: visible,
+      paneOn: !!(pane && pane.classList.contains('on')),
+      statSelected: !!(statTab && statTab.getAttribute('aria-selected') === 'true'),
+      current: go.getAttribute('aria-current'),
+      stored: (function(){ try { return localStorage.getItem('kytab'); } catch (e) { return null; } })(),
+    };
+  });
+  await page.evaluate(() => { try { localStorage.setItem('kytab', 'map'); } catch (e) {} });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForTimeout(500);
+  const mapRestore = await page.evaluate(() => {
+    const pane = document.getElementById('p-map');
+    const entry = document.querySelector('[data-goto="map"]');
+    return {
+      paneOn: !!(pane && pane.classList.contains('on')),
+      current: entry ? entry.getAttribute('aria-current') : null,
+    };
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
   const overflow = await page.evaluate(() => ({
@@ -174,7 +230,8 @@ async page => {
     scrollW: document.documentElement.scrollWidth,
   }));
   await page.setViewportSize({ width: 1280, height: 900 });
-  return { errors: errors, rawSvg: rawSvg, icons: icons, overflow: overflow, theme: theme };
+  return { errors: errors, rawSvg: rawSvg, icons: icons, overflow: overflow, theme: theme,
+           tabs: tabs, mapEntry: mapEntry, mapRestore: mapRestore };
 }
 """
 
@@ -306,9 +363,42 @@ def check_runtime(artifact: Path) -> Tuple[Optional[bool], str]:
             if not th.get("bg"):
                 problems.append("切换后 --bg 取不到值（预设 CSS 规则未生效）")
 
+        # [W13-6] 5 键页签逐键断言（防「按钮缺失静默跳过」的假绿）
+        tabs = result.get("tabs") or []
+        if len(tabs) != 5:
+            problems.append(f"页签点击探针数量异常: {len(tabs)}（应为 5）")
+        else:
+            for item in tabs:
+                if not item.get("found"):
+                    problems.append(f"页签缺失: {item.get('tab')}")
+                elif not item.get("paneOn"):
+                    problems.append(f"页签点击后面板未显示: {item.get('tab')}")
+
+        # [W13-6] 图谱二级入口可达性（下沉防静默降级）
+        me = result.get("mapEntry") or {}
+        if not me.get("found"):
+            problems.append('图谱二级入口缺失（[data-goto="map"] 不存在——页签下沉未落地）')
+        else:
+            if not me.get("visible"):
+                problems.append("图谱二级入口在「进度」页内不可见")
+            if not me.get("paneOn"):
+                problems.append('图谱二级入口点击后 #p-map 未显示（下沉不可达）')
+            if not me.get("statSelected"):
+                problems.append("进入图谱后宿主页签「进度」未保持 aria-selected（层级悬空）")
+            if me.get("current") != "page":
+                problems.append(f'图谱二级入口 aria-current 未置位: {me.get("current")!r}')
+            if me.get("stored") != "map":
+                problems.append(f'图谱二级入口未写入 kytab: {me.get("stored")!r}')
+        mr = result.get("mapRestore") or {}
+        if not mr.get("paneOn"):
+            problems.append("kytab=map 刷新恢复失败：重载后图谱页未显示")
+        elif mr.get("current") != "page":
+            problems.append(f"kytab 恢复后二级入口 aria-current 未同步: {mr.get('current')!r}")
+
         if problems:
             return False, "；".join(problems)
-        detail = (f"逐页签无报错；{icons.get('total', '?')} 个图标容器全部渲染成 SVG；"
+        detail = (f"逐页签无报错（5 键逐键断言通过）；{icons.get('total', '?')} 个图标容器全部渲染成 SVG；"
+                  f"图谱二级入口可达、kytab=map 刷新恢复正确；"
                   f"390px 视口无横向溢出（内容宽 {ov.get('scrollW')}）；"
                   f"主题按钮按 {len(order)} 套预设轮换正常（当前 {th.get('first')}）")
         return True, detail

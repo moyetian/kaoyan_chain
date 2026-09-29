@@ -57,8 +57,8 @@ tools/theme/tokens.py ──┬── compile_web.py  → docs/index.html 的 CS
 | `elev-2` | 悬浮 | 卡片 hover、下拉、浮层 |
 | `elev-3` | 模态 | 对话框、命令面板 |
 
-> `sh` / `sh2` 是 `elev-1` / `elev-2` 的**兼容别名**（既有 QSS/CSS 消费方零改动），
-> 新代码一律用 `elev-*`。
+> `sh` / `sh2` / `sh-3` 是 `elev-1` / `elev-2` / `elev-3` 的**兼容别名**
+> （既有 QSS/CSS 消费方零改动），新代码一律用 `elev-*`。
 
 ---
 
@@ -73,9 +73,17 @@ tools/theme/tokens.py ──┬── compile_web.py  → docs/index.html 的 CS
 
 - 全部随 `font-scale` 联动（用户调字号时整链缩放）。
 - 旧 token `fs-xl/lg/base/sm`（18/16/13/12）保留兼容，**新代码用上表四档**。
+- **W13-4 补档**（只补缺档，**不改任何现值**）：`fs-xs`(11px) / `fs-md`(13px) /
+  `fs-2xl`(26px) / `fs-3xl`(34px) 已入库，供后续批次消费。`fs-md` 与 `fs-base`
+  值重叠（均 13px）——刻意保留两者，`fs-md` 为 v4.0 命名对齐。v4.0 建议的
+  `fs-base`=14 / `fs-xl`=20 / `fs-hero`=52 与本项目现值（13/18/40）不同，
+  **值收敛留后续批次**。
 - 大数字一律加 `font-variant-numeric: tabular-nums`（等宽数字，跳动不抖）。
 - 字体栈见 `font-family` token；项目**不内置字体文件**，回落系统栈
   （Segoe UI / PingFang SC / Microsoft YaHei），跨平台一致但不保证字形完全一致。
+- `font-num`：等宽数字字体栈（JetBrains Mono → 平台系统等宽 → 中文等宽回落
+  Sarasa Mono SC / Noto Sans Mono CJK SC），与 `tabular-nums` 配合用于
+  倒计时、分数等会跳动的数字。
 
 ---
 
@@ -89,18 +97,45 @@ tools/theme/tokens.py ──┬── compile_web.py  → docs/index.html 的 CS
 | `space-4` | 16px | 卡片内边距（标准） |
 | `space-5` | 24px | 卡片之间 |
 | `space-6` | 32px | 区块之间 |
+| `space-7` | 40px | 大区块分隔（W13-4 补档） |
+| `space-8` | 56px | 页面级留白（W13-4 补档） |
 
 - 固定 4px 基准栅格，**不随 density 缩放**；`density` 只影响组件内边距
   `pad / pad-sm / pad-lg`（QSS 用）。
-- 圆角：`radius`（16px，卡片）/ `radius-sm`（8px，按钮、chip）；QSS 内联用
-  `radius-px` / `radius-sm-px`。
+- **偏差表（W13-4 记录）**：v4.0 的 `space-5`=20px 与本项目既有 `space-5`=24px
+  语义冲突 → 本项目**整档跳过 20**，序列为 4/8/12/16/24/32/40/56。
+  消费方不得假定「4 的倍数序列连续」。
+
+### 3.1 圆角档位（W13-4 补档）
+
+| Token | 值（无单位） | 典型用途 |
+|---|---|---|
+| `radius` | 16 | 卡片（默认） |
+| `radius-sm` | 8 | 按钮、chip |
+| `r-xl` | 20 | 大容器、对话框 |
+| `r-md` | 12 | 中间档（分段控件等） |
+| `r-pill` | 999 | 胶囊（标签、药丸按钮） |
+
+- `r-*` 与 `radius`/`radius-sm` **同制**：值是无单位数字。QSS 侧用 `-px`
+  派生副本（`radius-px` / `radius-sm-px` / `r-xl-px` / `r-md-px` / `r-pill-px`），
+  Web 侧用 `calc(var(--r-xl) * 1px)` 自行拼单位（与既有 `--radius` 消费方式一致）。
+
+### 3.2 边框与焦点环组合（W13-4 补档）
+
+- `hair`：`1px solid {line}` 的合成值 —— 「发丝边框」的单一写法
+  （Web `border:var(--hair)`；QSS 直接内联）。
+- `ring`：焦点环 box-shadow 组合值，派生期由 `focus-w` + `bg` + `focus-ring`
+  合成：`0 0 0 {focus-w}px {bg}, 0 0 0 {focus-w+2}px {focus-ring}`。
+  `focus-ring`（色）与 `focus-w`（宽）仍是单一真源 —— 改色/改宽时 `ring`
+  随之重派生（用户显式给值时以用户值为准）。
 
 ---
 
 ## 4. 图标系统
 
 - **图标集**：Lucide（https://lucide.dev，ISC 协议，抽取锁定 v1.48.0）。
-- **单一真源**：`tools/theme/icons.py` 的 `ICONS`（语义名 → Lucide 名，42 个）。
+- **单一真源**：`tools/theme/icons.py` 的 `ICONS`（语义名 → Lucide 名，43 个；
+  W13-5 新增 `shield` —— 题源徽章语义，为后续题源溯源展示铺路）。
 - **产物**：`docs/assets/icons.svg`（子集 sprite，symbol id 形如 `i-today`，
   带 `data-lucide` 记录原图标名）。
 - **尺寸/描边 token**：`icon-sm`(16px) / `icon-md`(20px) / `icon-lg`(24px) /
@@ -168,6 +203,35 @@ tools/theme/tokens.py ──┬── compile_web.py  → docs/index.html 的 CS
 1. 图标（`icon-lg`，`mut` 色）；
 2. 一句话说明「这里会有什么」；
 3. 一个 CTA（告诉用户下一步动作，如「去 Agent 发报到」）。
+
+### 6.5 信息架构词表（W13 新增）
+
+四端共享的两组**唯一词表** —— 新增页面 / 面板条目时从这里取词，不得另造同义词：
+
+**命令面板四桶**（GUI Ctrl+K，顺序即标题行出现顺序；真源
+`tools/gui/views/nav_rail.py` 的 `PALETTE_GROUP_ORDER`，14 条 = 4 视图 + 10 工具）：
+
+| 桶 | 条目 |
+|---|---|
+| 日常 | 私教对话 / 今日任务 / 任务打卡 |
+| 自测 | 错题本 / 靶向组卷 / 同源变式 |
+| 情报 | 研招情报 / 考纲Diff / 院校侦察 / 双校对标 / 简章监控 / 公众号检索 |
+| 系统 | 切片入库 / 看板更新 |
+
+**看板 5 域**（Web 底栏页签，顺序即底栏顺序；真源
+`05-考研看板/web/template.html` 的 `.bar`）：
+
+| 域 | `data-p` | 承载内容 |
+|---|---|---|
+| 今日 | `today` | 今日四科任务与打卡 |
+| 必背 | `memo` | 遮罩自测卡片（公式 / 单词 / 帽子词） |
+| 错题 | `weak` | 薄弱点与错题队列 |
+| 进度 | `stat` | 掌握度雷达与趋势统计（含「知识图谱」二级入口） |
+| 考情 | `radar` | 研招情报与考情趋势 |
+
+> 词表变更必须同步消费端：四桶改 `nav_rail.PALETTE_GROUP_ORDER` 并跑
+> `tests/test_gui_redesign.py` 的分组契约；5 域改模板 `.bar` 并跑
+> `tools/check_dashboard.py`（运行时 5 键逐键断言 + 二级入口可达）。
 
 ---
 

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-sanitized="1">
 <head>
 <meta charset="utf-8">
 <!-- [前端修复·viewport 缩放锁] 原先带 maximum-scale=1，禁止用户双指放大，
@@ -19,7 +19,7 @@
    距初试天数推荐的「备考节律」主题。用户手动选过主题时 localStorage 优先，
    否则用节律主题 —— 两者都在首次绘制前确定，避免闪一下再跳变。 */
 var KY_PRESETS=[{"k":"dark","n":"曜石黑","m":"dark"},{"k":"light","n":"晨曦白","m":"light"},{"k":"eye-green","n":"护眼绿","m":"light"},{"k":"pink","n":"樱粉","m":"light"},{"k":"hc","n":"高对比（无障碍）","m":"dark"}];
-var KY_RHYTHM={"p":"light","label":"冲刺期","days":85};
+var KY_RHYTHM={"p":"light","label":"冲刺期","days":81};
 var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
 (function(){
   try{
@@ -29,7 +29,7 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   }catch(e){}
 })();
 </script>
-<title>考研学习看板 · 倒计时 85 天</title>
+<title>考研学习看板 · 倒计时 81 天</title>
 <link rel="stylesheet" href="assets/vendor/katex/0.16.9/dist/katex.min.css">
 <style>
 /* ── 主题变量（由 tools/theme 从语义 token 编译注入，勿手工编辑） ──────
@@ -63,11 +63,15 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --chart-4:#be185d;
   --radius:16;
   --radius-sm:8;
+  --r-xl:20;
+  --r-md:12;
+  --r-pill:999;
   --density:1.0;
   --font-scale:1.0;
   --focus-w:2;
   --icon-stroke:1.75;
   --font-family:"Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --font-num:"JetBrains Mono", "Cascadia Mono", "SF Mono", Menlo, Consolas, "Sarasa Mono SC", "Noto Sans Mono CJK SC", monospace;
   --dur-fast:180ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -92,17 +96,26 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --fs-title:20px;
   --fs-body:14px;
   --fs-caption:12px;
+  --fs-xs:11px;
+  --fs-md:13px;
+  --fs-2xl:26px;
+  --fs-3xl:34px;
   --space-1:4px;
   --space-2:8px;
   --space-3:12px;
   --space-4:16px;
   --space-5:24px;
   --space-6:32px;
+  --space-7:40px;
+  --space-8:56px;
   --icon-sm:16px;
   --icon-md:20px;
   --icon-lg:24px;
   --sh:0 4px 12px rgba(139, 92, 246, 0.06),0 1px 3px rgba(0,0,0,.04);
   --sh2:0 8px 24px rgba(139, 92, 246, 0.12),0 2px 6px rgba(0,0,0,.03);
+  --sh-3:0 16px 48px rgba(139, 92, 246, 0.18),0 4px 12px rgba(0,0,0,.05);
+  --hair:1px solid #e2e8f0;
+  --ring:0 0 0 2px #f8fafc, 0 0 0 4px #6d28d9;
   --acc-grad: linear-gradient(135deg, #a78bfa, #7c3aed);
 }
 :root[data-t=dark]{
@@ -131,11 +144,15 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --chart-4:#f472b6;
   --radius:16;
   --radius-sm:8;
+  --r-xl:20;
+  --r-md:12;
+  --r-pill:999;
   --density:1.0;
   --font-scale:1.0;
   --focus-w:2;
   --icon-stroke:1.75;
   --font-family:"Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --font-num:"JetBrains Mono", "Cascadia Mono", "SF Mono", Menlo, Consolas, "Sarasa Mono SC", "Noto Sans Mono CJK SC", monospace;
   --dur-fast:180ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -160,17 +177,26 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --fs-title:20px;
   --fs-body:14px;
   --fs-caption:12px;
+  --fs-xs:11px;
+  --fs-md:13px;
+  --fs-2xl:26px;
+  --fs-3xl:34px;
   --space-1:4px;
   --space-2:8px;
   --space-3:12px;
   --space-4:16px;
   --space-5:24px;
   --space-6:32px;
+  --space-7:40px;
+  --space-8:56px;
   --icon-sm:16px;
   --icon-md:20px;
   --icon-lg:24px;
   --sh:0 1px 3px rgba(0,0,0,.3);
   --sh2:0 8px 24px rgba(0,0,0,.4);
+  --sh-3:0 16px 48px rgba(0,0,0,.55);
+  --hair:1px solid #1e293b;
+  --ring:0 0 0 2px #090d16, 0 0 0 4px #c4b5fd;
   --acc-grad: linear-gradient(135deg, #c4b5fd, #a78bfa);
 }
 :root[data-t=light]{
@@ -199,11 +225,15 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --chart-4:#be185d;
   --radius:16;
   --radius-sm:8;
+  --r-xl:20;
+  --r-md:12;
+  --r-pill:999;
   --density:1.0;
   --font-scale:1.0;
   --focus-w:2;
   --icon-stroke:1.75;
   --font-family:"Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --font-num:"JetBrains Mono", "Cascadia Mono", "SF Mono", Menlo, Consolas, "Sarasa Mono SC", "Noto Sans Mono CJK SC", monospace;
   --dur-fast:180ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -228,17 +258,26 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --fs-title:20px;
   --fs-body:14px;
   --fs-caption:12px;
+  --fs-xs:11px;
+  --fs-md:13px;
+  --fs-2xl:26px;
+  --fs-3xl:34px;
   --space-1:4px;
   --space-2:8px;
   --space-3:12px;
   --space-4:16px;
   --space-5:24px;
   --space-6:32px;
+  --space-7:40px;
+  --space-8:56px;
   --icon-sm:16px;
   --icon-md:20px;
   --icon-lg:24px;
   --sh:0 4px 12px rgba(139, 92, 246, 0.06),0 1px 3px rgba(0,0,0,.04);
   --sh2:0 8px 24px rgba(139, 92, 246, 0.12),0 2px 6px rgba(0,0,0,.03);
+  --sh-3:0 16px 48px rgba(139, 92, 246, 0.18),0 4px 12px rgba(0,0,0,.05);
+  --hair:1px solid #e2e8f0;
+  --ring:0 0 0 2px #f8fafc, 0 0 0 4px #6d28d9;
   --acc-grad: linear-gradient(135deg, #a78bfa, #7c3aed);
 }
 @media(prefers-color-scheme:dark){:root:not([data-t=light]){
@@ -267,11 +306,15 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --chart-4:#f472b6;
   --radius:16;
   --radius-sm:8;
+  --r-xl:20;
+  --r-md:12;
+  --r-pill:999;
   --density:1.0;
   --font-scale:1.0;
   --focus-w:2;
   --icon-stroke:1.75;
   --font-family:"Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --font-num:"JetBrains Mono", "Cascadia Mono", "SF Mono", Menlo, Consolas, "Sarasa Mono SC", "Noto Sans Mono CJK SC", monospace;
   --dur-fast:180ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -296,17 +339,26 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --fs-title:20px;
   --fs-body:14px;
   --fs-caption:12px;
+  --fs-xs:11px;
+  --fs-md:13px;
+  --fs-2xl:26px;
+  --fs-3xl:34px;
   --space-1:4px;
   --space-2:8px;
   --space-3:12px;
   --space-4:16px;
   --space-5:24px;
   --space-6:32px;
+  --space-7:40px;
+  --space-8:56px;
   --icon-sm:16px;
   --icon-md:20px;
   --icon-lg:24px;
   --sh:0 1px 3px rgba(0,0,0,.3);
   --sh2:0 8px 24px rgba(0,0,0,.4);
+  --sh-3:0 16px 48px rgba(0,0,0,.55);
+  --hair:1px solid #1e293b;
+  --ring:0 0 0 2px #090d16, 0 0 0 4px #c4b5fd;
   --acc-grad: linear-gradient(135deg, #c4b5fd, #a78bfa);
 }}
 /* ── 主题预设（由 tools/theme 编译注入，勿手工编辑） ───────────────── */
@@ -336,11 +388,15 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --chart-4:#9d174d;
   --radius:16;
   --radius-sm:8;
+  --r-xl:20;
+  --r-md:12;
+  --r-pill:999;
   --density:1.0;
   --font-scale:1.0;
   --focus-w:2;
   --icon-stroke:1.75;
   --font-family:"Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --font-num:"JetBrains Mono", "Cascadia Mono", "SF Mono", Menlo, Consolas, "Sarasa Mono SC", "Noto Sans Mono CJK SC", monospace;
   --dur-fast:180ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -365,17 +421,26 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --fs-title:20px;
   --fs-body:14px;
   --fs-caption:12px;
+  --fs-xs:11px;
+  --fs-md:13px;
+  --fs-2xl:26px;
+  --fs-3xl:34px;
   --space-1:4px;
   --space-2:8px;
   --space-3:12px;
   --space-4:16px;
   --space-5:24px;
   --space-6:32px;
+  --space-7:40px;
+  --space-8:56px;
   --icon-sm:16px;
   --icon-md:20px;
   --icon-lg:24px;
   --sh:0 4px 12px rgba(47, 125, 79, 0.08),0 1px 3px rgba(0,0,0,.04);
   --sh2:0 8px 24px rgba(47, 125, 79, 0.14),0 2px 6px rgba(0,0,0,.03);
+  --sh-3:0 16px 48px rgba(47, 125, 79, 0.2),0 4px 12px rgba(0,0,0,.05);
+  --hair:1px solid #d5e3cb;
+  --ring:0 0 0 2px #eef4ea, 0 0 0 4px #1f5f3c;
   --acc-grad: linear-gradient(135deg, #4b9c6a, #2f7d4f);
 }
 :root[data-t='pink']{
@@ -404,11 +469,15 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --chart-4:#be185d;
   --radius:16;
   --radius-sm:8;
+  --r-xl:20;
+  --r-md:12;
+  --r-pill:999;
   --density:1.0;
   --font-scale:1.0;
   --focus-w:2;
   --icon-stroke:1.75;
   --font-family:"Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --font-num:"JetBrains Mono", "Cascadia Mono", "SF Mono", Menlo, Consolas, "Sarasa Mono SC", "Noto Sans Mono CJK SC", monospace;
   --dur-fast:180ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -433,17 +502,26 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --fs-title:20px;
   --fs-body:14px;
   --fs-caption:12px;
+  --fs-xs:11px;
+  --fs-md:13px;
+  --fs-2xl:26px;
+  --fs-3xl:34px;
   --space-1:4px;
   --space-2:8px;
   --space-3:12px;
   --space-4:16px;
   --space-5:24px;
   --space-6:32px;
+  --space-7:40px;
+  --space-8:56px;
   --icon-sm:16px;
   --icon-md:20px;
   --icon-lg:24px;
   --sh:0 4px 12px rgba(190, 24, 93, 0.07),0 1px 3px rgba(0,0,0,.04);
   --sh2:0 8px 24px rgba(190, 24, 93, 0.13),0 2px 6px rgba(0,0,0,.03);
+  --sh-3:0 16px 48px rgba(190, 24, 93, 0.18),0 4px 12px rgba(0,0,0,.05);
+  --hair:1px solid #f3d9e5;
+  --ring:0 0 0 2px #fdf3f7, 0 0 0 4px #9d174d;
   --acc-grad: linear-gradient(135deg, #db2777, #be185d);
 }
 :root[data-t='hc']{
@@ -472,11 +550,15 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --chart-4:#f472b6;
   --radius:16;
   --radius-sm:8;
+  --r-xl:20;
+  --r-md:12;
+  --r-pill:999;
   --density:1.0;
   --font-scale:1.0;
   --focus-w:2;
   --icon-stroke:1.75;
   --font-family:"Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --font-num:"JetBrains Mono", "Cascadia Mono", "SF Mono", Menlo, Consolas, "Sarasa Mono SC", "Noto Sans Mono CJK SC", monospace;
   --dur-fast:180ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -501,17 +583,26 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
   --fs-title:20px;
   --fs-body:14px;
   --fs-caption:12px;
+  --fs-xs:11px;
+  --fs-md:13px;
+  --fs-2xl:26px;
+  --fs-3xl:34px;
   --space-1:4px;
   --space-2:8px;
   --space-3:12px;
   --space-4:16px;
   --space-5:24px;
   --space-6:32px;
+  --space-7:40px;
+  --space-8:56px;
   --icon-sm:16px;
   --icon-md:20px;
   --icon-lg:24px;
   --sh:none;
   --sh2:none;
+  --sh-3:none;
+  --hair:1px solid #ffffff;
+  --ring:0 0 0 2px #000000, 0 0 0 4px #00ffff;
   --acc-grad: linear-gradient(135deg, #ffff66, #ffff00);
 }
 
@@ -1104,6 +1195,9 @@ footer{text-align:center;color:var(--mut);font-size:var(--fs-caption);padding:va
     <circle cx="12" cy="12" r="10" />
       <path d="M12 6v6l4 2" />
   </symbol>
+  <symbol id="i-shield" data-lucide="shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  </symbol>
   <symbol id="i-trend-up" data-lucide="trending-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
     <path d="M16 7h6v6" />
       <path d="m22 7-8.5 8.5-5-5L2 17" />
@@ -1198,9 +1292,8 @@ footer{text-align:center;color:var(--mut);font-size:var(--fs-caption);padding:va
   <nav class="bar" role="tablist" aria-label="看板页签">
     <button role="tab" id="tab-today" aria-controls="p-today" aria-selected="true" tabindex="0" class="on" data-p="today"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-today"/></svg></i>今日</button>
     <button role="tab" id="tab-memo" aria-controls="p-memo" aria-selected="false" tabindex="-1" data-p="memo"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-memo"/></svg></i>必背</button>
-    <button role="tab" id="tab-weak" aria-controls="p-weak" aria-selected="false" tabindex="-1" data-p="weak"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-weak"/></svg></i>薄弱</button>
-    <button role="tab" id="tab-stat" aria-controls="p-stat" aria-selected="false" tabindex="-1" data-p="stat"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-stats"/></svg></i>数据</button>
-    <button role="tab" id="tab-map" aria-controls="p-map" aria-selected="false" tabindex="-1" data-p="map"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-map"/></svg></i>图谱</button>
+    <button role="tab" id="tab-weak" aria-controls="p-weak" aria-selected="false" tabindex="-1" data-p="weak"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-weak"/></svg></i>错题</button>
+    <button role="tab" id="tab-stat" aria-controls="p-stat" aria-selected="false" tabindex="-1" data-p="stat"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-stats"/></svg></i>进度</button>
     <button role="tab" id="tab-radar" aria-controls="p-radar" aria-selected="false" tabindex="-1" data-p="radar"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-radar"/></svg></i>考情</button>
   </nav>
 </aside>
@@ -1217,24 +1310,24 @@ footer{text-align:center;color:var(--mut);font-size:var(--fs-caption);padding:va
 <main id="main" tabindex="-1">
 <div class="dash">
 <header class="hero">
-  <h1 class="sr-only">考研学习看板 · 距初试还有 85 天</h1>
+  <h1 class="sr-only">考研学习看板 · 距初试还有 81 天</h1>
   <div class="hero-in">
-    <div class="hero-ring" role="img" aria-label="备考日程已推进 53.0%，距初试还有 85 天">
+    <div class="hero-ring" role="img" aria-label="备考日程已推进 12.0%，距初试还有 81 天">
       <!-- 环形进度：pathLength=100 把周长归一到 100，dashoffset 由 animate() 按
-           53.0 设置（进度 = 备考天数 / 总天数） -->
+           12.0 设置（进度 = 备考天数 / 总天数） -->
       <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false">
         <circle class="ring-track" cx="60" cy="60" r="52"/>
         <circle class="ring-fill" id="ring-fill" cx="60" cy="60" r="52" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
       </svg>
-      <div class="hero-ring-c" aria-hidden="true"><span class="hero-num">85</span><span class="hero-unit">天</span></div>
+      <div class="hero-ring-c" aria-hidden="true"><span class="hero-num">81</span><span class="hero-unit">天</span></div>
     </div>
     <div class="hero-info">
       <div class="hero-lb"><span class="ic"><svg class="icn" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg></span>2026 研考倒计时</div>
       <!-- [前端修复·考期硬编码] 原写死「12-19」，改由 EXAM_MMDD 注入 -->
       <div class="hero-title">初试首日 · <b>12-19</b></div>
-      <div class="hero-meta">备考第 <b>96</b> / 181 天</div>
+      <div class="hero-meta">备考第 <b>11</b> / 92 天</div>
       <div class="plan">
-        <div class="pt"><span>备考总日程推进</span><span>53.0%</span></div>
+        <div class="pt"><span>备考总日程推进</span><span>12.0%</span></div>
         <div class="ptrack"><div class="pfill" id="pf" style="width:0"></div></div>
       </div>
     </div>
@@ -1272,6 +1365,15 @@ footer{text-align:center;color:var(--mut);font-size:var(--fs-caption);padding:va
 </div>
 
 <div id="p-stat" class="pane" role="tabpanel" aria-labelledby="tab-stat" tabindex="-1">
+  <!-- [W13-6 图谱下沉] 知识图谱不再是底栏页签，改为本页内的二级入口。
+       入口按钮保留 data-p 的 map 取值与「图谱」文案（check_dashboard /
+       ky_suite 的产物字面量契约），但**不带 role="tab"**：它不是 tablist
+       成员、不参与键盘漫游；当前位置由 aria-current 标记，宿主页签「进度」
+       保持选中（见 _activateTab）。注意：注释内不得复写契约字面量，
+       否则按钮被删时静态检查会被注释喂绿（本仓已有同类教训）。 -->
+  <div class="tools">
+    <button type="button" id="tab-map" class="tbtn" data-p="map" data-parent="stat" data-goto="map" aria-current="false"><span class="ic"><svg class="icn" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-map"/></svg></span>知识图谱</button>
+  </div>
   <div id="stat-trend"></div>
   <div class="leg">
     <span><i style="background:var(--ok)"></i>达标</span>
@@ -1282,7 +1384,10 @@ footer{text-align:center;color:var(--mut);font-size:var(--fs-caption);padding:va
   <div id="stat"></div>
 </div>
 
-<div id="p-map" class="pane" role="tabpanel" aria-labelledby="tab-map" tabindex="-1">
+<!-- [W13-6] 图谱页已下沉为进度页二级视图：无 tablist 成员控制它，
+     role="tabpanel" 不再成立（读屏会去找不存在的 tab），改 region；
+     名称仍由 aria-labelledby 指向二级入口（id 沿用 tab-map）给出。 -->
+<div id="p-map" class="pane" role="region" aria-labelledby="tab-map" tabindex="-1">
   <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 10px">
     <div class="decks" id="dk-map"></div>
   </div>
@@ -1298,13 +1403,13 @@ footer{text-align:center;color:var(--mut);font-size:var(--fs-caption);padding:va
 
 </main>
 
-<footer>考研学习看板 · 数据驱动 · 稳扎稳打 · 更新于 2026-09-25 16:39</footer>
+<footer>考研学习看板 · 数据驱动 · 稳扎稳打 · 更新于 2026-09-29 16:43</footer>
 </div>
 
 <script src="assets/vendor/katex/0.16.9/dist/katex.min.js"></script>
 <script src="assets/vendor/katex/0.16.9/dist/contrib/auto-render.min.js"></script>
 <script>
-var D = {"memo": [{"id": "eng-memo-0", "subj": "英语", "key": "eng", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "color": "#e11d48", "dark": "#fb7185", "title": "长难句", "cards": [{"f": "While it is easy to ignore...", "b": []}]}, {"id": "pol-memo-1", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "马原", "cards": [{"f": "哲学的基本问题", "b": []}, {"f": "唯物辩证法的实质和核心", "b": []}, {"f": "辩证法的总特征", "b": []}, {"f": "认识的本质", "b": []}, {"f": "实践的三个基本特征", "b": []}, {"f": "检验真理的唯一标准", "b": []}, {"f": "社会存在与发展的决定力量", "b": []}, {"f": "社会历史发展的决定力量", "b": []}, {"f": "阶级斗争 vs 革命", "b": []}, {"f": "人民群众的历史地位", "b": []}, {"f": "商品的二因素", "b": []}, {"f": "剩余价值的唯一源泉", "b": []}, {"f": "资本主义经济危机的根源", "b": []}]}, {"id": "pol-memo-2", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "毛中特", "cards": [{"f": "近代中国社会的主要矛盾（1840—1949）", "b": []}, {"f": "中国革命的基本动力", "b": []}, {"f": "新民主主义革命的领导力量", "b": []}, {"f": "新民主主义革命的前途", "b": []}, {"f": "中国革命的三大法宝", "b": []}, {"f": "党的根本宗旨", "b": []}, {"f": "社会主义的本质", "b": []}, {"f": "社会主义社会的根本任务", "b": []}, {"f": "发展与高质量发展", "b": []}, {"f": "改革开放的根本目的", "b": []}, {"f": "中国共产党的根本保证作用", "b": []}, {"f": "全面深化改革的总目标", "b": []}]}, {"id": "pol-memo-3", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "新思想", "cards": [{"f": "新时代我国社会主要矛盾", "b": []}, {"f": "总体布局（五位一体）", "b": []}, {"f": "战略布局（四个全面）", "b": []}, {"f": "新发展理念", "b": []}, {"f": "中国式现代化的本质要求", "b": []}, {"f": "总任务", "b": []}, {"f": "全面依法治国的总目标", "b": []}, {"f": "人类命运共同体", "b": []}, {"f": "全面从严治党", "b": []}]}, {"id": "pol-memo-4", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "史纲", "cards": [{"f": "近代以来中华民族最伟大的梦想", "b": []}, {"f": "中国近代史的起点", "b": []}, {"f": "新民主主义革命的开端", "b": []}, {"f": "中国共产党成立的标志", "b": []}, {"f": "生死攸关的转折点", "b": []}, {"f": "全民族抗战的起点", "b": []}, {"f": "新中国的成立", "b": []}, {"f": "社会主义制度基本确立", "b": []}, {"f": "改革开放的伟大开端", "b": []}, {"f": "中国特色社会主义进入新时代", "b": []}, {"f": "中国共产党的初心和使命", "b": []}]}, {"id": "pol-memo-5", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "复发易混点", "cards": [{"f": "待做题后归纳", "b": []}]}, {"id": "pro-memo-6", "subj": "专业课", "key": "pro", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "title": "核心概念", "cards": [{"f": "示例考点 1", "b": []}, {"f": "示例考点 2", "b": []}]}], "weak": [{"id": "eng-weak-0", "subj": "英语", "key": "eng", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "color": "#e11d48", "dark": "#fb7185", "title": "题型能力评估", "cards": [{"f": "细节定位", "b": []}, {"f": "主干切分", "b": []}, {"f": "词义推断", "b": []}]}, {"id": "pol-weak-1", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "模块雷达", "cards": [{"f": "马原/毛中特/史纲/思法", "b": []}]}, {"id": "pol-weak-2", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "分析题能力", "cards": [{"f": "原理结合材料", "b": []}]}, {"id": "pol-weak-3", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "下周优先级", "cards": [{"f": "建立首轮选择题得分盘", "b": []}]}, {"id": "pro-weak-4", "subj": "专业课", "key": "pro", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "title": "章节掌握度", "cards": [{"f": "绪论与基本概念", "b": []}, {"f": "核心基础理论 (上)", "b": []}, {"f": "核心基础理论 (下)", "b": []}, {"f": "综合应用与设计", "b": []}]}, {"id": "pro-weak-5", "subj": "专业课", "key": "pro", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "title": "错题重做队列", "cards": [{"f": "暂无待重做错题 (做错题目自动纳入)", "b": []}]}], "metrics": [{"subj": "英语", "key": "eng", "color": "#e11d48", "dark": "#fb7185", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "items": [{"label": "细节定位", "text": "0", "count": 0.0}, {"label": "主干切分", "text": "0", "count": 0.0}, {"label": "词义推断", "text": "0", "count": 0.0}]}, {"subj": "英语", "key": "eng", "color": "#e11d48", "dark": "#fb7185", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "items": [{"label": "定位偏差", "text": "0", "count": 0.0}, {"label": "偷换概念", "text": "0", "count": 0.0}, {"label": "无中生有", "text": "0", "count": 0.0}, {"label": "答非所问", "text": "0", "count": 0.0}]}, {"subj": "政治", "key": "pol", "color": "#d97706", "dark": "#fbbf24", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "items": [{"label": "选择题得分盘", "text": "0", "count": 0.0}]}, {"subj": "政治", "key": "pol", "color": "#d97706", "dark": "#fbbf24", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "items": [{"label": "漏选", "text": "0", "count": 0.0}, {"label": "错选", "text": "0", "count": 0.0}, {"label": "偷换概念", "text": "0", "count": 0.0}, {"label": "绝对化", "text": "0", "count": 0.0}, {"label": "审题偏差", "text": "0", "count": 0.0}, {"label": "答非所问", "text": "0", "count": 0.0}, {"label": "时政脱节", "text": "0", "count": 0.0}]}, {"subj": "专业课", "key": "pro", "color": "#059669", "dark": "#34d399", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "items": [{"label": "概念漏洞", "text": "0", "count": 0.0}, {"label": "审题偏差", "text": "0", "count": 0.0}, {"label": "公式记错", "text": "0", "count": 0.0}, {"label": "计算失误", "text": "0", "count": 0.0}, {"label": "书写丢分", "text": "0", "count": 0.0}]}], "subjects": [{"key": "eng", "name": "英语", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "color": "#e11d48", "dark": "#fb7185", "notes": 0, "ok": true}, {"key": "pol", "name": "政治", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "notes": null, "ok": true}, {"key": "pro", "name": "专业课", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "notes": 0, "ok": true}], "plan": {"day": 96, "total": 181}, "maps": {"eng": {"subject": "eng", "subject_name": "英语", "total_points": 6, "total_topics": 6, "grade_counts": {"A": 0, "B": 0, "C": 0, "D": 0, "U": 6}, "mastery_rate": 0.0, "assessed_count": 0, "unassessed_count": 6, "assessed_rate": 0.0, "syllabus_placeholder": false, "chapters": [{"title": "一、试卷题型与分值结构", "points": [{"name": "第一部分：英语知识运用", "req_type": "掌握", "full_desc": "完形填空 (Cloze) / 20 题，每题 0.5 分，共 **10 分** / 语篇逻辑连贯性、固定搭配、词义辨析、逻辑连接词", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第二部分：阅读理解 Part A", "req_type": "掌握", "full_desc": "传统阅读 (4 篇学术/政经文章) / 20 题，每题 2 分，共 **40 分** / 主旨题、事实细节题、推理判断题、词义猜测题、态度题", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第二部分：阅读理解 Part B", "req_type": "掌握", "full_desc": "新题型 (3 选 1 轮换考查) / 5 题，每题 2 分，共 **10 分** / **7选5填空、排序题、小标题匹配**，抓段落首尾句逻辑链", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第二部分：阅读理解 Part C", "req_type": "掌握", "full_desc": "英译汉 (Translation) / 5 题，每题 2 分，共 **10 分** / **从一篇文章中划出 5 个超长长难句**进行精准汉语转换", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第三部分：写作 Part A", "req_type": "掌握", "full_desc": "应用文短文写作 (小作文) / 1 篇，约 100 词，共 **10 分** / 书信（求职/建议/投诉/道歉/感谢信）、通知、倡议书", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第三部分：写作 Part B", "req_type": "掌握", "full_desc": "议论文短文写作 (大作文) / 1 篇，160~200 词，共 **20 分** / **图画/寓意漫画作文**（描述图画 -> 阐释寓意 -> 联系现实建议）", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "二、大纲核心语言技能要求", "points": []}]}, "pol": {"subject": "pol", "subject_name": "政治", "total_points": 28, "total_topics": 28, "grade_counts": {"A": 0, "B": 0, "C": 0, "D": 0, "U": 28}, "mastery_rate": 0.0, "assessed_count": 0, "unassessed_count": 28, "assessed_rate": 0.0, "syllabus_placeholder": false, "chapters": [{"title": "一、试卷题型与分值分布 (满分 100 分)", "points": [{"name": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)", "req_type": "单项选择题", "full_desc": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)", "req_type": "多项选择题", "full_desc": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)", "req_type": "分析题 (大题)", "full_desc": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "二、五大核心模块考纲与考查重点", "points": []}, {"title": "1. 马克思主义基本原理 (约 24 分，大题第 34 题)", "points": [{"name": "物质与意识的辩证关系", "req_type": "唯物论", "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "世界的物质统一性", "req_type": "唯物论", "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "主观能动性与客观规律性的统一", "req_type": "唯物论", "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）", "req_type": "辩证法 (重中之重)", "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "实践与认识的辩证关系", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "认识的两次飞跃", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "真理的绝对性与相对性", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "真理与价值", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "社会存在与社会意识", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "生产力与生产关系", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "经济基础与上层建筑", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "人民群众是历史的创造者", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "劳动二重性", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "商品二因素", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "价值规律", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "剩余价值理论", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "资本主义基本矛盾与经济危机。", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "2. 毛泽东思想和中国特色社会主义理论体系概论 + 习近平新时代中国特色社会主义思想 (约 30 分，大题第 35 题)", "points": [{"name": "习近平新时代中国特色社会主义思想的核心要义", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "“十四个坚持”", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "“十个明确”", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "“十三个方面成就”", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "新发展理念", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "高质量发展", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "中国式现代化", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "全过程人民民主。", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "3. 中国近现代史纲要 (约 14 分，大题第 36 题)", "points": []}, {"title": "4. 思想道德与法治 (约 16 分，大题第 37 题)", "points": []}, {"title": "5. 形势与政策以及当代世界经济与政治 (约 16 分，大题第 38 题)", "points": []}]}, "pro": {"subject": "pro", "subject_name": "专业课", "total_points": 0, "total_topics": 0, "grade_counts": {"A": 0, "B": 0, "C": 0, "D": 0, "U": 0}, "mastery_rate": 0.0, "assessed_count": 0, "unassessed_count": 0, "assessed_rate": 0.0, "syllabus_placeholder": true, "chapters": []}}, "trend": [{"date": "2026-09-19", "short_date": "09-19", "rate": 0.0, "total": 9, "completed": 0}, {"date": "2026-09-25", "short_date": "09-25", "rate": 0.0, "total": 9, "completed": 0}]};
+var D = {"memo": [{"id": "eng-memo-0", "subj": "英语", "key": "eng", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "color": "#e11d48", "dark": "#fb7185", "title": "长难句", "cards": [{"f": "While it is easy to ignore...", "b": []}]}, {"id": "pol-memo-1", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "马原", "cards": [{"f": "哲学的基本问题", "b": []}, {"f": "唯物辩证法的实质和核心", "b": []}, {"f": "辩证法的总特征", "b": []}, {"f": "认识的本质", "b": []}, {"f": "实践的三个基本特征", "b": []}, {"f": "检验真理的唯一标准", "b": []}, {"f": "社会存在与发展的决定力量", "b": []}, {"f": "社会历史发展的决定力量", "b": []}, {"f": "阶级斗争 vs 革命", "b": []}, {"f": "人民群众的历史地位", "b": []}, {"f": "商品的二因素", "b": []}, {"f": "剩余价值的唯一源泉", "b": []}, {"f": "资本主义经济危机的根源", "b": []}]}, {"id": "pol-memo-2", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "毛中特", "cards": [{"f": "近代中国社会的主要矛盾（1840—1949）", "b": []}, {"f": "中国革命的基本动力", "b": []}, {"f": "新民主主义革命的领导力量", "b": []}, {"f": "新民主主义革命的前途", "b": []}, {"f": "中国革命的三大法宝", "b": []}, {"f": "党的根本宗旨", "b": []}, {"f": "社会主义的本质", "b": []}, {"f": "社会主义社会的根本任务", "b": []}, {"f": "发展与高质量发展", "b": []}, {"f": "改革开放的根本目的", "b": []}, {"f": "中国共产党的根本保证作用", "b": []}, {"f": "全面深化改革的总目标", "b": []}]}, {"id": "pol-memo-3", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "新思想", "cards": [{"f": "新时代我国社会主要矛盾", "b": []}, {"f": "总体布局（五位一体）", "b": []}, {"f": "战略布局（四个全面）", "b": []}, {"f": "新发展理念", "b": []}, {"f": "中国式现代化的本质要求", "b": []}, {"f": "总任务", "b": []}, {"f": "全面依法治国的总目标", "b": []}, {"f": "人类命运共同体", "b": []}, {"f": "全面从严治党", "b": []}]}, {"id": "pol-memo-4", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "史纲", "cards": [{"f": "近代以来中华民族最伟大的梦想", "b": []}, {"f": "中国近代史的起点", "b": []}, {"f": "新民主主义革命的开端", "b": []}, {"f": "中国共产党成立的标志", "b": []}, {"f": "生死攸关的转折点", "b": []}, {"f": "全民族抗战的起点", "b": []}, {"f": "新中国的成立", "b": []}, {"f": "社会主义制度基本确立", "b": []}, {"f": "改革开放的伟大开端", "b": []}, {"f": "中国特色社会主义进入新时代", "b": []}, {"f": "中国共产党的初心和使命", "b": []}]}, {"id": "pol-memo-5", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "复发易混点", "cards": [{"f": "待做题后归纳", "b": []}]}, {"id": "pro-memo-6", "subj": "专业课", "key": "pro", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "title": "核心概念", "cards": [{"f": "示例考点 1", "b": []}, {"f": "示例考点 2", "b": []}]}], "weak": [{"id": "pro-weak-5", "subj": "专业课", "key": "pro", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "title": "错题重做队列", "cards": [{"f": "暂无待重做错题 (做错题目自动纳入)", "b": []}]}, {"id": "eng-weak-0", "subj": "英语", "key": "eng", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "color": "#e11d48", "dark": "#fb7185", "title": "题型能力评估", "cards": [{"f": "细节定位", "b": []}, {"f": "主干切分", "b": []}, {"f": "词义推断", "b": []}]}, {"id": "pol-weak-1", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "模块雷达", "cards": [{"f": "马原/毛中特/史纲/思法", "b": []}]}, {"id": "pol-weak-2", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "分析题能力", "cards": [{"f": "原理结合材料", "b": []}]}, {"id": "pol-weak-3", "subj": "政治", "key": "pol", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "title": "下周优先级", "cards": [{"f": "建立首轮选择题得分盘", "b": []}]}, {"id": "pro-weak-4", "subj": "专业课", "key": "pro", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "title": "章节掌握度", "cards": [{"f": "绪论与基本概念", "b": []}, {"f": "核心基础理论 (上)", "b": []}, {"f": "核心基础理论 (下)", "b": []}, {"f": "综合应用与设计", "b": []}]}], "metrics": [{"subj": "英语", "key": "eng", "color": "#e11d48", "dark": "#fb7185", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "items": [{"label": "细节定位", "text": "0", "count": 0.0}, {"label": "主干切分", "text": "0", "count": 0.0}, {"label": "词义推断", "text": "0", "count": 0.0}]}, {"subj": "英语", "key": "eng", "color": "#e11d48", "dark": "#fb7185", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "items": [{"label": "定位偏差", "text": "0", "count": 0.0}, {"label": "偷换概念", "text": "0", "count": 0.0}, {"label": "无中生有", "text": "0", "count": 0.0}, {"label": "答非所问", "text": "0", "count": 0.0}]}, {"subj": "政治", "key": "pol", "color": "#d97706", "dark": "#fbbf24", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "items": [{"label": "选择题得分盘", "text": "0", "count": 0.0}]}, {"subj": "政治", "key": "pol", "color": "#d97706", "dark": "#fbbf24", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "items": [{"label": "漏选", "text": "0", "count": 0.0}, {"label": "错选", "text": "0", "count": 0.0}, {"label": "偷换概念", "text": "0", "count": 0.0}, {"label": "绝对化", "text": "0", "count": 0.0}, {"label": "审题偏差", "text": "0", "count": 0.0}, {"label": "答非所问", "text": "0", "count": 0.0}, {"label": "时政脱节", "text": "0", "count": 0.0}]}, {"subj": "专业课", "key": "pro", "color": "#059669", "dark": "#34d399", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "items": [{"label": "概念漏洞", "text": "0", "count": 0.0}, {"label": "审题偏差", "text": "0", "count": 0.0}, {"label": "公式记错", "text": "0", "count": 0.0}, {"label": "计算失误", "text": "0", "count": 0.0}, {"label": "书写丢分", "text": "0", "count": 0.0}]}], "subjects": [{"key": "eng", "name": "英语", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/><\/svg>", "color": "#e11d48", "dark": "#fb7185", "notes": 0, "ok": true}, {"key": "pol", "name": "政治", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/><\/svg>", "color": "#d97706", "dark": "#fbbf24", "notes": null, "ok": true}, {"key": "pro", "name": "专业课", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/><\/svg>", "color": "#059669", "dark": "#34d399", "notes": 0, "ok": true}], "plan": {"day": 11, "total": 92}, "maps": {"eng": {"subject": "eng", "subject_name": "英语", "total_points": 6, "total_topics": 6, "grade_counts": {"A": 0, "B": 0, "C": 0, "D": 0, "U": 6}, "mastery_rate": 0.0, "assessed_count": 0, "unassessed_count": 6, "assessed_rate": 0.0, "syllabus_placeholder": false, "chapters": [{"title": "一、试卷题型与分值结构", "points": [{"name": "第一部分：英语知识运用", "req_type": "掌握", "full_desc": "完形填空 (Cloze) / 20 题，每题 0.5 分，共 **10 分** / 语篇逻辑连贯性、固定搭配、词义辨析、逻辑连接词", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第二部分：阅读理解 Part A", "req_type": "掌握", "full_desc": "传统阅读 (4 篇学术/政经文章) / 20 题，每题 2 分，共 **40 分** / 主旨题、事实细节题、推理判断题、词义猜测题、态度题", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第二部分：阅读理解 Part B", "req_type": "掌握", "full_desc": "新题型 (3 选 1 轮换考查) / 5 题，每题 2 分，共 **10 分** / **7选5填空、排序题、小标题匹配**，抓段落首尾句逻辑链", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第二部分：阅读理解 Part C", "req_type": "掌握", "full_desc": "英译汉 (Translation) / 5 题，每题 2 分，共 **10 分** / **从一篇文章中划出 5 个超长长难句**进行精准汉语转换", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第三部分：写作 Part A", "req_type": "掌握", "full_desc": "应用文短文写作 (小作文) / 1 篇，约 100 词，共 **10 分** / 书信（求职/建议/投诉/道歉/感谢信）、通知、倡议书", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "第三部分：写作 Part B", "req_type": "掌握", "full_desc": "议论文短文写作 (大作文) / 1 篇，160~200 词，共 **20 分** / **图画/寓意漫画作文**（描述图画 -> 阐释寓意 -> 联系现实建议）", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "二、大纲核心语言技能要求", "points": []}]}, "pol": {"subject": "pol", "subject_name": "政治", "total_points": 28, "total_topics": 28, "grade_counts": {"A": 0, "B": 0, "C": 0, "D": 0, "U": 28}, "mastery_rate": 0.0, "assessed_count": 0, "unassessed_count": 28, "assessed_rate": 0.0, "syllabus_placeholder": false, "chapters": [{"title": "一、试卷题型与分值分布 (满分 100 分)", "points": [{"name": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)", "req_type": "单项选择题", "full_desc": "16 题，每题 1 分，共 **16 分** (第 1~16 题，目标拿 14+ 分)", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)", "req_type": "多项选择题", "full_desc": "17 题，每题 2 分，共 **34 分** (第 17~33 题，考研政治核心拉分盘，目标拿 28+ 分)", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)", "req_type": "分析题 (大题)", "full_desc": "5 题，每题 10 分，共 **50 分** (第 34~38 题，后期重点背诵答题闭环，目标拿 32~35 分)", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "二、五大核心模块考纲与考查重点", "points": []}, {"title": "1. 马克思主义基本原理 (约 24 分，大题第 34 题)", "points": [{"name": "物质与意识的辩证关系", "req_type": "唯物论", "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "世界的物质统一性", "req_type": "唯物论", "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "主观能动性与客观规律性的统一", "req_type": "唯物论", "full_desc": "物质与意识的辩证关系、世界的物质统一性、主观能动性与客观规律性的统一；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）", "req_type": "辩证法 (重中之重)", "full_desc": "两大总特征（联系与发展）、三大基本规律（对立统一规律、量变质变规律、否定之否定规律）、五对基本范畴（原因与结果、必然与偶然、可能与现实、现象与本质、内容与形式）；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "实践与认识的辩证关系", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "认识的两次飞跃", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "真理的绝对性与相对性", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "真理与价值", "req_type": "认识论", "full_desc": "实践与认识的辩证关系、认识的两次飞跃、真理的绝对性与相对性、真理与价值；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "社会存在与社会意识", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "生产力与生产关系", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "经济基础与上层建筑", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "人民群众是历史的创造者", "req_type": "唯物史观", "full_desc": "社会存在与社会意识、生产力与生产关系、经济基础与上层建筑、人民群众是历史的创造者；", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "劳动二重性", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "商品二因素", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "价值规律", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "剩余价值理论", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "资本主义基本矛盾与经济危机。", "req_type": "资本主义与科学社会主义", "full_desc": "劳动二重性、商品二因素、价值规律、剩余价值理论、资本主义基本矛盾与经济危机。", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "2. 毛泽东思想和中国特色社会主义理论体系概论 + 习近平新时代中国特色社会主义思想 (约 30 分，大题第 35 题)", "points": [{"name": "习近平新时代中国特色社会主义思想的核心要义", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "“十四个坚持”", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "“十个明确”", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "“十三个方面成就”", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "新发展理念", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "高质量发展", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "中国式现代化", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}, {"name": "全过程人民民主。", "req_type": "核心重点", "full_desc": "习近平新时代中国特色社会主义思想的核心要义、“十四个坚持”、“十个明确”、“十三个方面成就”、新发展理念、高质量发展、中国式现代化、全过程人民民主。", "grade": "U", "error_count": 0, "active_error_count": 0}]}, {"title": "3. 中国近现代史纲要 (约 14 分，大题第 36 题)", "points": []}, {"title": "4. 思想道德与法治 (约 16 分，大题第 37 题)", "points": []}, {"title": "5. 形势与政策以及当代世界经济与政治 (约 16 分，大题第 38 题)", "points": []}]}, "pro": {"subject": "pro", "subject_name": "专业课", "total_points": 0, "total_topics": 0, "grade_counts": {"A": 0, "B": 0, "C": 0, "D": 0, "U": 0}, "mastery_rate": 0.0, "assessed_count": 0, "unassessed_count": 0, "assessed_rate": 0.0, "syllabus_placeholder": true, "chapters": []}}, "trend": [{"date": "2026-09-19", "short_date": "09-19", "rate": 0.0, "total": 9, "completed": 0}, {"date": "2026-09-25", "short_date": "09-25", "rate": 0.0, "total": 9, "completed": 0}]};
 
 function fallbackMathUnicode(el){
   if(!el) return;
@@ -1649,15 +1754,15 @@ document.addEventListener('keydown',function(e){
 
 function animate(){
   var pf=document.getElementById('pf');
-  if(pf) pf.style.width='53.0%';
+  if(pf) pf.style.width='12.0%';
   /* hero 环形进度：pathLength=100 → dashoffset = 100 - 进度百分比。
-     进度即「备考天数 / 总天数」，与进度条、53.0 同源。 */
+     进度即「备考天数 / 总天数」，与进度条、12.0 同源。 */
   var rf=document.getElementById('ring-fill');
-  if(rf) rf.style.strokeDashoffset=String(100-Math.max(0,Math.min(100,53.0)));
+  if(rf) rf.style.strokeDashoffset=String(100-Math.max(0,Math.min(100,12.0)));
   document.querySelectorAll('#stat .mfl').forEach(function(el,i){
     setTimeout(function(){ el.style.width=el.dataset.w+'%'; }, 40+i*22);
   });
-  /* [前端修复·趋势图字号缩放] 切到「数据」页签时 #p-stat 已可见，此处按容器
+  /* [前端修复·趋势图字号缩放] 切到「进度」页签时 #p-stat 已可见，此处按容器
      真实宽度重绘趋势图（首次隐藏态渲染回落 480 的那次会被本次覆盖）。
      renderTrend 为函数声明，已提升，可在此安全调用。 */
   renderTrend();
@@ -1716,7 +1821,7 @@ function renderTrend(){
   slot.innerHTML = svg;
 }
 /* 首次调用：此时 #p-stat 多为隐藏（clientWidth=0）→ 回落 480 保证有图；
-   切到「数据」页签时 animate() 会再调用一次，按真实宽度重绘。 */
+   切到「进度」页签时 animate() 会再调用一次，按真实宽度重绘。 */
 renderTrend();
 window.addEventListener('resize', renderTrend);
 
@@ -1907,14 +2012,28 @@ window.addEventListener('resize', renderTrend);
      · tablist / tab / tabpanel 语义（标记已在 HTML 中）
      · roving tabindex：仅当前页签 tabindex=0，其余 -1（Tab 键只落一次）
      · ←/→/↑/↓ 循环移动并即时激活；Home/End 跳首尾；Enter/Space 激活
-     · aria-selected 与面板显隐同步；切换结果写入 aria-live 区域播报 */
-var _tabs = Array.prototype.slice.call(document.querySelectorAll('.bar button[role="tab"]'));
+     · aria-selected 与面板显隐同步；切换结果写入 aria-live 区域播报
+   [W13-6] 底栏收敛为 5 键：图谱页下沉为「进度」页内的二级入口（普通按钮，
+   无 role=tab，不参与键盘漫游）。所有「按 key 找入口」的地方统一走
+   tabBtn()：优先 tablist 内的主页签，回落二级入口——改造前 data-goto 委托
+   与 kytab 恢复各自写死 .bar 选择器，图谱下沉后会双双静默失效。 */
+function tabBtn(key){
+  return document.querySelector('[role="tab"][data-p="' + key + '"]')
+      || document.querySelector('[data-p="' + key + '"]');
+}
+var _tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"][data-p]'));
 function _activateTab(b, focusIt){
+  // 二级入口（带 data-parent）激活时宿主页签保持选中：图谱是「进度」的
+  // 二级视图，底栏高亮不悬空；入口自身的当前位置由 aria-current="page" 表达。
+  var activeKey = b.dataset.parent || b.dataset.p;
   _tabs.forEach(function(x){
-    var on = (x === b);
+    var on = (x.dataset.p === activeKey);
     x.classList.toggle('on', on);
     x.setAttribute('aria-selected', on ? 'true' : 'false');
     x.setAttribute('tabindex', on ? '0' : '-1');
+  });
+  document.querySelectorAll('[data-p][data-parent]').forEach(function(x){
+    x.setAttribute('aria-current', x.dataset.p === b.dataset.p ? 'page' : 'false');
   });
   document.querySelectorAll('.pane').forEach(function(x){ x.classList.remove('on'); });
   var targetPane = document.getElementById('p-' + b.dataset.p);
@@ -1924,7 +2043,9 @@ function _activateTab(b, focusIt){
   if (b.dataset.p === 'stat') animate();
   try{ localStorage.setItem('kytab', b.dataset.p); }catch(e){}
   var live = document.getElementById('a11y-live');
-  if (live) live.textContent = '已切换到「' + b.textContent.trim() + '」页签';
+  if (live) live.textContent = b.dataset.parent
+    ? '已打开「' + b.textContent.trim() + '」'
+    : '已切换到「' + b.textContent.trim() + '」页签';
 }
 _tabs.forEach(function(b, i){
   b.addEventListener('click', function(){ _activateTab(b, false); });
@@ -1963,7 +2084,7 @@ if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) animate(); el
   render();
 })();
 
-/* 空状态 CTA：data-goto 切页签；data-help 展开/收起说明面板。
+/* 空状态 CTA 与图谱二级入口：data-goto 切页签；data-help 展开/收起说明面板。
    用事件委托统一处理 —— 空状态可能出现在构建期注入的正文里，
    逐个绑监听会漏（且 Flash/图谱的空状态是运行时重建的 DOM）。 */
 document.addEventListener('click', function(e){
@@ -1971,8 +2092,12 @@ document.addEventListener('click', function(e){
   if(!t || !t.closest) return;
   var go = t.closest('[data-goto]');
   if(go){
-    var btn = document.querySelector('.bar button[data-p="' + go.getAttribute('data-goto') + '"]');
-    if(btn) btn.click();
+    var btn = tabBtn(go.getAttribute('data-goto'));
+    // [W13-6] 防自递归：图谱二级入口自身带 data-goto，tabBtn 查到的就是
+    // 点击目标本身——再 .click() 会无限递归。此时直接激活；否则模拟点击
+    // 目标主 tab（构建期注入的 CTA 走的仍是这条路径）。
+    if(btn === go){ _activateTab(go, false); }
+    else if(btn){ btn.click(); }
     return;
   }
   var hp = t.closest('[data-help]');
@@ -1986,7 +2111,16 @@ document.addEventListener('click', function(e){
 });
 try{
   var t=localStorage.getItem('kytab');
-  if(t&&t!=='today'){var el=document.querySelector('.bar button[data-p="'+t+'"]'); if(el)el.click();}
+  if(t&&t!=='today'){
+    var el=tabBtn(t);
+    if(el){ el.click(); }
+    else{
+      /* [W13-6] 显式降级：kytab 为过期/未知值（如历史遗留的脏值）时，
+         不再静默跳过——清除脏值，页面保持初始「今日」页。行为可预期：
+         任何 kytab 值要么可达（恢复），要么被清理（不再反复尝试）。 */
+      try{ localStorage.removeItem('kytab'); }catch(e2){}
+    }
+  }
 }catch(e){}
 </script>
 

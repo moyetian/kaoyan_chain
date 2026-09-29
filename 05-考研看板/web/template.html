@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN"{{SANITIZED_ATTR}}>
 <head>
 <meta charset="utf-8">
 <!-- [前端修复·viewport 缩放锁] 原先带 maximum-scale=1，禁止用户双指放大，
@@ -508,9 +508,8 @@ footer{text-align:center;color:var(--mut);font-size:var(--fs-caption);padding:va
   <nav class="bar" role="tablist" aria-label="看板页签">
     <button role="tab" id="tab-today" aria-controls="p-today" aria-selected="true" tabindex="0" class="on" data-p="today"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-today"/></svg></i>今日</button>
     <button role="tab" id="tab-memo" aria-controls="p-memo" aria-selected="false" tabindex="-1" data-p="memo"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-memo"/></svg></i>必背</button>
-    <button role="tab" id="tab-weak" aria-controls="p-weak" aria-selected="false" tabindex="-1" data-p="weak"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-weak"/></svg></i>薄弱</button>
-    <button role="tab" id="tab-stat" aria-controls="p-stat" aria-selected="false" tabindex="-1" data-p="stat"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-stats"/></svg></i>数据</button>
-    <button role="tab" id="tab-map" aria-controls="p-map" aria-selected="false" tabindex="-1" data-p="map"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-map"/></svg></i>图谱</button>
+    <button role="tab" id="tab-weak" aria-controls="p-weak" aria-selected="false" tabindex="-1" data-p="weak"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-weak"/></svg></i>错题</button>
+    <button role="tab" id="tab-stat" aria-controls="p-stat" aria-selected="false" tabindex="-1" data-p="stat"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-stats"/></svg></i>进度</button>
     <button role="tab" id="tab-radar" aria-controls="p-radar" aria-selected="false" tabindex="-1" data-p="radar"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-radar"/></svg></i>考情</button>
   </nav>
 </aside>
@@ -542,7 +541,7 @@ footer{text-align:center;color:var(--mut);font-size:var(--fs-caption);padding:va
       <div class="hero-lb"><span class="ic"><svg class="icn" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg></span>{{EXAM_YEAR}} 研考倒计时</div>
       <!-- [前端修复·考期硬编码] 原写死「12-19」，改由 EXAM_MMDD 注入 -->
       <div class="hero-title">初试首日 · <b>{{EXAM_MMDD}}</b></div>
-      <div class="hero-meta">备考第 <b>{{DAYNO}}</b> / {{TOTALDAYS}} 天</div>
+      <div class="hero-meta">备考第 <b>{{DAYNO}}</b> / {{TOTALDAYS}} 天{{PLAN_ESTIMATED}}</div>
       <div class="plan">
         <div class="pt"><span>备考总日程推进</span><span>{{PLANPCT}}%</span></div>
         <div class="ptrack"><div class="pfill" id="pf" style="width:0"></div></div>
@@ -582,6 +581,15 @@ footer{text-align:center;color:var(--mut);font-size:var(--fs-caption);padding:va
 </div>
 
 <div id="p-stat" class="pane" role="tabpanel" aria-labelledby="tab-stat" tabindex="-1">
+  <!-- [W13-6 图谱下沉] 知识图谱不再是底栏页签，改为本页内的二级入口。
+       入口按钮保留 data-p 的 map 取值与「图谱」文案（check_dashboard /
+       ky_suite 的产物字面量契约），但**不带 role="tab"**：它不是 tablist
+       成员、不参与键盘漫游；当前位置由 aria-current 标记，宿主页签「进度」
+       保持选中（见 _activateTab）。注意：注释内不得复写契约字面量，
+       否则按钮被删时静态检查会被注释喂绿（本仓已有同类教训）。 -->
+  <div class="tools">
+    <button type="button" id="tab-map" class="tbtn" data-p="map" data-parent="stat" data-goto="map" aria-current="false"><span class="ic"><svg class="icn" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-map"/></svg></span>知识图谱</button>
+  </div>
   <div id="stat-trend"></div>
   <div class="leg">
     <span><i style="background:var(--ok)"></i>达标</span>
@@ -592,7 +600,10 @@ footer{text-align:center;color:var(--mut);font-size:var(--fs-caption);padding:va
   <div id="stat"></div>
 </div>
 
-<div id="p-map" class="pane" role="tabpanel" aria-labelledby="tab-map" tabindex="-1">
+<!-- [W13-6] 图谱页已下沉为进度页二级视图：无 tablist 成员控制它，
+     role="tabpanel" 不再成立（读屏会去找不存在的 tab），改 region；
+     名称仍由 aria-labelledby 指向二级入口（id 沿用 tab-map）给出。 -->
+<div id="p-map" class="pane" role="region" aria-labelledby="tab-map" tabindex="-1">
   <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 10px">
     <div class="decks" id="dk-map"></div>
   </div>
@@ -925,7 +936,7 @@ function animate(){
   document.querySelectorAll('#stat .mfl').forEach(function(el,i){
     setTimeout(function(){ el.style.width=el.dataset.w+'%'; }, 40+i*22);
   });
-  /* [前端修复·趋势图字号缩放] 切到「数据」页签时 #p-stat 已可见，此处按容器
+  /* [前端修复·趋势图字号缩放] 切到「进度」页签时 #p-stat 已可见，此处按容器
      真实宽度重绘趋势图（首次隐藏态渲染回落 480 的那次会被本次覆盖）。
      renderTrend 为函数声明，已提升，可在此安全调用。 */
   renderTrend();
@@ -984,7 +995,7 @@ function renderTrend(){
   slot.innerHTML = svg;
 }
 /* 首次调用：此时 #p-stat 多为隐藏（clientWidth=0）→ 回落 480 保证有图；
-   切到「数据」页签时 animate() 会再调用一次，按真实宽度重绘。 */
+   切到「进度」页签时 animate() 会再调用一次，按真实宽度重绘。 */
 renderTrend();
 window.addEventListener('resize', renderTrend);
 
@@ -1175,14 +1186,28 @@ window.addEventListener('resize', renderTrend);
      · tablist / tab / tabpanel 语义（标记已在 HTML 中）
      · roving tabindex：仅当前页签 tabindex=0，其余 -1（Tab 键只落一次）
      · ←/→/↑/↓ 循环移动并即时激活；Home/End 跳首尾；Enter/Space 激活
-     · aria-selected 与面板显隐同步；切换结果写入 aria-live 区域播报 */
-var _tabs = Array.prototype.slice.call(document.querySelectorAll('.bar button[role="tab"]'));
+     · aria-selected 与面板显隐同步；切换结果写入 aria-live 区域播报
+   [W13-6] 底栏收敛为 5 键：图谱页下沉为「进度」页内的二级入口（普通按钮，
+   无 role=tab，不参与键盘漫游）。所有「按 key 找入口」的地方统一走
+   tabBtn()：优先 tablist 内的主页签，回落二级入口——改造前 data-goto 委托
+   与 kytab 恢复各自写死 .bar 选择器，图谱下沉后会双双静默失效。 */
+function tabBtn(key){
+  return document.querySelector('[role="tab"][data-p="' + key + '"]')
+      || document.querySelector('[data-p="' + key + '"]');
+}
+var _tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"][data-p]'));
 function _activateTab(b, focusIt){
+  // 二级入口（带 data-parent）激活时宿主页签保持选中：图谱是「进度」的
+  // 二级视图，底栏高亮不悬空；入口自身的当前位置由 aria-current="page" 表达。
+  var activeKey = b.dataset.parent || b.dataset.p;
   _tabs.forEach(function(x){
-    var on = (x === b);
+    var on = (x.dataset.p === activeKey);
     x.classList.toggle('on', on);
     x.setAttribute('aria-selected', on ? 'true' : 'false');
     x.setAttribute('tabindex', on ? '0' : '-1');
+  });
+  document.querySelectorAll('[data-p][data-parent]').forEach(function(x){
+    x.setAttribute('aria-current', x.dataset.p === b.dataset.p ? 'page' : 'false');
   });
   document.querySelectorAll('.pane').forEach(function(x){ x.classList.remove('on'); });
   var targetPane = document.getElementById('p-' + b.dataset.p);
@@ -1192,7 +1217,9 @@ function _activateTab(b, focusIt){
   if (b.dataset.p === 'stat') animate();
   try{ localStorage.setItem('kytab', b.dataset.p); }catch(e){}
   var live = document.getElementById('a11y-live');
-  if (live) live.textContent = '已切换到「' + b.textContent.trim() + '」页签';
+  if (live) live.textContent = b.dataset.parent
+    ? '已打开「' + b.textContent.trim() + '」'
+    : '已切换到「' + b.textContent.trim() + '」页签';
 }
 _tabs.forEach(function(b, i){
   b.addEventListener('click', function(){ _activateTab(b, false); });
@@ -1231,7 +1258,7 @@ if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) animate(); el
   render();
 })();
 
-/* 空状态 CTA：data-goto 切页签；data-help 展开/收起说明面板。
+/* 空状态 CTA 与图谱二级入口：data-goto 切页签；data-help 展开/收起说明面板。
    用事件委托统一处理 —— 空状态可能出现在构建期注入的正文里，
    逐个绑监听会漏（且 Flash/图谱的空状态是运行时重建的 DOM）。 */
 document.addEventListener('click', function(e){
@@ -1239,8 +1266,12 @@ document.addEventListener('click', function(e){
   if(!t || !t.closest) return;
   var go = t.closest('[data-goto]');
   if(go){
-    var btn = document.querySelector('.bar button[data-p="' + go.getAttribute('data-goto') + '"]');
-    if(btn) btn.click();
+    var btn = tabBtn(go.getAttribute('data-goto'));
+    // [W13-6] 防自递归：图谱二级入口自身带 data-goto，tabBtn 查到的就是
+    // 点击目标本身——再 .click() 会无限递归。此时直接激活；否则模拟点击
+    // 目标主 tab（构建期注入的 CTA 走的仍是这条路径）。
+    if(btn === go){ _activateTab(go, false); }
+    else if(btn){ btn.click(); }
     return;
   }
   var hp = t.closest('[data-help]');
@@ -1254,7 +1285,16 @@ document.addEventListener('click', function(e){
 });
 try{
   var t=localStorage.getItem('kytab');
-  if(t&&t!=='today'){var el=document.querySelector('.bar button[data-p="'+t+'"]'); if(el)el.click();}
+  if(t&&t!=='today'){
+    var el=tabBtn(t);
+    if(el){ el.click(); }
+    else{
+      /* [W13-6] 显式降级：kytab 为过期/未知值（如历史遗留的脏值）时，
+         不再静默跳过——清除脏值，页面保持初始「今日」页。行为可预期：
+         任何 kytab 值要么可达（恢复），要么被清理（不再反复尝试）。 */
+      try{ localStorage.removeItem('kytab'); }catch(e2){}
+    }
+  }
 }catch(e){}
 </script>
 

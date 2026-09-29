@@ -48,12 +48,16 @@ def _resolve_exam_day1(cfg: dict) -> datetime.date:
     today = datetime.date.today()
     this_year = _third_saturday_of_december(today.year)
     return this_year if today <= this_year else _third_saturday_of_december(today.year + 1)
-def _resolve_plan_start(cfg: dict, exam_day1: datetime.date) -> datetime.date:
+def _resolve_plan_start(cfg: dict, exam_day1: datetime.date) -> tuple:
     """解析备考起跑日：配置 start_date → 最早打卡记录 → 距初试 180 天。
 
     [审查 R-03 修复] 打卡记录须具备足够样本量（≥3 天）或足够时间跨度（最早记录
     早于一周前）才被采信。否则「今天刚打了第一次卡」会把起跑日钉死在今天，
     使备考进度条从 47% 视觉归零到 1%，此时应回退到「距初试 180 天」锚点。
+
+    [W13 验收修复·F8] 返回值改为 ``(起跑日, estimated)``：``estimated=True``
+    当且仅当走到「距初试 180 天」回退分支 —— 该日期并非学员真实起跑时间，
+    看板须据此标注「按初试前 180 天估算」，避免把估算值当成事实展示。
     """
     plan = cfg.get("study_plan") if isinstance(cfg.get("study_plan"), dict) else {}
     raw = plan.get("start_date") or cfg.get("start_date")
@@ -66,14 +70,14 @@ def _resolve_plan_start(cfg: dict, exam_day1: datetime.date) -> datetime.date:
                 raw = earliest
     if raw:
         try:
-            return datetime.datetime.strptime(str(raw).strip()[:10], "%Y-%m-%d").date()
+            return datetime.datetime.strptime(str(raw).strip()[:10], "%Y-%m-%d").date(), False
         except ValueError:
             pass
-    return exam_day1 - datetime.timedelta(days=180)
+    return exam_day1 - datetime.timedelta(days=180), True
 _CONFIG = _load_project_config()
 EXAM_DAY1 = _resolve_exam_day1(_CONFIG)
 EXAM_DATE = EXAM_DAY1 + datetime.timedelta(days=1)
-PLAN_START = _resolve_plan_start(_CONFIG, EXAM_DAY1)
+PLAN_START, PLAN_START_ESTIMATED = _resolve_plan_start(_CONFIG, EXAM_DAY1)
 
 # [拆分修正] 本模块下沉到 web/ 后，不能再靠 __file__ 反推包目录，
 # 否则 OUT 会落到 05-考研看板/web/docs/（曾实测发生）。

@@ -16,7 +16,7 @@
               其余事件计入 excluded 并附原因，不参与指标计算。
 
   2. ``--ragas`` 引文忠实度评测（C2：反幻觉闸门的功能评测）
-     数据来源：``tests/benchmarks/citation_faithfulness.jsonl``（108 条，覆盖
+     数据来源：``tests/benchmarks/citation_faithfulness.jsonl``（109 条，覆盖
               无据引用 / 伪造 URL / 过期数据 / 跨校混淆 / 二手源冒充 五类），
               按 kind 分发到 ``citation_engine.verify_citations`` /
               ``evidence_engine.build_evidence`` / ``resolve_conflicts`` /
@@ -256,11 +256,75 @@ CITATION_BENCH_FILE = ROOT / "tests" / "benchmarks" / "citation_faithfulness.jso
 CITATION_NEG_THRESHOLD = 1.0    # 拦截侧：漏放一条编造引用即红线失守
 CITATION_POS_THRESHOLD = 0.98   # 放行侧：允许 2% 误拦容错
 
+#: R2 构念声明（红线）：本评测的双指标是**闸门功能口径**，与 ALCE 等生成侧
+#: recall/precision 构念不同 —— 禁止横向比较（W13 方案 §3 W13-1）。
+CITATION_CONSTRUCT_NOTE = (
+    "本指标为闸门功能口径（拦截侧通过率 / 放行侧精度），"
+    "与 ALCE 生成侧 recall/precision 构念不同，禁止横向比较"
+)
+
+
+def compute_citation_metrics(
+    block_stats: Dict[str, Any],
+    allow_stats: Dict[str, Any],
+) -> Dict[str, Any]:
+    """从拦截 / 放行两侧统计派生 R2 双指标（**纯函数**：无 I/O、无判定副作用）。
+
+    Args:
+        block_stats: 拦截侧统计，形如
+            ``{"total": int, "passed": int, "by_kind": {kind: {"total", "passed"}}}``。
+        allow_stats: 放行侧统计，同构。
+
+    Returns:
+        ``{"citation_recall", "citation_precision", "precision_zeroed", "by_category"}``。
+
+    **置零规则（红线）**：``recall == 0 ⇒ precision = 0``。全放行 judge 的拦截侧
+    通过率必然为 0；若不置零，其放行侧通过率仍是 100%（该放样本全被放行）——
+    一个什么都不拦的闸门将拿到「满分精度」，与反幻觉语义完全相悖。
+
+    ``by_category`` 按 ``citation_judge.KINDS`` 的**实际 kind 命名**（citation /
+    evidence / conflict / extract / source_label）分层，各自给出拦截 / 放行侧
+    通过率；某侧无样本时 ``pass_rate`` 为 ``None``（如实「不可评估」，不伪装成 0）。
+    """
+    block_total = max(0, int(block_stats.get("total") or 0))
+    block_passed = max(0, int(block_stats.get("passed") or 0))
+    allow_total = max(0, int(allow_stats.get("total") or 0))
+    allow_passed = max(0, int(allow_stats.get("passed") or 0))
+
+    recall = round(block_passed / block_total, 4) if block_total else 0.0
+    precision = round(allow_passed / allow_total, 4) if allow_total else 0.0
+    zeroed = recall == 0.0 and precision != 0.0
+    if recall == 0.0:
+        precision = 0.0
+
+    def _rate(stats: Dict[str, Any], kind: str) -> Dict[str, Any]:
+        row = (stats.get("by_kind") or {}).get(kind) or {}
+        total = max(0, int(row.get("total") or 0))
+        passed = max(0, int(row.get("passed") or 0))
+        return {
+            "total": total,
+            "passed": passed,
+            "pass_rate": round(passed / total, 4) if total else None,
+        }
+
+    kinds = sorted(set(block_stats.get("by_kind") or {})
+                   | set(allow_stats.get("by_kind") or {}))
+    by_category = {
+        kind: {"block": _rate(block_stats, kind), "allow": _rate(allow_stats, kind)}
+        for kind in kinds
+    }
+    return {
+        "citation_recall": recall,
+        "citation_precision": precision,
+        "precision_zeroed": zeroed,
+        "by_category": by_category,
+    }
+
 
 def evaluate_ragas_faithfulness(cases_path: Optional[Path] = None) -> Dict[str, Any]:
     """逐条运行反幻觉闸门，**分别**统计“该拦的拦、该放的放”判定准确率。
 
-    数据：``tests/benchmarks/citation_faithfulness.jsonl``（C2：108 条，覆盖
+    数据：``tests/benchmarks/citation_faithfulness.jsonl``（C2：109 条，覆盖
     无据引用 / 伪造 URL / 过期数据 / 跨校混淆 / 二手源冒充 五类）。被测对象
     与 kind 分发见 :mod:`benchmarks.citation_judge`。
 
@@ -268,16 +332,28 @@ def evaluate_ragas_faithfulness(cases_path: Optional[Path] = None) -> Dict[str, 
     漏放一条编造引用（false negative）是红线失守，误拦一条正常引用只是体验损失。
     混成一个数字会掩盖“拿误拦率换漏放率”这类劣化。
 
+    R2 契约化输出（W13-1，除既有 ``negative``/``positive`` 外）：
+
+      * ``citation_recall`` = 拦截侧通过率；``citation_precision`` = 放行侧精度，
+        **``recall == 0 ⇒ precision = 0``**（防「全放行」虚高，见
+        :func:`compute_citation_metrics`）；
+      * ``by_category`` = 按 ``citation_judge`` 实际 kind 命名（citation / evidence /
+        conflict / extract / source_label）分层的拦截·放行通过率；
+      * ``judge_identity`` = 判定方身份（``rules:citation_engine@<版本>``）；
+      * ``construct_note`` = 构念声明（闸门功能口径，禁止与 ALCE 生成侧指标横向比较）。
+
     与 --syllabus 同款语义：完全离线、确定性、无网络、无 LLM。
     """
     try:
         from benchmarks.citation_judge import build_judge
         from benchmarks.runner import EXIT_FAIL, EXIT_INSUFFICIENT, EXIT_OK
         from benchmarks.runner import exit_code, load_cases, run_benchmark
+        from version import get_version
     except ImportError:  # 包内导入（tools.evaluate_pipeline）路径
         from tools.benchmarks.citation_judge import build_judge
         from tools.benchmarks.runner import EXIT_FAIL, EXIT_INSUFFICIENT, EXIT_OK
         from tools.benchmarks.runner import exit_code, load_cases, run_benchmark
+        from tools.version import get_version
 
     path = Path(cases_path) if cases_path else CITATION_BENCH_FILE
     if not path.exists():
@@ -290,8 +366,25 @@ def evaluate_ragas_faithfulness(cases_path: Optional[Path] = None) -> Dict[str, 
     block_cases = [c for c in cases if c.get("expect_block") is True]
     allow_cases = [c for c in cases if c.get("expect_block") is not True]
 
-    block_report = run_benchmark(block_cases, judge, name="引文忠实度·拦截侧", invalid=invalid)
-    allow_report = run_benchmark(allow_cases, judge, name="引文忠实度·放行侧", invalid=invalid)
+    # 逐条记录判定结果供 by_category 分层统计（与 runner 同款容错：judge 崩溃记
+    # 失败，异常不逃逸 —— 保证记录数与 report.total 恒等，分层统计不丢样本）。
+    block_records: List[Tuple[Dict[str, Any], bool]] = []
+    allow_records: List[Tuple[Dict[str, Any], bool]] = []
+
+    def _recording(sink: List[Tuple[Dict[str, Any], bool]]):
+        def _judge(case: Dict[str, Any]) -> Tuple[bool, str]:
+            try:
+                passed, detail = judge(case)
+            except Exception as e:  # noqa: BLE001 - 与 runner.run_benchmark 同语义
+                passed, detail = False, f"judge 异常: {type(e).__name__}: {e}"
+            sink.append((case, passed))
+            return passed, detail
+        return _judge
+
+    block_report = run_benchmark(block_cases, _recording(block_records),
+                                 name="引文忠实度·拦截侧", invalid=invalid)
+    allow_report = run_benchmark(allow_cases, _recording(allow_records),
+                                 name="引文忠实度·放行侧", invalid=invalid)
 
     block_code = exit_code(block_report, threshold=CITATION_NEG_THRESHOLD)
     allow_code = exit_code(allow_report, threshold=CITATION_POS_THRESHOLD)
@@ -310,6 +403,23 @@ def evaluate_ragas_faithfulness(cases_path: Optional[Path] = None) -> Dict[str, 
         reason = "评测集为空"
     else:
         reason = ""
+
+    def _kind_stats(records: List[Tuple[Dict[str, Any], bool]]) -> Dict[str, Dict[str, int]]:
+        stats: Dict[str, Dict[str, int]] = {}
+        for case, passed in records:
+            row = stats.setdefault(str(case.get("kind") or "?"), {"total": 0, "passed": 0})
+            row["total"] += 1
+            if passed:
+                row["passed"] += 1
+        return stats
+
+    metrics = compute_citation_metrics(
+        {"total": block_report.total, "passed": block_report.passed,
+         "by_kind": _kind_stats(block_records)},
+        {"total": allow_report.total, "passed": allow_report.passed,
+         "by_kind": _kind_stats(allow_records)},
+    )
+
     return {
         "evaluable": total > 0 and not invalid,
         "samples": total,
@@ -319,6 +429,12 @@ def evaluate_ragas_faithfulness(cases_path: Optional[Path] = None) -> Dict[str, 
         "exit_code": overall,
         "negative": block_report.to_dict(),
         "positive": allow_report.to_dict(),
+        "citation_recall": metrics["citation_recall"],
+        "citation_precision": metrics["citation_precision"],
+        "precision_zeroed": metrics["precision_zeroed"],
+        "by_category": metrics["by_category"],
+        "judge_identity": f"rules:citation_engine@{get_version()}",
+        "construct_note": CITATION_CONSTRUCT_NOTE,
         "invalid": [{"id": cid, "reason": r} for cid, r in invalid],
         "reason": reason,
     }
@@ -338,6 +454,24 @@ def _print_ragas_result(res: Dict[str, Any]) -> None:
     for label, rep in (("拦截", neg), ("放行", pos)):
         for item in rep["failures"][:10]:
             print(f"    ❌ [{label}] {item['id']}: {item['detail'][:100]}")
+    print(f"  双指标(R2)     : citation_recall={res['citation_recall']:.2%}"
+          f"（拦截侧通过率）  citation_precision={res['citation_precision']:.2%}"
+          f"（放行侧精度）"
+          f"{'  [已按 recall=0 ⇒ precision=0 置零]' if res.get('precision_zeroed') else ''}")
+    rows = res.get("by_category") or {}
+    if rows:
+        print("  分层（kind）:")
+        for kind, sides in rows.items():
+            block_side, allow_side = sides["block"], sides["allow"]
+            block_rate = (f"{block_side['pass_rate']:.0%}"
+                          if isinstance(block_side["pass_rate"], float) else "n/a")
+            allow_rate = (f"{allow_side['pass_rate']:.0%}"
+                          if isinstance(allow_side["pass_rate"], float) else "n/a")
+            print(f"    {kind:<13} 拦截 {block_side['passed']}/{block_side['total']}"
+                  f" ({block_rate}) ｜ 放行 {allow_side['passed']}/{allow_side['total']}"
+                  f" ({allow_rate})")
+    print(f"  判定方         : {res.get('judge_identity', '')}")
+    print(f"  构念声明       : {res.get('construct_note', '')}")
     print(f"  总体判定准确率 : {res['faithfulness']:.2%} ({res['correct']}/{res['samples']})")
     print(f"  结论           : {'✅ 达标' if res['passed'] else '❌ 未达标'}")
 

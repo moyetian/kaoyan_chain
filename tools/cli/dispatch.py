@@ -81,8 +81,15 @@ _HANDLERS_WITH_OWN_HELP: frozenset = frozenset({
 })
 
 def register(cmd: Command) -> None:
-    """注册命令到全局注册表"""
-    if cmd not in _ALL_COMMANDS:
+    """注册命令到全局注册表。
+
+    [W13 R2-1 补强·双导入去重] 此前用 ``cmd not in _ALL_COMMANDS`` 判重，
+    依赖 dataclass 全字段相等 —— 而 ``handler`` 是函数对象，双路径导入
+    （``cli.*`` 与 ``tools.*`` 两份模块对象并存）时同一命令的 handler 不同一，
+    判重失效，``_ALL_COMMANDS`` 出现同名重复、``ky help`` 列出重复行。
+    改为按 ``name`` 判重（注册表本就以 name 为键，与 ``_REGISTRY`` 同口径）。
+    """
+    if all(existing.name != cmd.name for existing in _ALL_COMMANDS):
         _ALL_COMMANDS.append(cmd)
     _REGISTRY[cmd.name] = cmd
     for alias in cmd.aliases:
@@ -117,6 +124,8 @@ def print_command_help(name: str) -> None:
     cmd = _REGISTRY.get(name)
     if cmd is None:
         print(colorize(f"[!] 未知命令: {name}", C.YELLOW))
+        # [W13 R2-4e 修复] 此前未知命令只报错不给出路，用户不知道去哪里看全量清单。
+        print("运行 ky commands 查看全部命令。")
         return
     others = [a for a in cmd.aliases if a != cmd.name]
     alias_txt = ("（别名: " + ", ".join(others) + "）") if others else ""
@@ -142,9 +151,14 @@ def print_commands_index() -> None:
     print(f"  查看全局帮助:     {interpreter_hint()} tools/ky_cli.py --help\n")
 
 def _init_all_commands() -> None:
-    """按需导入并加载所有命令模块"""
-    if _ALL_COMMANDS:
-        return
+    """按需导入并加载所有命令模块。
+
+    [W13 R2-1 修复·清单残缺] 此前开头有 ``if _ALL_COMMANDS: return`` 的
+    early-return：只要任一调用方（或某个命令模块）先导入过**部分**模块，
+    ``_ALL_COMMANDS`` 即非空，后续调用直接返回、其余模块永不加载 ——
+    ``ky help`` 的子命令清单会缺项。``load_all_commands`` 本身幂等
+    （import 缓存 + ``register`` 去重），故去掉该 early-return 每次都补齐加载。
+    """
     try:
         from tools.cli.commands import load_all_commands
         load_all_commands()

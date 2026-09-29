@@ -281,6 +281,15 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
     def _switch_subject(target_subj: str) -> bool:
         """切换当前科目并持久化；只读模式下拒绝切换（返回 False，状态不变）。"""
         nonlocal curr_subj, history, active_quiz_item
+        # [W13 R2-2 修复·无效切换] 方案为「不考数学」时切到数学私教没有意义：
+        # 此前会照常切换并落盘 active_subject=math、播报「数学报到就绪」，但后续
+        # 所有数学路径（今日任务/组卷/考纲）都已被方案禁用，用户困在空科目里。
+        # 与 renderer / `ky subject` 的 is_math_disabled 单源同口径，直接拒绝并
+        # 指路 ky subject 修改科目设置（state 不变，不落盘）。
+        if target_subj == "math" and is_math_disabled(cfg):
+            print(colorize("\n[!] 当前配置为「不考数学」，无需切换到数学私教。\n"
+                           "    如需修改科目设置，请运行：ky subject\n", C.YELLOW))
+            return False
         if target_subj == curr_subj:
             return True
         prev_subj = curr_subj
@@ -449,7 +458,9 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
             if build_py.exists():
                 print(colorize("\n[正在更新并重新编译自测看板...]", C.CYAN))
                 import subprocess
-                subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"))
+                # [W13 收口·本地入口分模式] 显式完整模式（与 更新看板.bat / ky build 一致）
+                subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"),
+                               env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0"})
             print()
             continue
         elif raw_cmd in ("交作业", "对答案"):
@@ -818,7 +829,9 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                 build_py = ROOT / "05-考研看板" / "build.py"
                 if build_py.exists():
                     import subprocess
-                    subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"))
+                    # [W13 收口·本地入口分模式] 显式完整模式（与 更新看板.bat / ky build 一致）
+                    subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"),
+                                   env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0"})
                 print()
                 continue
             elif cmd in ("/view", "/live"):
@@ -1087,7 +1100,13 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                 renderer.print_learning_gain(_report)
                 continue
             else:
-                print(colorize(f"未知指令 {cmd}，输入 /skills 查看可用技能，或输入 /math /eng /pol /pro", C.RED))
+                # [W13 R2-2 修复·死路提示] 此前指向 `/skills`（技能清单，不含指令
+                # 路由）且写死 `/math` —— 不考数学的考生照着输入只会再吃一次拒绝。
+                # 现改为：裸 `/` 展开指令大盘（本循环顶部已支持），科目提示按
+                # is_math_disabled 动态给出。
+                _subj_hint = "/eng /pol /pro" if is_math_disabled(cfg) else "/math /eng /pol /pro"
+                print(colorize(
+                    f"未知指令 {cmd}，输入 / 展开指令大盘，或输入 {_subj_hint}", C.RED))
                 continue
 
         # ── FSRS 错题盲盒作答判定 ──
