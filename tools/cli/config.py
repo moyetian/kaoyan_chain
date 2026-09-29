@@ -500,7 +500,9 @@ def manage_syllabi_cli(cfg: Dict[str, Any]) -> None:
         print("    [1] 全国统考 408 计算机学科专业基础")
         print("    [2] 全国统考 199 管理类综合能力")
         print("    [3] 院校自命题专业课")
-        p_sel = input("  请选择 (1~3) [默认 3]: ").strip() or "3"
+        # [P2-12 修复·护理考生无预设] 308 护理综合：写入模块骨架（含【待自填】告警）
+        print("    [4] 全国统考/自命题 308 护理综合 (载入模块骨架，须按目标院校官网核验)")
+        p_sel = input("  请选择 (1~4) [默认 3]: ").strip() or "3"
         pro_outline = ROOT / "04-专业课" / "考试大纲.md"
         existed_outline = pro_outline.exists()
         if existed_outline:
@@ -511,6 +513,10 @@ def manage_syllabi_cli(cfg: Dict[str, Any]) -> None:
         if p_sel == "1":
             atomic_write_text(pro_outline, syllabus_manager.CS408_SYLLABUS)
             pro_title = "408 计算机学科专业基础"
+        elif p_sel == "4":
+            # [P2-12] 308 护理综合：模块骨架 + 【待自填】告警，不虚构逐章考点
+            atomic_write_text(pro_outline, syllabus_manager.NURSING308_SYLLABUS)
+            pro_title = "308 护理综合"
         else:
             pro_title = input("  请输入专业课代码与名称 [如 801 信号与系统]: ").strip() or "专业课"
             existing_txt = read_text_safe(pro_outline) if existed_outline else ""
@@ -532,7 +538,7 @@ def manage_syllabi_cli(cfg: Dict[str, Any]) -> None:
         txt = read_text_safe(pro_agents)
         txt = re.sub(r"- \*\*专业课科目代码与名称\*\*：.*", f"- **专业课科目代码与名称**：`{pro_title}`", txt)
         atomic_write_text(pro_agents, txt)
-        _persist_subject(pro_type=("408" if p_sel == "1" else "custom"), pro_name=pro_title)
+        _persist_subject(pro_type=("408" if p_sel == "1" else ("308" if p_sel == "4" else "custom")), pro_name=pro_title)
         print(colorize(f"\n[√] 专业课已更新为: {pro_title}！", C.GREEN))
     elif c == "4":
         init_py = ROOT / "tools" / "init_workspace.py"

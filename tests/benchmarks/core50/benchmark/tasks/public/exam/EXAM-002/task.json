@@ -30,15 +30,15 @@
       "top3": [
         {
           "chapter": "数据结构",
-          "ratio": 0.1333
+          "ratio": 0.2
         },
         {
           "chapter": "计算机组成原理",
-          "ratio": 0.1167
+          "ratio": 0.17
         },
         {
           "chapter": "操作系统",
-          "ratio": 0.1
+          "ratio": 0.15
         }
       ]
     }
@@ -88,7 +88,7 @@
     ],
     "rubric": null
   },
-  "version": "1.0",
+  "version": "1.1",
   "answer_format": {
     "kind": "file",
     "filename": "report.json",

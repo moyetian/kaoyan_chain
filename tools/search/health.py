@@ -54,7 +54,8 @@ def cooldown_reason(name: str) -> str:
     if started is None:
         return ""
     remaining = max(0, int(COOLDOWN_SECONDS - (time.time() - started)))
-    return f"冷却中（约 {remaining} 秒前被反爬/失败拦截，暂不再请求）"
+    # [W11 文案修正] remaining 是「剩余秒数」，旧文案写成「N 秒前被拦截」语义反了。
+    return f"冷却中（约 {remaining} 秒后自动恢复；此前被反爬/失败拦截，暂不再请求）"
 
 
 def cooldown_state() -> Dict[str, float]:

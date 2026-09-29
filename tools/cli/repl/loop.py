@@ -55,12 +55,14 @@ except ImportError:
 try:
     from tools.cli.agent.engine import (
         build_system_prompt, stream_chat, query_llm_reply,
-        _count_error_records, _warn_if_mistake_not_archived
+        _count_error_records, _warn_if_mistake_not_archived,
+        infer_subject_from_text, format_subject_hint
     )
 except ImportError:
     from cli.agent.engine import (
         build_system_prompt, stream_chat, query_llm_reply,
-        _count_error_records, _warn_if_mistake_not_archived
+        _count_error_records, _warn_if_mistake_not_archived,
+        infer_subject_from_text, format_subject_hint
     )
 
 try:
@@ -1120,7 +1122,11 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
         append_live_message("user", user_input)
         print(colorize(f"\n[{SUBJECT_DIRS[curr_subj][1]} 正在思考并规划解答...]\n", C.DIM))
 
-        _err_count_before = _count_error_records(curr_subj)
+        # [W11 告警科目指向] 计数与告警都用「提问推断科目」（无关键词回落激活
+        # 科目）——多角色实测：工科用户问 408 内容但 REPL 默认激活英语时，告警
+        # 建议 `ky exam eng` 科目错位。两处必须同科目（before/after 计数配对）。
+        _warn_subject = infer_subject_from_text(user_input, curr_subj)
+        _err_count_before = _count_error_records(_warn_subject)
         reply = ""
         if agent_runner and cfg.get("api_key"):
             try:
@@ -1153,4 +1159,11 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                 print()
             print_followup_toolbar()
 
-        _warn_if_mistake_not_archived(user_input, reply or "", curr_subj, _err_count_before)
+        _warn_if_mistake_not_archived(user_input, reply or "", _warn_subject, _err_count_before)
+
+        # [W11 面板科目轻提示] 提问推断科目 ≠ 激活科目时给一行提示（不自动切换：
+        # _switch_subject 会清空 history 与 active_quiz_item，自动切换丢上下文）。
+        # 推断无明确关键词时回落 curr_subj，故本提示只在明确命中其他科目时出现。
+        _subject_hint = format_subject_hint(_warn_subject, curr_subj)
+        if _subject_hint:
+            print(colorize(_subject_hint, C.DIM))

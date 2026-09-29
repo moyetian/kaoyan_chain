@@ -28,7 +28,7 @@
     "required_sources": [],
     "must_not_claim": [],
     "ground_truth": {
-      "count": 10,
+      "count": 12,
       "subject": "数据结构"
     }
   },
@@ -42,7 +42,7 @@
         "dimension": "factuality",
         "path": "$.count",
         "op": "eq",
-        "value": 10,
+        "value": 12,
         "tol": 0.0
       },
       {
@@ -54,7 +54,7 @@
     ],
     "rubric": null
   },
-  "version": "1.0",
+  "version": "1.1",
   "answer_format": {
     "kind": "json",
     "path": "answer"

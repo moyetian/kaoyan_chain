@@ -97,10 +97,11 @@ def compare_schools(workspace_root: Path, school1: str, school2: str,
                     major: str = "") -> Tuple[str, str]:
     """双校对标，返回 ``(研报文本, 落盘路径或空串)``。"""
     try:
+        # [W12 P0-1] intelligence 包解析三端统一（此前 CLI/GUI/TUI 各写一套）
         try:
-            from intelligence import get_school_comparator
+            from intel_imports import resolve_intel_import
         except ImportError:  # pragma: no cover
-            from tools.intelligence import get_school_comparator  # type: ignore
+            from tools.intel_imports import resolve_intel_import  # type: ignore
 
         # 读取工作区配置以传递大模型与搜索 API 设置
         api_config = None
@@ -112,7 +113,7 @@ def compare_schools(workspace_root: Path, school1: str, school2: str,
             except Exception:
                 api_config = None
 
-        comp = get_school_comparator().compare(
+        comp = resolve_intel_import().get_school_comparator().compare(
             school1_query=school1, school2_query=school2,
             major_keyword=major, save_report=True,
             api_config=api_config

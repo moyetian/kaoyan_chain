@@ -173,7 +173,13 @@ def cmd_wechat_search(cli_args: list) -> None:
     print("\n" + "=" * 62)
     print(colorize("  📱 微信公众号考研文章检索报告", C.BOLD))
     print("=" * 62)
-    print(f"关键词: {res['keyword']}  |  总计发现: {res['total']} 篇  |  已抓取正文: {res['fetched']} 篇\n")
+    print(f"关键词: {res['keyword']}  |  总计发现: {res['total']} 篇  |  已抓取正文: {res['fetched']} 篇")
+    # [P2-9 修复·两端口径] 报告头统一打印各源成功/失败清单 —— 与 TUI action 10 同源，
+    # 「同关键词两端结果数不同」时可据此判定是反爬波动还是真的没结果。
+    _status_line = " | ".join(res.get("source_status") or [])
+    if _status_line:
+        print(f"检索源: {_status_line}")
+    print()
 
     if not res["results"]:
         print("  [i] 未检索到相关文章，建议更换关键词或使用 --source=bing / --source=local 重试。")

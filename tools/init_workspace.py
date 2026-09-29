@@ -55,6 +55,11 @@ try:
 except ImportError:  # pragma: no cover
     exam_calendar = None
 
+# [W12 P0-3] 模板扫描排除目录：打包产物（dist/build）与缓存目录内可能存有
+# .template.md 的副本，扫描时必须排除，否则会在产物目录内原地生成 .md。
+_TEMPLATE_SCAN_EXCLUDE = {".git", "dist", "build", "node_modules",
+                          "__pycache__", ".pytest_cache", ".venv", "venv"}
+
 STYLES = {
     "1": ("1. 严格把关·保姆提分型 (Strict & Disciplined)", "以真题阅卷人严苛视角分步赋分，计算失误与跳步零容忍，强制错因五分类归因"),
     "2": ("2. 高效应试·高频秒杀型 (High-Yield Hacker)", "以 80/20 法则为最高导向，只抓核心得分盘，教授秒杀口诀与解题模板"),
@@ -78,12 +83,17 @@ def print_banner():
     print("=" * 68)
 
 def copy_templates():
-    """将所有 .template.md 拷贝为对应的 .md 工作文件（若已存在则不覆盖）"""
+    """将所有 .template.md 拷贝为对应的 .md 工作文件（若已存在则不覆盖）
+
+    [W12 P0-3] 扫描必须排除打包/构建产物目录：此前只排 ``.git``，
+    ``dist/KaoyanStudyChain/**`` 等打包副本里的模板会被当作源模板，
+    在 dist 内原地生成 .md（实测一次误跑新建 41 个文件，含 dist/_internal/**）。
+    """
     print("\n[步骤 1/5] 扫描并初始化本地学情状态文件...")
     count = 0
     skipped = 0
     for p in ROOT.rglob("*.template.md"):
-        if ".git" in p.parts:
+        if _TEMPLATE_SCAN_EXCLUDE & set(p.parts):
             continue
         target = p.with_name(p.name.replace(".template.md", ".md"))
         if not target.exists():
@@ -166,12 +176,17 @@ def choose_exam_subjects_and_syllabi(interactive=True):
     print("    [1] 高校自命题专业课 (自主输入科目代码与名称，如 801信号与系统 / 832数据结构等)")
     print("    [2] 全国统考 408 计算机学科专业基础 (自动载入数据结构/计组/OS/计网四大模块大纲)")
     print("    [3] 全国统考 199 管理类综合能力")
-    p_c = input("  请选择专业课类别 (1~3) [默认 1]: ").strip() or "1"
-    pro_type = "408" if p_c == "2" else ("199" if p_c == "3" else "custom")
+    # [P2-12 修复·护理考生无预设] 308 护理综合：写入模块骨架（含【待自填】告警，
+    # 命题范围各校有差异，须按目标院校官网核验）
+    print("    [4] 全国统考/自命题 308 护理综合 (载入模块骨架，须按目标院校官网核验)")
+    p_c = input("  请选择专业课类别 (1~4) [默认 1]: ").strip() or "1"
+    pro_type = "408" if p_c == "2" else ("199" if p_c == "3" else ("308" if p_c == "4" else "custom"))
     if pro_type == "408":
         pro_name = "408 计算机学科专业基础"
     elif pro_type == "199":
         pro_name = "199 管理类综合能力"
+    elif pro_type == "308":
+        pro_name = "308 护理综合"
     else:
         pro_name = input("  请输入您的专业课代码与名称 [如 801 信号与系统]: ").strip() or "专业课"
 
@@ -374,7 +389,29 @@ def _start_command_for(math_key) -> str:
     return "数学报到"
 
 
+def _print_cli_help():
+    """[W12 P0-3] --help 帮助文本：打印即退出，零落盘。
+
+    此前无 --help 处理，`py tools/init_workspace.py --help` 会直接跑完整
+    5 步向导并新建大量文件（实测 41 个，含 dist/ 打包产物内的误生成）。
+    """
+    print("考研学习链 (Kaoyan AI Study Chain) · 本地工作区初始化向导\n")
+    print("用法:")
+    print("  py tools/init_workspace.py           交互式完整向导（推荐首次使用）")
+    print("  py tools/init_workspace.py --quick   快速模式：全部采用默认值（-q / -y 同义）")
+    print("  py tools/init_workspace.py --help    显示本帮助并退出（零文件变更）\n")
+    print("说明:")
+    print("  向导依次执行 5 步：模板文件初始化 → 资料库架构 → 科目考纲载入")
+    print("  → 学情档案配置 → 自测看板构建。已存在的文件不覆盖。")
+    print("  所有生成文件均在本工作区内，个人学情数据受 .gitignore 保护、不会上传。\n")
+    print("  也可直接运行 `ky plan` 只启动方案设计向导，或 `ky status` 查看当前态势。")
+
+
 def main():
+    # [W12 P0-3] --help/-h 必须在任何写操作之前短路退出（见 _print_cli_help）。
+    if "--help" in sys.argv or "-h" in sys.argv:
+        _print_cli_help()
+        return
     print_banner()
     interactive = True
     if "--quick" in sys.argv or "-q" in sys.argv or "-y" in sys.argv:

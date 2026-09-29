@@ -2,14 +2,14 @@
   "task_id": "SEARCH-005",
   "category": "search",
   "difficulty": "medium",
-  "instruction": "考研数学（一）那份官方划定的命题范围文件，其发布页在哪？请给出该文件的官方直链。要求：官方来源（E4+）、显式标注该文件对应年份。",
+  "instruction": "考研数学（一）那份官方划定的命题范围文件（考试大纲），其官方发布渠道在哪？请给出官方发布页链接，并说明官方以何种形式发布该大纲（官方是否提供免费电子版）。要求：官方来源（E4+）、显式标注该文件对应年份。",
   "network": "online",
   "time_limit": 900,
   "tool_limit": 60,
   "split": "public",
   "tags": [
     "official_source",
-    "pdf_link"
+    "publication_form"
   ],
   "expected": {
     "must_find": [
@@ -50,9 +50,15 @@
       },
       {
         "id": "c2",
-        "type": "regex",
+        "type": "point_hit",
         "dimension": "factuality",
-        "pattern": "https?://[^\\s]+\\.pdf"
+        "any_of": [
+          "纸质",
+          "出版",
+          "图书",
+          "购买",
+          "发行"
+        ]
       },
       {
         "id": "c3",
@@ -75,10 +81,10 @@
           "id": "r1",
           "dimension": "completeness",
           "weight": 1.0,
-          "question": "是否给出官方大纲页与 PDF 直链？"
+          "question": "是否给出官方发布渠道页面，并正确说明该大纲的官方发布形式（纸质出版物，官方不提供免费 PDF 电子版）？"
         }
       ]
     }
   },
-  "version": "1.0"
+  "version": "1.1"
 }

@@ -2,7 +2,7 @@
   "task_id": "EXAM-005",
   "category": "exam",
   "difficulty": "hard",
-  "instruction": "合并 3 个考点 CSV，按指定 JSON schema 产出知识点频率报告文件（文件名 knowledge_report.json），含 total 与 frequencies 字段。仅依据本地 fixture。",
+  "instruction": "合并 3 个考点 CSV，按指定 JSON schema 产出知识点频率报告文件（文件名 knowledge_report.json），含 total 与 frequencies 字段（frequencies 为数组，每项含 chapter 与 count，按 count 降序排列）。仅依据本地 fixture。",
   "network": "offline",
   "time_limit": 900,
   "tool_limit": 60,
@@ -32,7 +32,7 @@
       "frequencies": [
         {
           "chapter": "数据结构",
-          "count": 10
+          "count": 12
         }
       ]
     }
@@ -74,13 +74,13 @@
         "filename": "knowledge_report.json",
         "path": "$.frequencies[0].count",
         "op": "eq",
-        "value": 10,
+        "value": 12,
         "tol": 0.0
       }
     ],
     "rubric": null
   },
-  "version": "1.0",
+  "version": "1.1",
   "answer_format": {
     "kind": "file",
     "filename": "knowledge_report.json",
@@ -89,7 +89,22 @@
       "required": [
         "total",
         "frequencies"
-      ]
+      ],
+      "properties": {
+        "total": {
+          "type": "integer"
+        },
+        "frequencies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "chapter",
+              "count"
+            ]
+          }
+        }
+      }
     }
   }
 }

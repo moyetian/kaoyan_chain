@@ -159,6 +159,9 @@ class SearchResponse:
     results: Tuple[SearchResult, ...] = ()
     providers_used: Tuple[str, ...] = ()
     providers_failed: Tuple[Tuple[str, str], ...] = ()   # (provider, 失败原因)
+    #: [W11 全源冷却] providers_failed 中属于「反爬冷却期」的子集（结构化标记，
+    #: 供上层区分「源暂时不可用」与「源正常但没数据」——前者不该被当作资料不存在）。
+    providers_cooling: Tuple[Tuple[str, str], ...] = ()
     candidates: int = 0                    # 去重前候选数
     duplicates: int = 0                    # 被去掉的重复数
     queries_run: int = 1                   # 实际发起的查询数（含改写展开）
@@ -167,6 +170,21 @@ class SearchResponse:
     @property
     def has_results(self) -> bool:
         return bool(self.results)
+
+    @property
+    def all_failed_cooling(self) -> bool:
+        """没有任何源成功返回，且全部失败源都处于冷却期。
+
+        [W11] 这是「全源冷却」的唯一判据：检索能力暂时归零 ≠ 资料不存在。
+        上层（report/format_results/Agent 工具）据此输出专属降级话术，
+        而不是笼统的「未找到结果」。
+        """
+        if self.results or self.providers_used:
+            return False
+        if not self.providers_failed:
+            return False
+        cooling = {name for name, _ in self.providers_cooling}
+        return all(name in cooling for name, _ in self.providers_failed)
 
     @property
     def official_results(self) -> Tuple[SearchResult, ...]:
@@ -197,6 +215,8 @@ class SearchResponse:
             "providers_used": list(self.providers_used),
             "providers_failed": [{"provider": n, "reason": w}
                                  for n, w in self.providers_failed],
+            "providers_cooling": [{"provider": n, "reason": w}
+                                  for n, w in self.providers_cooling],
             "candidates": self.candidates,
             "duplicates": self.duplicates,
             "results": [r.to_dict() for r in self.results],
@@ -209,6 +229,7 @@ def merge_responses(responses: Sequence[SearchResponse],
     results: List[SearchResult] = []
     used: List[str] = []
     failed: List[Tuple[str, str]] = []
+    cooling: List[Tuple[str, str]] = []
     candidates = duplicates = 0
     year: Optional[int] = None
     for resp in responses:
@@ -219,6 +240,9 @@ def merge_responses(responses: Sequence[SearchResponse],
         for item in resp.providers_failed:
             if item not in failed:
                 failed.append(item)
+        for item in resp.providers_cooling:
+            if item not in cooling:
+                cooling.append(item)
         candidates += resp.candidates
         duplicates += resp.duplicates
         if resp.year is not None:
@@ -226,7 +250,8 @@ def merge_responses(responses: Sequence[SearchResponse],
     return SearchResponse(
         query=query or (responses[0].query if responses else ""),
         results=tuple(results), providers_used=tuple(used),
-        providers_failed=tuple(failed), candidates=candidates,
+        providers_failed=tuple(failed), providers_cooling=tuple(cooling),
+        candidates=candidates,
         duplicates=duplicates, queries_run=max(1, len(responses)), year=year,
     )
 

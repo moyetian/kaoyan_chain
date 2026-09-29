@@ -488,6 +488,8 @@ class OnboardingWizard(QDialog):
         self.pro_type_combo.addItem("199 管理类联考综合能力 (统考)", "199")
         self.pro_type_combo.addItem("396 经济类综合能力 (统考)", "396")
         self.pro_type_combo.addItem("333 教育综合 (全国统考/自命题)", "333")
+        # [P2-12 修复·护理考生无预设] 308 护理综合：载入模块骨架（需按目标院校官网核验）
+        self.pro_type_combo.addItem("308 护理综合 (统考/自命题，载入模块骨架)", "308")
         self.pro_type_combo.addItem("法律硕士联考专业基础 (397/398 统考)", "law")
         self.pro_type_combo.currentIndexChanged.connect(self._on_pro_type_changed)
         form.addRow("专业课类别:", self.pro_type_combo)
@@ -1194,6 +1196,9 @@ class OnboardingWizard(QDialog):
             self.pro_name_edit.setText("408 计算机学科专业基础综合")
         elif val == "199":
             self.pro_name_edit.setText("199 管理类综合能力")
+        elif val == "308":
+            # [P2-12] 护理综合：预填科目名，大纲骨架由 apply_syllabus_selection 写入
+            self.pro_name_edit.setText("308 护理综合")
 
     def _on_exam_date_changed(self, date_text: str):
         try:

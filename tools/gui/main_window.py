@@ -566,8 +566,22 @@ class MainWindow(QMainWindow):
             self.chat_display.append("\n[!] 双校对标已取消：未指定第一所高校。")
             return
         s1 = s1.strip()
+        # [P2-11 修复·备选校未联动] 建档向导收集的备选院校（study_plan.backup_school）
+        # 此前只被 TUI 对标读取，GUI 对标弹窗第二校恒为空。现预填为默认值 ——
+        # 考生一键回车即可对「目标校 vs 备选校」发起对标。
+        default_s2 = str(
+            info.get("backup_school")
+            or self.config.get("backup_school")
+            or self.config.get("backup_target")
+            or ""
+        ).strip()
+        if default_s2 in ("未指定", "目标院校"):
+            default_s2 = ""
         s2, ok2 = QInputDialog.getText(
-            self, "双校对标", "请输入第二所高校 (对比高校):", text=""
+            self, "双校对标",
+            "请输入第二所高校 (对比高校):" if not default_s2
+            else "请输入第二所高校 (对比高校，已预填档案中的备选院校):",
+            text=default_s2
         )
         if not ok2 or not s2.strip():
             self.chat_display.append("\n[!] 双校对标已取消：未指定第二所高校。")

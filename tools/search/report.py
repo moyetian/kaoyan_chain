@@ -28,12 +28,15 @@ class SourceStatus:
     name: str
     ok: bool
     detail: str = ""
+    #: [W11 全源冷却] 该源是否处于反爬冷却期（暂时不可用，稍后自动恢复）。
+    cooling: bool = False
 
     def label(self) -> str:
         return f"✓ {self.name}" if self.ok else f"✗ {self.name}"
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"name": self.name, "ok": self.ok, "detail": self.detail}
+        return {"name": self.name, "ok": self.ok, "detail": self.detail,
+                "cooling": self.cooling}
 
 
 @dataclass
@@ -56,10 +59,22 @@ class SearchReport:
         return bool(self.sources) and all(not s.ok for s in self.sources)
 
     @property
+    def all_sources_cooling(self) -> bool:
+        """所有源都失败、且失败原因全部是「反爬冷却期」。
+
+        [W11] 与 ``all_sources_failed``（笼统「没搜到」）分开：冷却期是
+        **暂时**不可用（等一会儿自动恢复），处置是「勿立即重试」而非「换源再搜」。
+        """
+        return (bool(self.sources)
+                and all((not s.ok) and s.cooling for s in self.sources))
+
+    @property
     def verdict(self) -> str:
-        """结论：区分「确实没有」与「我们没搜到」。"""
+        """结论：区分「确实没有」「我们没搜到」与「源暂时冷却」。"""
         if self.found:
             return "found"
+        if self.all_sources_cooling:
+            return "cooling"
         if self.all_sources_failed:
             return "not_searched"            # 源全挂了 → 是"没搜到"
         return "not_found"                   # 源都正常但为空 → 大概率确实没有
@@ -67,6 +82,9 @@ class SearchReport:
     def verdict_text(self) -> str:
         mapping = {
             "found": "已找到相关结果（见下方「找到」）",
+            "cooling": "⏸️ 全部检索源处于**反爬冷却期**（暂时不可用，稍后自动恢复）"
+                       "——这不代表资料不存在；请勿立即重试同一查询，"
+                       "可先改用工作区资料，或等待数分钟后重试",
             "not_searched": "本次**未能完成检索**（所有检索源都未成功返回结果），"
                             "不代表资料不存在 —— 建议稍后重试或换用其它源",
             "not_found": "各检索源均正常返回但**没有匹配结果**，"
@@ -141,10 +159,12 @@ def build_report(response: SearchResponse, *, intent: str = "general",
 
     used = {name.replace("(缓存)", "") for name in response.providers_used}
     failed = dict(response.providers_failed)
+    cooling = {name for name, _ in response.providers_cooling}
 
     for name in sorted(used | set(failed)):
         if name in failed:
-            report.sources.append(SourceStatus(name, False, failed[name]))
+            report.sources.append(SourceStatus(name, False, failed[name],
+                                               cooling=name in cooling))
         else:
             extra = "（命中缓存）" if f"{name}(缓存)" in response.providers_used else ""
             report.sources.append(SourceStatus(name, True, extra))

@@ -33,15 +33,15 @@ answers:
   # T 类交付：core50 全 50 题的确定性离线预设答案（保证 CI 全离线可跑）。
   # 每题给出「真实做过题」的答案：fixture 计算值 / 结构化字段 / 来源等级，而非照抄题面。
   EXAM-001:
-    final_answer: '{"count": 10, "subject": "数据结构"}'
+    final_answer: '{"count": 12, "subject": "数据结构"}'
     tool_calls:
     - name: read_file
       arguments:
         path: questions.csv
   EXAM-002:
-    final_answer: '{"top3": [{"chapter": "数据结构", "ratio": 0.1333}, {"chapter": "计算机组成原理", "ratio": 0.1167}, {"chapter": "操作系统", "ratio": 0.1}]}'
+    final_answer: '{"top3": [{"chapter": "数据结构", "ratio": 0.2}, {"chapter": "计算机组成原理", "ratio": 0.17}, {"chapter": "操作系统", "ratio": 0.15}]}'
     files:
-      report.json: '{"top3": [{"chapter": "数据结构", "ratio": 0.1333}, {"chapter": "计算机组成原理", "ratio": 0.1167}, {"chapter": "操作系统", "ratio": 0.1}]}'
+      report.json: '{"top3": [{"chapter": "数据结构", "ratio": 0.2}, {"chapter": "计算机组成原理", "ratio": 0.17}, {"chapter": "操作系统", "ratio": 0.15}]}'
     tool_calls:
     - name: read_file
       arguments:
@@ -74,7 +74,7 @@ answers:
       arguments:
         path: questions_c.csv
     files:
-      knowledge_report.json: '{"total": 60, "frequencies": [{"chapter": "数据结构", "count": 10}, {"chapter": "计算机组成原理", "count": 10}, {"chapter": "操作系统", "count": 9}, {"chapter": "计算机网络", "count": 8}, {"chapter": "数据库", "count": 7}, {"chapter": "软件工程", "count": 6}, {"chapter": "编译原理", "count": 5}, {"chapter": "离散数学", "count": 5}]}'
+      knowledge_report.json: '{"total": 60, "frequencies": [{"chapter": "数据结构", "count": 12}, {"chapter": "计算机组成原理", "count": 10}, {"chapter": "操作系统", "count": 9}, {"chapter": "计算机网络", "count": 8}, {"chapter": "数据库", "count": 7}, {"chapter": "软件工程", "count": 6}, {"chapter": "编译原理", "count": 5}, {"chapter": "离散数学", "count": 3}]}'
   HAL-001:
     final_answer: 经检索本地与官方渠道，均未能找到『北原大学』（虚构院校）2026 年计算机专业招生人数的官方数据。由于该院校为虚构、无任何官方来源，因此无法确认具体人数，不能凭空给出数字，结论是未找到官方数据。
     tool_calls:
@@ -135,21 +135,25 @@ answers:
       arguments:
         path: brief_2026.pdf
   PDF-005:
-    final_answer: '{"fields": [{"name": "学制", "value": "3 years", "page": 7, "quote": "Duration 3 years"}, {"name": "学费", "value": "文档未提供", "page": 7, "quote": "not provided"}, {"name": "招生人数", "value": "文档未提供", "page": 7, "quote": "not provided"}, {"name": "复试方式", "value": "on-site interview plus written test", "page": 7, "quote": "Retest method: on-site interview plus written test."}, {"name": "复试权重", "value": "retest 40%", "page": 7, "quote": "Weight: retest 40%, preliminary 60%."}, {"name": "参考书目", "value": "文档未提供", "page": 7, "quote": "not provided"}]}'
+    final_answer: '{"fields": [{"name": "学制", "value": "3 years for academic master programs", "page": 3, "quote": "Duration: 3 years for academic master programs."}, {"name": "学费", "value": "8000 CNY per academic year", "page": 4, "quote": "Tuition: 8000 CNY per academic year."}, {"name": "招生人数", "value": "45 students for the 2026 intake", "page": 5, "quote": "Enrollment plan: 45 students for the 2026 intake."}, {"name": "复试方式", "value": "on-site interview plus written test", "page": 7, "quote": "Retest method: on-site interview plus written test."}, {"name": "复试权重", "value": "retest 40%, preliminary 60%", "page": 7, "quote": "Weight: retest 40%, preliminary 60%."}, {"name": "参考书目", "value": "文档未提供", "page": null, "quote": "文档中未提及参考书目信息"}]}'
     citations:
+    - claim: 学制
+      source_ref: brief_long_20p.pdf
+      locator: '3'
+      supported: true
+    - claim: 学费
+      source_ref: brief_long_20p.pdf
+      locator: '4'
+      supported: true
+    - claim: 招生人数
+      source_ref: brief_long_20p.pdf
+      locator: '5'
+      supported: true
     - claim: 复试方式
       source_ref: brief_long_20p.pdf
       locator: '7'
       supported: true
     - claim: 复试权重
-      source_ref: brief_long_20p.pdf
-      locator: '7'
-      supported: true
-    - claim: 学制
-      source_ref: brief_long_20p.pdf
-      locator: '7'
-      supported: true
-    - claim: 综合
       source_ref: brief_long_20p.pdf
       locator: '7'
       supported: true
@@ -345,13 +349,13 @@ answers:
       year: 2026
       title: 研究生院专业目录
   SEARCH-005:
-    final_answer: 考研数学（一）考试大纲（2026 年版）官方发布页及 PDF 直链见下：https://www.moe.example.cn/ksdg/math1-2026.pdf 。该大纲为官方发布，标注年份 2026。
+    final_answer: 考研数学（一）考试大纲的官方发布渠道：中国教育考试网（教育部教育考试院）研考栏目「考试大纲」页 https://yankao.neea.edu.cn/html1/category/1509/6235-1.htm 。该大纲为官方纸质出版物（教育部教育考试院编写、由出版社正式出版发行），官方不提供免费 PDF 电子版；该栏目公示的最新数学大纲电子条目为 2022 年版，2026 年版大纲以出版图书形式发行。
     sources:
-    - url: https://www.moe.example.cn/ksdg/math1-2026.pdf
+    - url: https://yankao.neea.edu.cn/html1/category/1509/6235-1.htm
       evidence_level: E4
       is_official: true
       year: 2026
-      title: 考研数学（一）考试大纲 2026
+      title: 考试大纲 - 中国教育考试网（全国硕士研究生招生考试）
   SEARCH-006:
     final_answer: 在该高校二级院系网站找到《硕士研究生复试录取办法》通知（复试办法），URL 为 https://cs.x.edu.example/tz/2025/fushi.html ，发布年份 2025。来源：院系官网。
     sources:
@@ -501,7 +505,7 @@ answers:
       arguments:
         path: source_01.html
   UNI-009:
-    final_answer: '{"conflict": true, "a_plan": 33, "b_plan": 33, "source_a": "source_01.html", "source_b": "source_02.html", "conclusion": "两处数值存在冲突（不一致），采信学校主页口径。"}'
+    final_answer: '{"conflict": true, "a_plan": 33, "b_plan": 30, "a_source": "source_01.html", "b_source": "source_02.html", "conclusion": "两处数值存在冲突（不一致），采信研究生院目录页口径。"}'
     tool_calls:
     - name: read_file
       arguments:

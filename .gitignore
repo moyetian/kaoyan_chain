@@ -42,6 +42,10 @@ ky_config.json
 # 此前未被忽略，一旦 `git add -A` 即随仓库泄露。
 ky_config.corrupted.bak
 *.corrupted.bak
+# [W12 修复·工作树卫生] 用户手工备份的 ky_config*.bak（如换报考档案前另存的
+# ky_config.json.bak）同样含明文 api_key，实测曾以未跟踪文件出现在工作树里。
+# 与上面 corrupted.bak 同口径：任何形态的配置备份一律不入库。
+ky_config*.bak
 ky_history.json
 
 # 配置守卫快照目录（tools/config_guard.py）：内含含真实 api_key 的完整配置副本。

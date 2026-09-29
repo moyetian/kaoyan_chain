@@ -34,15 +34,15 @@ except ImportError:
 
 
 def _get_intelligence_module():
+    # [W12 P0-1] 三端统一解析（此前与 GUI/TUI 各写一套，直跑上下文口径漂移）
     try:
-        from tools import intelligence
-        return intelligence
-    except ImportError:
         try:
-            import intelligence
-            return intelligence
+            from intel_imports import resolve_intel_import
         except ImportError:
-            return None
+            from tools.intel_imports import resolve_intel_import
+        return resolve_intel_import()
+    except ImportError:
+        return None
 
 
 def _cmd_scout(args: List[str]) -> None:
@@ -373,6 +373,20 @@ def _cmd_fetch(args: List[str]) -> None:
             if len(pos_args) >= 1 and school == "目标院校": school = pos_args[0]
             if len(pos_args) >= 2 and major == "专业课": major = pos_args[1]
 
+        # [W12 P1-5] 路径推导优先于 config 回退：公共课考纲（01-数学/02-英语/
+        # 03-思想政治理论）与具体学校无关，命名标「全国统考」+ 科目名，
+        # 避免对英语考纲比对却落盘旧志愿校名专业名。
+        if old_path or new_path:
+            try:
+                from intelligence.syllabus_diff import infer_diff_naming
+            except ImportError:
+                from tools.intelligence.syllabus_diff import infer_diff_naming
+            _s_inf, _m_inf = infer_diff_naming(old_path, new_path)
+            if _s_inf and school in ("", "目标院校"):
+                school = _s_inf
+            if _m_inf and major in ("", "专业课"):
+                major = _m_inf
+
         cfg = load_config()
         if school in ("", "目标院校") and cfg.get("study_plan", {}).get("school"):
             school = cfg.get("study_plan", {}).get("school")
@@ -441,18 +455,32 @@ def _cmd_fetch(args: List[str]) -> None:
 def _cmd_compare(args: List[str]) -> None:
     pos_args = []
     save_flag = False
+    # [W12 P0-2] 超时熔断与离线模式入参
+    quick_flag = False
+    timeout_val = None
     for a in args[1:]:
         if a in ("--save", "-s"):
             save_flag = True
+        elif a in ("--quick", "-q"):
+            quick_flag = True
+        elif a.startswith("--timeout="):
+            try:
+                timeout_val = float(a.split("=", 1)[1])
+            except ValueError:
+                print(colorize(f"[!] --timeout 需为数字（秒），收到: {a}", C.RED))
+                sys.exit(2)
         elif not a.startswith("-"):
             pos_args.append(a)
 
     if "--help" in args or "-h" in args:
-        print(colorize("用法: ky compare [高校1] [高校2] [专业关键词] [--save]\n"
+        print(colorize("用法: ky compare [高校1] [高校2] [专业关键词] [--save] [--quick] [--timeout=秒]\n"
                        "示例: ky compare 华中科技大学 武汉大学 --save\n"
                        "      省略高校时自动取档案报考院校/备选院校: ky compare --save\n"
+                       "      --quick        离线模式：跳过在线研究，直接取本地高校库画像（秒级返回）\n"
+                       "      --timeout=N    单校在线研究预算秒数（默认 60；0 表示不熔断等待全量）\n"
                        "说明: 深度横向对标两所高校的办学层次、自划线、初试科目差异 (408/自命题)、复试线与一志愿保护机制。\n"
-                       "      专业关键词可省略，默认取 ky_config.json 中的报考专业。", C.YELLOW))
+                       "      专业关键词可省略，默认取 ky_config.json 中的报考专业。\n"
+                       "      弱网下超预算的学校回落本地库并标注「未完成在线核验」，保证有界返回。", C.YELLOW))
         sys.exit(0)
 
     prof_s1, prof_s2 = resolve_profile_schools()
@@ -478,9 +506,13 @@ def _cmd_compare(args: List[str]) -> None:
 
     intel = _get_intelligence_module()
     if intel:
-        print(colorize(f"\n[⚔️ KaoYan Intelligence: 正在对标【{s1}】与【{s2}】({major_kw}) 招考指标与复试保护...]\n", C.CYAN))
+        if quick_flag:
+            print(colorize(f"\n[⚔️ KaoYan Intelligence: 正在对标【{s1}】与【{s2}】({major_kw}) —— 离线模式（本地高校库画像）...]\n", C.CYAN))
+        else:
+            print(colorize(f"\n[⚔️ KaoYan Intelligence: 正在对标【{s1}】与【{s2}】({major_kw}) 招考指标与复试保护...]\n", C.CYAN))
         comparator = intel.SchoolComparator()
-        res = comparator.compare(school1_query=s1, school2_query=s2, major_keyword=major_kw, save_report=save_flag)
+        res = comparator.compare(school1_query=s1, school2_query=s2, major_keyword=major_kw,
+                                 save_report=save_flag, timeout=timeout_val, quick=quick_flag)
         print(res.get("terminal_report", ""))
         if res.get("saved_path"):
             print(colorize(f"\n[√ 双校横向对比研报已归档至]: {res['saved_path']}\n", C.GREEN))

@@ -252,6 +252,9 @@ _SAFE_MODE_WRITE_FLAGS: Dict[str, frozenset] = {
     "scout":     frozenset({"--save", "-s", "--apply", "-a"}),
     "admission": frozenset({"--save", "-s"}),
     "wechat":    frozenset({"--save", "-s"}),
+    # [P1-8 修复] ky mount 默认只读盘点（scan-only），仅 --apply 写回白名单/雷达；
+    # 按 --apply 粒度拦截，只读盘点在 safe 模式下放行（与 scout 同模式）。
+    "mount":     frozenset({"--apply", "--write"}),
 }
 
 #: 「写命令里仍可安全执行的只读子操作」：子命令命中白名单才放行。

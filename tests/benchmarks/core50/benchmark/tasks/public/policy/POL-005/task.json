@@ -2,7 +2,7 @@
   "task_id": "POL-005",
   "category": "policy",
   "difficulty": "hard",
-  "instruction": "检索某省教育考试院发布的考生就地参加考试的受理须知，判断你查到的这一份是否为当前最新版本，并显式标注评估时间 `evaluated_at`（ISO8601）。须 E4+ 来源。",
+  "instruction": "检索某省教育考试院发布的考生报考点选择（就地参加考试）的受理须知，判断你查到的这一份是否为当前最新版本，并显式标注评估时间 `evaluated_at`（ISO8601）。须 E4+ 来源。",
   "network": "online",
   "time_limit": 900,
   "tool_limit": 60,
@@ -79,5 +79,5 @@
       ]
     }
   },
-  "version": "1.0"
+  "version": "1.1"
 }

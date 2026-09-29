@@ -244,7 +244,15 @@ _FAKE_AGENTS_MD = (
     "| 科目 | 目标成绩 |\n"
     "| --- | --- |\n"
     "| **科目一：不考数学** | **不考数学** |\n"
+    "| **科目二：000000 旧英语占位** | **65+ 分** |\n"
+    "| **科目四：000000 旧专业占位** | **120-130 分** |\n"
     "| **合计** | **370+ 分** |\n"
+    "\n"
+    "### 【个性化学情与作息调节机制】 (系统已锁定)\n"
+    "\n"
+    "- **手头资料白名单 (AI 严守范围)**:\n"
+    "  - 专业课: `暂未放置实体资料（私教严格按【000000 旧专业占位】官方考纲出题，"
+    "严禁虚构书目）`\n"
 )
 
 
@@ -292,6 +300,68 @@ def test_status_summary_negative_control(renderer, monkeypatch, capsys, tmp_path
     out = capsys.readouterr().out
 
     assert "**" in out, "阴性对照失效：连恒等渲染都没有 **，说明主断言无区分度"
+
+
+#: 与 ``_FAKE_AGENTS_MD`` 旧快照对不上的 study_plan（模拟改报考专业后的真源）
+_SYNCED_STUDY_PLAN = {
+    "math_name": "不考数学",
+    "eng_name": "英语一 (201)",
+    "pol_name": "思想政治理论",
+    "pro_name": "308 护理综合",
+}
+
+
+def test_status_summary_titles_follow_study_plan(renderer, monkeypatch, capsys, tmp_path):
+    """[W12 P1-6] 白名单标题与矩阵行首科目名均以 study_plan 为单一真源。
+
+    实测场景：改 pro_name=308 护理综合 后 AGENTS.md 仍是旧快照（矩阵行与
+    白名单标题都显旧专业），状态盘同屏自相矛盾。渲染时必须按 study_plan
+    重建两处，旧快照名不得出现在输出里。
+    """
+    _seed_agents(tmp_path)
+    monkeypatch.setattr(renderer, "ROOT", tmp_path)
+    monkeypatch.setattr(renderer, "load_config",
+                        lambda: {"study_plan": dict(_SYNCED_STUDY_PLAN)})
+    # 放宽管道宽度：白名单占位文案较长，100 列下 rich 会折行拆散【…】标题
+    monkeypatch.setattr(renderer, "_PIPE_WIDTH", 300)
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+
+    renderer.print_status_summary()
+    out = capsys.readouterr().out
+
+    assert "科目四：308 护理综合" in out, f"矩阵行未跟随 study_plan.pro_name：{out!r}"
+    assert "科目二：英语一 (201)" in out, f"矩阵行未跟随 study_plan.eng_name：{out!r}"
+    assert "【308 护理综合】" in out, f"白名单标题未跟随 study_plan.pro_name：{out!r}"
+    assert "000000 旧专业占位" not in out, "旧专业快照名泄漏到状态盘"
+    assert "000000 旧英语占位" not in out, "旧英语快照名泄漏到状态盘"
+
+
+def test_status_summary_titles_negative_control(renderer, monkeypatch, capsys, tmp_path):
+    """阴性对照：同源重建换成 no-op 时旧快照名必然出现（证明主断言有区分度）。"""
+    _seed_agents(tmp_path)
+    monkeypatch.setattr(renderer, "ROOT", tmp_path)
+    monkeypatch.setattr(renderer, "load_config",
+                        lambda: {"study_plan": dict(_SYNCED_STUDY_PLAN)})
+    monkeypatch.setattr(renderer, "_sync_books_titles", lambda entries, plan: None)
+    monkeypatch.setattr(renderer, "_sync_matrix_labels", lambda rows, plan: None)
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+
+    renderer.print_status_summary()
+    out = capsys.readouterr().out
+
+    assert "000000 旧专业占位" in out and "000000 旧英语占位" in out, \
+        "阴性对照失效：未重建时旧名也未出现，主断言无区分度"
+
+
+def test_sync_matrix_labels_skips_mode_c_math_row(renderer):
+    """mode_c 的「科目一：199 管理类综合能力」行不得被数学名覆盖（防误写）。"""
+    rows = [["科目一：199 管理类综合能力", "140+ 分"],
+            ["科目二：英语二 (204)", "70+ 分"]]
+    renderer._sync_matrix_labels(rows, {
+        "math_name": "不考数学", "eng_name": "英语二 (204)",
+        "pro_name": "199 管理类综合能力", "pol_disabled": True})
+    assert rows[0][0] == "科目一：199 管理类综合能力", "199 行被数学名误写"
+    assert rows[1][0] == "科目二：英语二 (204)"
 
 
 # ══════════════════════════════════════════════════════════════

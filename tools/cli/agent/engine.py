@@ -99,6 +99,37 @@ def _warn_if_mistake_not_archived(user_input: str, reply: str, subject: str, bef
         f"`ky exam {subject} --count 3 --save` 然后 `ky exam-submit <试卷> <作答>`；\n"
         "              ② 或在交互终端用 `ky --permission=auto` 重发「交作业」。\n", C.YELLOW))
 
+def infer_subject_from_text(text: str, fallback: str = "math") -> str:
+    """[W11] 从用户输入推断科目代码（无明确关键词时回落 fallback）。
+
+    多角色实测：工科用户问 408 内容但 REPL 默认激活英语时，「批改未归档」
+    告警建议 `ky exam eng` 科目错位。本函数复用 query_llm_reply 的既有推断
+    逻辑（此前仅网关路径使用），供告警等场景选择正确科目。
+    """
+    t = str(text or "")
+    if "英语" in t or "/eng" in t:
+        return "eng"
+    if "政治" in t or "/pol" in t:
+        return "pol"
+    if "专业课" in t or "/pro" in t:
+        return "pro"
+    if "数学" in t or "/math" in t:
+        return "math"
+    return fallback
+
+def format_subject_hint(inferred: str, active: str) -> str:
+    """[W11] 提问科目 ≠ 激活科目时的轻提示文案；相同时返回空串。
+
+    只做提示不做切换：`_switch_subject` 会清空 history 与当前测验项
+    （active_quiz_item），自动切换丢上下文。由 loop.py 在每轮回答后打印。
+    """
+    if not inferred or not active or inferred == active:
+        return ""
+    active_name = SUBJECT_DIRS.get(active, (active, active))[1]
+    inferred_name = SUBJECT_DIRS.get(inferred, (inferred, inferred))[1]
+    return (f"💡 提示：本问题看起来属于【{inferred_name}】内容，"
+            f"当前激活【{active_name}】——如需切换请输 /{inferred}。")
+
 def build_system_prompt(active_subj: str = "math") -> str:
     """组装当前激活学科的私教系统提示词与外置记忆上下文"""
     sys_parts = []
@@ -370,11 +401,7 @@ def query_llm_reply(user_msg: str, cfg: Optional[Dict[str, Any]] = None) -> str:
         latest_cfg.update({k: v for k, v in cfg.items() if v})
     cfg = latest_cfg
 
-    active_subj = cfg.get("active_subject", "math")
-    if "英语" in user_msg or "/eng" in user_msg: active_subj = "eng"
-    elif "政治" in user_msg or "/pol" in user_msg: active_subj = "pol"
-    elif "专业课" in user_msg or "/pro" in user_msg: active_subj = "pro"
-    elif "数学" in user_msg or "/math" in user_msg: active_subj = "math"
+    active_subj = infer_subject_from_text(user_msg, cfg.get("active_subject", "math"))
 
     if user_msg.startswith("/calc") or "验算" in user_msg:
         try:

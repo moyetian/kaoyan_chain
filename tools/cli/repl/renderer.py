@@ -322,6 +322,70 @@ def _parse_table(lines: Sequence[str]) -> Tuple[List[str], List[List[str]]]:
     return header, rows
 
 
+def _sync_books_titles(entries: List[Dict[str, object]],
+                       plan: Dict[str, object]) -> None:
+    """[W12 P1-6] 资料白名单科目标题与 ``study_plan`` 同源重建（就地修改）。
+
+    AGENTS.md 只是上次写入的快照：改 study_plan.pro_name（如换报考专业）后
+    状态盘此前仍显示旧科目（实测改 308 护理综合后 status 仍显 618 马原——与
+    material_scanner 的生成口径脱节）。仅当值是「暂未放置实体资料」占位时
+    重建标题，真实书目原样保留。
+    """
+    name_keys = {"数学": "math_name", "英语": "eng_name",
+                 "政治": "pol_name", "专业课": "pro_name"}
+
+    def _walk(items: List[Dict[str, object]]) -> None:
+        for entry in items:
+            name_key = name_keys.get(str(entry.get("key")))
+            if name_key:
+                title = str(plan.get(name_key) or "").strip()
+                if title and "暂未放置实体资料" in str(entry.get("value")):
+                    entry["value"] = (
+                        f"暂未放置实体资料（私教严格按【{title}】官方考纲出题，"
+                        f"严禁虚构书目）")
+            # 白名单子项在 children 里（_parse_bullets 按缩进挂树）
+            _walk(entry.get("children") or [])          # type: ignore[arg-type]
+
+    _walk(entries)
+
+
+def _sync_matrix_labels(rows: List[List[str]],
+                        plan: Dict[str, object]) -> None:
+    """[W12 P1-6 同类残留] 目标矩阵行首科目名与 ``study_plan`` 同源重建（就地修改）。
+
+    矩阵表同样只是 ky plan/init 写入的快照：``ky subject`` 改科目只写
+    ky_config.json 与各科 AGENTS.md，不重写根矩阵——实测改 308 护理综合后
+    白名单已是新科目、矩阵行仍是 618 马原（同一块状态盘自相矛盾）。此处重建
+    「科目X：」标签，基线/目标/时长列保持快照原值。
+
+    边界：科目三（思想政治理论）由各写入端硬编码，不重建；mode_b/mode_c 的
+    「科目一」行分别承载「不考数学」/「199 管理类综合能力」语义，跳过，
+    避免把 199 行误写成数学名。
+    """
+    eng_name = str(plan.get("eng_name") or "").strip()
+    pro_name = str(plan.get("pro_name") or "").strip()
+    pro2_name = str(plan.get("pro2_name") or "").strip()
+    math_name = str(plan.get("math_name") or "").strip()
+    exam_mode = str(plan.get("exam_mode") or "")
+    is_mode_b = exam_mode in ("mode_b", "no_math_dual_pro") or bool(pro2_name)
+    is_mode_c = (exam_mode in ("mode_c", "mgmt_199")
+                 or bool(plan.get("pol_disabled")) or "199" in pro_name)
+    label_keys = [("科目二", eng_name), ("科目四", pro_name),
+                  ("科目五", pro2_name)]
+    if not (is_mode_b or is_mode_c):
+        label_keys.insert(0, ("科目一", math_name))
+    for row in rows:
+        if not row:
+            continue
+        cell = str(row[0])
+        for prefix, title in label_keys:
+            if not cell.startswith(prefix + "："):
+                continue
+            if title:
+                row[0] = f"{prefix}：{title}"
+            break
+
+
 def _kv_grid(entries: Sequence[Dict[str, object]]) -> Table:
     """把键值条目渲染成两列表（键用主色加粗，值用前景色；子项缩进一行）。"""
     st = _styles()
@@ -680,6 +744,11 @@ def print_status_summary() -> None:
         "报考专业": _cfg_major if _cfg_major and _cfg_major not in ("报考专业", "未指定") else "",
     }
 
+    # [W12 P1-6] 资料白名单与目标矩阵的科目标题真源：AGENTS.md 只是上次写入的
+    # 快照，改 study_plan.pro_name（如换报考专业）后状态盘此前仍显示旧科目
+    # （实测改 308 护理综合后 status 仍显 618 马原）。渲染前分别以
+    # _sync_books_titles / _sync_matrix_labels 按 study_plan 同源重建。
+
     txt = read_text_safe(agents_root)
     for title, body in _md_sections(txt):
         entries = _parse_bullets(body)
@@ -696,6 +765,8 @@ def print_status_summary() -> None:
             ))
             header, rows = _parse_table(body)
             if header and rows:
+                # [W12 P1-6 同类残留] 矩阵行首科目名与 study_plan 同源重建
+                _sync_matrix_labels(rows, plan)
                 matrix = Table(box=box.SIMPLE_HEAD, expand=True,
                                header_style=st["title"], padding=(0, 1))
                 for column in header:
@@ -712,6 +783,8 @@ def print_status_summary() -> None:
                     box=box.ROUNDED,
                 ))
         elif title.startswith("【个性化"):
+            # [W12 P1-6] 白名单科目标题与 study_plan 同源对齐后再渲染
+            _sync_books_titles(entries, plan)
             console.print(Panel(
                 _kv_grid(entries),
                 title=Text(_clean_md(title), style=st["title"]),

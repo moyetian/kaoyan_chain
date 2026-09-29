@@ -10,11 +10,9 @@ from typing import List
 
 try:
     from tools.cli.dispatch import Command, register
-    from tools.cli.shared import load_config, save_config
     from tools.cli.repl.renderer import C, colorize
 except ImportError:
     from cli.dispatch import Command, register
-    from cli.shared import load_config, save_config
     from cli.repl.renderer import C, colorize
 
 
@@ -134,34 +132,74 @@ def _cmd_mount(args: List[str]) -> None:
         print(colorize("[!] material_scanner 技能模块未载入", C.RED))
         return
 
-    # [P20 修复] scan_and_mount_materials 写白名单时以 study_plan["pol_name"] 作为
-    # 政治科目名，缺失则回退到 SUBJECT_FOLDER_MAP 的 label「政治」，会把方案向导与
-    # 看板使用的规范名「思想政治理论」漂移成「政治」。扫描写回前先补齐规范名；
-    # 其余科目维持原行为不变（math/eng/pro 的 label 即其规范名）。
-    try:
-        _cfg = load_config()
-        _plan = _cfg.get("study_plan")
-        if isinstance(_plan, dict) and not str(_plan.get("pol_name") or "").strip():
-            _plan["pol_name"] = "思想政治理论"
-            save_config(_cfg)
-    except Exception:
-        pass
+    apply_flag = any(a in ("--apply", "--write") for a in args)
+    yes_flag = any(a in ("-y", "--yes") for a in args)
 
     print(colorize("\n[🔍 正在智能扫描本地四科 参考资料/ 目录与考研资料库...]\n", C.CYAN))
-    mount_res = material_scanner.scan_and_mount_materials()
-    if mount_res.get("success"):
-        print(colorize(f"✔ 资料挂载完成！共扫描到 {mount_res['total_files']} 份本地参考资料与历年真题：", C.GREEN))
-        for k, flist in mount_res["details"].items():
-            label = {"math": "数学", "eng": "英语", "pol": "政治", "pro": "专业课"}.get(k, k)
-            if flist:
-                print(f"  • 【{label}】: {len(flist)} 份实体资料 -> {', '.join(flist)}")
-            else:
-                print(f"  • 【{label}】: 暂无本地资料 (私教遵循官方考纲出题)")
-        if mount_res.get("school_watch"):
-            print(colorize(f"\n[📡 研招联动]: {mount_res['school_watch']}", C.CYAN))
-        print(colorize("\n🎉 参考资料白名单与目标院校雷达已同步写回 ky_config.json 与 AGENTS.md！\n", C.GREEN))
-    else:
-        print(colorize(f"[!] 资料挂载失败: {mount_res.get('msg')}", C.RED))
+
+    # [P1-8 修复·默认只读] 先只读盘点并展示将发生的变更；写回必须显式 --apply。
+    # 此前 ky mount（0 份资料）也会把目标高校塞进简章雷达、重写 config 与 AGENTS.md
+    # 白名单（实测偷改志愿雷达），默认行为必须无副作用。
+    preview = material_scanner.scan_and_mount_materials(apply=False)
+    if not preview.get("success"):
+        print(colorize(f"[!] 资料扫描失败: {preview.get('msg')}", C.RED))
+        return
+
+    print(colorize(f"✔ 共扫描到 {preview['total_files']} 份本地参考资料与历年真题：", C.GREEN))
+    for k, flist in preview["details"].items():
+        label = {"math": "数学", "eng": "英语", "pol": "政治", "pro": "专业课"}.get(k, k)
+        if flist:
+            print(f"  • 【{label}】: {len(flist)} 份实体资料 -> {', '.join(flist)}")
+        else:
+            print(f"  • 【{label}】: 暂无本地资料 (私教遵循官方考纲出题)")
+
+    changes = preview.get("changes") or []
+    has_pending = bool(changes or preview.get("would_watch") or preview.get("would_scout"))
+    if changes:
+        print(colorize("\n[📝 以下变更将在写入时生效]:", C.YELLOW))
+        for ch in changes:
+            old_disp = ch.get("old")
+            old_disp = "（无）" if old_disp in (None, "") else str(old_disp)
+            print(f"  · {ch['target']} :: {ch['field']}")
+            print(f"      旧: {old_disp}")
+            print(f"      新: {ch['new']}")
+    if preview.get("would_watch"):
+        print(colorize(
+            f"  · 研招雷达: 将把目标高校【{preview.get('target_school')}】纳入简章动态指纹监控", C.YELLOW))
+    if preview.get("would_scout"):
+        print(colorize(f"  · 目标院校情报: 将生成 {preview['would_scout']}", C.YELLOW))
+
+    if not apply_flag:
+        if has_pending:
+            print(colorize(
+                "\n[i] 以上为只读盘点，未写入任何文件。确认无误后运行 ky mount --apply 写回（可加 -y 跳过确认）。\n",
+                C.CYAN))
+        else:
+            print(colorize("\n[i] 只读盘点完成：白名单与雷达均无变更，无需写入。\n", C.CYAN))
+        return
+
+    if not has_pending:
+        print(colorize("\n[i] 无任何变更需要写入。\n", C.CYAN))
+        return
+
+    if not yes_flag:
+        try:
+            ans = input(colorize("确认按以上预览写入 ky_config.json / AGENTS.md / 简章雷达? (y/N): ", C.YELLOW)).strip().lower()
+        except EOFError:
+            ans = ""
+        if ans not in ("y", "yes"):
+            print(colorize("[i] 已取消，未写入任何文件。\n", C.YELLOW))
+            return
+
+    result = material_scanner.scan_and_mount_materials(apply=True)
+    if not result.get("success"):
+        print(colorize(f"[!] 资料挂载失败: {result.get('msg')}", C.RED))
+        return
+    if result.get("school_watch"):
+        print(colorize(f"\n[📡 研招联动]: {result['school_watch']}", C.CYAN))
+    if result.get("scout_report"):
+        print(colorize(f"[📡 研招联动]: 目标院校专属情报已生成: {result['scout_report']}", C.CYAN))
+    print(colorize("\n🎉 参考资料白名单与目标院校雷达已按预览同步写回 ky_config.json 与 AGENTS.md！\n", C.GREEN))
 
 
 def _cmd_key(args: List[str]) -> None:
@@ -224,5 +262,7 @@ def _cmd_key(args: List[str]) -> None:
 
 # 注册资料入库命令
 register(Command('ingest', ("ingest", "--ingest"), '<试题文件路径> [--subject=pro/math]', '外部真题/试卷智能切片入库管道 (题型识别/采分点提取/白名单归档)', handler=_cmd_ingest, write=True))
-register(Command('mount', ("mount", "scan", "--mount", "--scan"), '[目录]', '挂载 / 扫描本地资料目录（白名单题源门禁扫描）', handler=_cmd_mount, write=True))
+# [P1-8 修复] mount 默认只读盘点，仅 --apply 才写回 —— 不再注册为 write=True 整体拦截，
+# 改由 shared._SAFE_MODE_WRITE_FLAGS 按 --apply 粒度判定（与 scout 同模式）。
+register(Command('mount', ("mount", "scan", "--mount", "--scan"), '[--apply] [-y]', '扫描本地资料目录（默认只读盘点；--apply 显式写回白名单与研招雷达）', handler=_cmd_mount))
 register(Command('key', ("key", "--key", "keys", "--keys"), '[list|set] <试卷编号> [题号] ["标准答案"]', '管理自测卷的加密标准答案（判卷自动采分依赖它）', handler=_cmd_key, write=True))

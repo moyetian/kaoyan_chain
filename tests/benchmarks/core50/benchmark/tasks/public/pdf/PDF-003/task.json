@@ -2,7 +2,7 @@
   "task_id": "PDF-003",
   "category": "pdf",
   "difficulty": "medium",
-  "instruction": "在 20 页 PDF 中定位关于研究生二轮考核采取何种形式的那个章节，输出该章节的**页码**与原文片段（≤80 字）。仅依据本地 fixture。",
+  "instruction": "在 20 页 PDF 中定位关于研究生二轮考核采取何种形式的那个章节，输出该章节的**页码**与原文片段（≤80 字，须覆盖考核形式、成绩要求与权重）。仅依据本地 fixture。",
   "network": "offline",
   "time_limit": 900,
   "tool_limit": 60,
@@ -68,12 +68,12 @@
         "type": "string_contains",
         "dimension": "completeness",
         "path": "$.snippet",
-        "value": ""
+        "value": "Retest method"
       }
     ],
     "rubric": null
   },
-  "version": "1.0",
+  "version": "1.1",
   "answer_format": {
     "kind": "json",
     "path": "answer"

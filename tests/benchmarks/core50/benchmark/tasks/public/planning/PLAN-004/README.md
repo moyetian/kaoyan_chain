@@ -4,7 +4,7 @@
 - tags：`fixture`, `deterministic`, `constraint`
 
 ## 考点
-依据 fixture 薄弱点诊断表，优先分配时间给薄弱知识点，校验薄弱点覆盖率 ≥80%。输出 plan 与 coverage。仅依据本地 fixture。
+依据 fixture 薄弱点诊断表，为未来 60 天制定冲刺复习计划（schedule），优先分配时间给薄弱知识点，校验薄弱点覆盖率 ≥80%。输出 schedule 与 coverage。仅依据本地 fixture。
 
 ## 陷阱
 - 只依据本地 fixture 作答，不得臆造 fixture 之外的信息。

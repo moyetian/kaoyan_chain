@@ -5,8 +5,9 @@
 核心功能：
   1. 扫描 01-数学、02-英语、03-思想政治理论、04-专业课 下的「参考资料/」真实目录
   2. 智能过滤空文件、README.md 与系统隐藏文件，识别真实试卷与真题书籍 (PDF/MD/TXT)
-  3. 原子写入更新 ky_config.json 与根目录 AGENTS.md 中的「手头资料白名单」
-  4. 自动识别学员当前目标院校 (如目标院校)，自动激活研招动态监控并生成专属研报
+  3. **默认只读盘点**：仅返回将发生的变更预览（config/AGENTS.md 白名单/研招雷达），
+     不落盘；`apply=True` 时才原子写入 ky_config.json 与根目录 AGENTS.md 白名单
+  4. `apply=True` 时同步识别学员当前目标院校并激活研招动态监控与专属研报
 """
 
 import re
@@ -19,6 +20,12 @@ try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方
     from ky_io import atomic_write_text, guard_write, PermissionDeniedError  # noqa: E402
 except ImportError:  # pragma: no cover
     from tools.ky_io import atomic_write_text, guard_write, PermissionDeniedError  # noqa: E402
+
+# [W12 P0-1] intelligence 包解析三端统一（此前此处为裸 from intelligence.watcher import）
+try:
+    from intel_imports import resolve_intel_import
+except ImportError:  # pragma: no cover - 包式导入上下文
+    from tools.intel_imports import resolve_intel_import
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -93,13 +100,23 @@ def _backup_agents(agents_file: Path, content: str) -> Optional[Path]:
         return None
 
 
-def scan_and_mount_materials(workspace_root: Optional[Path] = None, auto_scout_school: bool = True) -> Dict[str, Any]:
-    """
-    全量扫描四科参考资料，并原子写回 ky_config.json 和 AGENTS.md
+def scan_and_mount_materials(
+    workspace_root: Optional[Path] = None,
+    auto_scout_school: bool = True,
+    apply: bool = False,
+) -> Dict[str, Any]:
+    """全量扫描四科参考资料；**仅在 ``apply=True`` 时**写回 ky_config.json 与 AGENTS.md。
+
+    [P1-8 修复·默认只读] 此前该函数无条件写回：0 份资料时跑一次 ``ky mount`` 也会
+    把目标高校塞进简章雷达、重写 config 与 AGENTS.md 白名单（实测偷改志愿雷达）。
+    现拆为两段：
+      - ``apply=False``（默认）：只读盘点，返回将发生的变更预览 ``changes`` /
+        ``would_watch`` / ``would_scout``，绝不落盘；
+      - ``apply=True``：在只读盘点之上执行写回（且仅在确有变更时写文件）。
     """
     ws = Path(workspace_root) if workspace_root else ROOT
-    results = {}
-    details = {}
+    changes: List[Dict[str, Any]] = []
+    details: Dict[str, List[str]] = {}
     total_found = 0
 
     cfg_file = ws / "ky_config.json"
@@ -112,7 +129,19 @@ def scan_and_mount_materials(workspace_root: Optional[Path] = None, auto_scout_s
 
     study_plan = cfg.setdefault("study_plan", {})
 
-    # 1. 逐科扫描
+    # [P20 修复·下沉] 政治科目名缺失时规范化为「思想政治理论」（而非 SUBJECT_FOLDER_MAP
+    # 的 label「政治」）。此前该补齐逻辑在 ky mount 命令层「写回前」执行；现下沉到本函数
+    # 的内存规范化：预览与实际写回同源，且 apply=False 时不落盘。
+    if not str(study_plan.get("pol_name") or "").strip():
+        study_plan["pol_name"] = "思想政治理论"
+        changes.append({
+            "target": "ky_config.json",
+            "field": "study_plan.pol_name",
+            "old": None,
+            "new": "思想政治理论",
+        })
+
+    # 1. 逐科扫描（并记录白名单摘要将发生的变更）
     for key, (folder, config_key, label) in SUBJECT_FOLDER_MAP.items():
         found_files = scan_subject_materials(ws, folder)
         details[key] = [f.name for f in found_files]
@@ -124,83 +153,122 @@ def scan_and_mount_materials(workspace_root: Optional[Path] = None, auto_scout_s
             subj_title = study_plan.get(f"{key}_name", label)
             summary_str = f"暂未放置实体资料（私教严格按【{subj_title}】官方考纲出题，严禁虚构书目）"
 
+        old_val = study_plan.get(config_key)
+        if old_val != summary_str:
+            changes.append({
+                "target": "ky_config.json",
+                "field": f"study_plan.{config_key}",
+                "old": old_val,
+                "new": summary_str,
+            })
         study_plan[config_key] = summary_str
 
-    # 2. 目标高校自动纳入简章监控与专属情报初始化
+    # 2. 目标高校监控与专属情报：先算预览，写操作仅 apply 时执行
     target_school = study_plan.get("school") or cfg.get("target_school") or ""
     # [P1 修复·默认专业按人工智能] 此前空专业默认"人工智能"，scout 全套走 CS 模板。
     # 现保持为空，scout 侧按未知专业走待核验口径。
     target_major = study_plan.get("major") or cfg.get("target_major") or ""
     school_watch_status = ""
+    would_watch = False
+    would_scout = ""
+    scout_report = ""
 
     if target_school and target_school not in ("未指定", "目标院校"):
         try:
-            from intelligence.watcher import AdmissionWatcher
-            watcher = AdmissionWatcher()
+            watcher = resolve_intel_import().AdmissionWatcher()
             _watched_names = [str(w.get("name") or "") for w in watcher.list_watched()]
             if target_school not in _watched_names:
-                w_res = watcher.add_watch(target_school)
-                school_watch_status = f"已将目标高校【{target_school}】自动纳入简章动态指纹监控雷达"
+                would_watch = True
+                if apply:
+                    watcher.add_watch(target_school)
+                    school_watch_status = f"已将目标高校【{target_school}】自动纳入简章动态指纹监控雷达"
         except Exception:
             pass
 
         # 检查是否已为目标高校沉淀专属情报
         dossier_file = ws / "04-专业课" / f"目标院校情报_{target_school}_{target_major}.md"
         if auto_scout_school and not dossier_file.exists():
-            try:
-                from skills import school_scout
-                scout_res = school_scout.scout_school(
-                    school=target_school,
-                    major=target_major,
-                    include_social=True,
-                    save_report=True
-                )
-                if scout_res.get("saved_path"):
-                    results["scout_report"] = str(scout_res["saved_path"])
-            except Exception:
-                pass
+            would_scout = dossier_file.name
+            if apply:
+                try:
+                    try:
+                        from tools.skills import school_scout
+                    except ImportError:  # pragma: no cover - 直跑脚本上下文
+                        from skills import school_scout
+                    scout_res = school_scout.scout_school(
+                        school=target_school,
+                        major=target_major,
+                        include_social=True,
+                        save_report=True
+                    )
+                    if scout_res.get("saved_path"):
+                        scout_report = str(scout_res["saved_path"])
+                except Exception:
+                    pass
 
-    # 3. 原子写回 ky_config.json（原子性由 ky_io.atomic_write_text 统一保证）
-    try:
-        atomic_write_text(cfg_file, json.dumps(cfg, ensure_ascii=False, indent=2))
-    except Exception as e:
-        return {"success": False, "msg": f"写入 ky_config.json 失败: {e}"}
-
-    # 4. 同步更新 AGENTS.md 中的白名单说明
+    # 3. AGENTS.md 白名单预览（读文本 + 计算新文本），写盘仅在 apply 时
     agents_file = ws / "AGENTS.md"
+    agents_original = ""
+    agents_updated = ""
     if agents_file.exists():
         try:
-            agents_text = agents_file.read_text(encoding="utf-8")
-            original_text = agents_text
+            agents_original = agents_file.read_text(encoding="utf-8")
+            agents_updated = agents_original
             for key, (folder, config_key, label) in SUBJECT_FOLDER_MAP.items():
                 val = study_plan[config_key]
                 # 正则替换对应科目行
                 pattern = rf"(  - {re.escape(label)}: `)([^`]+)(`)"
-                if re.search(pattern, agents_text):
+                m = re.search(pattern, agents_updated)
+                if m and m.group(2) != val:
+                    changes.append({
+                        "target": "AGENTS.md",
+                        "field": f"{label} 白名单",
+                        "old": m.group(2),
+                        "new": val,
+                    })
                     # [P1 修复] 改用 lambda 替换：val 是真实文件名列表，
                     # 直接拼进 repl 字符串时，若文件名含反斜杠或 \g 会被解释为
                     # 正则反向引用而破坏替换结果（甚至抛 re.error）。
-                    agents_text = re.sub(
+                    agents_updated = re.sub(
                         pattern,
-                        lambda m, _v=val: f"{m.group(1)}{_v}{m.group(3)}",
-                        agents_text)
-            if agents_text != original_text:
-                # [数据保护] 白名单确实会被改写时先落一份带时间戳的备份。
-                # 否则学员临时移走资料再跑一次 ky scan，原有白名单会被静默清空
-                # 且无从找回（AGENTS.md 不在版本控制内）。
-                backup = _backup_agents(agents_file, original_text)
-                # [P1 修复] 原子写回：AGENTS.md 是主协议文件，直接 write_text 若中途
-                # 失败会留下被截断的损坏内容，改为临时文件 + replace 原子替换。
-                atomic_write_text(agents_file, agents_text)
-                if backup:
-                    print(f"  [i] 原 AGENTS.md 已备份至: {backup.name}")
+                        lambda mm, _v=val: f"{mm.group(1)}{_v}{mm.group(3)}",
+                        agents_updated)
         except Exception as e:  # 白名单同步失败不应让整次扫描失败，但必须可见
             print(f"  [!] AGENTS.md 白名单同步失败（其余结果不受影响）: {e}")
 
+    # 4. 写回阶段（仅 apply=True；且仅在确有变更时写文件）
+    if apply:
+        if any(c["target"] == "ky_config.json" for c in changes):
+            try:
+                # 原子性由 ky_io.atomic_write_text 统一保证
+                atomic_write_text(cfg_file, json.dumps(cfg, ensure_ascii=False, indent=2))
+            except Exception as e:
+                return {"success": False, "msg": f"写入 ky_config.json 失败: {e}"}
+
+        if agents_updated != agents_original:
+            try:
+                # [数据保护] 白名单确实会被改写时先落一份带时间戳的备份。
+                # 否则学员临时移走资料再跑一次 ky scan，原有白名单会被静默清空
+                # 且无从找回（AGENTS.md 不在版本控制内）。
+                backup = _backup_agents(agents_file, agents_original)
+                # [P1 修复] 原子写回：AGENTS.md 是主协议文件，直接 write_text 若中途
+                # 失败会留下被截断的损坏内容，改为临时文件 + replace 原子替换。
+                atomic_write_text(agents_file, agents_updated)
+                if backup:
+                    print(f"  [i] 原 AGENTS.md 已备份至: {backup.name}")
+            except Exception as e:  # 白名单同步失败不应让整次扫描失败，但必须可见
+                print(f"  [!] AGENTS.md 白名单同步失败（其余结果不受影响）: {e}")
+
     return {
         "success": True,
+        "mode": "apply" if apply else "scan-only",
+        "applied": bool(apply),
         "total_files": total_found,
         "details": details,
+        "changes": changes,
         "school_watch": school_watch_status,
-        "target_school": target_school
+        "would_watch": would_watch,
+        "would_scout": would_scout,
+        "scout_report": scout_report,
+        "target_school": target_school,
     }

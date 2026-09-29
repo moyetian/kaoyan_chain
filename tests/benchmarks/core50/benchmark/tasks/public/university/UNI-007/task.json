@@ -2,7 +2,7 @@
   "task_id": "UNI-007",
   "category": "university",
   "difficulty": "hard",
-  "instruction": "请整理某专业 2023–2025 连续三年官方公示的录取分数情况，逐年给出分数区间的下限与居中水平，并落成一个表格文件（≥3 行，含 year/min_score/avg_score/source_url）。",
+  "instruction": "请整理某专业 2023–2025 连续三年官方公示的录取分数情况，逐年给出最低分（分数区间下限）与平均分（居中水平），并落成一个表格文件（≥3 行，含 year/min_score/avg_score/source_url）。",
   "network": "online",
   "time_limit": 900,
   "tool_limit": 60,
@@ -114,7 +114,7 @@
       ]
     }
   },
-  "version": "1.0",
+  "version": "1.1",
   "answer_format": {
     "kind": "file",
     "filename": "report.json",

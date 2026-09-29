@@ -231,6 +231,17 @@ def test_gitignore_covers_corrupted_backup():
     assert "*.corrupted.bak" in text
 
 
+def test_gitignore_covers_manual_config_backup():
+    """[W12 修复·工作树卫生] 用户手工另存的 ky_config*.bak 同样含明文 api_key。
+
+    实测（护理三端问题修复报告 A 节）：换报考档案前手动备份的
+    ``ky_config.json.bak`` 以未跟踪文件出现在工作树里，`git add -A` 即泄露。
+    此处锁定 ``ky_config*.bak`` 通配规则（覆盖 json.bak / _backup.bak 等形态）。
+    """
+    text = Path(".gitignore").read_text(encoding="utf-8")
+    assert "ky_config*.bak" in text
+
+
 class _PosixOsShim:
     """只向 ``ky_io`` 暴露 POSIX 语义的 ``os`` 替身（其余成员透传真实 ``os``）。
 

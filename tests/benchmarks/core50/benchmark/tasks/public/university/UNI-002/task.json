@@ -2,7 +2,7 @@
   "task_id": "UNI-002",
   "category": "university",
   "difficulty": "medium",
-  "instruction": "我想确认某专业初试自命题那门业务课到底考哪一科，请把业务课的编号和正式叫法都写出来。只能依据官方材料，不许凭印象推断。",
+  "instruction": "我想确认某专业初试自命题那门业务课到底考哪一科，请把业务课的科目代码和科目名称都写出来。只能依据官方材料，不许凭印象推断。",
   "network": "online",
   "time_limit": 900,
   "tool_limit": 60,
@@ -83,5 +83,5 @@
       ]
     }
   },
-  "version": "1.0"
+  "version": "1.1"
 }

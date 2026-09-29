@@ -552,6 +552,9 @@ class AgentRunner:
         # 3. Agent 循环 (最多 max_steps 步)
         step = 0
         final_answer = ""
+        # [W11 拦截引导升级] 同类拦截连续计数（回合级作用域：GUI 每条消息新建
+        # runner、CLI 会话级复用 runner，都应以「一次 run」为计数窗口）。
+        _block_streaks = {"safety": 0, "search": 0}
         # [收尾答案] 模型若每一步都在调工具，循环会因步数耗尽而退出、final_answer
         # 保持空串（评测实测 50/50 题如此）。用两个标记支撑收尾恢复：
         #   last_assistant_text —— 最后一条非空 assistant 文本（兜底回退用）；
@@ -675,6 +678,70 @@ class AgentRunner:
                         }
                         active_messages.append(tool_msg)
 
+                        # [W10 检索行为引导] 搜索引擎直抓被拦 → 在对话流内追加明确的
+                        # 用户消息，把模型拉回 web_search。实测：系统提示级引导 + 工具
+                        # 描述强化 + 工具置顶，对 flash 级模型仍压不住「搜索=fetch 引擎」
+                        # 的强惯性（被拦后换引擎重试、猜站内 URL，也不调用 web_search）；
+                        # 在工具回包后立即追加一条直白指令是最后一道有效引导。
+                        #
+                        # [W11 拦截引导升级] 对「安全拦截」（run_command 白名单 / 脚本
+                        # 闸门）与「引擎直抓拦截」做同类连续计数：连续达到阈值后文案升级
+                        # 为「停止试探」级警告。实证动机：PLAN-003 模型连续 4 种变体试探
+                        # 合并脚本（~3 分钟）直至任务超时——单条重复文案对 flash 级模型
+                        # 惯性无效时，需要更强的信号。成功执行同类工具即重置计数
+                        # （「连续」语义，而非历史累计）。
+                        block_kind = None
+                        if fn_name == "fetch_url" and "已拦截搜索引擎直抓" in str(exec_result):
+                            block_kind = "search"
+                        elif fn_name == "run_command" and (
+                                "安全拦截：" in str(exec_result)
+                                or "PermissionDenied:" in str(exec_result)):
+                            block_kind = "safety"
+
+                        if block_kind:
+                            _block_streaks[block_kind] += 1
+                            streak = _block_streaks[block_kind]
+                            escalated = streak >= self._BLOCK_ESCALATE_THRESHOLD
+                            if block_kind == "search":
+                                if escalated:
+                                    guide = (f"（系统提示）你已连续 {streak} 次尝试直抓搜索"
+                                             f"引擎且均被拦截。此路径在本环境已被彻底禁用"
+                                             f"——更换搜索引擎、猜测站内 URL、编写脚本抓取"
+                                             f"都不会成功。唯一有效的检索方式是 web_search"
+                                             f" 工具，请立即调用 web_search"
+                                             f"(query=\"你要搜索的关键词\")，"
+                                             f"不要再用 fetch_url 打开任何搜索引擎地址。")
+                                    nudge_kind = "search_guard_escalation"
+                                else:
+                                    guide = ("（系统提示）搜索引擎直抓已被拦截。请立即调用 "
+                                             "web_search 工具完成检索"
+                                             "（如 web_search(query=\"你要搜索的关键词\")），"
+                                             "不要再尝试其他搜索引擎，也不要猜测站内 URL 路径。")
+                                    nudge_kind = "search_guard_nudge"
+                                active_messages.append({"role": "user", "content": guide})
+                                self._append_event(EVENT_USER, {"content": guide,
+                                                                "kind": nudge_kind})
+                            elif escalated:
+                                # safety 类 1-2 次不注入（拦截文案本身已含替代路径提示，
+                                # 保持既有行为）；达到阈值才注入「停止试探」警告。
+                                guide = (f"（系统提示）你已连续 {streak} 次触发命令安全拦截。"
+                                         f"本环境的命令执行已按白名单严格限制——更换命令、"
+                                         f"编写脚本、调整参数都会同样被拒，继续尝试只会"
+                                         f"浪费步数并可能导致任务超时。请立即停止命令试探，"
+                                         f"改用内置工具完成任务：读文件 read_file"
+                                         f"（PDF 自动提取文本）、搜索 grep / search_files、"
+                                         f"写产物 write_file / edit_file、真题抽题"
+                                         f"read_exam_paper。")
+                                active_messages.append({"role": "user", "content": guide})
+                                self._append_event(EVENT_USER, {"content": guide,
+                                                                "kind": "safety_guard_escalation"})
+                        else:
+                            # 成功执行同类工具 → 重置该类连续计数（「连续」语义）。
+                            if fn_name == "fetch_url":
+                                _block_streaks["search"] = 0
+                            elif fn_name == "run_command":
+                                _block_streaks["safety"] = 0
+
                         # [B3a] 记 tool_result 事件（parent 串到对应 tool_call）。
                         # 超长结果按 TOOL_RESULT_MAX_CHARS 截断存储并在 payload 标注；
                         # resume 重建不依赖 tool 事件，故截断不破坏 rebuild 语义。
@@ -737,6 +804,10 @@ class AgentRunner:
             except Exception:
                 # 闸门任何一步出问题（含 step_callback 抛错）→ 静默跳过，按现有逻辑收尾
                 break
+
+        # [W10 JSON 交付自检] 疑似 JSON 答案但语法非法（内容完整、括号/引号/
+        # 键名错位）→ 一次性语法修复，只修语法不改内容；失败保留原答案。
+        final_answer = self._repair_json_answer(final_answer, active_messages)
 
         # [B3a] 更新历史：与 session_log.rebuild_history 共用同一 compose_history
         # 语义（最近一条压缩摘要 + 最后 RESUME_TAIL_MESSAGES 条消息），
@@ -838,6 +909,10 @@ class AgentRunner:
     #: [W8-C] nudge 硬上限（保证不死循环）与每次放宽的步数预算。
     _DELIVERABLE_MAX_NUDGES = 2
     _DELIVERABLE_NUDGE_STEPS = 6
+
+    #: [W11 拦截引导升级] 同类拦截（安全拦截 / 引擎直抓拦截）连续达到该次数 →
+    #: 对话内文案升级为「停止试探」级警告（见 run() 工具执行段）。
+    _BLOCK_ESCALATE_THRESHOLD = 3
 
     #: [W8-C] 从任务文本推导「必须实际落盘产物」的保守正则（按序尝试）。
     #: 路径字符集刻意收成 ASCII（``[\w.\-/]+`` 在 Python 3 里是 Unicode 语义，
@@ -1021,6 +1096,82 @@ class AgentRunner:
             return message.get("content") or ""
         except Exception:
             return ""
+
+    # ── [W10 JSON 交付自检] ──────────────────────────────────────────────
+
+    @staticmethod
+    def _strip_code_fence(text: str) -> str:
+        """剥掉整体包裹的 markdown 代码围栏（格式归一化，不改内容）。"""
+        t = (text or "").strip()
+        if not t.startswith("```"):
+            return t
+        lines = t.splitlines()
+        if lines and lines[0].strip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        stripped = "\n".join(lines).strip()
+        return stripped or t
+
+    def _repair_json_answer(self, final_answer: str,
+                            messages: Optional[List[Dict[str, Any]]] = None) -> str:
+        """[W10 JSON 交付自检] 疑似 JSON 答案语法非法时，一次性修复（只修语法、不改内容）。
+
+        评测实测（SEARCH-008）：模型输出的答案以 ``{`` 开头、内容完整，但对象里
+        混入了无键名的裸字符串元素 → 整体非法 JSON → 判分的 json_schema 检查
+        解析失败、整题失分。这类「内容正确、语法非法」的失分与检索/推理能力
+        无关，可用一次低成本的**语法修复请求**挽回：
+
+        * 仅在答案首字符为 ``{`` / ``[`` 且 ``json.loads`` 失败时触发；
+        * 修复请求禁用工具，附上原答案与解析错误，指令明确要求**仅修复语法**、
+          不得增删或改变任何实质内容；
+        * 修复结果（剥代码围栏后）仍非法、或请求失败 → **保留原答案**（绝不伪造）；
+        * 成功时返回修复版并记 ``json_answer_repair`` 事件（不重复展示）。
+
+        成本：仅触发时多一次 LLM 调用（禁用工具、输出即答案，开销小）。
+        """
+        text = (final_answer or "").strip()
+        if text[:1] not in ("{", "["):
+            return final_answer
+        try:
+            json.loads(text)
+            return final_answer
+        except json.JSONDecodeError as exc:
+            err = f"{exc.msg}（第 {exc.lineno} 行第 {exc.colno} 列，字符 {exc.pos}）"
+        except Exception:
+            return final_answer
+        instruction = (
+            "（系统提示）你上一条最终回复以 { 或 [ 开头，本应是完整 JSON，"
+            f"但存在语法错误：{err}\n"
+            "请**仅修复 JSON 语法**（补齐或修正括号、引号、逗号、键名等），"
+            "**不得增删或改变任何实质内容**——所有事实、数字、链接、文字必须"
+            "保持原样。直接输出修复后的完整 JSON 本体：不要任何解释，不要用 "
+            "``` 代码块包裹。\n\n"
+            "=== 你上一条回复的原文 ===\n" + text
+        )
+        context: List[Dict[str, Any]] = []
+        for msg in (messages or []):
+            if isinstance(msg, dict) and msg.get("role") == "system":
+                context.append({"role": "system",
+                                "content": str(msg.get("content") or "")[:6000]})
+                break
+        repaired = self._finalize_request(context, instruction)
+        cand = self._strip_code_fence(repaired)
+        if "<tool_call>" in cand:
+            cand = cand.split("<tool_call>")[0].strip()
+        if cand[:1] not in ("{", "["):
+            return final_answer
+        try:
+            json.loads(cand)
+        except Exception:
+            return final_answer
+        self._append_event(EVENT_TOOL_RESULT, {
+            "tool_call_id": None,
+            "name": "json_repair",
+            "content": "json_answer_repair: 修复成功（仅语法，内容未改）",
+            "kind": "json_answer_repair",
+        })
+        return cand
 
     # ── [W8] 流式请求基础设施 ────────────────────────────────────────────
 

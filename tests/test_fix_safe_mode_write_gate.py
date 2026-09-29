@@ -46,6 +46,8 @@ from tools.cli import shared  # noqa: E402
 
 #: 每个「写命令」的一条**真实写形式**样例命令（用于枚举式拦截测试）。
 #: 新增 write=True 命令时必须在此补一条，否则 test_write_command_samples_are_complete 失败。
+#: 注：ky mount 自 P1-8 起默认只读（scan-only），仅 --apply 写回，已从本表移出，
+#: 其 --apply 粒度拦截见 _SAFE_MODE_WRITE_FLAGS 与 test_gate_blocks_write_escalations。
 WRITE_COMMAND_SAMPLES = {
     "build":       ["build"],
     "clawbot":     ["clawbot"],
@@ -58,7 +60,6 @@ WRITE_COMMAND_SAMPLES = {
     "key":         ["key", "set", "PAPER-1", "1", "答案：B"],
     "memory":      ["memory", "prune"],
     "menu":        ["menu"],
-    "mount":       ["mount"],
     "notify":      ["notify", "今日任务已推送"],
     "plan":        ["plan"],
     "relieve":     ["relieve"],
@@ -197,6 +198,8 @@ def test_dispatch_rejects_all_write_commands_without_touching_workspace(
     ["memory"], ["watch"], ["watch", "--list"],
     ["fetch", "watch", "--list"], ["fetch", "diff"],
     ["bridge"], ["admission", "--help"], ["mount", "--help"], ["key", "--help"],
+    # [P1-8] ky mount 默认只读盘点（scan-only），只读模式下必须放行
+    ["mount"], ["scan"],
     ["-v"], ["--version"],
 ])
 def test_gate_allows_readonly_invocations(argv):
@@ -211,6 +214,8 @@ def test_gate_allows_readonly_invocations(argv):
     ["fetch", "diff", "--save"], ["fetch", "info", "某大学", "--save"],
     ["scout", "某大学", "--save"], ["scout", "某大学", "--apply"],
     ["admission", "某大学", "--save"],
+    # [P1-8] ky mount 默认只读，但 --apply 必须按写操作拦截（含别名 ky scan --apply）
+    ["mount", "--apply"], ["scan", "--apply"],
     ["watch", "某大学"], ["watch", "--remove", "某大学"],
     # check_updates() 末尾无条件 self._save()（watcher.py:317），故 --check 是写操作
     ["watch", "--check"], ["fetch", "watch", "--check"],
@@ -254,14 +259,17 @@ def test_negative_control_gate_is_what_blocks(probe_write_handlers, monkeypatch,
 
     证明上面那些「handler 未被调用」的断言确实由本次修复支撑，而不是测试本身
     根本没走到 handler（例如命令名写错、注册表没加载）。
+
+    注：P1-8 起 ``ky mount`` 默认只读（handler 已不在写命令探针覆盖范围内），
+    故阴性对照改用仍是 write=True 的 ``ky style 2``。
     """
     monkeypatch.setattr(dispatch, "detect_safe_mode_violation", lambda args: None)
 
-    rc = dispatch.main(["--permission=safe", "mount"])
+    rc = dispatch.main(["--permission=safe", "style", "2"])
 
-    assert rc == 0, "摘掉门禁后 mount 应正常执行"
-    assert "mount" in probe_write_handlers, "阴性对照失效：即使没有门禁 handler 也没被调用"
-    assert (tmp_path / "__wrote_mount.txt").exists()
+    assert rc == 0, "摘掉门禁后写命令应正常执行"
+    assert "style" in probe_write_handlers, "阴性对照失效：即使没有门禁 handler 也没被调用"
+    assert (tmp_path / "__wrote_style.txt").exists()
 
 
 def test_negative_control_save_flag_escalation_is_what_blocks(monkeypatch):
@@ -574,7 +582,7 @@ def _run_cli_in_sandbox(root: Path, argv):
 
 
 @pytest.mark.parametrize("argv", [
-    ["mount"], ["done", "背单词"], ["plan"], ["relieve"], ["style", "2"],
+    ["mount", "--apply"], ["done", "背单词"], ["plan"], ["relieve"], ["style", "2"],
 ])
 def test_real_cli_blocks_write_commands_in_sandbox(argv, sandbox_workspace):
     """真实 CLI 子进程端到端：被拒绝（exit=3）且沙箱工作区字节不变。"""
@@ -588,6 +596,25 @@ def test_real_cli_blocks_write_commands_in_sandbox(argv, sandbox_workspace):
     assert "已拒绝" in r.stdout
     assert _snapshot(sandbox_workspace) == before, (
         f"ky {' '.join(argv)} 在只读模式下改动了沙箱工作区文件")
+
+
+def test_real_cli_mount_scan_only_is_readonly_in_sandbox(sandbox_workspace):
+    """[P1-8] 真实 CLI 子进程端到端：ky mount 默认只读盘点。
+
+    safe 模式下必须放行（exit=0），且沙箱工作区字节不变 —— 此前 mount 在 0 份资料
+    时也会写回 ky_config.json / AGENTS.md 并把目标高校塞进简章雷达。
+    """
+    before = _snapshot(sandbox_workspace)
+
+    r = _run_cli_in_sandbox(sandbox_workspace, ["mount"])
+
+    assert r.returncode == 0, (
+        f"ky mount 只读盘点在 safe 模式下被误拦或失败 (exit={r.returncode})\n"
+        f"stdout={r.stdout[-600:]}\nstderr={r.stderr[-600:]}")
+    assert "只读盘点" in r.stdout, (
+        f"未走到 scan-only 路径（输出缺少只读盘点提示）: {r.stdout[-600:]}")
+    assert _snapshot(sandbox_workspace) == before, (
+        "ky mount 默认模式改动了沙箱工作区文件（scan-only 承诺零写）")
 
 
 def test_real_cli_sandbox_control_writes_without_safe_flag(sandbox_workspace):

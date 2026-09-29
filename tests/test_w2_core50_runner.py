@@ -118,9 +118,14 @@ def stub_bench(tmp_path: Path) -> Path:
     stub_py.write_text(STUB_SRC, encoding="utf-8")
     if os.name == "nt":
         launcher = tmp_path / "stub_bench.cmd"
+        # [W12 门禁实测] .cmd 必须按 ANSI 码页（mbcs）写：cmd.exe 读批处理
+        # 不用 UTF-8。若 tmp_path 含中文（如 basetemp 落在 D:\测试\ 或用户
+        # 名是中文），UTF-8 写盘会被按 GBK 读成乱码路径 → 显式候选启动失败
+        # → find_bench_cli 静默回退到系统里真实安装的 kaoyanbench → 6 条
+        # runner 测试假红（本机实测 rc=2「can't open file '娴嬭瘯...'」）。
         launcher.write_text(
             f'@echo off\r\n"{sys.executable}" "{stub_py}" %*\r\n',
-            encoding="utf-8")
+            encoding="mbcs")
     else:
         launcher = tmp_path / "stub_bench.sh"
         launcher.write_text(

@@ -17,6 +17,7 @@ import json
 import fnmatch
 import subprocess
 import urllib.request
+from urllib.parse import urlparse, parse_qs
 from pathlib import Path
 from typing import Dict, Any, Callable, List, Optional, Sequence
 
@@ -228,6 +229,49 @@ def _note_lock_error(path: Path) -> Optional[str]:
     return None
 
 
+#: [W10 检索行为引导] 搜索引擎域名清单（判定「搜索引擎直抓」的第一条件）。
+_SEARCH_ENGINE_HOSTS = (
+    "bing.com", "baidu.com", "sogou.com", "so.com", "360.cn",
+    "duckduckgo.com", "google.com", "google.com.hk", "ecosia.org",
+    "mojeek.com", "brave.com", "marginalia.nu", "searx.be",
+    "yandex.com", "yandex.ru", "startpage.com", "qwant.com",
+)
+
+#: 搜索行为特征：查询参数名（精确匹配）或路径片段。
+_SEARCH_QUERY_KEYS = frozenset(("q", "wd", "query", "keyword", "word", "p"))
+_SEARCH_PATH_HINTS = ("/search", "/web", "/html/", "/lite", "/results")
+
+
+def _search_engine_host(url: str) -> Optional[str]:
+    """[W10] 若 URL 是「搜索引擎直抓」（域名 + 搜索行为），返回命中的域名，否则 None。
+
+    双重条件：① host 命中搜索引擎清单；② 带搜索查询参数（q/wd/query/… 精确
+    匹配参数名）或搜索路径片段。仅命中「打开引擎的静态页面」（如首页、某条已
+    选定结果）不拦截 —— 拦的是「用 fetch 代替搜索」这一行为。
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return None
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return None
+    hit = next((h for h in _SEARCH_ENGINE_HOSTS
+                if host == h or host.endswith("." + h)), None)
+    if not hit:
+        return None
+    try:
+        keys = {k.lower() for k in parse_qs(parsed.query, keep_blank_values=True)}
+    except Exception:
+        keys = set()
+    if keys & _SEARCH_QUERY_KEYS:
+        return hit
+    path = (parsed.path or "").lower()
+    if any(hint in path for hint in _SEARCH_PATH_HINTS):
+        return hit
+    return None
+
+
 class ToolDefinition:
     # level 可为 int，也可为 Callable[[dict], int]（按 action 动态定级）
     def __init__(self, name: str, desc: str, params_schema: Dict[str, Any], func: Callable, level):
@@ -266,9 +310,15 @@ class ToolRegistry:
 
         ``names`` 为 None 时返回全部工具（默认）；传入清单时只返回清单内的工具
         （收尾兜底等场景需要受限工具集）。清单内不存在的名字静默忽略。
+
+        [W10 检索行为引导] ``web_search`` 置顶：flash 级模型对「搜索=手动拼接
+        搜索引擎 URL」有强训练惯性（实测两工具极简环境下仍首选 fetch_url 抓
+        Bing），工具顺序对选择有锚定效应——把检索首选工具放在最前。
         """
         if names is None:
-            return [t.to_openai_dict() for t in self.tools.values()]
+            tools = list(self.tools.values())
+            tools.sort(key=lambda t: 0 if t.name == "web_search" else 1)
+            return [t.to_openai_dict() for t in tools]
         wanted = [str(n) for n in names]
         return [self.tools[n].to_openai_dict() for n in wanted if n in self.tools]
 
@@ -514,11 +564,12 @@ class ToolRegistry:
 
         @self.register(
             name="search_files",
-            desc="按文件名模式通配搜索工作区内的文件 (例如 *.pdf, *真题*, *中值定理*)。",
+            desc="按文件名模式通配搜索工作区内的文件 (例如 *.pdf, *真题*, *中值定理*, "
+                 "**/今日任务.md)。支持文件名与相对路径两种匹配。",
             params_schema={
                 "type": "object",
                 "properties": {
-                    "pattern": {"type": "string", "description": "文件名匹配通配符 (如 *.pdf 或 *真题*)"},
+                    "pattern": {"type": "string", "description": "文件名或相对路径通配符 (如 *.pdf、*真题*、**/今日任务.md)"},
                     "path": {"type": "string", "description": "搜索起始目录 (默认当前目录)"}
                 },
                 "required": ["pattern"]
@@ -527,15 +578,30 @@ class ToolRegistry:
         )
         def search_files(pattern: str, path: str = ".") -> str:
             start_dir = self.sandbox.resolve_safe_path(path, read_only=True)
+            # [W11 路径 glob] 原实现只对**文件名**做 fnmatch，带路径的 glob
+            # （如 `**/今日任务.md`）必然失配——多角色实测：模型调
+            # search_files('**/今日任务.md') 得到「未找到」后绕道 list_directory
+            # 才找到文件。现对「文件名」与「相对路径」同时匹配（fnmatch 的 `*`
+            # 天然跨 `/`，故 `*.md`、`*真题*` 等既有行为不变）。
+            pat = str(pattern or "").lower()
+            if pat.startswith("./"):
+                pat = pat[2:]
             matched = []
             for root, dirs, files in os.walk(start_dir):
                 for f in files:
-                    if fnmatch.fnmatch(f.lower(), pattern.lower()):
-                        full_p = Path(root) / f
-                        try:
-                            rel_str = str(full_p.relative_to(self.sandbox.workspace_root))
-                        except ValueError:
-                            rel_str = str(full_p)
+                    full_p = Path(root) / f
+                    try:
+                        rel_str = str(full_p.relative_to(self.sandbox.workspace_root))
+                    except ValueError:
+                        rel_str = str(full_p)
+                    rel_norm = rel_str.replace("\\", "/").lower()
+                    hit = (fnmatch.fnmatch(f.lower(), pat)
+                           or fnmatch.fnmatch(rel_norm, pat))
+                    if not hit and pat.startswith("**/"):
+                        # `**/x.md` 的 `**/` 前缀要求至少一层目录——对根级文件
+                        # 再试一次去前缀匹配（`今日任务.md` 在根时也能命中）。
+                        hit = fnmatch.fnmatch(rel_norm, pat[3:])
+                    if hit:
                         matched.append(rel_str)
                         if len(matched) >= 30:
                             break
@@ -827,6 +893,8 @@ class ToolRegistry:
         @self.register(
             name="fetch_url",
             desc=("获取公开网络 URL 的网页文本内容 (例如查询真题解析或考纲最新动态)。自动过滤脚本与排版噪点。"
+                  "【检索信息请优先使用 web_search 工具】——本工具适合打开已知/已选定的具体网页；"
+                  "不要拼接搜索引擎 URL 再抓取（主流引擎对直接抓取反爬，返回验证码或无关页）。"
                   "mode=auto(默认): HTTP 直连优先，被 403/SPA 空壳挡住时，若浏览器闸门已开启则自动升级渲染；"
                   "mode=http: 只直连不升级；mode=browser: 只用浏览器渲染。"),
             params_schema={
@@ -845,6 +913,21 @@ class ToolRegistry:
         def fetch_url(url: str, mode: str = "auto") -> str:
             if not url.startswith(("http://", "https://")):
                 return "Error: 仅支持 http:// 或 https:// 协议"
+            # [W10 检索行为引导] 搜索引擎直抓拦截：模型（尤其 flash 级）有
+            # 「搜索=手动拼接搜索引擎 URL」的强训练惯性——评测实测 50 题
+            # web_search 调用为 0、fetch_url 560 次且大量打在搜索引擎上
+            # （Bing/百度/DDG 反爬返回验证码或无关页），既浪费步数又拿不到
+            # 有效结果。提示词级引导压不住该惯性，故在工具层拦截并明确引导
+            # 到 web_search（多源联邦 + 真实链接 + 来源标注）。
+            engine = _search_engine_host(url)
+            if engine:
+                return (f"Error: 已拦截搜索引擎直抓（{engine}）。本环境已禁用搜索引擎"
+                        f"直接抓取——主流引擎对程序化抓取普遍反爬（验证码/无关页），"
+                        f"直抓既浪费步数又拿不到有效结果；更换其他搜索引擎重试同样会被"
+                        f"拦截。检索信息的正确方式是 **web_search 工具**，请立即改用，"
+                        f"例如：\n"
+                        f"  web_search(query=\"你要搜索的关键词\")\n"
+                        f"它返回多源联邦的真实链接与来源标注，结果 URL 可再用 fetch_url 打开。")
             mode_n = str(mode or "auto").strip().lower()
             if mode_n not in ("auto", "http", "browser"):
                 return "Error: mode 仅支持 auto / http / browser"
@@ -984,8 +1067,10 @@ class ToolRegistry:
 
         @self.register(
             name="web_search",
-            desc=("联网检索考研资讯与院校信息。返回带【真实链接】的结果（可直接用 fetch_url 打开），"
-                  "并标注来源类型（官方/公众号/社区）与失败源，便于判断证据强弱。"),
+            desc=("联网检索（多源联邦）。**任何检索/搜索类需求的首选工具**——查资料、"
+                  "找网页或文件（含 PDF 直链）、考研资讯、院校信息。返回带【真实链接】"
+                  "的结果（可直接用 fetch_url 打开），并标注来源类型（官方/公众号/社区）"
+                  "与失败源，便于判断证据强弱。"),
             params_schema={
                 "type": "object",
                 "properties": {

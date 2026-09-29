@@ -11,13 +11,18 @@ KaoYan Intelligence · 双校考研招考横向对比引擎 (School Comparator)
 
 import json
 import hashlib
+import logging
 import re
+import threading
+import time
 from typing import Dict, Any, Optional
 from pathlib import Path
 
 from .models import UniversityEntity
 from .registry import get_registry, resolve_university
 from .chsi_connector import CHSIConnector
+
+_LOG = logging.getLogger(__name__)
 
 # [根因修复·导出文件名非法字符] 落盘前统一走项目的 safe_filename（清洗 Windows
 # 非法字符 \ / : * ? " < > | 与控制字符），替代此前只 replace 斜杠的做法。
@@ -73,6 +78,14 @@ def find_duplicate_report(directory: Path, report_text: str, prefix: str = "双�
     return None
 
 
+# [W12 P0-2] 单校在线研究的墙钟预算（秒）。两校并行共享同一预算——
+# 弱网下 60s 内必有结果（未完成的学校回落本地降级并标注），
+# 此前单校研究预算 240s（agentic_research budget_s）且无熔断，
+# CLI 实测 120s 被 shell 杀掉（弱网检索慢 + 无界等待）。
+# compare(timeout=...) 可覆盖；timeout<=0 表示不熔断（等待全量研究）。
+_DEFAULT_COMPARE_TIMEOUT = 60.0
+
+
 class SchoolComparator:
     """双校招考横向对比分析器"""
 
@@ -86,10 +99,17 @@ class SchoolComparator:
         school2_query: str,
         major_keyword: str = "计算机",
         save_report: bool = False,
-        api_config: Optional[Dict[str, Any]] = None
+        api_config: Optional[Dict[str, Any]] = None,
+        timeout: Optional[float] = None,
+        quick: bool = False
     ) -> Dict[str, Any]:
         """
         对比两所高校在目标专业方向下的关键指标
+
+        :param timeout: [W12 P0-2] 单校在线研究墙钟预算（秒）。None 用默认 60s；
+                        <=0 不熔断（全量等待）。超时学校回落本地降级并标注。
+        :param quick: [W12 P0-2] 离线模式——跳过在线研究，两校直接取本地降级画像
+                      （弱网/演示场景秒级返回；数据源属性如实标注本地库）。
         """
         entity1 = resolve_university(school1_query)
         entity2 = resolve_university(school2_query)
@@ -98,8 +118,20 @@ class SchoolComparator:
         name2 = entity2.name if entity2 else school2_query
 
         # 尝试从内置权威数据库提取深度招考指标 (若有)
-        info1 = self._get_school_profile(name1, entity1, major_keyword, api_config=api_config)
-        info2 = self._get_school_profile(name2, entity2, major_keyword, api_config=api_config)
+        # [W11 两校并行] 原串行：两校各 200s 预算 → 最坏 400s 墙钟（真机实测
+        # 80.7s 完成）。并行后总墙钟 ≈ 单校最坏，实测应压到 ~40-50s。
+        # 安全性：递归守卫 _RESEARCH_DEPTH 是 threading.local——两校各自新线程
+        # 均从 depth=0 起，天然隔离；SchoolComparator 实例无运行期可变状态
+        # （registry/chsi 仅 __init__ 赋值，方法体不写 self）。
+        # [W12 P0-2] 再叠加超时熔断（daemon 线程 + 共享 deadline），
+        # 保证弱网下有界返回。
+        if quick:
+            info1 = self._fallback_profile(name1, major_keyword)
+            info2 = self._fallback_profile(name2, major_keyword)
+        else:
+            info1, info2 = self._get_two_profiles(
+                name1, entity1, name2, entity2, major_keyword, api_config,
+                timeout=timeout)
 
         # 自动对比分析
         diff_analysis = self._analyze_differences(name1, info1, name2, info2, major_keyword)
@@ -168,6 +200,92 @@ class SchoolComparator:
                 if reused_existing else ""
             ),
         }
+
+    def _get_two_profiles(
+        self,
+        name1: str,
+        entity1: Optional[UniversityEntity],
+        name2: str,
+        entity2: Optional[UniversityEntity],
+        major_keyword: str,
+        api_config: Optional[Dict[str, Any]] = None,
+        timeout: Optional[float] = None,
+    ):
+        """[W11] 并行研究两校画像；[W12 P0-2] 叠加超时熔断。
+
+        Returns: ``(info1, info2)``，与 ``_get_school_profile`` 逐键同形
+        （降级路径复用 ``dynamic_fallback_profile``，来源标注诚实）。
+
+        线程模型：daemon 线程 + 共享 deadline 的 ``join``。
+        - 不用 ThreadPoolExecutor：其上下文管理器退出时会等待全部线程，
+          ``future.result(timeout)`` 抛超时后进程仍会被未完成的检索线程拖住。
+        - daemon 线程超时后结果丢弃、不阻止进程退出；已完成的学校结果照用。
+        - ``timeout<=0`` 表示不熔断（等待全量研究）。
+        """
+        budget = _DEFAULT_COMPARE_TIMEOUT if timeout is None else float(timeout)
+        slots: Dict[int, tuple] = {}
+
+        def _worker(idx: int, school_name: str, entity) -> None:
+            try:
+                slots[idx] = ("ok", self._get_school_profile(
+                    school_name, entity, major_keyword, api_config))
+            except Exception as exc:  # pragma: no cover - 防御性
+                _LOG.warning("并行研究单校失败（%s）：%s，回落本地降级",
+                             school_name, exc)
+                slots[idx] = ("err", exc)
+
+        threads = []
+        for idx, (nm, ent) in enumerate(((name1, entity1), (name2, entity2))):
+            t = threading.Thread(target=_worker, args=(idx, nm, ent),
+                                 name=f"ky-compare-{idx}", daemon=True)
+            threads.append(t)
+            t.start()
+
+        if budget > 0:
+            deadline = time.monotonic() + budget
+            for t in threads:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                t.join(timeout=remaining)
+        else:
+            for t in threads:
+                t.join()
+
+        out = []
+        for idx, nm in enumerate((name1, name2)):
+            status, _payload = slots.get(idx, ("timeout", None))
+            if status == "ok":
+                out.append(_payload)
+            elif status == "err":
+                out.append(self._fallback_profile(nm, major_keyword))
+            else:
+                out.append(self._fallback_profile(
+                    nm, major_keyword,
+                    reason=f"本轮在线研究超时（{budget:.0f}s 预算内未完成），未经在线核验"))
+        return out[0], out[1]
+
+    @staticmethod
+    def _fallback_profile(school_name: str, major_keyword: str,
+                          reason: str = "") -> Dict[str, Any]:
+        """本地降级画像（与在线研究同源引擎）。
+
+        :param reason: 非空时附加到 ``catalog_source``（如超时降级说明），
+                       保证报告读者能区分「本地库实录」与「在线核验」。
+        """
+        try:
+            from tools.intelligence.agentic_research import get_research_engine
+            prof = get_research_engine().dynamic_fallback_profile(
+                school_name, major_keyword)
+        except Exception as exc2:  # pragma: no cover - 极端兜底
+            _LOG.warning("本地降级亦失败（%s）：%s", school_name, exc2)
+            prof = {"name": school_name,
+                    "catalog_source": "[FALLBACK 研究未完成]",
+                    "score_trend": "参照国家线与校自划线"}
+        if reason and isinstance(prof, dict):
+            _base = str(prof.get("catalog_source") or "").strip()
+            prof["catalog_source"] = f"{_base}（{reason}）" if _base else reason
+        return prof
 
     def _get_school_profile(
         self,

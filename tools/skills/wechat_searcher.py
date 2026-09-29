@@ -49,6 +49,16 @@ BROWSER_ARTICLE_LIMIT = 3
 #: 搜狗结果块标题链接选择器（跳转还原：/link?url= 需真实会话 cookie）
 _SOGOU_RESULT_LINK_SELECTOR = "div.txt-box h3 a"
 
+#: [W11 快速失败] 搜狗微信结果页的反爬/验证码特征（与 tools/search/providers/
+#: sogou.py 的 _BLOCK_MARKERS 同口径——「源不可用」不得被当成「没有文章」）。
+_WX_BLOCK_MARKERS = ("SourceVerifyCode", "请协助验证", "antispider", "请输入验证码",
+                     "您的访问过于频繁")
+
+
+def _looks_blocked(html_text: str) -> bool:
+    """结果页是否命中反爬/验证码特征。"""
+    return any(m in (html_text or "") for m in _WX_BLOCK_MARKERS)
+
 
 def _load_browser_manager():
     """惰性加载 BrowserPluginManager（双导入兼容）。
@@ -191,6 +201,29 @@ class WeChatSearchEngine(_AccountNameResolver):
     def __init__(self):
         # [P3 修复·D8] 检索源失败原因留痕，供上层区分「确实没有结果」与「源已异常」
         self.last_errors: List[str] = []
+        #: [P2-9 修复·两端口径] 本次调用各源结果清单（成功 N 条 / 失败原因），
+        #: 由 search() 落账，随 wechat_search 返回并打印在 CLI/TUI 报告头 ——
+        #: 「同关键词两端结果数不同」时先看源清单即可判定是不是反爬波动。
+        self.last_source_status: List[str] = []
+
+    def _record_source_status(self, source_name: str, err_count_before: int, count: int) -> None:
+        """记录某检索源本次调用的结果（成功 N 条 / 失败原因）。
+
+        失败判定 = 该源调用期间有**新增** last_errors（``_note_source_error`` 与
+        ``_note_source_empty`` 都会写入）——避免把「反爬拦截 / 解析 0 条」误标成
+        「成功 0 条」。
+        """
+        new_errs = self.last_errors[err_count_before:]
+        if new_errs:
+            reason = new_errs[0]
+            prefix = f"{source_name}: "
+            if reason.startswith(prefix):
+                reason = reason[len(prefix):]
+            # 去掉异常类名前缀（如 "RuntimeError: "），展示更干净
+            reason = re.sub(r"^[A-Za-z_][A-Za-z0-9_.]*Error: ", "", reason)
+            self.last_source_status.append(f"{source_name}: 失败（{reason[:80]}）")
+        else:
+            self.last_source_status.append(f"{source_name}: 成功 {count} 条")
 
     def _note_source_error(self, source_name: str, exc: Exception) -> None:
         """记录检索源异常。
@@ -232,17 +265,25 @@ class WeChatSearchEngine(_AccountNameResolver):
         if not keyword:
             return []
 
+        self.last_source_status = []
+
         if source == "local":
-            return self.search_local_cache(keyword, max_results)
+            local_items = self.search_local_cache(keyword, max_results)
+            self.last_source_status.append(f"本地缓存: 成功 {len(local_items)} 条")
+            return local_items
 
         raw_results: List[WeChatArticleItem] = []
         if source == "auto":
             # 优先搜狗，少于3条时降级 Bing，仍不足则补充本地缓存
+            _errs = len(self.last_errors)
             sogou_items = _invoke_search(self._search_sogou, keyword, max_results * 2, time_range)
+            self._record_source_status("搜狗微信", _errs, len(sogou_items))
             raw_results = list(sogou_items)
             bing_items: List[WeChatArticleItem] = []
             if len(raw_results) < 3:
+                _errs = len(self.last_errors)
                 bing_items = _invoke_search(self._search_bing, keyword, max_results * 2, time_range)
+                self._record_source_status("Bing", _errs, len(bing_items))
                 existing_urls = {r.url for r in raw_results}
                 for br in bing_items:
                     if br.url not in existing_urls:
@@ -252,8 +293,13 @@ class WeChatSearchEngine(_AccountNameResolver):
             # [P0 浏览器兜底] 搜狗与 Bing 双源均为 0 条且闸门允许时，用真实浏览器
             # 会话渲染搜狗结果页（含 /link 跳转还原）；结果如实标注来源通道。
             if not sogou_items and not bing_items:
+                _errs = len(self.last_errors)
                 browser_items = self._search_sogou_via_browser(
                     keyword, max_results * 2, time_range, should_stop)
+                if browser_items or len(self.last_errors) > _errs:
+                    self._record_source_status("浏览器兜底", _errs, len(browser_items))
+                else:
+                    self.last_source_status.append("浏览器兜底: 未启用（闸门关闭或未装 playwright）")
                 existing_urls = {r.url for r in raw_results}
                 for bi in browser_items:
                     if bi.url not in existing_urls:
@@ -262,15 +308,20 @@ class WeChatSearchEngine(_AccountNameResolver):
 
             if len(raw_results) < 2:
                 local_results = self.search_local_cache(keyword, max_results)
+                self.last_source_status.append(f"本地缓存: 成功 {len(local_results)} 条")
                 existing_urls = {r.url for r in raw_results}
                 for lr in local_results:
                     if lr.url not in existing_urls:
                         raw_results.append(lr)
                         existing_urls.add(lr.url)
         elif source == "sogou":
+            _errs = len(self.last_errors)
             raw_results = _invoke_search(self._search_sogou, keyword, max_results * 2, time_range)
+            self._record_source_status("搜狗微信", _errs, len(raw_results))
         elif source == "bing":
+            _errs = len(self.last_errors)
             raw_results = _invoke_search(self._search_bing, keyword, max_results * 2, time_range)
+            self._record_source_status("Bing", _errs, len(raw_results))
 
         # 智能重排：多因子时效性 + 考研相关度重排序
         ranked = self._rank_and_filter_results(raw_results, keyword, time_range)
@@ -351,7 +402,18 @@ class WeChatSearchEngine(_AccountNameResolver):
         pages_to_fetch = 2 if time_range in ("year", "half_year") else 1
         all_items: List[WeChatArticleItem] = []
 
+        # [W11 快速失败] 冷却接线：同进程内已被反爬标记的源直接跳过（覆盖多校
+        # 研究场景下的第二次调用）；网络失败/反爬页即时标记，避免反复硬试。
+        try:
+            from tools.search import health as _wx_health
+        except ImportError:  # pragma: no cover
+            from search import health as _wx_health  # type: ignore
+
         for p in range(1, pages_to_fetch + 1):
+            if _wx_health.is_cooling("sogou-weixin"):
+                self._note_source_error("搜狗微信", RuntimeError(
+                    _wx_health.cooldown_reason("sogou-weixin")))
+                break
             params = {
                 "type": "2",  # 2 = 搜文章
                 "query": keyword,
@@ -366,7 +428,9 @@ class WeChatSearchEngine(_AccountNameResolver):
                     from tools.search.providers._http import get_text
                 except ImportError:
                     from search.providers._http import get_text  # type: ignore
-                html_content = get_text(url, timeout=10)
+                # [W11 快速失败] timeout 10→6、max_retries 3→1：原参数最坏
+                # ~50s/页才失败（多角色实测「微信文章检索源异常」每次耗时数十秒）。
+                html_content = get_text(url, timeout=6, max_retries=1)
             except Exception as http_exc:
                 try:
                     req = urllib.request.Request(url, headers={
@@ -374,16 +438,19 @@ class WeChatSearchEngine(_AccountNameResolver):
                         "Referer": "https://weixin.sogou.com/",
                         "Accept-Language": "zh-CN,zh;q=0.9",
                     })
-                    with urllib.request.urlopen(req, timeout=10) as resp:
+                    with urllib.request.urlopen(req, timeout=6) as resp:
                         html_content = resp.read().decode("utf-8", errors="replace")
                 except Exception as e:
                     self._note_source_error("搜狗微信", e)
+                    _wx_health.mark_blocked("sogou-weixin", f"{type(e).__name__}: {e}")
                     break
 
             try:
                 items = self._parse_sogou_results(html_content)
                 if not items and p == 1:
                     self._note_source_empty("搜狗微信", len(html_content))
+                    if _looks_blocked(html_content):
+                        _wx_health.mark_blocked("sogou-weixin", "疑似反爬验证页")
                 all_items.extend(items)
             except Exception as e:
                 self._note_source_error("搜狗微信", e)
@@ -407,7 +474,9 @@ class WeChatSearchEngine(_AccountNameResolver):
                 "User-Agent": USER_AGENT,
                 "Accept-Language": "zh-CN,zh;q=0.9",
             })
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            # [W11 快速失败] timeout 10→6（Bing 为微信链路兜底源，单次请求，
+            # 不接冷却表——过度冷却会让链路完全无结果）。
+            with urllib.request.urlopen(req, timeout=6) as resp:
                 html_content = resp.read().decode("utf-8", errors="replace")
 
             items = self._parse_bing_results(html_content)[:max_results]
@@ -993,6 +1062,9 @@ def wechat_search(
         "fetched": sum(1 for i in items if i.fetched),
         # [P3 修复·D8] 检索源失败原因随结果一并上抛，供上层区分「确实没有结果」与「检索源异常」
         "source_errors": list(engine.last_errors),
+        # [P2-9 修复·两端口径] 各源结果清单（成功 N 条 / 失败原因 / 未启用），
+        # CLI 与 TUI 报告头统一打印同一份清单。
+        "source_status": list(engine.last_source_status),
         "results": [
             {
                 "title": i.title,

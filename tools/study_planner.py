@@ -329,13 +329,18 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
         print("    [1] 全国统考 408 计算机学科专业基础")
         print("    [2] 全国统考 199 管理类综合能力")
         print("    [3] 院校自命题专业课")
-        p_sel = input("  请选择专业课类型 (1/2/3) [默认: 1]: ").strip() or "1"
+        # [P2-12 修复·护理考生无预设] 308 护理综合：载入模块骨架（含【待自填】告警）
+        print("    [4] 全国统考/自命题 308 护理综合 (载入模块骨架，须按目标院校官网核验)")
+        p_sel = input("  请选择专业课类型 (1/2/3/4) [默认: 1]: ").strip() or "1"
         if p_sel == "1":
             pro_type = "408"
             pro_name = "408 计算机学科专业基础"
         elif p_sel == "2":
             pro_type = "199"
             pro_name = "199 管理类综合能力"
+        elif p_sel == "4":
+            pro_type = "308"
+            pro_name = "308 护理综合"
         else:
             pro_type = "custom"
             pro_name = input("  请输入自命题专业课科目名称与代码 [如 801 信号与系统]: ").strip() or "专业课"
@@ -1317,7 +1322,19 @@ def generate_plan_and_today_files(plan, ai_strategy=None, workspace_root=None):
 
     # 3.4 专业课
     pro_w = plan.get('pro_weakness', '')
-    pro_task_desc = "聚焦专业课官方考纲核心知识体系，完成首日题型规范度摸底" if (not pro_w or '待首次自测' in pro_w or '从零' in pro_w) else f"聚焦专业课考纲与【{pro_w}】推导"
+    # [P2-12 修复·护理话术] 专业课话术随 pro_name 切换：护理综合 (308) 的题型以
+    # 名词解释 / 简答 / 病例分析为主，通用「经典大题推导」话术会把备考方向带偏。
+    _pro_is_nursing = ("护理" in str(pro_n)) or ("308" in str(pro_n))
+    if _pro_is_nursing:
+        pro_task_desc = (
+            "梳理基础护理学与内、外科护理学核心考点，完成首日题型规范度摸底"
+            if (not pro_w or '待首次自测' in pro_w or '从零' in pro_w)
+            else f"聚焦【{pro_w}】的病例分析与护理措施推导"
+        )
+        _pro_practice = "名词解释、简答题与 1 道病例分析题，动笔完整书写"
+    else:
+        pro_task_desc = "聚焦专业课官方考纲核心知识体系，完成首日题型规范度摸底" if (not pro_w or '待首次自测' in pro_w or '从零' in pro_w) else f"聚焦专业课考纲与【{pro_w}】推导"
+        _pro_practice = "经典大题 2~3 道动笔完整书写"
     pro_task_file = ws / "04-专业课" / "_状态" / "今日任务.md"
     pro_task_file.parent.mkdir(parents=True, exist_ok=True)
     pro_label = "专业课一" if is_mode_b else "专业课"
@@ -1328,7 +1345,7 @@ def generate_plan_and_today_files(plan, ai_strategy=None, workspace_root=None):
 | 模块 | 任务内容 | 预计用时 | 完成状态 |
 |---|---|---|---|
 | 核心知识点 | {pro_task_desc} | {int(pro_h*60*0.3)} 分钟 | [ ] |
-| 习题精练 | {_material_phrase(plan.get('pro_books'), '选取')}经典大题 2~3 道动笔完整书写 | {int(pro_h*60*0.5)} 分钟 | [ ] |
+| 习题精练 | {_material_phrase(plan.get('pro_books'), '选取')}{_pro_practice} | {int(pro_h*60*0.5)} 分钟 | [ ] |
 | AI 阅卷批改 | 将草稿或解答输入 CLI (可用 /img 上传草稿照片)，逐行诊断丢分点 | {int(pro_h*60*0.2)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/pro` 或 `专业课报到` 开始今日专业课攻坚！

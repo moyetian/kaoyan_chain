@@ -9,6 +9,44 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 
 ---
 
+## 未发布 · 三端实测修复 + 发布链路隐私补漏 — 2026-09-29
+
+### 🩹 三端实测 12 条修复（P0×3 / P1×5 / P2×4）
+
+以护理考生模拟实例对 CLI / TUI / GUI 三端做全链路实测，逐条复现后修复：
+
+- **P0-1 TUI 导入崩溃**：`tools/intel_imports.py` 收敛研招模块导入为单一真源
+  （此前 TUI 直写 `from intelligence import ...`，包布局变化即 ImportError）；
+- **P0-2 `ky compare` 卡死**：离线 `--quick` 分支不再触发在线检索（超时兜底）；
+- **P0-3 `init_workspace --help` 误落盘**：`--help` 不再执行副作用初始化；
+- **P1-4 `ky scout` 传参**：TUI 入口透传 `--school1/--major` 不再丢失；
+- **P1-5 考纲 Diff 命名**：生成文件名随实际科目（英语 → 「全国统考_英语」），
+  专业课无目录时走待核验口径；
+- **P1-6 `ky status` 真源**：资料白名单标题与目标矩阵行均按 `study_plan` 同源
+  重建（占位形态重建标题、真实书目原样保留；改科目后矩阵与白名单不再自相矛盾）；
+- **P1-7 研招雷达降级**：`chsi_url` 为占位域名时仍可监控并标注「未核验」；
+- **P1-8 `ky mount` 副作用**：默认只读盘点，写回必须显式 `--apply`（此前
+  0 份资料也会偷改白名单与雷达）；
+- **P2-9 微信检索口径**：`--no-fetch` 报告显式列出「检索源」清单；
+- **P2-10 空题库退出码**：TUI 组卷无题源时 EXIT=2 并给出「未组卷」文案；
+- **P2-11 GUI 双校对标**：第二校预填档案中的备选院校（此前恒为空）；
+- **P2-12 医学门类预设**：`ky subject` 支持护理等专业代码预设与大纲骨架。
+
+### 🔒 发布链路隐私补漏（推送前全量审查）
+
+- **`.checkpoint/` 写前快照整棵排除**：`privacy_policy.DEV_SCRATCH_DIRS` +
+  `sync_publish.EXCLUDE_DIRS` 双层（快照 json 内嵌本机绝对路径、含被改文件
+  内容副本，且 json 不走内容脱敏 —— 此前会被镜像进公开副本）；
+- **《双校对标》研报整类排除**：进 `NON_PUBLISH_PATH_PATTERNS`（正文含对比
+  院校真实域名，脱敏规则只覆盖学员身份院校），与同族 `双校考情对比_*` 同口径。
+
+**测试**：全量 pytest **2344 通过 + 3 跳过**（收集 2347）；
+`test_ky_suite.py` 305 项（副本口径 300+5）；`test_new_features.py` 131 通过。
+新增 `tests/test_w12_report_fixes.py`（10 项）与
+`tests/test_fix_checkpoint_exclusion.py`（14 项，含两次单点变异阴性对照）。
+
+---
+
 ## 未发布 · 缺陷修复 — 2026-09-26
 
 ### 🩹 Agent 收尾答案 —— 步数耗尽不再返回空串（KaoYanBench 实测 +4.01 分）

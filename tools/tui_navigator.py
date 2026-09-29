@@ -34,6 +34,22 @@ if hasattr(sys.stdout, "reconfigure"):
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_FILE = ROOT / "ky_config.json"
 
+# [W12 P0-1] 与 ky_cli.py / init_workspace.py 一致：tools 目录与仓库根都入 path。
+# 此前直跑（py tools/tui_navigator.py）时 sys.path[0] 是 tools 目录而非仓库根，
+# intelligence 包内函数级绝对导入（如 agentic_research 的
+# from tools.intelligence.xxx import ...）会命中 site-packages 的空 tools
+# 命名空间包 —— 双校对标因此报 No module named 'tools.intelligence'。
+_tools_dir = Path(__file__).resolve().parent
+for _p in (str(_tools_dir), str(ROOT)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+# [W12 P0-1] intelligence 包解析三端统一（此前此处为裸 from intelligence import）
+try:
+    from intel_imports import resolve_intel_import
+except ImportError:  # pragma: no cover - 包式导入上下文
+    from tools.intel_imports import resolve_intel_import
+
 # [根因修复·日期硬编码] 初试日期/倒计时的单一事实来源，替代各端各自硬编码的 2026-12-19
 try:
     import exam_calendar
@@ -519,11 +535,16 @@ def render_menu() -> str:
 # 动作分发与业务执行器 (Action Dispatcher)
 # ════════════════════════════════════════════════════════════════
 
-def execute_action(action_key: str, interactive: bool = True, extra: dict | None = None) -> bool:
+def execute_action(action_key: str, interactive: bool = True, extra: dict | None = None,
+                   batch: bool = False) -> bool:
     """
     分发执行菜单动作。返回 False 表示退出循环，True 表示继续。
 
     extra: 非交互模式下由命令行传入的附加参数（如 compare 的第二所高校）。
+    batch: True 表示命令行批处理入口（``ky tui --action N``）——失败/未组卷时以
+        非零退出码反映结果，供脚本与 CI 判定。交互式界面（纯文本循环 / textual）
+        必须保持 False：textual 的动作在线程里执行，SystemExit 会静默杀死工作
+        线程并把界面卡在「正在执行」，单次动作失败不得踢出整个界面。
     """
     extra = extra or {}
     key = str(action_key).strip()
@@ -569,6 +590,14 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
             from skills import exam_composer
             res = exam_composer.compose_exam_paper(subject=sub, count=count, include_weak=True, save_file=True)
             print(res.get("formatted_paper") or res.get("content") or "")
+            if res.get("success") is False:
+                # [P2-10 修复·退出码分裂] 与 CLI ky exam 同口径：空题库不产卷、
+                # 复用同一「未组卷」引导文案；批处理模式（--action 2）退出码统一为 2
+                # —— 此前同一场景 CLI EXIT 2 而 TUI EXIT 0，脚本无法判定未组卷。
+                print(colorize("\n[!] 未组卷：本地暂无可用题源（按上方 3 步启动闭环指引操作）。", Colors.YELLOW))
+                if batch:
+                    sys.exit(2)
+                return True
             if res.get("saved_path"):
                 print(colorize(f"\n[+] 自测卷已落盘: {res['saved_path']}", Colors.GREEN))
         elif cmd_alias == "variant":
@@ -613,17 +642,23 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
                 elif not new_path.exists():
                     print(colorize(f"\n[!] 新大纲文件不存在: {new_path}", Colors.RED))
                 else:
-                    from intelligence.syllabus_diff import get_syllabus_diff_generator
-                    from intelligence.models import current_exam_year
-                    y_new = current_exam_year()
+                    # [W12 P0-1] 裸导入改三端统一解析（见文件头 resolve_intel_import）
+                    _intel_mod = resolve_intel_import()
+                    y_new = _intel_mod.current_exam_year()
                     y_old = y_new - 1
-                    gen = get_syllabus_diff_generator()
+                    gen = _intel_mod.get_syllabus_diff_generator()
                     _cfg = get_config_summary()
-                    # 专业名取自考生配置，与 CLI 保持一致；仅缺失时回退文件名
+                    # [W12 P1-5] 命名随实：显式参数 > 路径科目推导（公共课标「全国统考」）
+                    # > config 回退。此前恒取 config 志愿——对英语考纲比对却落盘
+                    # 「考纲变动分析_目标院校_目标专业 (专业代码)...」（张冠李戴）。
+                    _sch_inf, _maj_inf = _intel_mod.syllabus_diff.infer_diff_naming(
+                        old_path, new_path)
                     rep = gen.compare_files(
                         old_file=old_path, new_file=new_path,
-                        school=_cfg.get("school", "目标院校"),
-                        major=_cfg.get("major") or new_path.stem,
+                        school=(extra.get("school1") or _sch_inf
+                                or _cfg.get("school") or "目标院校"),
+                        major=(extra.get("major") or _maj_inf
+                               or _cfg.get("major") or new_path.stem),
                         year_old=y_old, year_new=y_new
                     )
                     saved = gen.save_diff_report(rep)
@@ -665,7 +700,11 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
             info = get_config_summary()
             school = input(f"请输入目标高校 [默认 {info['school']}]: ").strip() if interactive else ""
             if not school:
-                school = (extra.get("school") or info.get("school", "")).strip()
+                # [W12 P1-4] 非交互参数键名修正：main() 组装的是 school1/school2，
+                # 此前读 extra["school"] 恒空 —— --action 6 --school1=XX 被无视，
+                # 恒用 config 旧志愿生成研报（实测生成「目标院校」而非传入校）。
+                school = (extra.get("school1") or extra.get("school")
+                          or info.get("school", "")).strip()
             major = input(f"请输入专业 [默认 {info['major']}]: ").strip() if interactive else ""
             if not major:
                 major = (extra.get("major") or info.get("major", "")).strip()
@@ -714,8 +753,8 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
             mj = input(f"请输入专业关键词 [默认 {target_mj}]: ").strip() if interactive else ""
             if not mj:
                 mj = (extra.get("major") or "").strip()
-            from intelligence import get_school_comparator
-            comp_res = get_school_comparator().compare(
+            # [W12 P0-1] 裸导入改三端统一解析（此前直跑报 No module named 'tools.intelligence'）
+            comp_res = resolve_intel_import().get_school_comparator().compare(
                 school1_query=s1, school2_query=s2,
                 major_keyword=(mj or target_mj), save_report=True
             )
@@ -723,8 +762,8 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
             if comp_res.get("saved_path"):
                 print(colorize(f"\n[+] 双校对标研报已落盘: {comp_res['saved_path']}", Colors.GREEN))
         elif cmd_alias == "watch":
-            from intelligence.watcher import AdmissionWatcher
-            watcher = AdmissionWatcher()
+            # [W12 P0-1] 裸导入改三端统一解析
+            watcher = resolve_intel_import().AdmissionWatcher()
             watched = watcher.list_watched()
             if not watched:
                 info = get_config_summary()
@@ -777,6 +816,13 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
             from skills.wechat_searcher import wechat_search
             res = wechat_search(keyword=kw, max_results=5, fetch_content=True, save_to_local=False)
             print(colorize(f"\n[+] 微信公众号文章检索完成 (共找到 {res.get('total', 0)} 篇，抓取正文 {res.get('fetched', 0)} 篇)：", Colors.GREEN))
+            # [P2-9 修复·两端口径] 与 CLI 报告头同源打印各源成功/失败清单：
+            # 此前 TUI 只透出 stderr 的 [warn]，与 CLI 结果数不同时无从判定原因。
+            _status_line = " | ".join(res.get("source_status") or [])
+            if _status_line:
+                print(colorize(f"  检索源: {_status_line}", Colors.DIM))
+            if not res.get("results"):
+                print(colorize("  [i] 未检索到相关文章，建议更换关键词或使用 --source 显式指定数据源重试。", Colors.YELLOW))
             for idx, it in enumerate(res.get("results", [])[:5], 1):
                 st = "已抓取" if it.get("fetched") else "仅标题"
                 print(f"  [{idx}] {it.get('title')} ({it.get('account_display') or it.get('source_account') or '未识别（平台未公开）'}) "
@@ -786,6 +832,12 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
 
     except Exception as e:
         print(colorize(f"\n[!] 执行过程中发生异常: {e}", Colors.RED))
+        # [W12 P0-1] 批处理模式（--action）下异常必须反映到退出码：此前统一吞成
+        # EXIT 0，脚本/CI 无法判定失败（实测 action 7 导入崩溃仍返回 0）。
+        # 交互式界面（纯文本循环 / textual 线程）保持现状：打印后回菜单循环，
+        # 不让一次异常踢出会话，也不静默杀死 textual 的工作线程。
+        if batch:
+            sys.exit(1)
 
     try:
         sys.stdout.flush()
@@ -860,7 +912,7 @@ def run_tui_loop():
 def main():
     parser = argparse.ArgumentParser(description="考研学习链 (Kaoyan Study Chain) · 终端交互中枢 (TUI)")
     parser.add_argument("--action", "-a", type=str, default="", help="直接执行指定编号动作 (非交互模式)")
-    parser.add_argument("--school1", type=str, default="", help="[action 7 对标] 第一所高校")
+    parser.add_argument("--school1", type=str, default="", help="[action 6 院校侦察 / action 7 对标] 目标高校")
     parser.add_argument("--school2", type=str, default="", help="[action 7 对标] 第二所高校")
     parser.add_argument("--major", type=str, default="", help="[action 7 对标] 专业关键词")
     parser.add_argument("--keyword", "-k", type=str, default="", help="[action 10 公众号] 检索关键词")
@@ -889,7 +941,7 @@ def main():
             "file": args.in_file,
             "subject": args.subject,
         }
-        execute_action(args.action, interactive=False, extra=extra)
+        execute_action(args.action, interactive=False, extra=extra, batch=True)
         return
 
     run_tui_loop()

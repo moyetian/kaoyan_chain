@@ -212,3 +212,68 @@ def test_read_upstream_error_extracts_message(code, body, expect):
 
     err = urllib.error.HTTPError("u", code, "x", {}, io.BytesIO(body.encode("utf-8")))
     assert expect in doctor._read_upstream_error(err)
+
+
+# ─────────────── W12 P1-6 同类：AGENTS.md 科目标题漂移检测（纯函数） ───────────────
+
+def test_detect_agents_title_drift_flags_stale_matrix_and_whitelist():
+    """白名单标题与矩阵行首科目名滞后于 study_plan 时都要被检出。
+
+    实测场景：改 pro_name=308 护理综合 后 AGENTS.md 快照仍显旧专业，
+    doctor 必须同时报出「矩阵·科目四」与「白名单·专业课」两处漂移。
+    """
+    import doctor
+
+    plan = {"math_name": "不考数学", "eng_name": "英语一 (201)",
+            "pol_name": "思想政治理论", "pro_name": "308 护理综合"}
+    agents = (
+        "| 科目 | 目标成绩 |\n"
+        "| --- | --- |\n"
+        "| **科目一：不考数学** | **不考数学** |\n"
+        "| **科目二：000000 旧英语占位** | **65+ 分** |\n"
+        "| **科目四：000000 旧专业占位** | **120-130 分** |\n"
+        "| **合计** | **370+ 分** |\n"
+        "- **手头资料白名单 (AI 严守范围)**:\n"
+        "  - 专业课: `暂未放置实体资料（私教严格按【000000 旧专业占位】官方考纲出题，"
+        "严禁虚构书目）`\n"
+    )
+    joined = " | ".join(doctor._detect_agents_title_drift(plan, agents))
+    assert "矩阵·科目四" in joined and "308 护理综合" in joined, joined
+    assert "矩阵·科目二" in joined, joined
+    assert "白名单·专业课" in joined, joined
+    # 已与配置一致的科目一（不考数学）不得误报
+    assert "科目一" not in joined, joined
+
+
+def test_detect_agents_title_drift_clean_returns_empty():
+    """阴性对照：AGENTS.md 与 study_plan 同源时必须零漂移（防误报）。"""
+    import doctor
+
+    plan = {"math_name": "不考数学", "eng_name": "英语一 (201)",
+            "pol_name": "思想政治理论", "pro_name": "308 护理综合"}
+    agents = (
+        "| **科目一：不考数学** | **不考数学** |\n"
+        "| **科目二：英语一 (201)** | **65+ 分** |\n"
+        "| **科目四：308 护理综合** | **120-130 分** |\n"
+        "- **手头资料白名单 (AI 严守范围)**:\n"
+        "  - 专业课: `暂未放置实体资料（私教严格按【308 护理综合】官方考纲出题，"
+        "严禁虚构书目）`\n"
+    )
+    assert doctor._detect_agents_title_drift(plan, agents) == []
+
+
+def test_detect_agents_title_drift_skips_mode_b_and_c_math_row():
+    """mode_b/mode_c 的「科目一」行不是数学行（不考数学 / 199 管综），跳过不误报。"""
+    import doctor
+
+    # mode_b：双自命题，科目一恒为「不考数学」；math_name 残留旧值也不得误报
+    plan_b = {"math_name": "数学二 (302)", "eng_name": "英语一 (201)",
+              "pro_name": "801 信号与系统", "pro2_name": "802 通信原理"}
+    agents_b = "| **科目一：不考数学** | **不考数学** |\n"
+    assert doctor._detect_agents_title_drift(plan_b, agents_b) == []
+
+    # mode_c：199 管综，科目一行是管综
+    plan_c = {"math_name": "不考数学", "eng_name": "英语二 (204)",
+              "pro_name": "199 管理类综合能力", "pol_disabled": True}
+    agents_c = "| **科目一：199 管理类综合能力** | **140+ 分** |\n"
+    assert doctor._detect_agents_title_drift(plan_c, agents_c) == []

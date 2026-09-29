@@ -1,16 +1,16 @@
 {
   "files": {
     "questions_a.csv": {
-      "sha256": "28a4becef31a149c9d99de4733cd4cd9c10da56ce29231ef2738955c62cf7609",
-      "size": 951
+      "sha256": "bb93fe2f5625e7953f3ee21bcfe1dcfaf04b25aa96840e4c2cbb6bebfd11a9f7",
+      "size": 732
     },
     "questions_b.csv": {
-      "sha256": "7ff80dca0612fb6dab3ef9da2baf157d347478cce2c1d7bab7aa0073d1e4b259",
-      "size": 946
+      "sha256": "bcdfcc7e90b651dfc2829adc16b340bad232becd2e2e378ee99b389ab5e516e0",
+      "size": 717
     },
     "questions_c.csv": {
-      "sha256": "a6e7e734a24426951366dc22f12eaf08be93ebcca72f7f2e69037ed4f51f09ca",
-      "size": 925
+      "sha256": "06880fd99546ac6b0cb0b82f62991882514bf7175b1be8952a56e9da88af79b9",
+      "size": 723
     }
   },
   "task_id": "EXAM-005",

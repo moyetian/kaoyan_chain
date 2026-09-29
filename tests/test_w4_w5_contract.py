@@ -62,6 +62,37 @@ def test_contract_section_injected_with_agents_md(tmp_path):
     print("  [√] 教练版同样注入作答契约段")
 
 
+# ── 1b. [W10] 契约段新增三条规范（联网检索/规范表述/JSON 自查） ─────────
+
+
+def test_contract_section_has_search_tool_guidance(tmp_path):
+    """[W10] 联网检索引导：优先 web_search、不手动拼搜索引擎 URL（修 SEARCH-005）。"""
+    engine = _make_engine(tmp_path)
+    prompt = engine.build_system_prompt()
+    assert "优先使用 web_search" in prompt
+    assert "不要手动拼接搜索引擎 URL" in prompt
+    assert "文件形态" in prompt  # 文件直链专项检索引导
+    print("  [√] 联网检索工具选择规范已注入")
+
+
+def test_contract_section_has_data_availability_wording(tmp_path):
+    """[W10] 数据可得性规范表述：未公开时用「尚未公布」类表述（修 HAL-004）。"""
+    engine = _make_engine(tmp_path)
+    prompt = engine.build_system_prompt()
+    assert "数据可得性表述" in prompt
+    assert "尚未公布" in prompt
+    print("  [√] 数据可得性规范表述已注入")
+
+
+def test_contract_section_has_json_syntax_selfcheck(tmp_path):
+    """[W10] JSON 语法自查：对象元素必须有键名（防 SEARCH-008 型非法 JSON）。"""
+    engine = _make_engine(tmp_path)
+    prompt = engine.build_system_prompt()
+    assert "JSON 语法自查" in prompt
+    assert "不得混入无键名的裸字符串" in prompt
+    print("  [√] JSON 语法自查规范已注入")
+
+
 # ── 2. 压缩来源保留（citations 类别） ──────────────────────────────────
 
 

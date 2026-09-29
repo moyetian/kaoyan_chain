@@ -63,7 +63,12 @@ class SogouWeixinProvider(SearchProvider):
         params = {"type": "2", "query": str(query)}
         url = f"{_ENDPOINT}?{urllib.parse.urlencode(params)}"
         try:
-            html_text = get_text(url, timeout=12)
+            # [W11 快速失败] 反爬源快速放弃：原 timeout=12 × max_retries=3（默认）
+            # 最坏 ~50s 才失败——多角色实测「微信文章检索源异常」每次失败耗时
+            # 数十秒。收紧为 timeout=6 × max_retries=1（最多 2 次请求，最坏 ~13s）。
+            # 反爬验证页本身单次即抛（下方 _BLOCK_MARKERS 检查，不重试）；
+            # 此参数只影响网络类失败的重试次数。
+            html_text = get_text(url, timeout=6, max_retries=1)
         except Exception as exc:
             if safe:
                 _LOG.warning("搜狗微信抓取网络异常，优雅降级为空列表: %s", exc)

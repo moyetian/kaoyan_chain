@@ -2,7 +2,7 @@
   "task_id": "PLAN-005",
   "category": "planning",
   "difficulty": "expert",
-  "instruction": "原计划执行中要插入一段为期三周的外出实践安排，期间每天只能投入两小时。请重排后续计划，输出前后差异说明（changed_from/changed_to）。",
+  "instruction": "原计划（一份 100 天、每天 6 小时的备考计划）执行中要插入一段为期 3 周（21 天）的外出实践（实习）安排。请重排该实践期的计划：这 21 天每天只能投入 2 小时，输出这 21 天的 schedule 与前后差异说明（changed_from/changed_to）。",
   "network": "offline",
   "time_limit": 900,
   "tool_limit": 60,
@@ -106,7 +106,7 @@
       ]
     }
   },
-  "version": "1.0",
+  "version": "1.2",
   "answer_format": {
     "kind": "json",
     "path": "answer"

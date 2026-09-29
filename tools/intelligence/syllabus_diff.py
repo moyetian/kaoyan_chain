@@ -25,6 +25,44 @@ except ImportError:  # pragma: no cover
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
+#: [W12 P1-5] 科目目录 → 显示名映射（公共课考纲与具体学校无关，命名标「全国统考」）
+_SUBJECT_DIR_LABELS = {
+    "01-数学": "数学",
+    "02-英语": "英语",
+    "03-思想政治理论": "思想政治理论",
+    "04-专业课": "专业课",
+}
+
+
+def infer_diff_naming(old_path=None, new_path=None):
+    """[W12 P1-5] 按「名随实」从考纲路径推导报告命名。
+
+    此前 TUI/CLI 做 Diff 时命名恒取全局 config 志愿 —— 对英语考纲比对却落盘
+    「考纲变动分析_目标院校_目标专业 (专业代码)...」（实测张冠李戴）。本函数按
+    old/new 路径所属科目目录推导：
+
+    - 公共课目录（01-数学 / 02-英语 / 03-思想政治理论）→ ``("全国统考", 科目名)``
+    - 专业课目录（04-专业课）→ ``(None, None)``（专业课与志愿绑定，交调用方回退 config）
+    - 路径不含科目目录 → ``(None, None)``
+
+    Returns: ``(school, major)``；推导不出时为 ``(None, None)``，
+    调用方按「显式参数 > 本函数推导 > config 回退」的优先级消费。
+    """
+    for p in (new_path, old_path):
+        if not p:
+            continue
+        try:
+            parts = Path(p).parts
+        except (TypeError, ValueError):
+            continue
+        for seg in parts:
+            if seg == "04-专业课":
+                return None, None
+            subj = _SUBJECT_DIR_LABELS.get(seg)
+            if subj:
+                return "全国统考", subj
+    return None, None
+
 
 @dataclass
 class SyllabusPoint:

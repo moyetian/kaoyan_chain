@@ -2,7 +2,7 @@
   "task_id": "PLAN-003",
   "category": "planning",
   "difficulty": "medium",
-  "instruction": "在 PLAN-002 基础上加入两项要求：每周安排一次全真自测；并把备考划分成基础、强化、冲刺三个依次递进的阶段。输出计划并校验阶段边界与各阶段时长占比。",
+  "instruction": "在 PLAN-002（一份 100 天、每天 6 小时的备考计划）基础上加入两项要求：每周安排一次全真自测；并把备考划分成基础、强化、冲刺三个依次递进的阶段。输出 100 天的 schedule（每天 6 小时）并校验阶段边界与各阶段时长占比。",
   "network": "offline",
   "time_limit": 900,
   "tool_limit": 60,
@@ -102,7 +102,7 @@
     ],
     "rubric": null
   },
-  "version": "1.0",
+  "version": "1.1",
   "answer_format": {
     "kind": "json",
     "path": "answer"

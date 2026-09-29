@@ -2,7 +2,7 @@
   "task_id": "HAL-003",
   "category": "hallucination",
   "difficulty": "medium",
-  "instruction": "fixture CSV 中有一处数据打架（同一年同一专业出现了两条不同的最低分）。请把这一情况如实标记出来，不要强行调和成单一数值。仅依据本地 fixture。",
+  "instruction": "fixture CSV 中有一处数据矛盾（同一年同一专业出现了两条不同的最低分，互不一致）。请把这一矛盾如实标记出来，不要强行调和成单一数值。仅依据本地 fixture。",
   "network": "offline",
   "time_limit": 900,
   "tool_limit": 60,
@@ -94,7 +94,7 @@
     ],
     "rubric": null
   },
-  "version": "1.0",
+  "version": "1.1",
   "answer_format": {
     "kind": "json",
     "path": "answer"

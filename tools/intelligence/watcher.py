@@ -188,9 +188,17 @@ class AdmissionWatcher:
         if not entity:
             return {"success": False, "msg": f"未能识别高校【{school_query}】，请核对校名或代码"}
 
-        target_url = entity.admission_domain or entity.graduate_domain or entity.official_domain
+        # [W12 P1-7] 三域名全空时降级用研招网院校页占位（entity.chsi_url），
+        # 不再硬拒：中国医科大学（10159）等校在全国库有实体与 chsi_url 但无官网
+        # 域名，此前 watch 直接失败（实测「未配置有效招生官方域名」），
+        # 而 scout/admission 都认得该校。占位来源在记录中显式标注，
+        # 避免与真实官网监控混淆；域名数据不做未核验写入。
+        _real_domain = (entity.admission_domain or entity.graduate_domain
+                        or entity.official_domain)
+        target_url = _real_domain or getattr(entity, "chsi_url", "") or ""
         if not target_url:
             return {"success": False, "msg": f"高校【{entity.name}】未配置有效招生官方域名"}
+        _is_placeholder = not _real_domain
 
         # 立即拉取一次基线指纹
         fetch_res = self.fetcher.fetch(target_url)
@@ -206,6 +214,8 @@ class AdmissionWatcher:
             "last_hash": content_hash,
             "recent_titles": extracted_titles,
             "baseline_complete": bool(fetch_res.is_valid),
+            "source_note": ("占位来源：研招网院校页（未核验官网域名）"
+                            if _is_placeholder else ""),
             "updates": []
         }
 
@@ -218,7 +228,8 @@ class AdmissionWatcher:
             "name": entity.name,
             "url": target_url,
             "titles_count": len(extracted_titles),
-            "msg": f"已成功将【{entity.name}】纳入动态招生监控雷达"
+            "msg": (f"已成功将【{entity.name}】纳入动态招生监控雷达"
+                    + ("（占位来源：研招网院校页，未核验官网域名）" if _is_placeholder else ""))
         }
 
     def remove_watch(self, school_query: str) -> bool:

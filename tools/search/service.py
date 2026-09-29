@@ -140,7 +140,8 @@ class SearchService:
         active = self.providers(q.providers)
         if not active:
             reasons = cooling or [("*", "没有可用的检索源（未安装可选依赖或被网络策略拦截）")]
-            return SearchResponse(query=q.text, providers_failed=tuple(reasons), year=q.year)
+            return SearchResponse(query=q.text, providers_failed=tuple(reasons),
+                                  providers_cooling=tuple(cooling), year=q.year)
 
         collected: List[SearchResult] = []
         used: List[str] = []
@@ -197,7 +198,8 @@ class SearchService:
 
         return SearchResponse(
             query=q.text, results=results, providers_used=tuple(used),
-            providers_failed=tuple(failed), candidates=candidates,
+            providers_failed=tuple(failed), providers_cooling=tuple(cooling),
+            candidates=candidates,
             duplicates=removed, queries_run=1, year=q.year,
         )
 
@@ -419,8 +421,15 @@ def format_results(response: SearchResponse, *, show_scores: bool = False) -> st
         lines = [f"【检索】{response.query}", response.summary_line()]
         for name, why in response.providers_failed:
             lines.append(f"  - 失败源 {name}: {why}")
-        lines.append("  未找到结果：可能是资料确实不存在，也可能是检索源未覆盖 —— "
-                     "详见上面的失败源列表。")
+        # [W11 全源冷却] 检索能力暂时归零 ≠ 资料不存在：给出专属降级话术，
+        # 明确「勿立即重试」并指出去哪（工作区资料），避免模型在死路上烧步数。
+        if response.all_failed_cooling:
+            lines.append("  全部检索源暂处于反爬冷却期（暂时不可用，稍后自动恢复）——"
+                         "这不代表资料不存在；请勿立即重试同一查询，"
+                         "可先改用工作区资料或稍后再试。")
+        else:
+            lines.append("  未找到结果：可能是资料确实不存在，也可能是检索源未覆盖 —— "
+                         "详见上面的失败源列表。")
         return "\n".join(lines)
 
     out = [f"【检索】{response.query}", response.summary_line(), ""]

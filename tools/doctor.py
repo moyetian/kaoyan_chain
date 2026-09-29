@@ -12,6 +12,7 @@
 
 import sys
 import json
+import re
 import socket
 from pathlib import Path
 
@@ -99,6 +100,50 @@ def _classify_chat_error(code: int, upstream_msg: str = "") -> tuple:
     if code in (400, 404):
         return None, "incompatible", f"HTTP {code} 参数/路由不兼容{suffix}"
     return False, "unavailable", f"HTTP {code}{suffix}"
+
+
+def _detect_agents_title_drift(plan: dict, agents_txt: str) -> list:
+    """AGENTS.md 中「白名单标题」与「目标矩阵行首科目名」相对 study_plan 的漂移。
+
+    [W12 P1-6 同类] 这两处都只是 ky plan/init 写入的快照；``ky subject`` 改科目
+    （如专业课 → 308 护理综合）后不会重写它们。纯函数，供 doctor 只读检测。
+
+    矩阵行边界：科目三由写入端硬编码「思想政治理论」不检查；mode_b/mode_c 的
+    「科目一」行分别承载「不考数学」/「199 管理类综合能力」语义，跳过避免误报。
+    """
+    drifts = []
+    name_keys = {"数学": "math_name", "英语": "eng_name",
+                 "政治": "pol_name", "专业课": "pro_name"}
+    for label, nk in name_keys.items():
+        title = str(plan.get(nk) or "").strip()
+        if not title:
+            continue
+        for line in agents_txt.splitlines():
+            s = line.strip()
+            if (s.startswith("- ") and s[2:].startswith(label)
+                    and "暂未放置实体资料" in s and "【" in s):
+                cur = s.split("【", 1)[1].split("】", 1)[0].strip()
+                if cur and cur != title:
+                    drifts.append(f"白名单·{label}（AGENTS: {cur} ≠ 配置: {title}）")
+                break
+    pro_name = str(plan.get("pro_name") or "").strip()
+    pro2_name = str(plan.get("pro2_name") or "").strip()
+    exam_mode = str(plan.get("exam_mode") or "")
+    is_mode_b = exam_mode in ("mode_b", "no_math_dual_pro") or bool(pro2_name)
+    is_mode_c = (exam_mode in ("mode_c", "mgmt_199")
+                 or bool(plan.get("pol_disabled")) or "199" in pro_name)
+    matrix_keys = [("科目二", "eng_name"), ("科目四", "pro_name"),
+                   ("科目五", "pro2_name")]
+    if not (is_mode_b or is_mode_c):
+        matrix_keys.insert(0, ("科目一", "math_name"))
+    for prefix, nk in matrix_keys:
+        title = str(plan.get(nk) or "").strip()
+        if not title:
+            continue
+        m = re.search(rf"\|\s*\*\*{prefix}：([^*|]+?)\s*\*\*\s*\|", agents_txt)
+        if m and m.group(1).strip() and m.group(1).strip() != title:
+            drifts.append(f"矩阵·{prefix}（AGENTS: {m.group(1).strip()} ≠ 配置: {title}）")
+    return drifts
 
 
 def check_item(title, ok, detail_ok="", detail_fail="", warn=False):
@@ -323,6 +368,33 @@ def run_doctor(return_summary=False):
             warnings += 1
         else:
             check_item(f"学科规范 [{subj_dir}]", True, "核心协议与状态文件齐全")
+
+    # [W12 P1-6] AGENTS.md 科目标题 vs study_plan 单一真源一致性（只读）：
+    # 白名单与目标矩阵都只是上次写入的快照，mount 后若改 pro_name（如换报考
+    # 专业），AGENTS.md 会滞后成旧科目（实测改 308 护理综合后仍显 618 马原）。
+    # status 渲染已按 study_plan 重建，此处体检文件是否漂移；漂移为可自愈提示
+    # （白名单跑 ky mount、矩阵行跑 ky plan 同步），不阻断。
+    try:
+        _cfg_path = ROOT / "ky_config.json"
+        _plan = {}
+        if _cfg_path.exists():
+            _plan = (json.loads(_cfg_path.read_text(encoding="utf-8"))
+                     or {}).get("study_plan", {}) or {}
+        _agents_txt = (agents_root.read_text(encoding="utf-8", errors="ignore")
+                       if agents_root.exists() else "")
+        _drifts = _detect_agents_title_drift(_plan, _agents_txt)
+        if _drifts:
+            check_item("AGENTS.md 科目标题与配置一致", False, "",
+                       "AGENTS.md 科目标题滞后于 ky_config.json: "
+                       + "; ".join(_drifts)
+                       + " —— 白名单可跑 ky mount 同步，矩阵行可跑 ky plan 同步",
+                       warn=True)
+            warnings += 1
+        else:
+            check_item("AGENTS.md 科目标题与配置一致", True,
+                       "白名单与矩阵行科目名均与 study_plan 同源")
+    except Exception as _e:
+        check_item("AGENTS.md 科目标题与配置一致", True, f"跳过检查（{_e}）", warn=True)
 
     # ── 3.5 本地真实考研资料库（只读盘点）──
     # [P6 修复·只读承诺] doctor 是纯诊断命令，此前却调用了

@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
-"""P16 / P20 残留缺陷回归测试。
+"""P16 / P20 / P1-8 残留缺陷回归测试。
 
 - P16：``ky plan`` 的 EOF 提示不得写死向导输入项数（该数目随报考画像变化，
   例如不考数学的文科考生会少若干数学问项），否则必然漂移。
 - P20：``ky mount`` 写回白名单时，政治科目名在 ``study_plan.pol_name`` 缺失时
   必须回退到规范名「思想政治理论」，而不是 ``SUBJECT_FOLDER_MAP`` 的 label
-  「政治」（与方案向导 / 看板口径不一致）。
+  「政治」（与方案向导 / 看板口径不一致）。[P1-8] 该补齐逻辑已下沉到
+  ``material_scanner.scan_and_mount_materials`` 的内存规范化。
+- P1-8：``ky mount`` 默认只读盘点（scan-only，零写盘、零联网），仅 ``--apply``
+  显式写回（写前打印 diff 并确认，``-y`` 跳过确认）。
 """
 
 import json
@@ -29,45 +32,159 @@ def test_plan_eof_hint_has_no_hardcoded_item_count(monkeypatch, capsys):
     assert "ky plan" in out
 
 
-def _run_mount_with_fake_scanner(monkeypatch, tmp_path, initial_plan):
-    """在 tmp 配置上跑 ``_cmd_mount``，返回扫描器实际读到的 study_plan。"""
-    import tools.cli.shared as shared
+def _seed_mount_workspace(tmp_path, plan):
+    """最小工作区：ky_config.json + 带白名单四行的 AGENTS.md + 空资料目录。"""
+    cfg_file = tmp_path / "ky_config.json"
+    cfg_file.write_text(
+        json.dumps({"study_plan": dict(plan)}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (tmp_path / "AGENTS.md").write_text(
+        "# 顶层总控协议\n\n- **手头资料白名单 (AI 严守范围)**:\n"
+        "  - 数学: `旧数学`\n"
+        "  - 英语: `旧英语`\n"
+        "  - 政治: `旧政治`\n"
+        "  - 专业课: `旧专业课`\n",
+        encoding="utf-8",
+    )
+    for folder in ("01-数学", "02-英语", "03-思想政治理论", "04-专业课"):
+        (tmp_path / folder / "参考资料").mkdir(parents=True, exist_ok=True)
+    return cfg_file
+
+
+# ── P1-8：ky mount 默认只读盘点，--apply 显式写回 ──────────────────────
+
+def test_scan_only_default_does_not_write(tmp_path):
+    """P1-8：scan_and_mount_materials 默认（apply=False）零写盘，只返回变更预览。"""
+    from tools.skills import material_scanner
+
+    cfg_file = _seed_mount_workspace(tmp_path, {"school": "", "major": ""})
+    before_cfg = cfg_file.read_bytes()
+    before_agents = (tmp_path / "AGENTS.md").read_bytes()
+
+    res = material_scanner.scan_and_mount_materials(tmp_path, auto_scout_school=False)
+
+    assert res["success"] is True and res["applied"] is False
+    assert res["mode"] == "scan-only"
+    assert res["changes"], "只读盘点应给出将发生的变更预览"
+    assert cfg_file.read_bytes() == before_cfg, "scan-only 不得改写 ky_config.json"
+    assert (tmp_path / "AGENTS.md").read_bytes() == before_agents, "scan-only 不得改写 AGENTS.md"
+    assert not (tmp_path / ".memory").exists(), "scan-only 不得落任何备份/目录"
+
+
+def test_scan_apply_seeds_canonical_pol_name(tmp_path):
+    """P20（下沉后）：apply 写回时 pol_name 缺失必须补齐规范名「思想政治理论」。"""
+    from tools.skills import material_scanner
+
+    cfg_file = _seed_mount_workspace(tmp_path, {"school": "", "major": ""})
+    res = material_scanner.scan_and_mount_materials(tmp_path, auto_scout_school=False, apply=True)
+
+    assert res["success"] is True and res["applied"] is True
+    data = json.loads(cfg_file.read_text(encoding="utf-8"))
+    assert data["study_plan"]["pol_name"] == "思想政治理论"
+    assert any(c["field"] == "study_plan.pol_name" for c in res["changes"])
+
+
+def test_scan_apply_preserves_existing_pol_name(tmp_path):
+    """P20（下沉后）：已有 pol_name（含考生自定义）不得被覆盖，eng_name 行为不变。"""
+    from tools.skills import material_scanner
+
+    cfg_file = _seed_mount_workspace(tmp_path, {"pol_name": "政治", "eng_name": "英语一 (201)"})
+    material_scanner.scan_and_mount_materials(tmp_path, auto_scout_school=False, apply=True)
+
+    data = json.loads(cfg_file.read_text(encoding="utf-8"))
+    assert data["study_plan"]["pol_name"] == "政治"
+    assert data["study_plan"]["eng_name"] == "英语一 (201)"
+
+
+def _fake_scanner_factory(calls, payload=None):
+    """构造记录 apply 实参的假扫描器；默认返回一条待写变更。"""
+    def _fake(workspace_root=None, auto_scout_school=True, apply=False):
+        calls.append(apply)
+        base = {
+            "success": True, "total_files": 0, "details": {},
+            "changes": [{"target": "ky_config.json", "field": "study_plan.pro_books",
+                         "old": None, "new": "暂未放置实体资料"}],
+            "would_watch": False, "would_scout": "", "school_watch": "",
+        }
+        if payload:
+            base.update(payload)
+        return base
+    return _fake
+
+
+def test_mount_default_is_scan_only(monkeypatch, capsys):
+    """P1-8：ky mount 默认只读 —— scanner 以 apply=False 调用，输出提示 --apply。"""
     from tools.cli.commands import material
     from tools.skills import material_scanner
 
-    cfg_file = tmp_path / "ky_config.json"
-    cfg_file.write_text(
-        json.dumps({"study_plan": dict(initial_plan)}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    # conftest 已把 CONFIG_FILE 重定向到 tmp_path，这里再显式钉死一次，确保断言对象一致
-    monkeypatch.setattr(shared, "CONFIG_FILE", cfg_file, raising=False)
+    calls = []
+    monkeypatch.setattr(material_scanner, "scan_and_mount_materials", _fake_scanner_factory(calls))
 
-    seen = {}
-
-    def _fake_scan(workspace_root=None, auto_scout_school=True):
-        data = json.loads(cfg_file.read_text(encoding="utf-8"))
-        seen["plan"] = data.get("study_plan", {})
-        return {"success": True, "total_files": 0, "details": {}, "school_watch": ""}
-
-    monkeypatch.setattr(material_scanner, "scan_and_mount_materials", _fake_scan)
     material._cmd_mount(["mount"])
-    return seen["plan"]
+
+    assert calls == [False], "默认模式必须以只读方式调用扫描器"
+    out = capsys.readouterr().out
+    assert "只读盘点" in out
+    assert "--apply" in out
 
 
-def test_mount_seeds_canonical_pol_name_when_missing(monkeypatch, tmp_path):
-    """P20：pol_name 缺失时，写回前补齐规范名「思想政治理论」。"""
-    plan = _run_mount_with_fake_scanner(monkeypatch, tmp_path, {"school": "示例院校A"})
-    assert plan.get("pol_name") == "思想政治理论"
+def test_mount_apply_confirms_before_write(monkeypatch):
+    """P1-8：ky mount --apply 写前确认；输入 y 后以 apply=True 写回。"""
+    from tools.cli.commands import material
+    from tools.skills import material_scanner
+
+    calls = []
+    monkeypatch.setattr(material_scanner, "scan_and_mount_materials", _fake_scanner_factory(calls))
+    monkeypatch.setattr("builtins.input", lambda *a, **k: "y")
+
+    material._cmd_mount(["mount", "--apply"])
+
+    assert calls == [False, True]
 
 
-def test_mount_preserves_existing_pol_name(monkeypatch, tmp_path):
-    """P20：已有 pol_name（含考生自定义）不得被覆盖，其它科目行为不变。"""
-    plan = _run_mount_with_fake_scanner(
-        monkeypatch, tmp_path, {"pol_name": "政治", "eng_name": "英语一 (201)"}
-    )
-    assert plan.get("pol_name") == "政治"
-    assert plan.get("eng_name") == "英语一 (201)"
+def test_mount_apply_cancel_writes_nothing(monkeypatch, capsys):
+    """P1-8：确认被拒绝（n）时不得写回。"""
+    from tools.cli.commands import material
+    from tools.skills import material_scanner
+
+    calls = []
+    monkeypatch.setattr(material_scanner, "scan_and_mount_materials", _fake_scanner_factory(calls))
+    monkeypatch.setattr("builtins.input", lambda *a, **k: "n")
+
+    material._cmd_mount(["mount", "--apply"])
+
+    assert calls == [False], "取消后不得再以 apply=True 调用扫描器"
+    assert "已取消" in capsys.readouterr().out
+
+
+def test_mount_apply_yes_flag_skips_confirmation(monkeypatch):
+    """P1-8：-y 跳过确认直接写回（不得调用 input）。"""
+    from tools.cli.commands import material
+    from tools.skills import material_scanner
+
+    calls = []
+    monkeypatch.setattr(material_scanner, "scan_and_mount_materials", _fake_scanner_factory(calls))
+    monkeypatch.setattr("builtins.input", lambda *a, **k: pytest.fail("不应调用 input"))
+
+    material._cmd_mount(["mount", "--apply", "-y"])
+
+    assert calls == [False, True]
+
+
+def test_mount_apply_no_pending_changes_skips_write(monkeypatch, capsys):
+    """P1-8：无任何变更时 --apply 直接跳过，不进入写回。"""
+    from tools.cli.commands import material
+    from tools.skills import material_scanner
+
+    calls = []
+    monkeypatch.setattr(material_scanner, "scan_and_mount_materials",
+                        _fake_scanner_factory(calls, payload={"changes": []}))
+
+    material._cmd_mount(["mount", "--apply", "-y"])
+
+    assert calls == [False]
+    assert "无任何变更" in capsys.readouterr().out
 
 
 # ── R2-A4：不考数学时 CLI 文案/路由必须跟随 ──────────────────────
