@@ -274,6 +274,18 @@ NON_PUBLISH_PATH_PATTERNS: Tuple[Tuple[Tuple[str, ...], str], ...] = (
 #: 里是能跑通的，整目录排除会让公开仓库失去全部回归测试（有专门用例钉住这一点）。
 PRIVATE_WORKSPACE_ONLY_PATHS: Tuple[Tuple[str, ...], ...] = (
     ("tests", "test_fix_publish_privacy.py"),
+    # [W12 补漏] 同族：本文件测 sync_publish 的排除名单与 python_mirror 遍历
+    # （sp.dir_should_exclude / sp.file_should_exclude / sp.python_mirror /
+    # sp.SRC·DST·DRY_RUN / sp.EXCLUDE_DIRS），而 sync_publish 在公开副本里是
+    # 4 行占位 → 副本 CI 必 AttributeError。教训：新增「测占位工具的测试」时
+    # 必须同批进本清单（本次由推送后自查拦下；同类判据 = grep 该测试是否
+    # import sync_publish / build_package，且目标模块在副本里被 neutralize）。
+    ("tests", "test_fix_checkpoint_exclusion.py"),
+    # 显式化加固：此前靠 BACKUP_MARK 的 ``_backup_`` 子串**巧合**排除
+    # （文件名 test_fix_config_backup_exclusion.py 含 "_backup_"），语义脆弱 ——
+    # 同族引用 sp.dir_should_exclude / sp.file_should_exclude / sp.EXCLUDE_DIRS，
+    # 一旦 BACKUP_MARK 判据调整就会漏进副本。
+    ("tests", "test_fix_config_backup_exclusion.py"),
 )
 
 #: 备份文件标记：任何带此标记的文件都是历史快照，绝不发布（含私有目录白名单内）。
