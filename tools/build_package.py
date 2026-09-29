@@ -19,8 +19,9 @@
 
 import fnmatch
 import os
-import sys
 import shutil
+import stat
+import sys
 import subprocess
 import tempfile
 from functools import lru_cache
@@ -32,7 +33,7 @@ TOOLS = ROOT / "tools"
 
 
 def get_app_version() -> str:
-    """动态获取项目版本号，优先从 tools/version.py 或 pyproject.toml 读取，兜底 3.1.0"""
+    """动态获取项目版本号，优先从 tools/version.py 或 pyproject.toml 读取，兜底 3.1.1"""
     try:
         from version import get_version
         v = get_version()
@@ -60,7 +61,7 @@ def get_app_version() -> str:
         except Exception:
             pass
 
-    return "3.1.0"
+    return "3.1.1"
 
 
 def check_prerequisites() -> bool:
@@ -171,8 +172,13 @@ def collect_data_specs(staging_root: Path) -> List[str]:
         datas.append(f"{out_dir}{sep}{dst}")
         print(f"  [stage] {src}/ → {kept} 个文件（按隐私策略剔除 {skipped} 个）")
 
-    # 必需根目录文件（单文件，无私有目录风险）
-    for f in ["AGENTS.md", "GEMINI.md", "README.md", "00_考研全科总战役规划.example.md"]:
+    # 必需根目录文件（单文件，无私有目录风险）。
+    # [v3.1.1 修复·冻结版本读取] pyproject.toml 必须随包分发：冻结环境下
+    # tools/version.py 会回落到读 `_MEIPASS/pyproject.toml`，此前未随包 →
+    # 程序内版本显示 "0.0.0+unknown"（实测旧产物 `_internal/tools/version.py`
+    # 输出确认）。该文件为公开元数据，无隐私风险。
+    for f in ["AGENTS.md", "GEMINI.md", "README.md",
+              "00_考研全科总战役规划.example.md", "pyproject.toml"]:
         fp = ROOT / f
         if fp.exists():
             datas.append(f"{fp}{sep}.")
@@ -492,6 +498,29 @@ def sanitize_product(target_dir: Path, *, skip_rels=()) -> List[Path]:
     print(f"  [sanitize] 内容级脱敏完成：改写 {len(changed)} 个文件"
           f"（规则 md {len(md_rules)} 条 / py {len(py_rules)} 条）")
     return changed
+
+
+def _clear_readonly_attrs(path: Path) -> None:
+    """递归清除只读属性（Windows）：产物从工作区继承的 ReadOnly 会让
+    下一次构建的 PyInstaller ``--clean`` 在 ``_rmtree`` 时抛 WinError 5。
+
+    实测（2026-09-29）：工作区 ``01-数学/_状态`` 等目录带 ReadOnly → 上次
+    构建产物继承 → 重构建删除旧 dist 时报 ``PermissionError: [WinError 5]``。
+    ``shutil.rmtree`` 对只读目录不可靠，必须在构建前主动清属性（而非删目录）。
+    """
+    if os.name != "nt":
+        return
+    targets = [path]
+    if path.is_dir():
+        try:
+            targets.extend(path.rglob("*"))
+        except OSError:
+            pass
+    for p in targets:
+        try:
+            p.chmod(p.stat().st_mode | stat.S_IWRITE)
+        except OSError:
+            pass
 
 
 def _pyinstaller_base_args(dist_dir: Path, build_dir: Path) -> List[str]:
@@ -895,6 +924,10 @@ def _build_with_staging(staging_root: Path, dry_run: bool = False,
               "需要完整的构建后残留自检请用默认的独立目录模式。")
         sanitize_product(staging_root, skip_rels=_pp.PY_UNSANITIZED_FILES)
 
+    # [v3.1.1 修复·只读属性] 上次产物从工作区继承的 ReadOnly 会让
+    # PyInstaller 清理旧 dist 时报 WinError 5（实测 01-数学/_状态）。
+    _clear_readonly_attrs(dist_dir / "KaoyanStudyChain")
+    _clear_readonly_attrs(build_dir)
     print(f"\n[*] 正在启动 PyInstaller 进行独立发布包编译 v{app_version}（可能需要 1~3 分钟）...")
     ret = subprocess.call(cmd)
     if ret == 0:

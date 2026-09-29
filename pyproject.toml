@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kaoyan-study-chain"
-version = "3.1.0"
+version = "3.1.1"
 description = "考研全科 AI 私人教师与全自动备考总控系统 (Kaoyan Study Chain)"
 readme = "README.md"
 requires-python = ">=3.10"

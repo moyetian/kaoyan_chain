@@ -318,6 +318,40 @@ def test_tests_dir_is_immune_to_py_sanitization():
         f"{offenders}")
 
 
+def test_tools_dir_is_immune_to_py_sanitization():
+    """``tools/`` 下所有 .py（除 ``PY_UNSANITIZED_FILES`` 豁免）必须对脱敏免疫。
+
+    为什么这条同样关键（2026-09-29 实测）：``build_package.py`` 用
+    ``--collect-all tools`` 把**真实源码**编译进 exe 内嵌 PYZ（zlib 压缩），
+    内容级脱敏（``sanitize_product``）只改产物树里的**文本副本**、改不到 PYZ
+    —— 源码里若含真实身份，发布包 exe 的 PYZ 层就会残留：实测 v3.1.0 公开
+    发布包 9 个模块残留（首启向导默认值 / LLM schema 示例 / 测试探针等），
+    ``strings`` 或解包即可提取。本断言钉住「tools/ 源码不含真实身份」不变量。
+
+    豁免（``PY_UNSANITIZED_FILES``）：规则表自身与公开高校库映射 —— 前者改了
+    会破坏规则、后者是功能数据（全国高校列表），两者按设计保留。
+
+    阴性对照：把任意 .py 里的中性值改回真实身份，本用例必须变红。
+    """
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    rules = pp.build_py_substitutions(root)
+    offenders = []
+    for f in sorted((root / "tools").rglob("*.py")):
+        rel = f.relative_to(root).as_posix()
+        if rel in pp.PY_UNSANITIZED_FILES:
+            continue
+        try:
+            text = f.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        if pp.sanitize_text(text, rules) != text:
+            offenders.append(rel)
+    assert not offenders, (
+        "以下 tools/ 源码含当前真实身份 —— 会被编译进发布包 exe 的 PYZ 层残留"
+        f"（文本脱敏改不到 PYZ）：{offenders}")
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # [2026-09-21 补漏] 两类漏网形态：括号包裹的代码 + 院校 pinyin 域名
 # ══════════════════════════════════════════════════════════════════════════

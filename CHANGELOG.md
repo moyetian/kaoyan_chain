@@ -9,7 +9,11 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 
 ---
 
-## 未发布 · 三端实测修复 + 发布链路隐私补漏 — 2026-09-29
+## [3.1.1] — 2026-09-29（当前发布版本）
+
+> 自 v3.1.0 以来的累积更新：作答质量与评测批次（W1–W13）、发布链路隐私补漏与
+> 本地完整 / 发布脱敏双模式、四端界面升级，外加收尾答案恢复修复与多轮实测消缺。
+> 版本号真源 `pyproject.toml`。
 
 ### 🩹 三端实测 12 条修复（P0×3 / P1×5 / P2×4）
 
@@ -118,15 +122,11 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
   CLI 一行 P2 组（`ky menu` batch、search usage 解释器提示、`/paste` 补档、
   TUI `[0-10]`）/ 文档残留（操作手册 `ky commands`、SETUP 5 Tab、README 编号）。
 
-**测试**：全量 pytest **2439 通过 + 3 跳过**（收集 2442）；`test_ky_suite.py`
+**测试**：全量 pytest **2441 通过 + 3 跳过**（收集 2444）；`test_ky_suite.py`
 **307 项**（Git 工作区口径；副本口径 302+5）；`test_new_features.py` 131 通过；
 `ci_evaluate_gate` 三路径全绿；`lint_check` 0 错误；`check_dashboard` 全绿
 （含真浏览器运行时）；模拟真实用户端到端 **27/27**（双模式四段 + 阴性对照 +
 97 个受控文件字节不变）。
-
----
-
-## 未发布 · 缺陷修复 — 2026-09-26
 
 ### 🩹 Agent 收尾答案 —— 步数耗尽不再返回空串（KaoYanBench 实测 +4.01 分）
 
@@ -154,9 +154,57 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
   - 残留短板：`json_schema`（22/22）与 `numeric`（10/10）仍全灭 —— 收尾答案的
     **格式遵从**（评测契约要求纯 JSON 输出）是下一步改进方向。
 
+### 📦 打包修复 —— 冻结产物版本读取（发布前发现）
+
+- **冻结程序版本显示失真**：`pyproject.toml` 此前未随包分发，冻结环境下
+  `tools/version.py` 的回落链（dist-info → pyproject → 兜底）全部失败，
+  GUI / CLI / TUI 版本显示一律为 `0.0.0+unknown`（实测旧产物
+  `_internal/tools/version.py` 输出确认，v3.1.0 及更早包均受影响）。
+  修复 = 把版本真源 `pyproject.toml` 加入 `--add-data` 根文件清单；
+  新增回归测试 `test_pyproject_toml_included_for_frozen_version`。
+
+### 🛡️ 发布包 PYZ 层身份残留修复（发布前发现）
+
+- **根因**：`build_package.py` 的 `--collect-all tools` 把**真实源码**编译进
+  exe 内嵌 PYZ（zlib 压缩），而内容级脱敏只改产物树里的**文本副本**、改不到
+  PYZ —— `tools/` 源码中的身份/学情字面量（首启向导默认值、LLM schema 示例、
+  模板默认值、测试探针等 11 个文件 51 处）会以编译形态残留在发布包 exe 中
+  （实测 v3.1.0 公开包 9 个模块、修复前 v3.1.1 构建 11 个模块残留）。
+- **修复**：11 个文件按出口脱敏**同规则**中性化（本地源码 == 远端脱敏形态，
+  逐文件 diff 归零）；免疫断言从 `tests/` 扩展至 `tools/`（新增
+  `test_tools_dir_is_immune_to_py_sanitization`，含阴性对照），防回归。
+- **影响面**：v3.1.0（实测）与 v3.0.0（同因）的公开发布资产含此残留 ——
+  已撤回，v3.1.1 为修复后首个干净版本。
+
+### 🩹 构建可靠性 —— 产物只读属性防护（重构建 WinError 5）
+
+- **根因**：工作区 `01-数学/_状态` 等目录带 Windows ReadOnly 属性，
+  `shutil.copytree` 复制进产物后属性继承 —— 下一次构建时 PyInstaller 清理
+  旧 `dist/` 报 `PermissionError: [WinError 5]`（不手工清属性则重构建必失败，
+  已反复踩两次）。
+- **修复**：`build_package.py` 在 PyInstaller 启动前自动递归清除
+  `dist/KaoyanStudyChain` 与 `build/` 的只读属性（`_clear_readonly_attrs`，
+  非 Windows 平台 no-op）；新增回归测试
+  `test_clear_readonly_attrs_unlocks_dir_for_rebuild`。
+
+### 📦 其他累积批次（W1–W11 · 浏览器采集 · D0）
+
+v3.1.0 之后的作答质量与基础设施批次同版发布，主要条目：
+
+- **W1 埋点底座**：会话级 `llm_call` 事件（耗时 / 用量 / 错误分类）；
+- **W2 core50 评测入库**：数据集镜像 + 适配层 + CI 门禁（PR 冒烟 / 夜间全量）；
+- **W3 headless 契约**：受控放行行为契约（点名网络工具 / 高危仍拒 / 越界写入拒）；
+- **W4–W9 作答质量**：契约注入 / 引用保护 / PDF 续读 / 检索接线 / 流式客户端 / 产物闸门；
+- **W10 作答质量**：JSON 自修复 / 检索直抓拦截 + 引导；
+- **W11 批次**：拦截引导升级 / 全源冷却话术 / compare 两校并行 / 微信源快失败；
+- **D0 最小事务化**：写前快照任何模式通用 + 按文件 / 按检查点精确回滚；
+- **浏览器采集整合**：阶段 0 安全加固 / 微信兜底 / 两级采集 / 媒体硬约束；
+- **多轮消缺**：compare 卡死三轮修复、批改告警收紧、R1+R3 作答强化、占位值自指
+  改写闸门、E1/E2 消缺。
+
 ---
 
-## [3.1.0] — 2026-09-25（当前发布版本）
+## [3.1.0] — 2026-09-25（上一发布版本）
 
 > 阶段三「可证」：把护城河变成**可评测资产** —— 六条评测基准（C1–C6）落地，
 > 覆盖考纲守卫 / 引文忠实度 / 题源溯源 / 判分一致 / 检索降级 / 学习增益；

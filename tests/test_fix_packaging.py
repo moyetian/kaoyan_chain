@@ -24,6 +24,7 @@ P1 回归/阴性测试：发布包骨架部署不得夹带用户私有资料
 from pathlib import Path
 
 import json
+import os
 
 import pytest
 
@@ -307,6 +308,26 @@ def test_collect_data_specs_filters_into_staging(tmp_path, monkeypatch):
     assert (staging / "tools" / "theme" / "templates" / "theme.html").exists()
 
 
+def test_pyproject_toml_included_for_frozen_version(tmp_path, monkeypatch):
+    """[v3.1.1 修复] pyproject.toml 必须随包分发 —— 冻结环境版本读取依赖它。
+
+    缺陷实测：冻结产物（v3.1.0 及更早）里 tools/version.py 的回落链全部失败
+    （无 dist-info、无 pyproject.toml）→ get_version() 返回 "0.0.0+unknown"，
+    GUI / CLI / TUI 版本显示全部失真。修复 = 把版本真源 pyproject.toml 加进
+    --add-data 的根文件清单（公开元数据，无隐私风险）。
+    """
+    src = tmp_path / "repo"
+    _write(src / "pyproject.toml", '[project]\nversion = "3.1.1"\n')
+    staging = tmp_path / "staging"
+    staging.mkdir()
+
+    monkeypatch.setattr(bp, "ROOT", src)
+    datas = bp.collect_data_specs(staging)
+
+    assert any("pyproject.toml" in d for d in datas), \
+        "pyproject.toml 未随包分发 → 冻结环境 get_version() 将返回 0.0.0+unknown"
+
+
 def test_build_cleans_staging_on_exit(tmp_path, monkeypatch):
     """staging 不得落在仓库里，且构建结束必须清理（含提前 return 分支）"""
     created = []
@@ -514,4 +535,30 @@ def test_deploy_skeleton_purges_collected_scaffold(tmp_path, monkeypatch):
     assert not (dst / "_internal" / "tools" / "scratch").exists(), \
         "tools/scratch（学员剪贴板截图）随 --collect-all 进了发布包且未被清理"
     assert (dst / "_internal" / "tools" / "ky_cli.py").exists()
+
+
+def test_clear_readonly_attrs_unlocks_dir_for_rebuild(tmp_path):
+    """构建前只读属性清理：产物继承的 ReadOnly 必须被清（WinError 5 防护）。
+
+    阴性背景（2026-09-29 实测）：工作区 ``01-数学/_状态`` 等目录带 ReadOnly，
+    ``shutil.copytree`` 复制进产物后，下一次构建 PyInstaller 的 ``_rmtree``
+    删除旧 dist 时报 ``PermissionError: [WinError 5]``。本测试在 tmp 里复现
+    「只读目录 + 只读文件」两态，断言 ``_clear_readonly_attrs`` 后均可写。
+    """
+    if os.name != "nt":
+        pytest.skip("只读属性清理为 Windows 专属行为")
+    import stat
+    d = tmp_path / "ro_dir"
+    d.mkdir()
+    f = d / "ro.txt"
+    f.write_text("x", encoding="utf-8")
+    d.chmod(stat.S_IREAD)
+    f.chmod(stat.S_IREAD)
+    assert not (d.stat().st_mode & stat.S_IWRITE), "前置：目录应已只读"
+    assert not (f.stat().st_mode & stat.S_IWRITE), "前置：文件应已只读"
+
+    bp._clear_readonly_attrs(d)
+
+    assert d.stat().st_mode & stat.S_IWRITE, "目录只读属性应被清除"
+    assert f.stat().st_mode & stat.S_IWRITE, "文件只读属性应被清除"
 
