@@ -49,6 +49,14 @@ import time
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+# [审计 2026-09-30 P1-9] 权限收紧复用 ky_io 的跨平台实现（Windows 走 icacls）。
+# 双导入兼容：直跑 `py tools/config_guard.py`（sys.path[0]=tools/）与
+# `from tools import config_guard`（仓库根在 sys.path）两种加载方式。
+try:
+    from ky_io import harden_file_permissions
+except ImportError:  # pragma: no cover - 仅 tools 包方式导入时走到
+    from tools.ky_io import harden_file_permissions
+
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "ky_config.json"
 HISTORY = ROOT / "ky_history.json"
@@ -137,20 +145,21 @@ def _active_backup_dir() -> Path:
 
 def _tighten_snapshot_perms(path: Path) -> None:
     """[S7 修复·明文快照权限] 快照是 ky_config.json 的明文完整副本（含真实
-    api_key）。POSIX 下目录收紧 0700、文件 0600；Windows 无影响。失败只留痕。"""
-    if os.name == "nt":
-        return
-    try:
-        target = Path(path)
-        if target.is_dir():
-            os.chmod(target, 0o700)
-        else:
-            if target.parent.exists():
-                os.chmod(target.parent, 0o700)
-            os.chmod(target, 0o600)
-    except OSError as e:
-        import logging
-        logging.getLogger(__name__).debug("快照权限收紧失败（已忽略）: %s: %s", path, e)
+    api_key）。目录收紧 0700、文件 0600。
+
+    [审计 2026-09-30 P1-9] 此前 Windows（``os.name == "nt"``）直接 return，
+    ``%LOCALAPPDATA%/kaoyan-study-chain/config_backup/`` 里的明文密钥快照沿用
+    NTFS 默认权限（同机其他用户可读）。现改走 ``ky_io.harden_file_permissions``：
+    Windows 用 icacls 移除继承、仅授当前用户；POSIX 仍是 chmod 0600/0700。
+    失败静默降级（函数内部吞掉异常，不阻塞快照主流程）。
+    """
+    target = Path(path)
+    if target.is_dir():
+        harden_file_permissions(target, is_dir=True)
+    else:
+        if target.parent.exists():
+            harden_file_permissions(target.parent, is_dir=True)
+        harden_file_permissions(target, is_dir=False)
 
 #: ``auto-backup`` 保留的自动档份数上限（按时间倒序）
 AUTO_KEEP = 15

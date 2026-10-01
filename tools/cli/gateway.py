@@ -46,6 +46,12 @@ try:
 except ImportError:
     from cli.config import _mask_secret  # noqa: F401
 
+# [审计 2026-09-30 P1-6] /webhook 出站回调改走 SSRF 安全通道（双导入路径兼容，同 llm_client）。
+try:
+    from net_guard import safe_urlopen
+except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
+    from tools.net_guard import safe_urlopen  # type: ignore
+
 try:
     from skills import vision_solver
 except ImportError:
@@ -57,6 +63,26 @@ except ImportError:
 # Web 可视化伴侣会话缓存与并发锁
 _LIVE_SESSION_LOCK = threading.RLock()
 LIVE_SESSION_MESSAGES: List[Dict[str, Any]] = []
+
+#: [审计 2026-09-30 P1-8] POST 请求体上限（16 MiB）：超限直接 413，不读入内存。
+MAX_POST_BODY_BYTES = 16 * 1024 * 1024
+
+#: [审计 2026-09-30 P1-8] 群聊机器人后台回复任务的并发闸（上限 8）。
+_WEBHOOK_BG_SEM = threading.BoundedSemaphore(8)
+
+
+def _run_webhook_bg(fn, *args) -> None:
+    """[审计 2026-09-30 P1-8] 群聊后台任务并发闸：超限时退化为同步执行（不丢消息）。"""
+    if _WEBHOOK_BG_SEM.acquire(blocking=False):
+        def _wrapped():
+            try:
+                fn(*args)
+            finally:
+                _WEBHOOK_BG_SEM.release()
+        threading.Thread(target=_wrapped, daemon=True).start()
+    else:
+        fn(*args)
+
 
 def append_live_message(role: str, content: str) -> None:
     """向网页可视化伴侣推送同步消息 (线程安全)"""
@@ -161,6 +187,10 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
     webhook_secret = resolve_webhook_secret(webhook_token)
 
     class GatewayHandler(BaseHTTPRequestHandler):
+        # [审计 2026-09-30 P1-8] socket 读超时：慢连接 30s 无数据即断开，
+        # 防止半开连接长期占用工作线程（与 BoundedThreadingHTTPServer 的并发上限配合）。
+        timeout = 30
+
         def _token_ok(self, parsed, expected: str = "") -> bool:
             """校验请求是否携带正确 token：X-KY-Token 头 / Bearer 头 / ?token= 查询参数。"""
             want = (expected or effective_token).strip()
@@ -179,6 +209,65 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
 
         def _is_loopback(self) -> bool:
             return self.client_address[0] in ("127.0.0.1", "::1", "localhost")
+
+        def _origin_ok(self) -> bool:
+            """[审计 2026-09-30 P0-3] 浏览器跨站闸门。
+
+            跨站页面可用 ``Content-Type: text/plain`` 等 simple request 形态绕过
+            CORS 预检，直接 POST ``/api/ask`` / ``/v1/chat/completions``；若响应再带
+            ``Access-Control-Allow-Origin: *``，连回复内容都可被读取 —— 等价于任意
+            网站借考生浏览器白嫖/劫持本机 LLM 网关。本闸门按浏览器自动附加的
+            ``Origin`` / ``Sec-Fetch-Site`` 头判定：
+
+              * 无 ``Origin``：非浏览器客户端（curl / 钉钉等第三方服务端回调），放行；
+              * ``Origin: null``（沙箱 iframe / file:// / 部分隐私模式）：拒绝；
+              * ``Sec-Fetch-Site: cross-site``：拒绝（纵深防御，即使 Origin 伪装同源）；
+              * ``Origin`` 与 ``Host`` 必须同主机；双方都显式带端口时端口必须一致
+                （Host 未显式带端口视为一致，兼容反向代理）。
+
+            ``do_GET`` 不主动拒绝（避免误伤用户从外部链接点进来的导航），读取侧
+            防护由 ``_cors_header`` 的精确回显承担。
+            """
+            origin = (self.headers.get("Origin") or "").strip()
+            if not origin:
+                return True
+            if origin == "null":
+                return False
+            if (self.headers.get("Sec-Fetch-Site") or "").strip().lower() == "cross-site":
+                return False
+            try:
+                o = urllib.parse.urlparse(origin)
+                o_host = (o.hostname or "").lower()
+                o_port = o.port
+            except ValueError:
+                return False
+            if o.scheme not in ("http", "https") or not o_host:
+                return False
+            host_hdr = self.headers.get("Host", "")
+            try:
+                req = urllib.parse.urlsplit("//" + host_hdr)
+                req_host = (req.hostname or "").lower()
+                req_port = req.port
+            except ValueError:
+                return False
+            if not req_host or o_host != req_host:
+                return False
+            if o_port is None:
+                o_port = 443 if o.scheme == "https" else 80
+            if req_port is not None and o_port != req_port:
+                return False
+            return True
+
+        def _cors_header(self) -> None:
+            """[审计 2026-09-30 P0-3] 精确回显 ACAO：仅同源 Origin 回显，其余不发该头。
+
+            替代此前的 ``Access-Control-Allow-Origin: *``（8 处）：通配符让任意
+            网站都能读取本机网关响应；精确回显只放行真正的同源页面。
+            """
+            origin = (self.headers.get("Origin") or "").strip()
+            if origin and origin != "null" and self._origin_ok():
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
 
         def _webhook_authorized(self, parsed) -> bool:
             """`/webhook` 的专属鉴权（群聊机器人回调端点）。
@@ -216,17 +305,20 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                 return self._is_loopback()
             return self._token_ok(parsed)
 
-        def _deny(self):
-            self.send_response(401)
+        def _deny(self, code: int = 401):
+            self.send_response(code)
             self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("WWW-Authenticate", 'Bearer realm="ky-gateway"')
-            self.send_header("Access-Control-Allow-Origin", "*")
+            if code == 401:
+                self.send_header("WWW-Authenticate", 'Bearer realm="ky-gateway"')
+            self._cors_header()
             self.end_headers()
-            self.wfile.write(json.dumps(
-                {"error": "Unauthorized",
-                 "hint": "Provide 'Authorization: Bearer <token>' or 'X-KY-Token: <token>' header"},
-                ensure_ascii=False
-            ).encode("utf-8"))
+            if code == 403:
+                payload = {"error": "Forbidden",
+                           "hint": "Cross-site browser requests are not allowed to call this gateway"}
+            else:
+                payload = {"error": "Unauthorized",
+                           "hint": "Provide 'Authorization: Bearer <token>' or 'X-KY-Token: <token>' header"}
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
 
         def do_GET(self):
             if not self._is_authorized():
@@ -240,7 +332,9 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                     content = live_html_p.read_bytes()
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
-                    self.send_header("Access-Control-Allow-Origin", "*")
+                    # [审计 2026-09-30 P0-3] 降低 ?token= 经 Referer 外泄的风险。
+                    self.send_header("Referrer-Policy", "no-referrer")
+                    self._cors_header()
                     self.end_headers()
                     self.wfile.write(content)
                 else:
@@ -260,7 +354,7 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                 }
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self._cors_header()
                 self.end_headers()
                 self.wfile.write(json.dumps(models_data).encode("utf-8"))
                 return
@@ -270,7 +364,7 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                 data = json.dumps({"messages": snapshot}, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self._cors_header()
                 self.end_headers()
                 self.wfile.write(data)
             else:
@@ -280,9 +374,27 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
         def do_POST(self):
             if not self._is_authorized():
                 return self._deny()
+            # [审计 2026-09-30 P0-3] 跨站闸门：浏览器跨站 simple request（text/plain）
+            # 不经预检即可打到本网关，在此阻断；无 Origin 的 curl/第三方回调不受影响。
+            if not self._origin_ok():
+                # 拒绝时未读 body：必须关连接，避免残留字节错位解析下一个请求。
+                self.close_connection = True
+                return self._deny(403)
             cfg = load_config()
             parsed = urllib.parse.urlparse(self.path)
             content_length = int(self.headers.get("Content-Length", 0))
+            # [审计 2026-09-30 P1-8] 请求体上限：超限直接 413，不读入内存（防大体积 DoS）。
+            if content_length > MAX_POST_BODY_BYTES:
+                self.close_connection = True
+                self.send_response(413)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._cors_header()
+                self.end_headers()
+                self.wfile.write(json.dumps(
+                    {"error": "Payload Too Large", "limit": MAX_POST_BODY_BYTES},
+                    ensure_ascii=False
+                ).encode("utf-8"))
+                return
             post_data = self.rfile.read(content_length).decode("utf-8", errors="ignore")
 
             if parsed.path == "/api/clear":
@@ -290,7 +402,7 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                     LIVE_SESSION_MESSAGES.clear()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self._cors_header()
                 self.end_headers()
                 try:
                     self.wfile.write(b'{"status":"cleared"}')
@@ -342,7 +454,7 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                     except Exception as err:
                         self.send_response(400)
                         self.send_header("Content-Type", "application/json; charset=utf-8")
-                        self.send_header("Access-Control-Allow-Origin", "*")
+                        self._cors_header()
                         self.end_headers()
                         self.wfile.write(json.dumps({"reply": f"【图片解析异常】: {err}"}, ensure_ascii=False).encode("utf-8"))
                         return
@@ -359,7 +471,7 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self._cors_header()
                 self.end_headers()
                 self.wfile.write(json.dumps({"reply": reply}, ensure_ascii=False).encode("utf-8"))
                 return
@@ -394,7 +506,7 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                 }
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self._cors_header()
                 self.end_headers()
                 self.wfile.write(json.dumps(completion_data, ensure_ascii=False).encode("utf-8"))
                 return
@@ -469,12 +581,16 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                             }
                         }
                         req = urllib.request.Request(s_url, data=json.dumps(p_data).encode("utf-8"), headers={"Content-Type": "application/json"})
-                        urllib.request.urlopen(req, timeout=10)
+                        # [审计 2026-09-30 P1-6] 出站 URL 来自入站 JSON（sessionWebhook），
+                        # 此前裸 urlopen 可被指向内网/元数据地址（SSRF 旁路）；改走
+                        # net_guard 安全通道，拦截结果自然落入下方 except 的失败日志。
+                        safe_urlopen(req, timeout=10)
                         print(colorize(f"[✔ 考研私教解答已成功送达钉钉群聊]", C.GREEN))
                     except Exception as err:
                         print(colorize(f"[!] 钉钉异步发送失败: {err}", C.RED))
 
-                threading.Thread(target=dingtalk_bg, args=(user_msg, session_webhook), daemon=True).start()
+                # [审计 2026-09-30 P1-8] 后台回复线程受并发闸约束（超限退化同步执行）。
+                _run_webhook_bg(dingtalk_bg, user_msg, session_webhook)
                 return
 
             if is_feishu_event:
@@ -492,7 +608,8 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                         send_to_feishu(f_hook, f"🎓 考研私教解答\n\n> 提问: {msg}\n\n{ans}")
                         print(colorize(f"[✔ 考研私教解答已推回飞书群聊]", C.GREEN))
 
-                threading.Thread(target=feishu_bg, args=(user_msg,), daemon=True).start()
+                # [审计 2026-09-30 P1-8] 后台回复线程受并发闸约束（超限退化同步执行）。
+                _run_webhook_bg(feishu_bg, user_msg)
                 return
 
             reply = query_llm_reply(user_msg, cfg)
@@ -518,6 +635,53 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
             return
 
     return GatewayHandler
+
+
+class BoundedThreadingHTTPServer(ThreadingHTTPServer):
+    """[审计 2026-09-30 P1-8] 带并发上限的 ThreadingHTTPServer。
+
+    此前网关直接使用 ``ThreadingHTTPServer``：每个连接起一个无限 daemon 线程，
+    无并发上限 —— 少量慢连接即可耗尽线程/FD（本机 DoS）。这里用
+    ``BoundedSemaphore`` 限制工作线程总数：拿不到配额的新连接立即关闭，
+    已建立的连接不受影响。``process_request_thread`` 是 ThreadingMixIn 的
+    实际工作线程体，信号量在其完成时释放。
+    """
+
+    daemon_threads = True
+    request_queue_size = 32
+    max_worker_threads = 32
+
+    def __init__(self, *args, **kwargs):
+        self._sem = threading.BoundedSemaphore(self.max_worker_threads)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        if not self._sem.acquire(blocking=False):
+            try:
+                self.shutdown_request(request)
+            except Exception:
+                pass
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self._sem.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._sem.release()
+
+
+# [审计 2026-09-30 P1-8] 网关实例化统一走 BoundedThreadingHTTPServer；模块级
+# ``ThreadingHTTPServer`` 名指向该实现。既有测试用
+# ``monkeypatch.setattr(gateway_mod, "ThreadingHTTPServer", 替身)`` 禁止真实监听端口
+# （tests/test_report_fixes_group_b.py、tests/test_fix_serve_webhook_token.py），
+# 若实例化点写死新类名会绕过该打桩、真实绑定端口导致测试挂死。
+ThreadingHTTPServer = BoundedThreadingHTTPServer
+
 
 def start_background_live_server(start_port: int = 8088, host: str = "127.0.0.1",
                                  token: str = "", webhook_token: str = "") -> Optional[int]:

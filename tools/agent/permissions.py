@@ -86,7 +86,7 @@ def normalize_mode(mode: Any) -> str:
 
 
 class PermissionLevel:
-    READ_ONLY = 0      # 只读 (read_file, list_dir, grep, read_exam_paper, verify_math)
+    READ_ONLY = 0      # 只读 (read_file, list_dir, grep, read_exam_paper)
     SAFE_EDIT = 1      # 安全编辑 (write_file, edit_file, log_mistake)
     LOW_RISK_EXEC = 2  # 低风险执行 (python 验算等)
     SHELL_EXEC = 3     # Shell 执行 (run_command)
@@ -469,24 +469,37 @@ class PermissionManager:
         return allowed, reason
 
     def _decide_permission(self, tool_name: str, level: int, tool_args: Dict[str, Any], interactive: bool = True) -> Tuple[bool, str]:
-        """策略判定主体（[D0] 拆出：快照钩子统一挂在 :meth:`check_permission`）。"""
+        """策略判定主体（[D0] 拆出：快照钩子统一挂在 :meth:`check_permission`）。
+
+        [审计 2026-09-30 P0-1/P1-2] 判定顺序修复：``safe`` 模式判定**前移**到
+        「会话信任集」与「Level 0 短路」之前。此前顺序下：
+          * 信任集短路（``level < DANGEROUS`` 即放行）写在 safe 判定之前 ——
+            一旦 ``session_allowed_tools`` 被填充（GUI 侧共享 set / 先以 auto
+            批准过），切到 safe 后工具仍被放行，safe 语义被绕过；
+          * Level 0 无条件放行写在 safe 判定之前 —— 工具被误标为只读时
+            （如 verify_math 被标 READ_ONLY）最严格模式也拦不住。
+        修复后 safe 只放行 Level 0 只读操作（保留「只读工具在任何模式可用」的
+        既有契约），其余一律拒绝且不受信任集影响；信任集只在非 safe 模式生效。
+        """
         if self.force_allow_all:
             return True, "force_allow_all 开启，测试放行"
 
-        # 1. 如果工具已在本会话中被永久信任 (且非 Level 5 高危)
+        # 1. safe 模式：最严格档位，先于信任集与 Level 0 短路判定。
+        if self.mode == "safe":
+            if level == PermissionLevel.READ_ONLY:
+                return True, "只读安全操作，自动放行"
+            return False, f"当前处于严格安全模式 (--permission=safe)，已拒绝执行非只读操作 [{tool_name}]"
+
+        # 2. 如果工具已在本会话中被永久信任 (且非 Level 5 高危)
         # [B4] 用 glob 匹配而非 ``in set``：信任集里可以是 ``mcp_*`` 这样的类别键
         # （用户批准一个 MCP 工具时收口写入，见 approval.session_remember_key）。
         # 普通工具名仍按精确匹配，既有行为不变。
         if tool_name_matches(tool_name, self.session_allowed_tools) and level < PermissionLevel.DANGEROUS:
             return True, "会话已永久信任此工具"
 
-        # 2. Level 0 只读操作：任何模式均全自动放行
+        # 3. Level 0 只读操作：非 safe 模式均全自动放行
         if level == PermissionLevel.READ_ONLY:
             return True, "只读安全操作，自动放行"
-
-        # 3. safe 模式：禁止所有写操作与命令执行
-        if self.mode == "safe":
-            return False, f"当前处于严格安全模式 (--permission=safe)，已拒绝执行非只读操作 [{tool_name}]"
 
         # 4. auto 模式：Level 1-3 自动放行（含非交互环境 —— GUI 的 acceptEdits 别名）
         if self.mode == "auto" and level <= PermissionLevel.SHELL_EXEC:
@@ -546,13 +559,16 @@ class PermissionManager:
         if self.force_allow_all:
             return True, "force_allow_all 开启，测试放行"
 
-        # 用户曾选 [a]「本会话记住并信任此类操作」：直接放行，不再弹卡。
-        if tool_name_matches(EXTERNAL_READ_TOOL_NAME, self.session_allowed_tools):
-            return True, "会话已永久信任外部只读读取"
-
+        # [审计 2026-09-30 P1-2] safe 判定前移：此前「会话信任集」短路写在 safe 之前，
+        # 一旦 session_allowed_tools 含外部读键（先以其它模式批准过），safe 模式
+        # 仍会放行外部读取 —— 最严格档位不得被信任集绕过。非 safe 模式行为不变。
         if self.mode == "safe":
             return False, (f"当前处于严格安全模式 (--permission=safe)，"
                            f"已拒绝读取工作区外文件 [{path_display}]")
+
+        # 用户曾选 [a]「本会话记住并信任此类操作」：直接放行，不再弹卡。
+        if tool_name_matches(EXTERNAL_READ_TOOL_NAME, self.session_allowed_tools):
+            return True, "会话已永久信任外部只读读取"
 
         channel = self._select_channel(interactive)
         if not getattr(channel, "is_interactive", False):

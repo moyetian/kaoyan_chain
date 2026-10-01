@@ -22,16 +22,50 @@ QLabel {
     color: {{fg}};
 }
 
-/* 键盘用户必须能看见焦点落在哪里（改造前全站 :focus 样式为 0 处） */
-*:focus {
-    outline: {{focus-w}}px solid {{focus-ring}};
-    outline-offset: 1px;
+/* 焦点可见性（键盘无障碍）：必须能看见焦点落在哪里。
+   [缺陷修复·系统矩形焦点框] Qt 的 QSS 并不真正支持 outline 属性 —— 旧规则
+   `*:focus { outline: … }` 在运行平台被渲染成紧贴控件边缘的矩形焦点框
+   （用户实测：点击任一按钮/页签/输入框即出现），且颜色不受 token 控制。
+   现改为逐控件用边框变色表达焦点：QSS 完整接管绘制，矩形框不再出现。 */
+QPushButton:focus {
+    border: {{focus-w}}px solid {{on-acc}};
 }
 
+QPushButton#SecondaryBtn:focus, QPushButton[secondary="true"]:focus {
+    border: {{focus-w}}px solid {{acc}};
+}
+
+QPushButton#SettingsBtn:focus, QPushButton#ThemeToggle:focus, QPushButton#UploadBtn:focus,
+QPushButton#QuickPill:focus, QPushButton#ExamplePill:focus, QPushButton#NavPaletteBtn:focus {
+    border: {{focus-w}}px solid {{acc}};
+}
+
+/* 导航视图项：焦点用左激活条 + 底色表达，保留其 border-left 结构 */
+QPushButton#NavItem:focus {
+    border: none;
+    border-left: 3px solid {{acc}};
+    background-color: {{surf3}};
+}
+
+QTabBar::tab:focus {
+    border: 1px solid {{acc}};
+    border-bottom: 2px solid {{acc}};
+    color: {{acc-soft}};
+}
+
+QComboBox:focus, QAbstractSpinBox:focus {
+    border: {{focus-w}}px solid {{acc}};
+}
+
+QCheckBox:focus, QRadioButton:focus {
+    color: {{acc-soft}};
+}
+
+/* 顶栏：毛玻璃底（半透明表面 + 发丝边），高度由 header.py 控制（64px） */
 #HeaderBar {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {{surf}}, stop:1 {{surf2}});
+    background-color: {{glass-strong}};
     border-radius: {{radius}}px;
-    border: 1px solid {{line}};
+    border: 1px solid {{glass-line}};
     padding: {{pad}} {{pad-lg}};
 }
 
@@ -288,6 +322,28 @@ QPushButton:disabled {
     border: 1px solid {{line}};
 }
 
+/* 发送按钮：主色渐变 + 大圆角（对话输入栏）。渐变取 acc → acc-press
+   （同色相深浅微渐变）——acc-press 由 derive_tokens 朝前景色派生，
+   on-acc 对其对比度不降于 acc 本身（五套预设均已过 WCAG 门禁）。 */
+#SendBtn {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {{acc}}, stop:1 {{acc-press}});
+    color: {{on-acc}};
+    border: 1px solid {{acc-line}};
+    border-radius: {{r-md}}px;
+    padding: {{pad}} {{pad-lg}};
+    font-size: {{fs-base}};
+    font-weight: 600;
+    min-height: 22px;
+}
+
+#SendBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {{acc-hover}}, stop:1 {{acc}});
+}
+
+#SendBtn:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {{acc-press}}, stop:1 {{acc-press}});
+}
+
 /* 次要/轮廓按钮 */
 QPushButton#SecondaryBtn, QPushButton[secondary="true"] {
     background-color: {{surf2}};
@@ -373,10 +429,27 @@ QToolTip {
    ════════════════════════════════════════════════════════════════════════ */
 
 /* ── 左侧导航 rail：视图组（切页）+ 工具组（动作） ─────────────────── */
+/* 毛玻璃底：半透明表面 + 发丝边。hc（高对比）预设的 glass 为不透明实色，
+   不会稀释对比度（见 tokens.py hc 预设的显式覆盖）。 */
 #NavRail {
-    background-color: {{surf2}};
-    border: 1px solid {{line}};
+    background-color: {{glass}};
+    border: 1px solid {{glass-line}};
     border-radius: {{radius-sm}}px;
+}
+
+/* rail 折叠开关（双态 rail：56px 图标栏 ↔ 252px 完整栏） */
+#NavToggle {
+    background-color: transparent;
+    color: {{mut}};
+    border: none;
+    border-radius: {{radius-sm}}px;
+    padding: {{space-1}};
+    font-size: {{fs-body}};
+}
+
+#NavToggle:hover {
+    background-color: {{surf3}};
+    color: {{acc-soft}};
 }
 
 #NavRailScroll, #NavRailCanvas {
@@ -433,6 +506,15 @@ QToolTip {
 #NavItem:hover {
     background-color: {{surf3}};
     color: {{fg-strong}};
+}
+
+/* 折叠态（rail 收成 56px 图标栏）：图标居中、隐藏文字后留出对称点区。
+   置于 :checked 之前 —— 两个规则特异性相同（各 1 个属性选择器），
+   后定义者胜，保证激活项的左激活条在任何折叠状态下都不被覆盖。 */
+#NavItem[collapsed="true"] {
+    text-align: center;
+    padding: {{space-1}};
+    border-left: 3px solid transparent;
 }
 
 #NavItem:checked {
@@ -542,6 +624,13 @@ QToolTip {
     background-color: transparent;
 }
 
+/* 空状态：大图标（emoji/字形）+ 标题 + 提示 + 示例胶囊，整体垂直居中 */
+#ChatEmptyIcon {
+    background-color: transparent;
+    color: {{acc}};
+    font-size: {{fs-3xl}};
+}
+
 #ChatEmptyTitle {
     background-color: transparent;
     color: {{fg-strong}};
@@ -570,17 +659,31 @@ QToolTip {
     border: 1px solid {{acc}};
 }
 
+/* 用户气泡：主色微渐变（acc → acc-press 同色相深浅）+ 不对称圆角
+   （右下收小，指向发送方）。文字与元信息显式取 on-acc —— 否则会被
+   全局 QLabel 的 fg 色覆盖，在深色主题的亮主色底上不可读。 */
 #UserBubble {
-    background-color: {{acc-sub}};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {{acc}}, stop:1 {{acc-press}});
     border: 1px solid {{acc-line}};
-    border-radius: {{radius-sm}}px;
-    color: {{fg-strong}};
+    border-top-left-radius: {{r-md}}px;
+    border-top-right-radius: {{r-md}}px;
+    border-bottom-left-radius: {{r-md}}px;
+    border-bottom-right-radius: 4px;
+    color: {{on-acc}};
 }
 
+#UserBubble #BubbleText, #UserBubble #BubbleMeta {
+    color: {{on-acc}};
+}
+
+/* 私教气泡：毛玻璃表面 + 不对称圆角（左下收小，指向私教侧） */
 #AgentBubble {
-    background-color: {{surf}};
-    border: 1px solid {{line}};
-    border-radius: {{radius-sm}}px;
+    background-color: {{glass}};
+    border: 1px solid {{glass-line}};
+    border-top-left-radius: {{r-md}}px;
+    border-top-right-radius: {{r-md}}px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: {{r-md}}px;
     color: {{fg}};
 }
 
@@ -701,4 +804,76 @@ QToolTip {
 
 #StatTrend[tone="bad"] {
     color: {{bad}};
+}
+
+/* ── 研招情报页：API 状态横幅 + 指标卡双栏 ────────────────────────── */
+/* API 状态横幅：三态由动态属性 state 切换（ok/warn/bad）—— 原先的
+   setStyleSheet 内联色（存量唯一例外）在本轮收编进模板。 */
+#IntelApiBanner {
+    background-color: {{surf2}};
+    border: 1px solid {{line}};
+    border-radius: {{radius-sm}}px;
+}
+
+#IntelApiBanner[state="ok"] {
+    background-color: {{ok-soft}};
+    border: 1px solid {{ok}};
+}
+
+#IntelApiBanner[state="warn"] {
+    background-color: {{warn-soft}};
+    border: 1px solid {{warn}};
+}
+
+#IntelApiBanner[state="bad"] {
+    background-color: {{bad-soft}};
+    border: 1px solid {{bad}};
+}
+
+#IntelApiStatusLabel {
+    background-color: transparent;
+    font-size: {{fs-body}};
+}
+
+/* 指标卡双栏（视觉重构：有数据则填，无数据回落既有文本报告） */
+#IntelColumnTitle {
+    background-color: transparent;
+    color: {{fg-strong}};
+    font-size: {{fs-body}};
+    font-weight: 600;
+}
+
+#IntelMetricCard {
+    background-color: {{glass}};
+    border: 1px solid {{glass-line}};
+    border-radius: {{radius-sm}}px;
+}
+
+#IntelMetricCard:hover {
+    border: 1px solid {{acc}};
+}
+
+#IntelMetricValue {
+    background-color: transparent;
+    color: {{acc-soft}};
+    font-size: {{fs-title}};
+    font-weight: bold;
+}
+
+#IntelMetricLabel {
+    background-color: transparent;
+    color: {{mut}};
+    font-size: {{fs-caption}};
+}
+
+#IntelMetricDesc {
+    background-color: transparent;
+    color: {{fg}};
+    font-size: {{fs-sm}};
+}
+
+#IntelDisplay {
+    background-color: {{input-bg}};
+    border: 1px solid {{line-strong}};
+    border-radius: {{radius-sm}}px;
 }

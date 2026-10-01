@@ -13,6 +13,11 @@
 import re
 import json
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
@@ -27,7 +32,7 @@ try:
 except ImportError:  # pragma: no cover - 包式导入上下文
     from tools.intel_imports import resolve_intel_import
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 
 SUBJECT_FOLDER_MAP = {
     "math": ("01-数学", "math_books", "数学"),
@@ -39,17 +44,74 @@ SUBJECT_FOLDER_MAP = {
 IGNORE_NAMES = {"readme.md", ".gitkeep", ".gitignore", ".ds_store", "thumbs.db"}
 
 
-def scan_subject_materials(workspace_root: Path, folder_name: str) -> List[Path]:
-    """扫描指定科目目录下的全部真实参考资料文件"""
-    ref_dir = workspace_root / folder_name / "参考资料"
-    if not ref_dir.exists():
+def _math_disabled(study_plan: dict) -> bool:
+    """方案是否为「不考数学」（与 study_planner / syllabus_manager 口径一致）。"""
+    return (str(study_plan.get("math_key") or "").strip().lower()
+            in {"none", "no", "不考数学"}
+            or str(study_plan.get("math_name") or "").strip() == "不考数学")
+
+
+def _is_custom_math(study_plan: dict) -> bool:
+    """[UT4 修复·PLANNER-6] 数学是否为「院校自主命题」（无全国统考大纲）。
+
+    判定单一真源在 study_planner.is_custom_math_key（此处函数级局部 import，
+    与该模块无循环依赖）；探测失败时按字面量 custom 判定兜底。
+    """
+    try:
+        try:
+            from study_planner import is_custom_math_key
+        except ImportError:  # pragma: no cover - 包式导入上下文
+            from tools.study_planner import is_custom_math_key
+        return is_custom_math_key((study_plan or {}).get("math_key"))
+    except Exception:  # pragma: no cover - 导入失败兜底
+        return str((study_plan or {}).get("math_key") or "").strip().lower() == "custom"
+
+
+def iter_material_files(ref_dir: Path, min_size: int = 0,
+                        valid_exts: Optional[set] = None) -> List[Path]:
+    """递归枚举「参考资料/」下的真实文件（三端共用的扫描单一实现）。
+
+    [问题5 根因修复·子目录资料不识别] 旧实现三处各写一遍 ``iterdir()`` 单层
+    扫描（向导 / 白名单挂载 / Agent 上下文）：学员把资料整理进子目录
+    （如 ``参考资料/英语真题/2020.pdf``）后全部识别不到，报到仍显示
+    「未放置资料」。现统一递归；过滤隐藏文件、README 与空占位文件。
+
+    :param min_size: 最小字节数（0 = 不过滤；白名单挂载侧传 50 排除空占位）。
+    :param valid_exts: 扩展名白名单（None = 不限制；无扩展名文件始终放行）。
+    """
+    ref_dir = Path(ref_dir)
+    if not ref_dir.is_dir():
         return []
-    valid_files = []
-    for f in ref_dir.iterdir():
-        if f.is_file() and f.name.lower() not in IGNORE_NAMES:
-            if f.stat().st_size > 50:  # 排除空占位文件
-                valid_files.append(f)
-    return sorted(valid_files, key=lambda x: x.name)
+    found: List[Path] = []
+    for f in ref_dir.rglob("*"):
+        try:
+            if not f.is_file():
+                continue
+            name_low = f.name.lower()
+            if f.name.startswith(".") or name_low in IGNORE_NAMES or name_low.startswith("readme"):
+                continue
+            if valid_exts is not None and f.suffix and f.suffix.lower() not in valid_exts:
+                continue
+            if min_size and f.stat().st_size < min_size:
+                continue
+        except OSError:
+            continue
+        found.append(f)
+    return sorted(found, key=lambda p: str(p.relative_to(ref_dir)).lower())
+
+
+def relative_label(ref_dir: Path, file_path: Path) -> str:
+    """文件在「参考资料/」内的相对路径标签（统一用 ``/`` 分隔，便于展示）。"""
+    try:
+        return str(file_path.relative_to(ref_dir)).replace("\\", "/")
+    except ValueError:  # pragma: no cover - 防御：跨盘符等异常
+        return file_path.name
+
+
+def scan_subject_materials(workspace_root: Path, folder_name: str) -> List[Path]:
+    """扫描指定科目目录下的全部真实参考资料文件（递归含子目录）。"""
+    ref_dir = workspace_root / folder_name / "参考资料"
+    return iter_material_files(ref_dir, min_size=50)
 
 
 #: 保留的 AGENTS.md 备份份数上限（超出后删除最旧的）
@@ -143,15 +205,42 @@ def scan_and_mount_materials(
 
     # 1. 逐科扫描（并记录白名单摘要将发生的变更）
     for key, (folder, config_key, label) in SUBJECT_FOLDER_MAP.items():
+        ref_dir = ws / folder / "参考资料"
         found_files = scan_subject_materials(ws, folder)
-        details[key] = [f.name for f in found_files]
+        details[key] = [relative_label(ref_dir, f) for f in found_files]
         total_found += len(found_files)
 
         if found_files:
-            summary_str = f"[本地资料库已就绪]: " + ", ".join(f.name for f in found_files)
+            summary_str = f"[本地资料库已就绪]: " + ", ".join(
+                relative_label(ref_dir, f) for f in found_files)
+        elif key == "math" and _math_disabled(study_plan):
+            # [问题8 修复·不考数学却要求按纲出题] 不考数学时不得生成
+            # 「暂未放置实体资料（私教严格按【不考数学】官方考纲出题，严禁虚构书目）」
+            # 这类自相矛盾文案（3/5 角色复现，且会污染根 AGENTS.md 白名单段落）。
+            # 与向导口径一致，写中性表述「不考数学」。
+            summary_str = "不考数学"
         else:
             subj_title = study_plan.get(f"{key}_name", label)
-            summary_str = f"暂未放置实体资料（私教严格按【{subj_title}】官方考纲出题，严禁虚构书目）"
+            if key == "pro":
+                # [问题5 修复] 专业课占位文案按大纲真实状态分档（收口在
+                # syllabus_manager.pro_books_placeholder_text）：骨架/缺失
+                # 大纲时不得写「私教严格按官方考纲出题」的虚假承诺。
+                try:
+                    try:
+                        from syllabus_manager import pro_books_placeholder_text
+                    except ImportError:
+                        from tools.syllabus_manager import pro_books_placeholder_text
+                    summary_str = pro_books_placeholder_text(ws, str(subj_title))
+                except Exception:
+                    summary_str = f"暂未放置实体资料（私教严格按【{subj_title}】官方考纲出题，严禁虚构书目）"
+            else:
+                if key == "math" and _is_custom_math(study_plan):
+                    # [UT4 修复·PLANNER-6] 自命题数学无全国统考大纲，白名单缺省
+                    # 文案不得宣称「官方考纲」（UT4 理论物理沙箱 BUG-5），与
+                    # study_planner 向导缺省文案同口径。
+                    summary_str = "暂未放置实体资料（私教按目标院校自命题大纲出题，严禁虚构书目）"
+                else:
+                    summary_str = f"暂未放置实体资料（私教严格按【{subj_title}】官方考纲出题，严禁虚构书目）"
 
         old_val = study_plan.get(config_key)
         if old_val != summary_str:
@@ -175,7 +264,9 @@ def scan_and_mount_materials(
 
     if target_school and target_school not in ("未指定", "目标院校"):
         try:
-            watcher = resolve_intel_import().AdmissionWatcher()
+            # [问题3 补修] 显式传 ws：无参实例化只认模块级真实 ROOT，
+            # 测试传 tmp 工作区时监控条目会落进真实仓库（实测污染）。
+            watcher = resolve_intel_import().AdmissionWatcher(workspace_root=ws)
             _watched_names = [str(w.get("name") or "") for w in watcher.list_watched()]
             if target_school not in _watched_names:
                 would_watch = True
@@ -258,6 +349,27 @@ def scan_and_mount_materials(
                     print(f"  [i] 原 AGENTS.md 已备份至: {backup.name}")
             except Exception as e:  # 白名单同步失败不应让整次扫描失败，但必须可见
                 print(f"  [!] AGENTS.md 白名单同步失败（其余结果不受影响）: {e}")
+
+        # [UT4 修复·PLANNER-4] mount --apply 落盘白名单后即时刷新当日「今日任务」：
+        # 270bd73 已修「报到」路径的「待导入」外科替换，但 mount 后磁盘文件仍残留
+        # 「（⚠️ 专业课大纲与真题待导入）」（UT4 西医沙箱 P2-1 实测：22:33 mount
+        # 后 22:17 建档版文件不回写，要等下一次报到才刷新）。此处对四科复用
+        # ensure_subject_today_task 的既有刷新逻辑（当日文件存在时只改题源短语行，
+        # [x] 勾选与其余内容保留；禁用科目自动 disabled 跳过）。函数级局部 import
+        # 防循环依赖；study_plan 已是本函数内存中更新过白名单的最新方案。
+        if changes:
+            try:
+                try:
+                    from study_planner import ensure_subject_today_task
+                except ImportError:  # pragma: no cover - 包式导入上下文
+                    from tools.study_planner import ensure_subject_today_task
+                for _sk in SUBJECT_FOLDER_MAP:
+                    try:
+                        ensure_subject_today_task(study_plan, _sk, workspace_root=ws)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
     return {
         "success": True,

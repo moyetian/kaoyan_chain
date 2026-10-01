@@ -226,6 +226,42 @@ def test_countdown_label_is_refreshable(win):
     assert label.text() == original, "刷新后应重新取真实倒计时，覆盖手工写入的值"
 
 
+def test_countdown_ignores_stale_config_snapshot(app, tmp_path):
+    """[缺陷修复·顶栏陈旧倒计时] 顶栏必须按 exam_date 现算，不得信
+    ky_config.json 里 ``study_plan.days_left`` 的存储快照。
+
+    快照只在「保存设置」时补算（settings.py），挂机跨天/日常启动永远陈旧
+    —— 真机实测：配置存 90、真实 80，顶栏与今日页卡片同屏互相矛盾。
+    与 G2（study_planner）/ load_dashboard_state 同口径：现算。
+    """
+    from datetime import date, timedelta
+
+    sandbox = tmp_path / "workspace"
+    sandbox.mkdir()
+    exam = date.today() + timedelta(days=123)
+    (sandbox / "ky_config.json").write_text(
+        json.dumps(
+            {
+                "study_plan": {
+                    "school": "中国人民大学",
+                    "major": "030100 法学",
+                    "exam_date": exam.isoformat(),
+                    "days_left": 999,          # 陈旧快照，必须被忽略
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    w = MainWindow(workspace_root=sandbox)
+    try:
+        assert w.countdown_label.text() == "初试倒计时: 123 天", (
+            f"顶栏应现算而非取存储快照: {w.countdown_label.text()!r}")
+    finally:
+        w.close()
+
+
 def test_timer_tick_refreshes_countdown_and_tasks(win):
     win.countdown_label.setText("stale")
     win._on_timer_tick()

@@ -11,7 +11,8 @@ Milestone M4: LLM Tool-Calling Admissions Deep Research Engine Automated Test Su
   6. 缺失 API Key 优雅降级与高对比度引导卡片
   7. Watcher 未收录高校字典键冲突修复验证
   8. CHSI 研招连接器全国学科门类目录扩展与一级学科目录验证
-  9. GUI 研招情报页 (IntelTab) API 引导横幅与动态状态刷新
+  9. GUI 研招情报页 (IntelTab) API 引导横幅动态状态（QSS state 属性）与
+     指标卡双栏结构化数据（有数据则填 / 无数据为 None）
 """
 
 import io
@@ -334,7 +335,8 @@ class TestMockLLMFunctionCallingLoop:
             "model": "deepseek-chat"
         }
 
-        with patch("urllib.request.urlopen", mock_urlopen):
+        # [审计 2026-09-30 P1-7] LLM 出站收敛到模块级 safe_urlopen，打桩接缝迁移。
+        with patch("tools.intelligence.agentic_research.safe_urlopen", mock_urlopen):
             res_profile = engine.research_university_profile(
                 "北京大学",
                 "马克思主义理论",
@@ -450,22 +452,83 @@ class TestGUIIntelTabBanner:
         # 模拟未配置 API Key
         with patch("tools.intelligence.agentic_research.AgenticResearchEngine.is_api_configured", return_value=False):
             update_api_status_banner(mock_win)
-            mock_win.intel_api_banner.setStyleSheet.assert_called_once()
-            call_arg = mock_win.intel_api_banner.setStyleSheet.call_args[0][0]
-            assert "rgba(245, 158, 11" in call_arg # 琥珀色/警示提示风格
+            # [阶段 E·收编内联样式] 配色改由 QSS 的 #IntelApiBanner[state=...] 接管，
+            # 只切动态属性，不再写 setStyleSheet（存量唯一内联样式例外已收编）。
+            mock_win.intel_api_banner.setProperty.assert_called_once_with("state", "warn")
+            mock_win.intel_api_banner.setStyleSheet.assert_not_called()
             lbl_arg = mock_win.intel_api_status_label.setText.call_args[0][0]
             assert "当前未配置大模型 API 密钥" in lbl_arg
+            assert "style=" not in lbl_arg, "文本内联颜色须交给 QSS"
 
         mock_win.reset_mock()
 
         # 模拟已配置 API Key
         with patch("tools.intelligence.agentic_research.AgenticResearchEngine.is_api_configured", return_value=True):
             update_api_status_banner(mock_win)
-            mock_win.intel_api_banner.setStyleSheet.assert_called_once()
-            call_arg = mock_win.intel_api_banner.setStyleSheet.call_args[0][0]
-            assert "rgba(16, 185, 129" in call_arg # 绿色激活风格
+            mock_win.intel_api_banner.setProperty.assert_called_once_with("state", "ok")
+            mock_win.intel_api_banner.setStyleSheet.assert_not_called()
             lbl_arg = mock_win.intel_api_status_label.setText.call_args[0][0]
             assert "已激活" in lbl_arg
+            assert "style=" not in lbl_arg, "文本内联颜色须交给 QSS"
+
+
+class TestIntelMetricsStructuredData:
+    """9. 研招情报页指标卡双栏的结构化数据（UI 重构·阶段 E）
+
+    铁律：**有数据则填，无数据为 None** —— 界面据此隐藏卡片或显示空态说明，
+    绝不编造数字。夹具一律中性占位（tests/ 对导出脱敏免疫）。
+    """
+
+    def test_empty_workspace_yields_none_not_fake_numbers(self, tmp_path):
+        from tools.gui.services.dashboard import intel_metrics
+
+        metrics = intel_metrics(tmp_path)
+        # 无巡检数据、无检索缓存 → 必须是 None（而非 0 或占位数字）
+        assert metrics["watch"] is None
+        assert metrics["sources"]["cache_entries"] is None
+        # 探测类字段：键必须存在；值为 None（探测不到）或真实探测结果
+        for key in ("api_configured", "registry_count", "browser_status"):
+            assert key in metrics["sources"]
+
+    def test_watch_file_metrics_match_real_data(self, tmp_path):
+        from tools.gui.services.dashboard import intel_metrics
+
+        memory = tmp_path / ".memory"
+        memory.mkdir()
+        (memory / "admission_watch.json").write_text(json.dumps({
+            "10001": {
+                "name": "示例农业大学", "last_check": "2026-09-30 16:01",
+                "recent_titles": ["2027 年硕士招生简章", "自命题科目大纲"],
+            },
+            "10002": {
+                "name": "示例理工学院", "last_check": "2026-09-29 08:00",
+                "recent_titles": ["复试录取办法"],
+            },
+        }, ensure_ascii=False), encoding="utf-8")
+
+        watch = intel_metrics(tmp_path)["watch"]
+        assert watch is not None
+        assert watch["school_count"] == 2
+        assert watch["school_names"] == ["示例农业大学", "示例理工学院"]
+        assert watch["last_check"] == "2026-09-30 16:01"   # 取最近一次核验
+        assert watch["notice_count"] == 3                  # 2 + 1 条快照标题
+
+    def test_corrupt_or_invalid_watch_file_degrades_to_empty(self, tmp_path):
+        from tools.gui.services.dashboard import intel_metrics
+
+        memory = tmp_path / ".memory"
+        memory.mkdir()
+        watch_file = memory / "admission_watch.json"
+
+        watch_file.write_text("{ 不是合法 JSON", encoding="utf-8")
+        assert intel_metrics(tmp_path)["watch"] is None    # 损坏 → 空态，不抛
+
+        watch_file.write_text("[]", encoding="utf-8")
+        assert intel_metrics(tmp_path)["watch"] is None    # 结构非法 → 空态
+
+        watch_file.write_text(json.dumps({"10001": {"last_check": "2026-09-30"}}),
+                              encoding="utf-8")
+        assert intel_metrics(tmp_path)["watch"] is None    # 无有效校名 → 空态
 
 
 class TestYanzhaoLookupUnverifiedPlaceholder:
@@ -711,7 +774,8 @@ class TestResearchBudgetDeadline:
         import time
         engine = AgenticResearchEngine()
         mock_urlopen = MagicMock()
-        with patch("urllib.request.urlopen", mock_urlopen):
+        # [审计 2026-09-30 P1-7] LLM 出站收敛到模块级 safe_urlopen，打桩接缝迁移。
+        with patch("tools.intelligence.agentic_research.safe_urlopen", mock_urlopen):
             res = engine.execute_loop(
                 "研究指令",
                 api_config={"api_key": "sk-mock-valid-key",
@@ -803,7 +867,8 @@ class TestResearchBudgetDeadline:
         mock_urlopen.return_value.__enter__ = enter_mock
         mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
 
-        with patch("urllib.request.urlopen", mock_urlopen):
+        # [审计 2026-09-30 P1-7] LLM 出站收敛到模块级 safe_urlopen，打桩接缝迁移。
+        with patch("tools.intelligence.agentic_research.safe_urlopen", mock_urlopen):
             res = engine.execute_loop(
                 "研究指令",
                 api_config={"api_key": "sk-mock-valid-key",
@@ -832,7 +897,8 @@ class TestResearchBudgetDeadline:
             calls.append(timeout)
             raise _uerr.URLError("模拟网络失败")
 
-        with patch("urllib.request.urlopen", fake_urlopen):
+        # [审计 2026-09-30 P1-7] LLM 出站收敛到模块级 safe_urlopen，打桩接缝迁移。
+        with patch("tools.intelligence.agentic_research.safe_urlopen", fake_urlopen):
             with pytest.raises(TimeoutError):
                 engine.execute_loop(
                     "p",
@@ -890,7 +956,8 @@ class TestRecursionGuardV3:
             captured["payload"] = json.loads(req.data.decode("utf-8"))
             return _Resp()
 
-        with patch("urllib.request.urlopen", fake_urlopen):
+        # [审计 2026-09-30 P1-7] LLM 出站收敛到模块级 safe_urlopen，打桩接缝迁移。
+        with patch("tools.intelligence.agentic_research.safe_urlopen", fake_urlopen):
             res = engine.execute_loop(
                 "研究指令",
                 api_config={"api_key": "sk-mock-valid-key",
@@ -964,7 +1031,8 @@ class TestRecursionGuardV3:
         mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
 
         t0 = time.monotonic()
-        with patch("urllib.request.urlopen", mock_urlopen):
+        # [审计 2026-09-30 P1-7] LLM 出站收敛到模块级 safe_urlopen，打桩接缝迁移。
+        with patch("tools.intelligence.agentic_research.safe_urlopen", mock_urlopen):
             res = engine.execute_loop(
                 "研究指令",
                 api_config={"api_key": "sk-mock-valid-key",

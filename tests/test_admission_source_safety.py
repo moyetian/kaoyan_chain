@@ -78,21 +78,16 @@ def test_empty_major_does_not_match_first_department():
 def test_llm_prompt_blocks_math_for_non_math_candidate(monkeypatch):
     captured = {}
 
-    class _Resp:
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-        def read(self): return b'{"choices": [{"message": {"content": "ok"}}]}'
+    def _fake_chat(messages, **_kwargs):
+        captured["messages"] = messages
+        return "ok"
 
-    def _fake_urlopen(req, timeout=25):
-        captured["body"] = req.data.decode("utf-8")
-        return _Resp()
-
-    monkeypatch.setattr(scout_mod, "safe_urlopen", _fake_urlopen)
+    monkeypatch.setattr(scout_mod, "chat_completion", _fake_chat)
     cfg = {"api_key": "sk-test",
            "study_plan": {"math_key": "none", "math_name": "不考数学"}}
     out = scout_mod.synthesize_report_with_llm("中国人民大学", "马克思主义哲学",
                                                [], {}, cfg)
     assert out == "ok"
     import json as _js
-    system_text = _js.loads(captured["body"])["messages"][0]["content"]
+    system_text = captured["messages"][0]["content"]
     assert "不考数学" in system_text and "算法题库" in system_text

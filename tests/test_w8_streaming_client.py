@@ -468,7 +468,7 @@ def test_midstream_disconnect_retried_then_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(loop_module.time, "sleep", lambda s: None)
 
     runner = _make_runner(tmp_path, max_steps=1)
-    runner.tool_registry.execute_tool = lambda name, args, interactive=True: "样本工具结果"
+    runner.tool_registry.execute_tool = lambda name, args, interactive=True, call_id="": "样本工具结果"
     answer = runner.run("你好", interactive=False)
 
     assert answer == "", "残缺流不得被当成答案（不伪造）"
@@ -503,7 +503,7 @@ def test_stalled_stream_read_timeout_retried(tmp_path, monkeypatch):
     monkeypatch.setattr(loop_module.time, "sleep", lambda s: None)
 
     runner = _make_runner(tmp_path, max_steps=1)
-    runner.tool_registry.execute_tool = lambda name, args, interactive=True: "r"
+    runner.tool_registry.execute_tool = lambda name, args, interactive=True, call_id="": "r"
     assert runner.run("你好", interactive=False) == ""
     payload = _llm_calls(tmp_path)[0]["payload"]
     assert payload["error_kind"] == "network"
@@ -518,7 +518,7 @@ def test_empty_stream_is_error_not_fake_answer(tmp_path, monkeypatch):
     monkeypatch.setattr(loop_module.time, "sleep", lambda s: None)
 
     runner = _make_runner(tmp_path, max_steps=1)
-    runner.tool_registry.execute_tool = lambda name, args, interactive=True: "r"
+    runner.tool_registry.execute_tool = lambda name, args, interactive=True, call_id="": "r"
     assert runner.run("你好", interactive=False) == ""
     payload = _llm_calls(tmp_path)[0]["payload"]
     assert payload["error_kind"] == "invalid_response"

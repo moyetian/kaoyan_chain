@@ -38,11 +38,24 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    try:
+        from tools.workspace import resolve_workspace_root
+    except ImportError:
+        # [最小环境兜底] 本文件被单独拷出运行（无 workspace 模块，如
+        # challenger 沙箱 / 用户只保留 launcher 的场景）。启动器的职责恰是
+        # 「环境损坏时给出诊断」，不能因辅助导入缺失而自身崩溃（实测：直接
+        # ModuleNotFoundError 退出码 1，看门狗链路全部失效）。回退到按本文件
+        # 位置推算，行为与引入 workspace 模块前一致。
+        def resolve_workspace_root(start=None):
+            if getattr(sys, "frozen", False):
+                return Path(sys.executable).resolve().parent
+            return Path(start or __file__).resolve().parent.parent
+
 # 确保项目根目录与 tools 目录在 sys.path 中
-if getattr(sys, "frozen", False):
-    ROOT = Path(sys.executable).resolve().parent
-else:
-    ROOT = Path(__file__).resolve().parent.parent
+ROOT = resolve_workspace_root(__file__)
 
 TOOLS = ROOT / "tools"
 LOGS_DIR = ROOT / "logs"

@@ -8,6 +8,12 @@
 4. Git 工具 (git_status, git_diff, git_log)
 5. 网络工具 (fetch_url)
 6. 考研专属能力工具 (read_exam_paper, verify_math, socratic_hint, log_mistake, review_mistakes)
+7. [K5] 技能桥接工具 (grade_exam_paper, grade_open_question, solve_vision,
+   search_wechat, map_knowledge, diagnose_exam —— 经 skill_bridge 集中声明)
+
+[K5 工具分级] 每个 ToolDefinition 带 tier（essential 常驻 / extended 低频按需）
+与 source（builtin / skill / mcp）元数据；get_openai_tools 默认返回全部（本批零
+行为变化），可经 ky_config.json 的 agent.tool_tier 收紧为 essential。
 """
 
 import os
@@ -19,10 +25,33 @@ import subprocess
 import urllib.request
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Dict, Any, Callable, List, Optional, Sequence
 
 from .sandbox import Sandbox, SecurityException
 from .permissions import PermissionLevel, PermissionManager
+
+try:  # [K8] 工具输出预算：截断上限单一真源 + execute_tool 后置兜底
+    from .output_budget import (
+        DEFAULT_TOOL_OUTPUT_BUDGET,
+        TOOL_OUTPUT_LIMITS,
+        apply_output_budget,
+    )
+except ImportError:  # pragma: no cover - 脚本式直跑兼容
+    from output_budget import (  # type: ignore
+        DEFAULT_TOOL_OUTPUT_BUDGET,
+        TOOL_OUTPUT_LIMITS,
+        apply_output_budget,
+    )
+
+try:  # [K5] 技能桥接器：6 项领域技能 → Agent 工具（集中声明，见 skill_bridge.py）
+    from .skill_bridge import register_skill_tools
+except ImportError:  # pragma: no cover - 脚本式直跑兼容
+    from skill_bridge import register_skill_tools  # type: ignore
 
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
     from ky_io import atomic_write_text  # noqa: E402
@@ -44,7 +73,7 @@ except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
     from tools.net_guard import UnsafeURLError, safe_urlopen  # type: ignore
 
 # 引入现有考研 Skills 模块
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 SKILLS_DIR = ROOT / "tools" / "skills"
 if str(ROOT / "tools") not in sys.path:
     sys.path.insert(0, str(ROOT / "tools"))
@@ -159,15 +188,23 @@ def _looks_like_path_token(token: str) -> bool:
 
 
 def _is_inside_sandbox(sandbox: Sandbox, resolved: Path) -> bool:
-    """路径是否落在工作区内或用户显式授权的额外目录内。"""
+    """路径是否落在工作区内或用户显式授权的额外目录内。
+
+    [审计 2026-09-30 P1-1] 授权目录判定改为 ``Path.is_relative_to``（按路径
+    分量、带分隔符边界、Windows 大小写不敏感）：此前字符串前缀比较会把授权
+    目录的同前缀兄弟目录一并放行（已实测：授权 ``.../refs`` 后可读写
+    ``.../refs-secret/victim.md``）。
+    """
     try:
-        resolved.resolve().relative_to(sandbox.workspace_root)
+        resolved = resolved.resolve()
+    except OSError:
+        return False
+    try:
+        resolved.relative_to(sandbox.workspace_root)
         return True
     except ValueError:
         pass
-    resolved_str = str(resolved).lower()
-    return any(resolved_str.startswith(str(extra).lower())
-               for extra in sandbox.allowed_extra_paths)
+    return any(resolved.is_relative_to(extra) for extra in sandbox.allowed_extra_paths)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -207,6 +244,22 @@ def _is_script_exec_allowed(resolved: Path, workspace_root: Path) -> bool:
     if rel_key in _SCRIPT_EXEC_ALLOWED_ROOT_SCRIPTS:
         return True
     return any(rel_key.startswith(pfx) for pfx in _SCRIPT_EXEC_ALLOWED_PREFIXES)
+
+
+def _is_script_exec_allowed_tree(dir_path: Path, workspace_root: Path) -> bool:
+    """[审计 2026-09-30 P0-2] 目录是否位于（或等于）受控目录白名单内。
+
+    与 :func:`_is_script_exec_allowed` 的差别：目录自身 ``tests`` 不带尾斜杠，
+    按文件版的前缀匹配会漏判（``"tests".startswith("tests/")`` 为假）。
+    pytest 以目录为位置参数时（``pytest tests/``）用本函数判定。
+    """
+    try:
+        rel = Path(dir_path).resolve().relative_to(Path(workspace_root).resolve())
+    except (ValueError, OSError):
+        return False
+    rel_key = os.path.normcase(rel.as_posix()).replace("\\", "/")
+    return any(rel_key == pfx.rstrip("/") or rel_key.startswith(pfx)
+               for pfx in _SCRIPT_EXEC_ALLOWED_PREFIXES)
 
 
 def _note_lock_error(path: Path) -> Optional[str]:
@@ -272,14 +325,41 @@ def _search_engine_host(url: str) -> Optional[str]:
     return None
 
 
+# ─────────────────────────────────────────────────────────────────────
+# [K5] 工具档位（tier）与来源（source）
+#   * essential：高频基础能力，常驻 schema（文件/检索/执行/基础考研工具）；
+#   * extended ：低频或带副作用的领域能力（破坏性操作、技能桥接工具、MCP 工具），
+#                新工具一律排尾 —— 降低对 flash 级模型工具选择的锚定干扰；
+#   * all      ：两档全给（**本批默认**，与历史行为逐字节一致，零行为风险）。
+# 逃生门：ky_config.json 的 agent.tool_tier = "all"（默认）/"essential"。
+# ─────────────────────────────────────────────────────────────────────
+TIER_ESSENTIAL = "essential"
+TIER_EXTENDED = "extended"
+TIER_ALL = "all"
+VALID_TIERS = (TIER_ESSENTIAL, TIER_EXTENDED, TIER_ALL)
+
+#: ToolDefinition.source 取值（供 ky tools list 审计与"默认跳过 MCP"判定）
+SOURCE_BUILTIN = "builtin"
+SOURCE_SKILL = "skill"
+SOURCE_MCP = "mcp"
+
+
 class ToolDefinition:
     # level 可为 int，也可为 Callable[[dict], int]（按 action 动态定级）
-    def __init__(self, name: str, desc: str, params_schema: Dict[str, Any], func: Callable, level):
+    def __init__(self, name: str, desc: str, params_schema: Dict[str, Any], func: Callable, level,
+                 tier: str = TIER_ESSENTIAL, source: str = SOURCE_BUILTIN,
+                 budget: int = DEFAULT_TOOL_OUTPUT_BUDGET):
         self.name = name
         self.desc = desc
         self.params_schema = params_schema
         self.func = func
         self.level = level
+        # [K5] tier/source 为元数据（不参与执行），供 schema 分级与工具审计
+        self.tier = tier
+        self.source = source
+        # [K8] 输出预算（字符）：execute_tool 出口超过该值即截断 + 落盘。
+        # 默认 400k —— 远大于所有工具自带截断，默认零行为变化。
+        self.budget = budget
 
     def to_openai_dict(self) -> Dict[str, Any]:
         return {
@@ -292,38 +372,87 @@ class ToolDefinition:
         }
 
 class ToolRegistry:
-    def __init__(self, sandbox: Sandbox, permissions: PermissionManager, memory_manager=None):
+    def __init__(self, sandbox: Sandbox, permissions: PermissionManager, memory_manager=None,
+                 config: Optional[Dict[str, Any]] = None):
         self.sandbox = sandbox
         self.permissions = permissions
         self.memory_manager = memory_manager
+        # [K5 逃生门] agent.tool_tier 可把常驻 schema 从 all 收紧到 essential。
+        # 显式传入的 config 优先；未传时惰性读工作区 ky_config.json（默认 all）。
+        self.config = config if isinstance(config, dict) else None
+        self._tool_tier_cache: Optional[str] = None
         self.tools: Dict[str, ToolDefinition] = {}
         self._register_all_tools()
 
-    def register(self, name: str, desc: str, params_schema: Dict[str, Any], level):
+    def register(self, name: str, desc: str, params_schema: Dict[str, Any], level,
+                 *, tier: str = TIER_ESSENTIAL, source: str = SOURCE_BUILTIN):
+        # [K5] tier/source 为 keyword-only 新增参数，既有调用签名逐字节兼容。
         def decorator(func: Callable):
-            self.tools[name] = ToolDefinition(name, desc, params_schema, func, level)
+            self.tools[name] = ToolDefinition(name, desc, params_schema, func, level,
+                                              tier=tier, source=source)
             return func
         return decorator
 
-    def get_openai_tools(self, names: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
+    def _resolve_effective_tier(self, tier: Optional[str]) -> str:
+        """解析本次要呈现的 tier 档位（显式参数 > 配置逃生门 > 默认 all）。
+
+        非法值一律回落 ``all`` —— 配置写错时宁可多给工具，也绝不静默丢工具。
+        """
+        if tier is not None:
+            t = str(tier).strip().lower()
+            return t if t in VALID_TIERS else TIER_ALL
+        if self._tool_tier_cache is None:
+            self._tool_tier_cache = self._config_tool_tier()
+        return self._tool_tier_cache
+
+    def _config_tool_tier(self) -> str:
+        """读配置里的 ``agent.tool_tier``（逃生门；任何异常/非法值一律 all）。"""
+        try:
+            cfg = self.config
+            if cfg is None:
+                cfg_file = Path(self.sandbox.workspace_root) / "ky_config.json"
+                if not cfg_file.exists():
+                    return TIER_ALL
+                cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
+            agent_cfg = cfg.get("agent") if isinstance(cfg, dict) else None
+            raw = agent_cfg.get("tool_tier") if isinstance(agent_cfg, dict) else None
+            t = str(raw).strip().lower() if raw is not None else ""
+            return t if t in VALID_TIERS else TIER_ALL
+        except Exception:  # noqa: BLE001 - 配置读取失败绝不牵连工具注册表
+            return TIER_ALL
+
+    def get_openai_tools(self, names: Optional[Sequence[str]] = None,
+                         tier: Optional[str] = None) -> List[Dict[str, Any]]:
         """返回工具的 OpenAI schema 列表。
 
-        ``names`` 为 None 时返回全部工具（默认）；传入清单时只返回清单内的工具
-        （收尾兜底等场景需要受限工具集）。清单内不存在的名字静默忽略。
+        ``names`` 非 None 时**优先**：只返回清单内的工具（收尾兜底等场景需要受限
+        工具集；此时忽略 ``tier``，语义与历史一致）。清单内不存在的名字静默忽略。
+
+        ``tier`` 为 None 时走配置逃生门（agent.tool_tier，默认 ``all`` = 全部工具，
+        本批零行为变化）；``"essential"`` 只回 essential；``"extended"`` 只回
+        extended。
 
         [W10 检索行为引导] ``web_search`` 置顶：flash 级模型对「搜索=手动拼接
         搜索引擎 URL」有强训练惯性（实测两工具极简环境下仍首选 fetch_url 抓
         Bing），工具顺序对选择有锚定效应——把检索首选工具放在最前。
+        [K5] 其后按 essential → extended 排序（同档内保持注册顺序），新工具排尾。
         """
-        if names is None:
-            tools = list(self.tools.values())
-            tools.sort(key=lambda t: 0 if t.name == "web_search" else 1)
-            return [t.to_openai_dict() for t in tools]
-        wanted = [str(n) for n in names]
-        return [self.tools[n].to_openai_dict() for n in wanted if n in self.tools]
+        if names is not None:
+            wanted = [str(n) for n in names]
+            return [self.tools[n].to_openai_dict() for n in wanted if n in self.tools]
+        eff = self._resolve_effective_tier(tier)
+        _rank = {TIER_ESSENTIAL: 1, TIER_EXTENDED: 2}
+        tools = [t for t in self.tools.values() if eff == TIER_ALL or t.tier == eff]
+        tools.sort(key=lambda t: (0 if t.name == "web_search" else _rank.get(t.tier, 2)))
+        return [t.to_openai_dict() for t in tools]
 
-    def execute_tool(self, name: str, args: Dict[str, Any], interactive: bool = True) -> str:
-        """统一执行入口: 经过沙箱与权限验证"""
+    def execute_tool(self, name: str, args: Dict[str, Any], interactive: bool = True,
+                     call_id: str = "") -> str:
+        """统一执行入口: 经过沙箱与权限验证
+
+        [K8] ``call_id`` 为可选的调用标识（loop 传模型给出的 tool_call id），
+        仅用于输出超预算时的落盘文件名；缺省时落盘名用 ``nocall``。
+        """
         tool_def = self.tools.get(name)
         if not tool_def:
             return f"Error: 未知工具 [{name}]"
@@ -351,10 +480,21 @@ class ToolRegistry:
             # 闸门与 B2b 的 read_file / read_exam_paper「工作区外读取」闸门共用。
             # 该参数不在工具 schema 里，模型无法通过 args 影响它（此处强制覆盖）。
             call_args = args
-            if name in ("run_command", "read_file", "read_exam_paper"):
+            # [K5] solve_vision（图片路径）与 grade_exam_paper（试卷路径）同样要过
+            # 工作区外读取授权闸门，与上述三工具同一规则显式透传交互上下文。
+            if name in ("run_command", "read_file", "read_exam_paper",
+                        "solve_vision", "grade_exam_paper"):
                 call_args = {**args, "interactive": interactive}
             result = tool_def.func(**call_args)
-            return str(result)
+            # 3. [K8] 输出预算兜底：超过 ToolDefinition.budget（默认 400k 字符）
+            # 时截断 + 完整原文落盘 .memory/tool_outputs/<日期>/（落盘失败静默
+            # 降级「未落盘」）。默认预算远大于各工具自带截断 → 零行为变化。
+            return apply_output_budget(
+                str(result), name,
+                call_id=call_id,
+                budget=getattr(tool_def, "budget", DEFAULT_TOOL_OUTPUT_BUDGET),
+                workspace_root=self.sandbox.workspace_root,
+            )
         except SecurityException as se:
             return f"SecurityError: {se}"
         except Exception as e:
@@ -402,7 +542,8 @@ class ToolRegistry:
             },
             level=PermissionLevel.READ_ONLY
         )
-        def read_file(path: str, offset: int = 0, limit: int = 2000,
+        def read_file(path: str, offset: int = 0,
+                      limit: int = TOOL_OUTPUT_LIMITS["read_file_text_lines"],
                       interactive: bool = True) -> str:
             # [B2b] 工作区外文件先过外部读取授权闸门（批准后同目录免再问）
             p = self._resolve_read_path(path, interactive)
@@ -423,9 +564,11 @@ class ToolRegistry:
                     except (TypeError, ValueError):
                         start_page = 1
                     try:
-                        char_limit = int(limit) if int(limit) != 2000 else 12000
+                        char_limit = (int(limit)
+                                      if int(limit) != TOOL_OUTPUT_LIMITS["read_file_text_lines"]
+                                      else TOOL_OUTPUT_LIMITS["read_file_pdf_chars"])
                     except (TypeError, ValueError):
-                        char_limit = 12000
+                        char_limit = TOOL_OUTPUT_LIMITS["read_file_pdf_chars"]
                     pdf_info = pdf_extractor.extract_pdf_pages(
                         str(p), max_pages=20, start_page=start_page)
                     if pdf_info.get("success"):
@@ -518,7 +661,8 @@ class ToolRegistry:
                 },
                 "required": ["path"]
             },
-            level=PermissionLevel.DANGEROUS
+            level=PermissionLevel.DANGEROUS,
+            tier=TIER_EXTENDED,  # [K5] 破坏性操作不常驻 schema
         )
         def delete_file(path: str) -> str:
             p = self.sandbox.resolve_safe_path(path, read_only=False)
@@ -708,6 +852,42 @@ class ToolRegistry:
                     f"（PDF 会自动提取文本），无需切换目录或执行外部命令。"
                 )
 
+            # [审计 2026-09-30 P0-2] B2a 两道闸门（受控目录白名单 + 会话写入审批）
+            # 抽为闭包，按「最终被执行的脚本文件」判定 —— 此前它们只写在
+            # python/python3 分支内部，pytest 等同样能执行代码的入口绕过了闸门
+            # （write_file 落 tests/test_x.py → pytest tests/test_x.py 零审批执行）。
+            def _enforce_script_gates(script_display: str, script_path) -> str:
+                """返回空串 = 放行；否则返回应回给模型的拦截文案。"""
+                if not _is_script_exec_allowed(script_path, self.sandbox.workspace_root):
+                    return (
+                        f"安全拦截：仅允许执行受控目录"
+                        f"（{', '.join(_SCRIPT_EXEC_ALLOWED_PREFIXES)}）下的脚本，"
+                        f"已拒绝 [{script_display}]。工作区其他位置的脚本需人工核对后执行。"
+                        f"【替代路径】读取文件内容请直接用 read_file 工具"
+                        f"（PDF 会自动提取文本，offset 为起始页、可续读长文档），"
+                        f"不要为此编写并执行脚本。"
+                    )
+                if self.sandbox.is_session_written(script_path):
+                    _approved, _reason = self.permissions.check_session_script_exec(
+                        script_display, {"command": command}, interactive=interactive)
+                    if not _approved:
+                        return (f"PermissionDenied: 本会话写入的脚本 [{script_display}] "
+                                f"执行未获批准 —— {_reason}"
+                                f"【替代路径】请改用内置工具完成任务"
+                                f"（如 read_file 直接读取文件内容），不要反复重试脚本执行。")
+                return ""
+
+            def _dir_has_session_written_py(dir_path) -> bool:
+                """目录内是否存在「本会话写入」的 .py（pytest 收集/裸跑场景用）。"""
+                for _key in self.sandbox.session_written_files:
+                    try:
+                        _p = Path(_key)
+                        if _p.suffix.lower() == ".py" and _p.is_relative_to(dir_path):
+                            return True
+                    except (OSError, ValueError):
+                        continue
+                return False
+
             # [P0 修复·增强] shell=False 挡不住 Python 自身的任意代码执行：
             # `python -c "import shutil;shutil.rmtree('/')"` 既在白名单内又不命中参数黑名单。
             # 因此对 python 收紧为「只允许运行工作区内的 .py 脚本」，其余调用形式一律拒绝。
@@ -744,30 +924,89 @@ class ToolRegistry:
                         return (f"安全拦截：python 脚本必须位于工作区内或已授权目录，"
                                 f"已拒绝 {first_arg}（{e}）")
 
-                    # [B2a ①] 脚本路径 allowlist（硬闸门）：仅受控目录下的脚本可执行。
-                    if not _is_script_exec_allowed(_script_path, self.sandbox.workspace_root):
-                        return (
-                            f"安全拦截：仅允许执行受控目录"
-                            f"（{', '.join(_SCRIPT_EXEC_ALLOWED_PREFIXES)}）下的脚本，"
-                            f"已拒绝 [{first_arg}]。工作区其他位置的脚本需人工核对后执行。"
-                            f"【替代路径】读取文件内容请直接用 read_file 工具"
-                            f"（PDF 会自动提取文本，offset 为起始页、可续读长文档），"
-                            f"不要为此编写并执行脚本。"
-                        )
+                    # [B2a ①②] 两道闸门（受控目录 + 会话写入审批），见上方闭包。
+                    _gate_msg = _enforce_script_gates(first_arg, _script_path)
+                    if _gate_msg:
+                        return _gate_msg
 
-                    # [B2a ②] 会话污染闸门：本会话被 write_file / edit_file 写过或
-                    # 改过的脚本，执行前必须经审批通道**显式批准** —— auto 模式不得
-                    # 自动放行；headless（无人在场）一律拒绝且文案可辨识。
-                    # 已知残余（不在 B2a 范围）：`pytest <脚本>` 等同样能执行代码的
-                    # 入口未纳入本闸门，留待后续批次收口。
-                    if self.sandbox.is_session_written(_script_path):
+            # [审计 2026-09-30 P0-2] pytest 纳入「脚本执行」闸门：它同样会收集并
+            # 执行任意 Python 测试文件，此前只过白名单、不进 B2a 闸门 ——
+            # `write_file tests/test_x.py` → `pytest tests/test_x.py` 可在 auto
+            # 模式零审批执行任意 Python。判定规则：
+            #   * 位置参数（存在的路径；``file.py::test_name`` 取 ``::`` 前段）
+            #     全部过受控目录 + 会话写入闸门；目录参数额外检查其内是否有
+            #     本会话写入的 .py；
+            #   * 裸 pytest（无位置参数，收集整棵工作区）：会话写入集合含
+            #     工作区内 .py 时同样触发会话写入闸门；
+            #   * 危险选项直接拒绝：``--pyargs``（按模块名执行代码）、
+            #     ``-p``（加载任意插件，仅允许 ``no:`` 前缀）、``-c``/``--config``
+            #     与 ``-o``/``--override-ini``（外部 ini/覆盖项可经 addopts
+            #     注入插件加载）。
+            if prog == "pytest":
+                _pytest_info_only = any(
+                    _strip_token_quotes(_t) in ("--version", "-V", "-h", "--help")
+                    for _t in argv[1:]
+                )
+                if not _pytest_info_only:
+                    for _tok in argv[1:]:
+                        _cand = _strip_token_quotes(_tok)
+                        if _cand == "--pyargs":
+                            return "安全拦截：pytest --pyargs 以模块名执行代码，不在允许范围内。"
+                        if _cand == "-c" or _cand.startswith("--config"):
+                            return "安全拦截：pytest 禁止指定外部配置文件（可经 addopts 注入代码加载）。"
+                        if _cand == "-o" or _cand.startswith("--override-ini"):
+                            return "安全拦截：pytest 禁止 --override-ini（可经 addopts 注入代码加载）。"
+                    # -p 插件选项：分离（-p name）与粘连（-pname）两种写法都检查
+                    for _i, _tok in enumerate(argv[1:]):
+                        _cand = _strip_token_quotes(_tok)
+                        _val = ""
+                        if _cand == "-p":
+                            _val = _strip_token_quotes(argv[_i + 2]) if _i + 2 < len(argv) else ""
+                        elif _cand.startswith("-p") and not _cand.startswith("--") and len(_cand) > 2:
+                            _val = _cand[2:]
+                        else:
+                            continue
+                        if not _val.startswith("no:"):
+                            return ("安全拦截：pytest 仅允许 `-p no:...`（禁用插件）；"
+                                    "加载任意插件不在允许范围内。")
+                    _pytest_checked = 0
+                    for _tok in argv[1:]:
+                        _cand = _strip_token_quotes(_tok)
+                        if not _cand or _cand.startswith("-"):
+                            continue
+                        _cand = _cand.split("::", 1)[0]      # node id 语法：取文件部分
+                        try:
+                            _p = self.sandbox.resolve_safe_path(_cand, read_only=True)
+                        except SecurityException:
+                            continue     # 非路径 token（-k/-m 的值等），交由下方通用检查
+                        if not _p.exists():
+                            continue
+                        _pytest_checked += 1
+                        if _p.is_dir():
+                            if not _is_script_exec_allowed_tree(_p, self.sandbox.workspace_root):
+                                return (
+                                    f"安全拦截：仅允许在受控目录"
+                                    f"（{', '.join(_SCRIPT_EXEC_ALLOWED_PREFIXES)}）下运行测试，"
+                                    f"已拒绝 [{_cand}]。"
+                                )
+                            if _dir_has_session_written_py(_p):
+                                _approved, _reason = self.permissions.check_session_script_exec(
+                                    _cand, {"command": command}, interactive=interactive)
+                                if not _approved:
+                                    return (f"PermissionDenied: 本会话写入的测试脚本位于 [{_cand}]，"
+                                            f"执行未获批准 —— {_reason}")
+                        else:
+                            _gate_msg = _enforce_script_gates(_cand, _p)
+                            if _gate_msg:
+                                return _gate_msg
+                    if _pytest_checked == 0 and _dir_has_session_written_py(self.sandbox.workspace_root):
+                        # 裸 pytest：无位置参数 → 收集整棵工作区，本会话写入的 .py
+                        # 同样会被收集执行，与「写脚本再跑」同一语义。
                         _approved, _reason = self.permissions.check_session_script_exec(
-                            first_arg, {"command": command}, interactive=interactive)
+                            ".", {"command": command}, interactive=interactive)
                         if not _approved:
-                            return (f"PermissionDenied: 本会话写入的脚本 [{first_arg}] "
-                                    f"执行未获批准 —— {_reason}"
-                                    f"【替代路径】请改用内置工具完成任务"
-                                    f"（如 read_file 直接读取文件内容），不要反复重试脚本执行。")
+                            return (f"PermissionDenied: 本会话写入的脚本可能被 pytest 收集执行，"
+                                    f"执行未获批准 —— {_reason}")
 
             # [P0 修复] 位置参数沙箱校验：上面的白名单与参数黑名单都只看「程序名」和
             # 「高危模式」，位置参数里的路径从未过沙箱 —— 于是 `cat /etc/passwd`、
@@ -827,20 +1066,79 @@ class ToolRegistry:
                     if re.search(pat, joined):
                         return f"安全拦截：检测到高危参数模式 {pat}"
 
-            try:
-                proc = subprocess.run(
-                    argv,
-                    shell=False,
-                    cwd=str(self.sandbox.workspace_root),
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                    encoding="utf-8",
-                    errors="replace"
+            # [审计 2026-09-30 P1-4] git 配置注入收口：`git -c key=value` 可注入
+            # alias.<x>=!cmd、core.fsmonitor / core.sshCommand 等 —— 实测
+            # `git -c alias.kyprobe=!pwd kyprobe` 与 `git -c core.fsmonitor=<hook>`
+            # 均能执行任意程序（配置键可指向外部程序）。收口规则：
+            #   * 值以 `!` 开头（alias 执行 shell）→ 拒绝；
+            #   * 键命中执行类黑名单（alias./core.fsmonitor/core.sshcommand/
+            #     core.pager/core.editor/core.hookspath/core.askpass/credential./
+            #     diff.external/uploadpack./receive./pager. 等）→ 拒绝；
+            #   * --upload-pack / --receive-pack / --template 指定外部程序/目录 → 拒绝。
+            if prog == "git":
+                _git_deny_key_prefixes = (
+                    "alias.", "core.fsmonitor", "core.sshcommand", "core.pager",
+                    "core.editor", "core.hookspath", "core.askpass", "core.gitproxy",
+                    "credential.", "diff.external", "uploadpack.", "receive.",
+                    "sequence.editor", "pager.",
                 )
-                out = (proc.stdout or "").strip()
-                err = (proc.stderr or "").strip()
-                return f"ReturnCode: {proc.returncode}\nStdout: {out[:1500]}\nStderr: {err[:800]}"
+                for _i, _tok in enumerate(argv[1:]):
+                    _cand = _strip_token_quotes(_tok)
+                    if (_cand.startswith("--upload-pack") or _cand.startswith("--receive-pack")
+                            or _cand.startswith("--template")):
+                        return ("安全拦截：git 的 --upload-pack/--receive-pack/--template "
+                                "可加载外部程序或目录，已被禁用。")
+                    _kv = None
+                    if _cand == "-c":
+                        _kv = argv[_i + 2] if _i + 2 < len(argv) else ""
+                    elif _cand.startswith("-c") and not _cand.startswith("--") and len(_cand) > 2:
+                        _kv = _cand[2:]
+                    if _kv is None:
+                        continue
+                    _kv = _strip_token_quotes(str(_kv))
+                    _key, _eq, _val = _kv.partition("=")
+                    if not _eq:
+                        return f"安全拦截：git -c 参数格式非法 [{_kv}]（应为 key=value）。"
+                    if _val.strip().startswith("!"):
+                        return "安全拦截：git -c 配置值以 `!` 开头会执行 shell 命令，已被禁用。"
+                    _key_l = _key.strip().lower()
+                    if any(_key_l.startswith(_k) for _k in _git_deny_key_prefixes):
+                        return (f"安全拦截：git -c 配置键 [{_key}] 可触发外部程序执行，"
+                                f"已被禁用。")
+
+            # [审计 2026-09-30 P1-5] 执行加固：
+            #   * timeout 由模型参数控制且无上限 —— clamp 到 [1, 300]（300s 覆盖
+            #     跑测试套件等正常长任务，同时阻断「极大 timeout + 挂起命令」）；
+            #   * capture_output 会把全部输出读进内存后才在下方截断 —— 改为把
+            #     stdout/stderr 重定向到临时文件，只读回前 1MB，内存占用有界
+            #     （`cat /dev/zero` 类无限输出不再撑爆内存）。
+            try:
+                timeout = max(1, min(int(timeout), 300))
+            except (TypeError, ValueError):
+                timeout = 30
+            _MAX_OUT_BYTES = 1024 * 1024
+            import tempfile
+            try:
+                with tempfile.TemporaryFile() as _fout, tempfile.TemporaryFile() as _ferr:
+                    proc = subprocess.run(
+                        argv,
+                        shell=False,
+                        cwd=str(self.sandbox.workspace_root),
+                        stdout=_fout,
+                        stderr=_ferr,
+                        timeout=timeout,
+                    )
+                    _fout.seek(0)
+                    _ferr.seek(0)
+                    out = _fout.read(_MAX_OUT_BYTES + 1).decode("utf-8", errors="replace")
+                    err = _ferr.read(_MAX_OUT_BYTES + 1).decode("utf-8", errors="replace")
+                _out_note = "\n[... 输出超过 1MB 上限，已截断 ...]" if len(out) > _MAX_OUT_BYTES else ""
+                _err_note = "\n[... 输出超过 1MB 上限，已截断 ...]" if len(err) > _MAX_OUT_BYTES else ""
+                out = out.strip()
+                err = err.strip()
+                return (f"ReturnCode: {proc.returncode}\n"
+                        f"Stdout: {out[:TOOL_OUTPUT_LIMITS['run_command_stdout_chars']]}{_out_note}"
+                        f"\nStderr: {err[:TOOL_OUTPUT_LIMITS['run_command_stderr_chars']]}{_err_note}")
             except subprocess.TimeoutExpired:
                 return f"Error: 命令执行超时 ({timeout}秒)"
             except Exception as e:
@@ -884,7 +1182,7 @@ class ToolRegistry:
                 except Exception as e:
                     return f"Error 路径校验失败: {e}"
             res = subprocess.run(cmd, shell=False, cwd=str(self.sandbox.workspace_root), capture_output=True, text=True, errors="replace")
-            return res.stdout[:2000].strip() or "无 Diff 差异"
+            return res.stdout[:TOOL_OUTPUT_LIMITS["git_diff_chars"]].strip() or "无 Diff 差异"
 
         # ─────────────────────────────────────────────────────────────
         # 5. 网络工具 (fetch_url & web_search)
@@ -965,7 +1263,7 @@ class ToolRegistry:
             text = re.sub(r"<(script|style|nav|footer|header)[^>]*>.*?</\1>", " ", text, flags=re.DOTALL | re.IGNORECASE)
             clean_txt = re.sub(r"<[^>]+>", " ", text)
             clean_txt = re.sub(r"\s+", " ", clean_txt).strip()
-            out = clean_txt[:3000]
+            out = clean_txt[:TOOL_OUTPUT_LIMITS["fetch_url_chars"]]
             # [P1 资源嗅探] 页面里若有 PDF/媒体/接口，给 Agent 一条可行动的线索
             # （只登记 URL 元信息，绝不含响应体）
             if res.resources:
@@ -1218,7 +1516,11 @@ class ToolRegistry:
                 },
                 "required": ["expression"]
             },
-            level=PermissionLevel.READ_ONLY
+            # [审计 2026-09-30 P0-1] 此前标注 READ_ONLY(0)，配合权限层的
+            # 「Level 0 无条件放行」使本工具成为零审批执行通道（sympify RCE）。
+            # 解析侧已换安全白名单（math_verifier._safe_sympify），此处再提级到
+            # SHELL_EXEC(3)：safe 模式下不再被 Level 0 短路放行，auto 模式行为不变。
+            level=PermissionLevel.SHELL_EXEC
         )
         def verify_math(expression: str) -> str:
             if not math_verifier:
@@ -1317,7 +1619,8 @@ class ToolRegistry:
                 },
                 "required": ["subject", "keyword"]
             },
-            level=PermissionLevel.READ_ONLY
+            level=PermissionLevel.READ_ONLY,
+            tier=TIER_EXTENDED,  # [K5] 变式检索低频，按需调用
         )
         def search_variant(subject: str, keyword: str) -> str:
             if not variant_retriever:
@@ -1340,7 +1643,8 @@ class ToolRegistry:
                 },
                 "required": ["subject"]
             },
-            level=PermissionLevel.SAFE_EDIT
+            level=PermissionLevel.SAFE_EDIT,
+            tier=TIER_EXTENDED,  # [K5] 组卷低频，按需调用
         )
         def compose_exam(subject: str, count: int = 3, save_file: bool = True) -> str:
             if not exam_composer:
@@ -1361,7 +1665,8 @@ class ToolRegistry:
                 },
                 "required": ["school"]
             },
-            level=PermissionLevel.NETWORK
+            level=PermissionLevel.NETWORK,
+            tier=TIER_EXTENDED,  # [K5] 院校侦察低频，按需调用
         )
         def scout_school_tool(school: str, major: str = "", include_social: bool = True) -> str:
             if not school_scout:
@@ -1386,7 +1691,8 @@ class ToolRegistry:
                 },
                 "required": ["school", "major"]
             },
-            level=PermissionLevel.SAFE_EDIT
+            level=PermissionLevel.SAFE_EDIT,
+            tier=TIER_EXTENDED,  # [K5] 考纲比对低频，按需调用
         )
         def diff_syllabus_tool(school: str, major: str, old_text: str = "", new_text: str = "", save_report: bool = True) -> str:
             if not intelligence:
@@ -1445,7 +1751,8 @@ class ToolRegistry:
                 },
                 "required": ["file_path"]
             },
-            level=PermissionLevel.SAFE_EDIT
+            level=PermissionLevel.SAFE_EDIT,
+            tier=TIER_EXTENDED,  # [K5] 资料入库低频，按需调用
         )
         def ingest_exam_tool(file_path: str, subject: str = "pro", source_name: str = "") -> str:
             if not material_ingestion:
@@ -1503,6 +1810,11 @@ class ToolRegistry:
                 return f"Error: 非法记忆作用域 —— {e}"
             return f"Error: 未知操作 {action}"
 
+        # ─────────────────────────────────────────────────────────────
+        # 8. [K5] 技能桥接工具（6 项领域技能 → extended 档，集中声明见 skill_bridge）
+        # ─────────────────────────────────────────────────────────────
+        register_skill_tools(self)
+
     def register_mcp_tools(self, mcp_manager):
         """动态将外部 MCP Server 提供的工具注入注册表"""
         if not mcp_manager:
@@ -1522,6 +1834,10 @@ class ToolRegistry:
                 desc=desc,
                 params_schema=schema,
                 func=make_mcp_caller(server_name, orig_name),
-                level=PermissionLevel.SHELL_EXEC
+                level=PermissionLevel.SHELL_EXEC,
+                # [K5] MCP 属动态外部能力，归 extended；默认 tier=None 仍返回全部
+                # （行为不变），仅 agent.tool_tier=essential 时随 extended 一起让位。
+                tier=TIER_EXTENDED,
+                source=SOURCE_MCP,
             )
 

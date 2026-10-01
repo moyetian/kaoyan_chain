@@ -174,7 +174,7 @@ def _make_loop_runner(tmp_path, exec_result):
     runner = AgentRunner(config=cfg, workspace_root=tmp_path,
                          permission_mode="auto", quiet=True, max_steps=3)
     runner.tool_registry.execute_tool = (
-        lambda name, args, interactive=True: exec_result)
+        lambda name, args, interactive=True, call_id="": exec_result)
     return runner
 
 

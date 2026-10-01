@@ -37,14 +37,20 @@ def main():
     print("Generating Favicon & ICO...")
     fav_64 = logo_trans_512.resize((64, 64), Image.Resampling.LANCZOS)
     fav_64.save(ASSETS_DIR / "favicon.png", format="PNG", optimize=True)
-    
-    ico_sizes = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+
+    # [问题8 根因修复·单帧 16×16 马赛克] PIL 的 ICO 插件保存时会**跳过所有
+    # 大于基底图尺寸的帧**（IcoImagePlugin._save: `size[0] > width` 即 continue）。
+    # 旧实现以 ico_imgs[0]（16×16）为基底，32/48/64/128/256 全部被跳过，
+    # 产物退化为 16×16 单帧 —— exe 任务栏/桌面快捷方式图标被 Windows 拉伸成
+    # 马赛克（实测问题）。修复：基底改用 512×512 大图，预缩放的 LANCZOS 帧经
+    # append_images 精确命中各尺寸（含 24×24 小任务栏档）。
+    ico_sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
     ico_imgs = [logo_trans_512.resize(s, Image.Resampling.LANCZOS) for s in ico_sizes]
-    ico_imgs[0].save(
+    logo_trans_512.save(
         ASSETS_DIR / "favicon.ico",
         format="ICO",
         sizes=ico_sizes,
-        append_images=ico_imgs[1:]
+        append_images=ico_imgs
     )
     
     # 3. 分离「内圈 C-Cat」与「外圈旋转链环」

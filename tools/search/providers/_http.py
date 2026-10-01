@@ -36,11 +36,19 @@ from typing import Any, Dict, List, Optional, Tuple
 from ..providers.base import ProviderError
 
 try:  # 网络访问安全与解压体积上限（双导入路径兼容）
-    from net_guard import MAX_DECOMPRESSED_BYTES, MAX_HTTP_RESPONSE_BYTES, zlib_limited
+    from net_guard import (
+        MAX_DECOMPRESSED_BYTES,
+        MAX_HTTP_RESPONSE_BYTES,
+        UnsafeURLError,
+        safe_urlopen,
+        zlib_limited,
+    )
 except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
     from tools.net_guard import (  # type: ignore
         MAX_DECOMPRESSED_BYTES,
         MAX_HTTP_RESPONSE_BYTES,
+        UnsafeURLError,
+        safe_urlopen,
         zlib_limited,
     )
 
@@ -324,7 +332,11 @@ def get_text(
         req = urllib.request.Request(url, headers=req_headers)
 
         try:
-            with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx) as resp:
+            # [审计 2026-09-30 P1-7 出站收敛] 经 net_guard.safe_urlopen 发送：
+            # 初始 URL 与每次 3xx 跳转都做 SSRF 校验，并把已校验 IP pin 到连接上；
+            # 体积上限（_read_capped）与解压保护（decompress_body）、指数退避重试、
+            # 自定义 SSL context（含显式 opt-in 的未验证回退）全部保留不变。
+            with safe_urlopen(req, timeout=timeout, context=ssl_ctx) as resp:
                 # [S6] 删除重构残留死变量 status_code（赋值后从未使用）。
                 resp_headers = dict(resp.headers)
                 raw_data = _read_capped(resp)
@@ -356,7 +368,7 @@ def get_text(
                     "TLS 证书校验失败，按调用方显式 opt-in 降级为**未验证**连接"
                     "重试（ssl_verified=False）: %s (%s)", url, e)
                 try:
-                    with urllib.request.urlopen(req, timeout=timeout, context=ssl_fallback_ctx) as resp:
+                    with safe_urlopen(req, timeout=timeout, context=ssl_fallback_ctx) as resp:
                         resp_headers = dict(resp.headers)
                         raw_data = _read_capped(resp)
                         raw_data = decompress_body(raw_data, resp_headers)
@@ -375,6 +387,12 @@ def get_text(
                 continue
 
             raise ProviderError(f"请求失败: {e}") from e
+
+        except UnsafeURLError as e:
+            # [审计 2026-09-30 P1-7] SSRF 校验未通过（内网/回环/保留地址，或域名
+            # 解析失败 fail-closed）：如实报错且不重试 —— 这是确定性拒绝，
+            # 重试只会重复校验、白白耗时。
+            raise ProviderError(f"URL 未通过安全校验: {e}") from e
 
         except Exception as e:
             last_error = e

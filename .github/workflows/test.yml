@@ -125,6 +125,16 @@ jobs:
         echo "::warning::macOS 已卸载 pymupdf：其 arm64 wheel 在 import 期段错误（exit 139）会带走整个 pytest 进程。本平台 PDF 相关用例因此降级跳过（Linux/Windows 不受影响）；待上游修复后删除本步骤。"
         pip uninstall -y pymupdf
 
+    - name: Check Version Consistency (pyproject / installer.iss / tools.version)
+      # [K2 版本门禁] 版本号历史上四处各写一份且互不相同（pyproject.toml /
+      # ky_cli 打印 / GUI 包 / TUI Banner），升级时漏改一处就会让用户看到一个
+      # "看起来正常"的过期版本。本步硬门禁三处（pyproject.toml 的 [project].version、
+      # 仓库根 installer.iss 的 MyAppVersion、tools.version.get_version()）必须一致，
+      # 且不得为兜底值 0.0.0+unknown。逻辑唯一实现在 tools/check_version_consistency.py
+      # （doctor 体检复用同一函数）。
+      run: |
+        python tools/check_version_consistency.py
+
     - name: Run Ky Doctor Self-Check
       run: |
         python tools/doctor.py

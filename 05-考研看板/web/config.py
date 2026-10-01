@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime
 import json
 import pathlib
+import re
 from pathlib import Path
 
 #: 05-考研看板/（本包所在目录）
@@ -108,34 +109,45 @@ _is_mode_c = _exam_mode == "mode_c" or _sp.get("pol_disabled") or _CONFIG.get("p
 _is_mode_b = _exam_mode == "mode_b" or bool(_pro2_name)
 _math_none = _is_mode_b or _is_mode_c or _sp.get("math_key") == "none" or _sp.get("math_name") == "不考数学"
 
+
+def _parse_target(raw, default: int) -> int:
+    """把 study_plan 的 *_target 文本（如「95+ 分」「120-130 分」）解析为看板分值。
+
+    [P2 修复·目标分硬编码] 此前各科 target 为固定常量（数学 110 / 政治 70
+    等），与考生实际设定脱节（三沙箱实测：数学显示 110 vs 设定 95+、政治
+    70 vs 68+）。取文本中首个整数；解析不出时回退常量。
+    """
+    m = re.search(r"\d+", str(raw or ""))
+    return int(m.group()) if m else default
+
 if _is_mode_c:
     SUBJECTS = [
         {"key": "pro", "name": _sp.get("pro_name") or "199管综", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>", "color": "#059669", "dark": "#34d399",
-         "dir": PRO, "full": 200, "target": 140, "notes": "每日作业"},
+         "dir": PRO, "full": 200, "target": _parse_target(_sp.get("pro_target"), 140), "notes": "每日作业"},
         {"key": "eng", "name": _sp.get("eng_name") or "英语二", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>", "color": "#e11d48", "dark": "#fb7185",
-         "dir": ENG, "full": 100, "target": 70, "notes": "每日笔记"},
+         "dir": ENG, "full": 100, "target": _parse_target(_sp.get("eng_target"), 70), "notes": "每日笔记"},
     ]
 elif _is_mode_b:
     SUBJECTS = [
         {"key": "eng", "name": _sp.get("eng_name") or "英语", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>", "color": "#e11d48", "dark": "#fb7185",
-         "dir": ENG, "full": 100, "target": 65, "notes": "每日笔记"},
+         "dir": ENG, "full": 100, "target": _parse_target(_sp.get("eng_target"), 65), "notes": "每日笔记"},
         {"key": "pol", "name": "政治", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>", "color": "#d97706", "dark": "#fbbf24",
-         "dir": POL, "full": 100, "target": 70, "notes": None},
+         "dir": POL, "full": 100, "target": _parse_target(_sp.get("pol_target"), 70), "notes": None},
         {"key": "pro", "name": _sp.get("pro_name") or "专业课一", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>", "color": "#059669", "dark": "#34d399",
-         "dir": PRO, "full": 150, "target": 125, "notes": "每日作业"},
+         "dir": PRO, "full": 150, "target": _parse_target(_sp.get("pro_target"), 125), "notes": "每日作业"},
         {"key": "pro2", "name": _pro2_name or "专业课二", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z'/></svg>", "color": "#7c3aed", "dark": "#a78bfa",
-         "dir": PRO, "full": 150, "target": 125, "notes": "每日作业"},
+         "dir": PRO, "full": 150, "target": _parse_target(_sp.get("pro2_target"), 125), "notes": "每日作业"},
     ]
 else:
     SUBJECTS = [
         {"key": "math", "name": "数学", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M14.5 4a3.5 3.5 0 0 0-5 0v16a3.5 3.5 0 0 1-5 0'/><line x1='6' y1='12' x2='18' y2='12'/></svg>", "color": "#2563eb", "dark": "#60a5fa",
-         "dir": MATH, "full": 150, "target": 110, "notes": "每日笔记"},
+         "dir": MATH, "full": 150, "target": _parse_target(_sp.get("math_target"), 110), "notes": "每日笔记"},
         {"key": "eng", "name": "英语", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M4 7V4h16v3M9 20h6M12 4v16'/></svg>", "color": "#e11d48", "dark": "#fb7185",
-         "dir": ENG, "full": 100, "target": 60, "notes": "每日笔记"},
+         "dir": ENG, "full": 100, "target": _parse_target(_sp.get("eng_target"), 60), "notes": "每日笔记"},
         {"key": "pol", "name": "政治", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/><line x1='2' y1='12' x2='22' y2='12'/></svg>", "color": "#d97706", "dark": "#fbbf24",
-         "dir": POL, "full": 100, "target": 70, "notes": None},
+         "dir": POL, "full": 100, "target": _parse_target(_sp.get("pol_target"), 70), "notes": None},
         {"key": "pro", "name": "专业课", "icon": "<svg viewBox='0 0 24 24' width='1em' height='1em' stroke='currentColor' stroke-width='2' fill='none'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>", "color": "#059669", "dark": "#34d399",
-         "dir": PRO, "full": 150, "target": 120, "notes": "每日作业"},
+         "dir": PRO, "full": 150, "target": _parse_target(_sp.get("pro_target"), 120), "notes": "每日作业"},
     ]
     # [P5 修复·math_key=none 贯穿] 不考数学时（math_key=none / math_name=不考数学，
     # 或 mode_b 双专业课 / mode_c 管综），看板不得再渲染数学卡、数学雷达、数学必背
@@ -144,6 +156,18 @@ else:
     # 本就不含 math 条目，此处过滤只影响纯 math_key=none 场景，不改变既有行为。
     if _math_none:
         SUBJECTS = [s for s in SUBJECTS if s["key"] != "math"]
+
+# [UT4 修复·WEB-2] 目标分区间原文透传：_parse_target 只取首个整数，
+# 「120-130 分」在快照层被截为 120，区间信息静默丢失（UT4 沙箱实测），
+# 且学科小卡此前没有任何目标分渲染消费点。这里把 study_plan 的目标分原文
+# 挂到 target_text（数值 target 字段维持现状兼容）；上游 study_planner
+# 若已输出原文则直接消费，缺失时置 None 由 UI 据此隐藏该行。
+_TARGET_TEXT_SOURCES = {"math": "math_target", "eng": "eng_target",
+                        "pol": "pol_target", "pro": "pro_target", "pro2": "pro2_target"}
+for _s in SUBJECTS:
+    _raw = str(_sp.get(_TARGET_TEXT_SOURCES.get(_s["key"], ""), "") or "").strip()
+    _s["target_text"] = _raw or None
+
 SECTIONS = {
     "math": [
         ("_状态/今日任务.md", None, "today", {}),

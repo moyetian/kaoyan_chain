@@ -13,9 +13,14 @@ import re
 import json
 import importlib
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Optional
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 
 try:
     from skills import error_logger
@@ -337,6 +342,27 @@ def build_knowledge_map(subject="math", root=None):
                             "req_type": req_type,
                             "full_desc": line_s
                         })
+                else:
+                    # [P2 修复·自然书写大纲识别率低] 不带「（掌握/理解/了解）」
+                    # 标记的普通 bullet（如「- 变形固体的基本假设」）此前被静默
+                    # 丢弃：实测自拟 12 章约 60 条要点的大纲只识别出 3 个考点，
+                    # 且无任何覆盖率提示。现兜底计为「未标注」考点；明显的
+                    # 模板/操作指引行（【待自填】、请替换…）仍排除在外。
+                    # [回归修复·分隔线误收] 首版兜底把 markdown 分隔线
+                    # （`---`/`***`，以 -/* 开头会进本分支）也收成「未标注」
+                    # 考点——真实快照实测 eng/pol 各混入 2 条 name="---"。
+                    # 纯分隔符行（[-*_\s]+ 全匹配）不得计为考点。
+                    _fb = re.sub(r"^[-*]\s+", "", line_s).strip()
+                    _fb = re.sub(r"^\*\*([^*]+)\*\*", r"\1", _fb).strip()
+                    if (len(_fb) >= 2 and not re.fullmatch(r"[-*_\s]+", _fb)
+                            and "【待自填" not in _fb
+                            and not _fb.startswith(("[请根据", "请替换", "替换", "删除"))
+                            and "删除本文件" not in _fb):
+                        cur_chap["points"].append({
+                            "name": _fb,
+                            "req_type": "未标注",
+                            "full_desc": line_s
+                        })
 
     # [一致性守卫] 专业课：考纲实际内容与报考科目不符时给出醒目告警。
     # 典型场景：上一轮按 408 建档、本轮改为院校自命题（如 814 信号与系统），
@@ -373,6 +399,29 @@ def build_knowledge_map(subject="math", root=None):
 
     # 若大纲中未解析出考点，提供内置保底模块
     # （占位模板场景除外：此时必须显式报缺，不得用保底模块伪装成真实图谱）
+    # [P2 修复·低识别率无提示] 无论哪种解析失败形态，都如实告知格式要求，
+    # 不再让考生误以为「保底模块/空章节」就是自己的真实考纲（matmech 沙箱实测：
+    # 12 章约 60 条要点的自然书写大纲只识别出 3 个考点，全程无任何提示）。
+    syllabus_parse_hint = None
+    _parsed_points = sum(len(c["points"]) for c in chapters)
+    if not syllabus_placeholder:
+        if not syllabus_file.exists():
+            syllabus_parse_hint = (
+                f"未找到考纲文件 {s_dir.name}/{syllabus_file.name}，当前展示的是内置保底模块，"
+                f"不代表真实考纲。可运行 ky plan 生成骨架，或手动放入院校官方大纲。"
+            )
+        elif not chapters:
+            syllabus_parse_hint = (
+                f"未能从 {syllabus_file.name} 解析出任何章节：本图谱按 Markdown 结构解析"
+                f"（`## 章节标题` + `- 考点（掌握/理解/了解）`）。请将章节写成 ##/### 标题、"
+                f"考点写成 `- ` 开头的条目；当前展示的是内置保底模块，不代表真实考纲。"
+            )
+        elif _parsed_points == 0:
+            syllabus_parse_hint = (
+                f"已从 {syllabus_file.name} 解析出 {len(chapters)} 个章节，但未解析出任何考点条目："
+                f"请将考点写成 `- 考点名（掌握/理解/了解）` 或 `- ` 开头的列表项，"
+                f"当前各章节考点为空。"
+            )
     if not chapters and not syllabus_placeholder:
         chapters = [
             {"title": "基础核心模块", "points": [{"name": f"{subj_name}核心必考概念", "req_type": "掌握", "full_desc": ""}]}
@@ -470,6 +519,7 @@ def build_knowledge_map(subject="math", root=None):
         "unassessed_count": grade_counts["U"],
         "assessed_rate": assessed_rate,
         "syllabus_warning": syllabus_warning,
+        "syllabus_parse_hint": syllabus_parse_hint,
         "syllabus_placeholder": syllabus_placeholder,
         "chapters": chapters,
         "modules": {c["title"]: c["points"] for c in chapters}
@@ -497,6 +547,11 @@ def format_knowledge_map_table(subject="math"):
     lines.append(f"考点覆盖总量: {data['total_points']} 个 ｜ 全局大纲掌握率: {data['mastery_rate']}%")
     gc = data["grade_counts"]
     lines.append(f"等级分布: A (熟练) {gc['A']} | B (巩固) {gc['B']} | C (生疏) {gc['C']} | D (盲区) {gc['D']} | U (待自测) {gc['U']}\n")
+
+    # [P2 修复·低识别率无提示] 解析不出章节/考点的格式指引（与一致性告警分开展示）
+    if data.get("syllabus_parse_hint"):
+        lines.append(f"⚠️ 【考纲解析提示】{data['syllabus_parse_hint']}")
+        lines.append("")
 
     if data.get("syllabus_warning"):
         lines.append(f"⚠️⚠️⚠️ 【考纲一致性告警】 ⚠️⚠️⚠️")

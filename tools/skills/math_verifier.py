@@ -63,9 +63,85 @@ def health_check() -> dict:
     return {"status": "DEGRADED",
             "reason": "未安装 sympy，仅支持单变量多项式求导/不定积分；pip install sympy 解锁全功能"}
 
+# ════════════════════════════════════════════════════════════════════════
+# [审计 2026-09-30 P0-1] 安全符号解析：白名单命名空间 + 禁用 __builtins__
+# ════════════════════════════════════════════════════════════════════════
+# 此前全部表达式解析走 ``sp.sympify`` —— 它内部用 eval 执行输入字符串，
+# 不是安全解析器。实测 ``sp.sympify("__import__('os').popen('id').read()")``
+# 直接执行系统命令（sympy 1.14.0），verify_math 因此成为一条**零审批的
+# 远程代码执行通道**（Level 0 标注 + auto/safe 模式均无条件放行）。
+#
+# 现改为 ``parse_expr`` + 显式白名单 ``global_dict``：
+#   * 白名单只放符号/数值/数学函数，绝不放 sympify / eval 类入口；
+#   * ``__builtins__`` 置空 —— 即使解析器生成代码，``__import__`` 等内建也不可达；
+#   * 输入含 ``__`` 一律拒绝 —— 阻断 ``().__class__.__bases__`` 型沙箱逃逸探针
+#     （正常数学表达式不会出现双下划线）；
+#   * transformations 固定为 ``standard_transformations``（不含隐式乘法扩展），
+#     与 sympify 时期的接受面保持一致。
+# 解析失败抛出的异常与 sympify 时期一致，由 run_math_query 的统一 except 兜底。
+# ════════════════════════════════════════════════════════════════════════
+
+#: 安全解析白名单：仅数学符号与函数（禁止任何可执行/自省入口）。
+_SAFE_SYMPY_GLOBAL_DICT = {
+    "__builtins__": {},
+    "Symbol": sp.Symbol,
+    "Integer": sp.Integer,
+    "Rational": sp.Rational,
+    "Float": sp.Float,
+    "pi": sp.pi,
+    "E": sp.E,
+    "oo": oo,
+    "I": sp.I,
+    "sin": sin, "cos": cos, "tan": tan,
+    "cot": sp.cot, "sec": sp.sec, "csc": sp.csc,
+    "asin": sp.asin, "acos": sp.acos, "atan": sp.atan,
+    "sinh": sp.sinh, "cosh": sp.cosh, "tanh": sp.tanh,
+    "exp": exp, "log": log, "sqrt": sqrt, "Abs": sp.Abs,
+    "factorial": sp.factorial, "binomial": sp.binomial,
+    "diff": diff, "integrate": integrate, "limit": limit, "series": series,
+    "Derivative": sp.Derivative, "Integral": sp.Integral, "Limit": sp.Limit,
+    "Eq": Eq, "dsolve": dsolve, "solve": solve, "summation": summation,
+    "Matrix": Matrix, "simplify": simplify, "Function": Function,
+}
+
+
+#: 显式拒绝的名字（内省/执行类入口；正常数学表达式不会出现）。
+#: ``__`` 前缀入口已被双下划线检查拦截，这里补上无下划线的常见危险名 ——
+#: 它们在白名单缺失时会被解析成 sympy 惰性 ``Function`` 对象（无执行能力），
+#: 但显式拒绝比"依赖惰性"更清晰、更不易随解析器行为变化而失效。
+_FORBIDDEN_NAME_RE = re.compile(
+    r"\b(eval|exec|compile|open|input|globals|locals|vars|"
+    r"getattr|setattr|delattr|dir|type|object|super|breakpoint|help)\b"
+)
+
+
+def _safe_sympify(s, local_dict=None):
+    """安全版 sympify（白名单解析，杜绝代码执行）。
+
+    与 ``sp.sympify`` 的接受面一致（未知名自动转 Symbol），但：
+    输入含 ``__`` 或危险内省/执行名直接拒绝；解析命名空间被限制在
+    :data:`_SAFE_SYMPY_GLOBAL_DICT`，且 ``__builtins__`` 为空。
+    """
+    if not HAS_SYMPY:
+        raise ValueError("sympy 不可用")
+    text = str(s or "")
+    if "__" in text:
+        raise ValueError("表达式包含非法字符序列 '__'，已拒绝解析")
+    if _FORBIDDEN_NAME_RE.search(text):
+        raise ValueError("表达式包含非法名称，已拒绝解析")
+    from sympy.parsing.sympy_parser import parse_expr, standard_transformations
+    return parse_expr(
+        text,
+        local_dict=dict(local_dict) if local_dict else {},
+        global_dict=dict(_SAFE_SYMPY_GLOBAL_DICT),
+        transformations=standard_transformations,
+        evaluate=True,
+    )
+
+
 def _parse_infinity(token: str):
     """把 'inf' / 'oo' / '-inf' / '-oo' 安全转成 sympy 符号（避免 -inf 被误判为 +oo）。
-    当 sympy 不可用或 token 不是 inf/oo 时，回退到 sp.sympify(token)。"""
+    当 sympy 不可用或 token 不是 inf/oo 时，回退到安全解析。"""
     if not HAS_SYMPY:
         return token
     t = (token or "").strip().lower().lstrip("(").rstrip(")")
@@ -73,7 +149,7 @@ def _parse_infinity(token: str):
     t = t.lstrip("-")
     if t in ("inf", "oo", "infinity"):
         return -oo if neg else oo
-    return sp.sympify(token)
+    return _safe_sympify(token)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -253,11 +329,11 @@ def run_math_query(query_str):
 
             if "=" in s_eq:
                 left_str, right_str = s_eq.split("=", 1)
-                left_expr = sp.sympify(left_str.strip(), locals=local_dict)
-                right_expr = sp.sympify(right_str.strip(), locals=local_dict)
+                left_expr = _safe_sympify(left_str.strip(), local_dict)
+                right_expr = _safe_sympify(right_str.strip(), local_dict)
                 ode_eq = Eq(left_expr, right_expr)
             else:
-                ode_eq = sp.sympify(s_eq.strip(), locals=local_dict)
+                ode_eq = _safe_sympify(s_eq.strip(), local_dict)
 
             sol = dsolve(ode_eq, y_func(x))
             return (
@@ -327,9 +403,9 @@ def run_math_query(query_str):
             if m_sum:
                 expr_str, a_str, b_str = m_sum.group(1).strip(), m_sum.group(2).strip(), m_sum.group(3).strip()
                 expr_str = expr_str.replace("^", "**")
-                a = sp.sympify(a_str)
+                a = _safe_sympify(a_str)
                 b = _parse_infinity(b_str)
-                expr = sp.sympify(expr_str, locals={'n': n, 'k': k, 'x': x})
+                expr = _safe_sympify(expr_str, {'n': n, 'k': k, 'x': x})
                 res = summation(expr, (n, a, b))
                 return (
                     f"∑ 【级数求和精确计算结果】\n"
@@ -359,7 +435,7 @@ def run_math_query(query_str):
                         cur += ch
                 if cur.strip():
                     parts.append(cur.strip())
-                parsed_eqs = [sp.sympify(p_) for p_ in parts if p_]
+                parsed_eqs = [_safe_sympify(p_) for p_ in parts if p_]
                 if not parsed_eqs:
                     return "❌ 【计算解析异常】: 未能从方程组中解析出任何有效表达式"
                 # 自动推断未知量，避免写死 (x, y) 导致三元以上方程组求解失败
@@ -387,9 +463,9 @@ def run_math_query(query_str):
             else:
                 if "=" in eq_str:
                     l_s, r_s = eq_str.split("=", 1)
-                    eq = Eq(sp.sympify(l_s), sp.sympify(r_s))
+                    eq = Eq(_safe_sympify(l_s), _safe_sympify(r_s))
                 else:
-                    eq = sp.sympify(eq_str)
+                    eq = _safe_sympify(eq_str)
                 # 从方程中自动推断未知量，支持 y, t, θ 等任意未知变量
                 free_syms = sorted(list(eq.free_symbols), key=lambda s: s.name)
                 target_var = free_syms[0] if len(free_syms) == 1 else x
@@ -405,7 +481,7 @@ def run_math_query(query_str):
         if q.startswith("diff ") or "求导" in q or q.startswith("d/dx "):
             expr_str = re.sub(r"^(diff|d/dx|求导)\s*", "", query_str, flags=re.IGNORECASE).strip()
             expr_str = expr_str.replace("^", "**")
-            expr = sp.sympify(expr_str)
+            expr = _safe_sympify(expr_str)
             # 从表达式中自动推断自变量，支持 y, t, θ 等任意自变量
             free_syms = sorted(list(expr.free_symbols), key=lambda s: s.name)
             target_var = free_syms[0] if len(free_syms) == 1 else x
@@ -426,7 +502,7 @@ def run_math_query(query_str):
                 expr_str, dest_str = m.group(1).strip(), m.group(2).strip()
                 expr_str = expr_str.replace("^", "**")
                 dest = _parse_infinity(dest_str)
-                expr = sp.sympify(expr_str)
+                expr = _safe_sympify(expr_str)
                 res = limit(expr, x, dest)
                 return (
                     f"🎯 【极限精确计算结果】\n"
@@ -441,9 +517,9 @@ def run_math_query(query_str):
             if m_def:
                 expr_str, a_str, b_str = m_def.group(1).strip(), m_def.group(2).strip(), m_def.group(3).strip()
                 expr_str = expr_str.replace("^", "**")
-                a = sp.sympify(a_str)
-                b = sp.sympify(b_str)
-                expr = sp.sympify(expr_str)
+                a = _safe_sympify(a_str)
+                b = _safe_sympify(b_str)
+                expr = _safe_sympify(expr_str)
                 res = integrate(expr, (x, a, b))
                 return (
                     f"∫ 【定积分精确计算结果】\n"
@@ -454,7 +530,7 @@ def run_math_query(query_str):
                 expr_str = re.sub(r"^(int|integrate|积分)\s*", "", query_str, flags=re.IGNORECASE)
                 expr_str = re.sub(r"\s*dx$", "", expr_str, flags=re.IGNORECASE).strip()
                 expr_str = expr_str.replace("^", "**")
-                expr = sp.sympify(expr_str)
+                expr = _safe_sympify(expr_str)
                 res = integrate(expr, x)
                 return (
                     f"∫ 【不定积分精确计算结果】\n"
@@ -491,12 +567,12 @@ def run_math_query(query_str):
             m_at = re.search(r"\bat\s+([^\s]+)", expr_str)
             if m_at:
                 try:
-                    point = sp.sympify(m_at.group(1).replace("^", "**"))
+                    point = _safe_sympify(m_at.group(1).replace("^", "**"))
                 except Exception:
                     point = 0
                 expr_str = re.sub(r"\bat\s+[^\s]+", "", expr_str).strip()
             expr_str = expr_str.replace("^", "**")
-            expr = sp.sympify(expr_str)
+            expr = _safe_sympify(expr_str)
             res = series(expr, x, point, order)
             return (
                 f"📈 【麦克劳林 / 泰勒级数展开】\n"
@@ -507,12 +583,24 @@ def run_math_query(query_str):
 
         # 通用计算化简尝试
         clean_q = query_str.replace("^", "**")
-        expr = sp.sympify(clean_q)
+        expr = _safe_sympify(clean_q)
         # [P0 修复] sympify 默认 evaluate=True，对 integrate/limit/diff 等函数调用会
         # 直接求值：expr 已是计算结果而非表达式。旧逻辑把求值结果同时印在
         # 「原式」与「化简」两栏（如 integrate(x*exp(-x),(x,0,oo)) 两栏都显示 1），
         # 学员无法核对输入是否被正确解析。改为回显原始输入文本。
-        return f"💡 【精确化简结果】\n原式: `{query_str.strip()}`\n化简: ${latex(simplify(expr))}$"
+        _simplified = simplify(expr)
+        _line = f"💡 【精确化简结果】\n原式: `{query_str.strip()}`\n化简: ${latex(_simplified)}$"
+        # [P2 修复·结果未小数化] 精确形式对考生不直观：实测批改场景
+        # `sqrt(1.2^2+1.5^2)*10^6/(pi*60^3/32)` 输出 `\frac{284.583…}{\pi}`，
+        # 考生/批改模型都要再心算 284.58/π≈90.59，易生换算错误。结果若为
+        # 非整数实数，追加六位有效数字的小数近似（整数与本就小数的结果不加）。
+        try:
+            if _simplified.is_number and _simplified.is_real \
+                    and not _simplified.is_Integer and not _simplified.is_Float:
+                _line += f"（≈ {float(_simplified):.6g}）"
+        except Exception:
+            pass
+        return _line
 
     except Exception as e:
         return f"❌ 【计算解析异常】: {e}\n提示：请检查符号语法是否标准，如乘号请用 `*`，幂次请用 `^` 或 `**`。"

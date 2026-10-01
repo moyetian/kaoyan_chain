@@ -20,6 +20,11 @@ import re
 import urllib.request
 import urllib.parse
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Dict, Any, List, Optional
 
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
@@ -31,6 +36,16 @@ try:  # [B1 同类] LLM 请求经安全通道发送
     from net_guard import safe_urlopen  # noqa: E402
 except ImportError:  # pragma: no cover
     from tools.net_guard import safe_urlopen  # type: ignore
+
+try:  # [K9] 院校研报 LLM 调用统一走 llm_client
+    from llm_client import chat_completion  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.llm_client import chat_completion  # type: ignore
+
+try:  # [K9] 结构化院校实体绑定（只作标识，不改变旧返回契约）
+    from agent.kaoyan_context import school_entity_id  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.agent.kaoyan_context import school_entity_id  # type: ignore
 
 try:  # 双导入路径兼容：高校情报库已从本文件拆分至独立模块 school_db.py
     from .school_db import TARGET_SCHOOLS_DB  # noqa: E402
@@ -54,7 +69,7 @@ except ImportError:  # pragma: no cover
         save_experience_dossier,
     )
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 CONFIG_FILE = ROOT / "ky_config.json"
 
 USER_AGENT = (
@@ -100,12 +115,40 @@ def raw_web_search(query: str, max_results: int = 5, timeout: int = 8) -> List[D
 
 
 def find_school_in_db(school_name: str) -> Optional[Dict[str, Any]]:
-    """
-    在内置权威考情数据库中模糊匹配高校
+    """在内置权威考情数据库中匹配高校（registry 优先的规范化匹配）。
+
+    契约（registry 优先，K3 明确）：
+    1. 先尝试经 ``tools.intelligence.registry`` 把输入（含简称/别名）规范化
+       为高校全称；registry 不可用 / 未命中时保持原输入（try/except 兜底，
+       绝不因 registry 异常而失败）；
+    2. 规范化名（及别名）与 ``TARGET_SCHOOLS_DB`` **精确匹配**优先；
+    3. 未命中再走既有模糊子串匹配，行为与此前保持一致。
+
+    返回 ``{"name", "data"}``；未收录返回 ``None``（语义不变）。
     """
     s_clean = school_name.strip()
     if not s_clean:
         return None
+
+    canonical = s_clean
+    try:
+        from tools.intelligence.registry import get_registry
+        ent = get_registry().resolve(s_clean)
+        if ent is not None and getattr(ent, "name", ""):
+            canonical = str(ent.name).strip() or s_clean
+    except Exception:
+        canonical = s_clean
+
+    # 规范名 / 别名精确匹配优先（registry 命中别名时在此收敛到库内条目）
+    for name, data in TARGET_SCHOOLS_DB.items():
+        if canonical == name or s_clean == name:
+            return {"name": name, "data": data}
+        for alias in data.get("alias", []):
+            alias_l = str(alias).lower()
+            if canonical.lower() == alias_l or s_clean.lower() == alias_l:
+                return {"name": name, "data": data}
+
+    # 未命中 → 既有模糊匹配逻辑（行为不变）
     for name, data in TARGET_SCHOOLS_DB.items():
         if s_clean == name or s_clean in name or name in s_clean:
             return {"name": name, "data": data}
@@ -390,7 +433,9 @@ def synthesize_report_with_llm(school: str, major: str, official_items: List[Dic
             "严禁推荐高等数学、线性代数、概率论等数学复习计划或 408/算法题库刷题，应聚焦专业课与政英提分。"
         )
 
-    user_prompt = f"""【目标院校】: {school}
+    entity_id = school_entity_id(school)
+    user_prompt = f"""[SCHOOL_ENTITY:{entity_id}]
+【目标院校】: {school}
 【报考专业】: {major if major else "计算机/软件工程/主流方向"}
 
 【权威知识库档案】:
@@ -398,59 +443,22 @@ def synthesize_report_with_llm(school: str, major: str, official_items: List[Dic
 
 请严格按上述 5 个章节输出完整的 Markdown 研报。"""
 
-    req_body = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        "temperature": 0.3,
-        "max_tokens": 2500
-    }
-
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
     try:
-        try:
-            from tools.agent.loop import normalize_openai_url
-        except ImportError:
-            from agent.loop import normalize_openai_url
-    except ImportError:
-        def normalize_openai_url(b: str, endpoint: str = "chat/completions") -> str:
-            b = (b or "").strip().rstrip("/")
-            if b.endswith("/chat/completions"):
-                return b
-            if b.endswith("/v1") or "/v1/" in b:
-                return f"{b}/{endpoint.lstrip('/')}"
-            return f"{b}/v1/{endpoint.lstrip('/')}"
-
-    try:
-        req = urllib.request.Request(
-            normalize_openai_url(base_url, "chat/completions"),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-                "User-Agent": USER_AGENT,
-                "Connection": "close",
-                "Accept-Encoding": "gzip, deflate, identity"
-            },
-            data=json.dumps(req_body).encode("utf-8")
+        # [K9] 研报合成与 Agent、开放题和视觉链路共用同一出口，获得统一的
+        # URL 规范化、SSRF 防护、响应体限制、结构化错误和重试策略。
+        return chat_completion(
+            messages,
+            config={**cfg, "base_url": base_url, "model": model},
+            workspace_root=ROOT,
+            temperature=0.3,
+            timeout=60.0,
+            max_tokens=2500,
+            urlopen_fn=safe_urlopen,
         )
-        # [B1 同类·跳转泄漏 Bearer] 安全通道发送。
-        with safe_urlopen(req, timeout=60) as resp:
-            raw = resp.read()
-            headers = getattr(resp, "headers", None)
-            enc = headers.get("Content-Encoding", "").lower() if headers and hasattr(headers, "get") else ""
-            if enc == "gzip":
-                import gzip
-                try: raw = gzip.decompress(raw)
-                except Exception: pass
-            elif enc == "deflate":
-                import zlib
-                try: raw = zlib.decompress(raw)
-                except Exception:
-                    try: raw = zlib.decompress(raw, -zlib.MAX_WBITS)
-                    except Exception: pass
-            data = json.loads(raw.decode("utf-8", errors="ignore"))
-            return data["choices"][0]["message"]["content"].strip()
     except Exception:
         return None
 
@@ -717,7 +725,7 @@ def health_check() -> dict:
     from pathlib import Path as _Path
     cfg: dict = {}
     try:
-        root = _Path(__file__).resolve().parent.parent.parent
+        root = resolve_workspace_root(__file__)
         cfg = _json.loads((root / "ky_config.json").read_text(encoding="utf-8"))
     except Exception:
         cfg = {}

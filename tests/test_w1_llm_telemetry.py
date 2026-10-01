@@ -263,7 +263,7 @@ def test_finalize_request_recorded_as_allow_tools_false(tmp_path, monkeypatch):
     monkeypatch.setattr(loop_module, "safe_urlopen", fake)
 
     runner = _make_runner(tmp_path, max_steps=1)
-    runner.tool_registry.execute_tool = lambda name, args, interactive=True: "样本工具结果"
+    runner.tool_registry.execute_tool = lambda name, args, interactive=True, call_id="": "样本工具结果"
     answer = runner.run("请完成任务", interactive=False)
     assert answer == "收尾答复"
 

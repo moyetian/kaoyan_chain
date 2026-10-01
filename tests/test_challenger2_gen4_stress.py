@@ -342,7 +342,8 @@ class TestSearchProviderHTTPDecompression:
                 return MockGzipResponse()
             raise urllib.error.URLError(ssl.SSLError("certificate verify failed: self-signed certificate"))
 
-        with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        # [审计 2026-09-30 P1-7] get_text 出站收敛到模块级 safe_urlopen，打桩接缝迁移。
+        with patch.object(self.http, "safe_urlopen", side_effect=mock_urlopen):
             with pytest.raises(self.http.ProviderError) as excinfo:
                 self.http.get_text("https://yz.example.edu.cn/notice/123.html")
 
@@ -383,7 +384,8 @@ class TestSearchProviderHTTPDecompression:
                 return MockDeflateResponse()
             raise urllib.error.URLError(ssl.SSLError("SSL hostname mismatch"))
 
-        with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        # [审计 2026-09-30 P1-7] get_text 出站收敛到模块级 safe_urlopen，打桩接缝迁移。
+        with patch.object(self.http, "safe_urlopen", side_effect=mock_urlopen):
             with pytest.raises(self.http.ProviderError) as excinfo:
                 self.http.get_text("https://yz.example.edu.cn/outline.html")
 
@@ -422,7 +424,8 @@ class TestSearchProviderHTTPDecompression:
                 return MockMalformedResponse()
             raise urllib.error.URLError(ssl.SSLError("SSL error"))
 
-        with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        # [审计 2026-09-30 P1-7] get_text 出站收敛到模块级 safe_urlopen，打桩接缝迁移。
+        with patch.object(self.http, "safe_urlopen", side_effect=mock_urlopen):
             with pytest.raises(self.http.ProviderError) as excinfo:
                 self.http.get_text("https://yz.example.edu.cn/malformed.html")
 

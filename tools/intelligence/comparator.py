@@ -18,6 +18,11 @@ import time
 from typing import Dict, Any, Optional
 from pathlib import Path
 
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
+
 from .models import UniversityEntity
 from .registry import get_registry, resolve_university
 from .chsi_connector import CHSIConnector
@@ -33,7 +38,7 @@ try:
 except ImportError:  # pragma: no cover
     from tools.ky_io import safe_filename, atomic_write_text, PermissionDeniedError  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 
 
 # [P3 修复·D11] 研报幂等指纹：同一对比任务经不同入口（CLI / TUI / GUI / REPL）
@@ -45,6 +50,41 @@ _VOLATILE_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 _TABLE_SEP_RE = re.compile(r"^\|?[\s:\-|]+\|?$")
+
+#: 「初试科目证据不足」统一提示（含可操作引导）。
+#: [UT2 修复] 此前只说"无法判定"，考生看到后不知道下一步干什么；现补两句
+#: 可执行动作：先用取证命令拿官方招生目录，或配置大模型 API 走在线核验。
+#: 注意：不引导「把专业目录放入 04-专业课/参考资料/」——compare 的画像链路
+#: （人工库 / 在线研究 / 本地降级）并不读取该目录，照写会构成无效引导。
+_INSUFFICIENT_SUBJECT_EVIDENCE = (
+    "当前证据不足，无法判定两校初试科目是否相似；请核验同年度、同专业及方向的招生目录。"
+    "可运行 `ky admission <院校> <专业>` 或 `ky scout <院校> <专业>` 取证官方招生目录后重新对标；"
+    "或在配置大模型 API 后重新对标，获取在线核验的科目对比。"
+)
+
+# [UT4 修复·WEB-3] 省级行政区名单（不含直辖市）：用于识别「仅省级粒度」的
+# region 文本（如兜底启发式产出的「河南」），以便与市级粒度（「河南新乡」）
+# 区分。直辖市（北京/天津/上海/重庆）省市同体、粒度天然一致，不在列即无需标注。
+_PROVINCE_LEVEL_REGIONS = frozenset({
+    "河北", "山西", "辽宁", "吉林", "黑龙江", "江苏", "浙江", "安徽", "福建",
+    "江西", "山东", "河南", "湖北", "湖南", "广东", "海南", "四川", "贵州",
+    "云南", "陕西", "甘肃", "青海", "台湾", "内蒙古", "广西", "西藏", "宁夏",
+    "新疆", "香港", "澳门",
+})
+
+
+def normalize_region_granularity(region) -> str:
+    """compare 双栏并排时的地区粒度归一（UT4 实测「河南新乡」vs「河南」参差）。
+
+    规则：市级有则原样显示；仅省级（且非直辖市）显式标注「市级待核验」，
+    与项目诚实兜底风格一致；未知/待核验文本原样透传。只影响显示层文案。
+    """
+    text = str(region or "").strip()
+    if not text or "待核验" in text:
+        return text
+    if text in _PROVINCE_LEVEL_REGIONS:
+        return f"{text}（市级待核验）"
+    return text
 
 
 def report_fingerprint(text) -> str:
@@ -132,6 +172,13 @@ class SchoolComparator:
             info1, info2 = self._get_two_profiles(
                 name1, entity1, name2, entity2, major_keyword, api_config,
                 timeout=timeout)
+
+        # [UT4 修复·WEB-3] 地区粒度归一：本地兜底/在线画像的 region 粒度参差
+        #（实测「河南新乡」vs「河南」并排同表），在此统一为「市级有则显示市，
+        # 仅省则显式标注」，下游终端表/Markdown 研报/差异分析三处消费点一并生效。
+        for _info in (info1, info2):
+            if isinstance(_info, dict):
+                _info["region"] = normalize_region_granularity(_info.get("region"))
 
         # 自动对比分析
         diff_analysis = self._analyze_differences(name1, info1, name2, info2, major_keyword)
@@ -388,9 +435,9 @@ class SchoolComparator:
                     subject_diff = f"【{name1}】初试科目：{s1_subjs} ｜ 【{name2}】初试科目：{s2_subjs}"
                 else:
                     # 来源已核验但科目列表为空 → 只能说"本库未收录"，不得断言"符合指导标准"
-                    subject_diff = "当前证据不足，无法判定两校初试科目是否相似；请核验同年度、同专业及方向的招生目录。"
+                    subject_diff = _INSUFFICIENT_SUBJECT_EVIDENCE
             else:
-                subject_diff = "当前证据不足，无法判定两校初试科目是否相似；请核验同年度、同专业及方向的招生目录。"
+                subject_diff = _INSUFFICIENT_SUBJECT_EVIDENCE
 
         # 2. 地区与资源（[B3] 防御性取值：LLM 画像可能缺键）
         region_diff = (f"【{name1}】位于 {info1.get('region', '待核验')} ｜ "

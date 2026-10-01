@@ -19,6 +19,11 @@ import re
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Any, Dict, List, Optional
 
 try:  # 双导入路径兼容
@@ -28,7 +33,7 @@ except ImportError:  # pragma: no cover
 
 _LOG = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 CONFIG_FILE = ROOT / "ky_config.json"
 
 

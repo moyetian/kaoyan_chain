@@ -9,6 +9,85 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 
 ---
 
+## [3.1.2] — 2026-10-01（未发布）
+
+> 自 v3.1.1 以来的累积更新：Agent 内核修复重构（K1–K9）、2026-09-30 安全审查
+> 全量修复（P0×3 / P1×11 / 性能项）、Teal 玻璃风 UI 重构（GUI / Web / TUI）与
+> 多角色沙箱实测消缺（UT3 / UT4）。版本号真源 `pyproject.toml`。
+
+### 🤖 Agent 内核修复重构（K1–K9）
+
+- **K1 判卷口径一致**：`total_score` 与 `pass_rate` 改为同分母（`graded_max`），
+  新增渲染前一致性校验（违规只告警不丢报告）；CLI 失败分支改读 `msg` 键
+  （旧实现死分支会吞真实原因）；
+- **K2 版本工程**：`build_package` / CLI 兜底不再伪装具体版本号
+  （统一 `0.0.0+unknown`）；新建 `tools/check_version_consistency.py`
+  （pyproject.toml / installer.iss / 运行时三处核对）并接入 CI 与 `ky doctor`；
+  修复冻结环境下 `_MEIPASS` 版本读取回落（v3.1.1 安装版曾读不到版本）；
+- **K3 session_log 降级与小项清理**：写失败改为有界内存队列（512）+ 周期性
+  重放；`knowledge_store` 启用 WAL；`material_ingestion` 未知科目显式报错；
+  删除 FSRS 死类；
+- **K4 LLM 统一客户端**：六套 HTTP 客户端（loop / engine / open_grader /
+  vision_solver / study_planner / llm_client）收敛为 `request_chat` 单一入口；
+  结构化异常体系（可重试 / 确定性 / 响应超限 / 空流）+ 退避公式与 Retry-After
+  逐字保持既有行为；
+- **K5 工具注册表分级**：`ToolDefinition` 增 tier / source 分级；
+  `skill_bridge` 把 6 个技能模块桥接为注册工具（不改技能本体）；新增
+  `ky tools` 审计命令（CLI 子命令 **42→43**）；
+- **K6 KaoyanContext 统一上下文**：frozen dataclass 收敛科目 / 数学编码 /
+  目标校 / 初试日等散落 20+ 文件的读取；新增 `school_scope_guard` 院校范围
+  守卫（校名别名归一，原则「误放行 ≫ 误阻断」）；
+- **K7 RunLoop 扩展点**：新增 PREPARE_NEXT_TURN / PREPARE_REQUEST / FINISH_TURN /
+  FINISH_RUN 钩子；W10/W11 拦截计数迁 `block_streak_guard`（对照快照逐字段
+  一致）；`AfterCompact` 事件复活；GUI 关窗触发 SessionEnd（幂等）；
+- **K8 TurnRecovery**：doom-loop 熔断（同签名连续 3 次跳过执行并引导改道）；
+  错误分类分流（401/403 跳过收尾链、上下文超长强制 compact 重试一次）；
+  工具输出预算单一真源（超限截断 + 完整原文落盘 `.memory/tool_outputs/`）；
+- **K9 运行控制平面**：`RunRuntime` 生命周期状态机 + 四维预算（步数 / 时长 /
+  工具调用 / Token，`agent.runtime` 配置项）；试卷**内容寻址身份注册表**
+  （`PAPER-<hash>`，入库与组卷不再靠时间戳关联）；`ky doctor` 新增持久化
+  状态完整性检查；网关 / 网页对话改走统一 LLM 客户端。
+
+### 🛡️ 2026-09-30 安全审查全量修复（P0×3 / P1×11 / 性能项）
+
+- **P0-1 数学验算白名单解析**：`math_verifier` 16 处 `sympify` 调用点全部改为
+  白名单安全解析（杜绝任意代码执行），`verify_math` 提级 SHELL_EXEC；
+- **P0-2 测试执行纳入写入闸门**：`pytest` / `unittest` 纳入「本会话写入脚本」
+  闸门与受控目录白名单；
+- **P0-3 网关跨站闸门**：Origin / Sec-Fetch-Site 校验 + ACAO 精确回显 +
+  Referrer-Policy + 413 体积上限；
+- **P1×11**：沙箱授权目录 `is_relative_to` 边界判定、safe 模式判定前移、
+  `ky_config.json` 写保护与 MCP 工作区归属校验、git 配置注入收口、
+  `run_command` 超时上限、出站收敛至 `net_guard.safe_urlopen`（14 处）、
+  网关并发上限、Windows 权限收紧（icacls）、内联 JSON 一次性转义、
+  看板直推链路内容级脱敏 + 残留自检硬阻断；
+- **性能项**：GUI 状态读取 mtime 指纹缓存、残留扫描分块解码、脱敏规则
+  预编译等 6 项（语义逐字节不变）。
+
+### 🎨 Teal 玻璃风 UI 重构（GUI / Web / TUI）
+
+- 浅色 / 深色预设升级为 **Teal 蓝绿主色 + 毛玻璃质感**（WCAG AA 对比度验算，
+  新增玻璃派生 token，高对比预设显式不透明）；
+- GUI：rail 双态折叠（252↔56px）、不对称圆角气泡、情报页指标卡双栏、
+  空状态居中；**顶栏倒计时改按 `exam_date` 现算**（修复配置快照陈旧）；
+- Web 看板与 TUI 同步换色，全项目内联样式清零。
+
+### 🩹 多角色沙箱实测消缺（UT3 / UT4 / 5 角色）
+
+- UT3 三角色（材料力学 / 应用数学 / 经济学）：P1×5 + P2 逐条修复
+  （含隐私中性化补漏与图谱分隔线回归修复）；
+- UT4 三角色（通信四科 / 物理自命题 / 西医综合）：P1×6 + P2×8 修复
+  （含 REPL 斜杠指令被 MSYS 管道改写的真因修复）；
+- 5 角色实测 13 项缺陷修复（随 UI 重构批次）。
+
+### 📄 文档
+
+- README 程序包体积数字回填 380→415 MB（v3.1.1 实际打包 413.9 MB）；
+- 命令矩阵与速查同步 **43 项**子命令。
+
+**测试**：全量 pytest **2861 通过 + 4 跳过**（收集 2865）；
+`test_ky_suite.py` **307 项**（Git 口径 307+0）；`test_new_features.py` **131 通过**。
+
 ## [3.1.1] — 2026-09-29（当前发布版本）
 
 > 自 v3.1.0 以来的累积更新：作答质量与评测批次（W1–W13）、发布链路隐私补漏与

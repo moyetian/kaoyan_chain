@@ -97,7 +97,9 @@ def _make_workspace(tmp_path: Path, math_key: str, extra_plan: dict | None = Non
     skills = tmp_path / "tools" / "skills"
     skills.mkdir(parents=True)
     shutil.copy2(REPO / "tools" / "__init__.py", tmp_path / "tools" / "__init__.py")
-    for name in ("ky_io.py", "note_lock.py", "fsrs_scheduler.py"):
+    # workspace.py：以上模块的工作区根解析单一真源（resolve_workspace_root），
+    # 必须一并搬运，否则 tmp 里 import 失败、图谱数据整体为空。
+    for name in ("ky_io.py", "note_lock.py", "fsrs_scheduler.py", "workspace.py"):
         shutil.copy2(REPO / "tools" / name, tmp_path / "tools" / name)
     (skills / "__init__.py").write_text("", encoding="utf-8")
     for name in ("knowledge_map.py", "error_logger.py", "question_source.py"):
@@ -172,6 +174,10 @@ function mkEl() { return { innerHTML: '', querySelectorAll() { return []; } }; }
 const document = { getElementById(id) { return els[id] || (els[id] = mkEl()); } };
 function esc(x) { return String(x == null ? '' : x); }
 function tex() {}
+// 页面级全局辅助：产物里定义在页面其它位置（IIFE 之外），真实浏览器中可访问；
+// harness 只截取 IIFE 片段执行，需补桩，否则 ReferenceError（P1 看板重构后
+// 图谱空态渲染开始调用 iconHtml，本桩随之补齐）。
+function iconHtml() { return ''; }
 
 eval(code);
 

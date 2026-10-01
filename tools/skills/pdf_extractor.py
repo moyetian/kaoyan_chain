@@ -9,10 +9,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Any
 
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 SUBJECT_DIRS = ("01-数学", "02-英语", "03-思想政治理论", "04-专业课")
 
 _UNSET = object()

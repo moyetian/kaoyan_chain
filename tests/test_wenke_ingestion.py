@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """文科自命题切片适配回归：名词解释/简答/论述题型识别 + 答案区误切."""
 from tools.skills.material_ingestion import (
-    MaterialIngestionPipeline, _detect_wenke_type,
+    MaterialIngestionPipeline, _detect_wenke_type, _strip_md_heading,
 )
 
 _WENKE_TEXT = """# 人大622真题2021回忆版
@@ -62,3 +62,41 @@ def test_wenke_card_headers_use_wenke_names():
     assert "名词解释题" in cards[0]
     assert "简答题" in cards[2]
     assert "论述题" in cards[3]
+
+
+# ───────────── 回归：题干混入 Markdown 标题片段（切片出口统一清洗） ─────────────
+
+def test_strip_md_heading_fragment_and_single_hash_negatives():
+    """[回归·题干混入 Markdown 标题] 连续 ≥2 个 # 的标题片段（含与上一题同行的
+    粘连形态）必须剥离；单井号的正文（C# / #1）不得误伤。
+    """
+    # 整行标题：剥离后不留空行
+    assert _strip_md_heading("## 综合课（498）\n1. 示例题干正文。") == "1. 示例题干正文。"
+    # 与上一题同行的粘连形态（实测缺陷现场：标题并进上一题题干）
+    assert (_strip_md_heading("4. 示例案例分析：请分析示例行为性质。## 综合课（498）")
+            == "4. 示例案例分析：请分析示例行为性质。")
+    # 阴性：单井号不是 Markdown 标题
+    assert (_strip_md_heading("示例题干：请用 C# 语言写出示例算法。")
+            == "示例题干：请用 C# 语言写出示例算法。")
+    assert (_strip_md_heading("示例题干：参见 #1 号文献的表述。")
+            == "示例题干：参见 #1 号文献的表述。")
+
+
+def test_chunk_text_strips_md_heading_from_stem():
+    """[回归·全链路] 切片出口统一清洗：题干里混入的「## 综合课（498）」不得随
+    切片进入题卡；同一出口对 C# / #1 必须原样保留。
+    """
+    pipe = MaterialIngestionPipeline()
+    pipe._force_python = True  # 固定纯 Python 路径，避免 Rust 扩展有无造成环境差异
+    raw = ("1. 示例综合题：请分析示例行为性质。## 综合课（498）\n"
+           "2. 示例第二题：请说明示例原理。")
+    chunks = pipe.chunk_text(raw, "示例资料")
+    assert chunks, "切片不应为空"
+    joined = "\n".join(c.stem for c in chunks)
+    assert "##" not in joined and "综合课" not in joined and "498" not in joined
+    assert "示例综合题" in joined
+    # 阴性对照：单井号正文不被误剥
+    raw2 = ("1. 示例综合题：请用 C# 语言写出示例算法。\n"
+            "2. 示例第二题：参见 #1 号文献的表述。")
+    joined2 = "\n".join(c.stem for c in pipe.chunk_text(raw2, "示例资料"))
+    assert "C#" in joined2 and "#1" in joined2

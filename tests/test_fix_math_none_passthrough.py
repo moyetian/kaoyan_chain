@@ -200,9 +200,38 @@ def test_p17_today_tasks_do_not_advertise_empty_whitelist(monkeypatch, tmp_path)
     pol_task = (tmp_path / "03-思想政治理论" / "_状态" / "今日任务.md").read_text(encoding="utf-8")
     pro_task = (tmp_path / "04-专业课" / "_状态" / "今日任务.md").read_text(encoding="utf-8")
     assert "按官方考纲精做 20 道核心选择题自测" in pol_task
-    assert "按官方考纲选取经典大题" in pro_task
+    # [问题5 修复] 专业课大纲缺失/占位时不得宣称「按官方考纲」（自命题大纲是
+    # 考生自填件，tmp 工作区没有真实大纲），改为如实标注待导入。
+    assert "专业课大纲与真题待导入" in pro_task
+    assert "按官方考纲" not in pro_task
     assert "暂未放置实体资料" not in pol_task
     assert "暂未放置实体资料" not in pro_task
+
+
+def test_pro_material_phrase_respects_syllabus_state(tmp_path):
+    """[问题5 守护] 专业课「题源出处」短语按大纲三态分档。
+
+    missing / placeholder → 如实标注待导入；ready → 与公共课同走「按官方考纲」。
+    阴性对照：去掉 ``_material_phrase`` 的 is_pro 分支（一律「按官方考纲」），
+    前两条断言变红。
+    """
+    # missing：工作区无 04-专业课/考试大纲.md
+    assert "待导入" in sp._material_phrase("", "选取", is_pro=True, workspace_root=tmp_path)
+
+    # placeholder：占位骨架
+    pro_dir = tmp_path / "04-专业课"
+    pro_dir.mkdir(parents=True, exist_ok=True)
+    (pro_dir / "考试大纲.md").write_text(
+        "# 骨架\n- 【待自填】请替换为官网大纲中的真实章节\n", encoding="utf-8")
+    assert "待导入" in sp._material_phrase("", "选取", is_pro=True, workspace_root=tmp_path)
+
+    # ready：真实大纲 → 允许「按官方考纲」
+    (pro_dir / "考试大纲.md").write_text(
+        "# 618 示例自命题科目 考试大纲\n- 第一章 示例章节 (要求：掌握)\n",
+        encoding="utf-8")
+    assert sp._material_phrase("", "选取", is_pro=True, workspace_root=tmp_path) == "按官方考纲选取"
+    # 公共课（is_pro=False）不受专业课大纲状态影响
+    assert sp._material_phrase("", "精做", workspace_root=tmp_path) == "按官方考纲精做"
 
 
 # ───────────────────── active_subject：不考数学不再默认数学私教 ─────────────────────

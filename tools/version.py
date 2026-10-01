@@ -21,8 +21,14 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 from functools import lru_cache
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Optional
 
 _LOG = logging.getLogger(__name__)
@@ -36,20 +42,35 @@ UNKNOWN_VERSION = "0.0.0+unknown"
 
 def _project_root() -> Path:
     """从本文件位置反推仓库根（tools/version.py → 仓库根）。"""
-    return Path(__file__).resolve().parent.parent
+    return resolve_workspace_root(__file__)
 
 
-def _version_from_pyproject() -> Optional[str]:
-    """从 pyproject.toml 的 [project] 段读取 version。
+def _pyproject_candidates() -> list[Path]:
+    """按优先级返回候选 pyproject.toml 路径。
 
-    开发模式（源码目录直接运行、未 pip 安装）下 importlib.metadata 查不到分发版
-    ——实测 `importlib.metadata.version("kaoyan-study-chain")` 抛
-    `PackageNotFoundError` —— 因此必须有一条不依赖安装状态的回落路径。
+    [K2 修复·冻结版本读取不完整] 冻结（PyInstaller）模式下工作区根 = exe 所在
+    目录（见 ``tools.workspace.resolve_workspace_root``），而随包分发的
+    pyproject.toml 落在 ``sys._MEIPASS``（onedir 布局的 ``_internal/``）——旧实现
+    只探测工作区根，实测安装版 ``get_version()`` 仍返回 ``0.0.0+unknown``
+    （v3.1.1 的「pyproject 随包」修复因此未真正生效）。现按
+    「工作区根 → ``_MEIPASS``」顺序探测；源码模式无 ``_MEIPASS``，单候选，
+    行为与旧实现完全一致。
+    """
+    candidates: list[Path] = [_project_root() / "pyproject.toml"]
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        alt = Path(meipass) / "pyproject.toml"
+        if alt != candidates[0]:
+            candidates.append(alt)
+    return candidates
+
+
+def _parse_pyproject_version(pyproject: Path) -> Optional[str]:
+    """从单个 pyproject.toml 读 ``[project].version``；不可读/字段异常返回 None。
 
     优先用 tomllib（Python ≥3.11）；3.10 无该模块，故保留正则兜底
     （只在 [project] 段内匹配首个 version 字段，避免误取 [tool.*] 下的同名字段）。
     """
-    pyproject = _project_root() / "pyproject.toml"
     try:
         text = pyproject.read_text(encoding="utf-8")
     except OSError:
@@ -77,6 +98,23 @@ def _version_from_pyproject() -> Optional[str]:
         return match.group(1).strip() if match else None
     except Exception:
         return None
+
+
+def _version_from_pyproject() -> Optional[str]:
+    """从 pyproject.toml 的 [project] 段读取 version（按候选优先级探测）。
+
+    开发模式（源码目录直接运行、未 pip 安装）下 importlib.metadata 查不到分发版
+    ——实测 `importlib.metadata.version("kaoyan-study-chain")` 抛
+    `PackageNotFoundError` —— 因此必须有一条不依赖安装状态的回落路径。
+
+    候选顺序见 ``_pyproject_candidates()``：工作区根优先；冻结模式补探
+    ``sys._MEIPASS``（随包分发的那份 pyproject.toml）。
+    """
+    for pyproject in _pyproject_candidates():
+        version = _parse_pyproject_version(pyproject)
+        if version:
+            return version
+    return None
 
 
 @lru_cache(maxsize=1)

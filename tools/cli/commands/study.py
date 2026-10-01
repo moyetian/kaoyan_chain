@@ -137,7 +137,9 @@ def _cmd_exam_submit(args: List[str]) -> None:
         elif res.get("success"):
             print(colorize(f"\n=== 🎯 自测整卷批改得分: {res.get('score')} / {res.get('total_score')} (正答率 {res.get('accuracy')}%) ===\n", C.BOLD))
         else:
-            print(colorize(f"[!] 批改失败: {res.get('message', '未识别到有效作答')}", C.RED))
+            # [K1 修复·失败原因被吞] 失败路径写的是 "msg" 键，此前只读 "message"
+            # → 永远显示兜底文案、真实原因丢失。两键兼容读取。
+            print(colorize(f"[!] 批改失败: {res.get('msg') or res.get('message') or '未识别到有效作答'}", C.RED))
     else:
         print("exam_composer 技能模块未载入")
 
@@ -283,4 +285,4 @@ register(Command('exam', ("exam", "--exam", "compose", "--compose"), '[科目] [
 register(Command('exam-submit', ("exam-submit", "--exam-submit", "grade-paper", "--grade-paper"), '<试卷路径> <作答文本>', '自动判卷并输出正答率、采分点与错题归因', handler=_cmd_exam_submit, write=True))
 register(Command('review', ("review", "--review", "quiz", "--quiz"), '[math|eng|pol|pro]', '查看 FSRS 待复测错题列表', handler=_cmd_review))
 register(Command('diagnose', ("diagnose", "--diagnose"), '<答题卡文本或文件>', '整卷级多题诊断引擎 (章节失分排行与薄弱处方)', handler=_cmd_diagnose))
-register(Command('variant', ("variant", "--variant"), '<考点关键词>', '四科白名单同类真题变式检索与防幻觉溯源', handler=_cmd_variant, write=True))
+register(Command('variant', ("variant", "--variant"), '<考点关键词>', '白名单同类真题变式检索与防幻觉溯源', handler=_cmd_variant, write=True))

@@ -65,6 +65,70 @@ _SUBJECT_PLAIN = re.compile(
     r"(思想政治理论|英语[一二]|数学[一二三]|计算机学科专业基础|管理类综合能力|经济类综合能力)"
 )
 
+#: 真实统考/联考科目代码集合（全国统一命题与联考科目）。
+#: [UT2 修复·地址被当科目] ``_SUBJECT_CODED`` 对任意「三位数字 + 2~12 汉字」无
+#: 语义约束命中：实测「办公地点：理科大楼 500号办公楼 A座」→ ``(500)号办公楼``。
+#: 消费侧（``extract_from_html`` / ``extract_from_pdf`` 组装证据前）按此集合做
+#: 后置过滤——不改正则、不重建 Rust 扩展（Rust 快路径与 Python 降级共享同一份
+#: 输出过滤，只改正则在两版本机上是死代码）。
+_NATIONAL_SUBJECT_CODES = frozenset({
+    "101", "199", "201", "202", "203", "204",          # 政治 / 管理类联考 / 外语
+    "301", "302", "303",                                # 数学一/二/三
+    "306", "307", "308", "349", "352", "353",           # 西医/中医/护理/药学/口腔/卫生综合
+    "311", "312", "313", "314", "315", "333", "346", "347",  # 教育/心理/历史/农学/体育
+    "331", "332", "437", "438",                         # 社会工作 / 警务
+    "334", "440", "335", "441", "336",                  # 新闻传播 / 出版 / 艺术
+    "339", "340", "341", "342", "343", "344", "345", "348", "350",  # 农推/兽医/风景园林/林业/文博/中药
+    "354", "355", "356", "357", "445", "448",           # 汉硕 / 建筑 / 城规 / 翻译
+    "396", "397", "398", "497", "498",                  # 经济类联考 / 法硕联考
+    "431", "432", "433", "434", "435", "436",           # 经济类专硕联考
+    "408",                                              # 计算机学科专业基础
+})
+
+#: 科目名称中的地址/楼栋特征（第二道闸，兜底「数字恰为真实代码」的门牌号，
+#: 如 ``(333)号沧浦社区办公楼`` 的 333 是真实教育综合代码）。
+#: 用带上下文的模式而非单字：单字「号/路/区」会误伤「信号与系统」「道路工程」
+#: 「区域经济学」等真实科目名。实测 ``_extract_subjects`` 输出格式为
+#: ``(代码)名称``，门牌号被截断后名称常以「号」开头（如 ``(500)号办公楼``）。
+_ADDRESS_NAME_PATTERNS = tuple(re.compile(p) for p in (
+    r"^\s*[号座]",                                       # 门牌号/座次残留：号办公楼、座
+    r"\d+\s*号",                                         # 内含门牌号：XX路333号
+    r"[一二三四五六七八九十0-9]\s*楼",                    # 楼层：二楼 / 2楼
+    r"(?:办公|大|写字|教学|宿舍|住宅|综合|图书|实验|科技|商务|培训)楼",  # 楼类建筑
+    r"(?:办公|实验|教研|档案|会议|实训|工作)室",
+    r"街道|小区|城区|园区|社区|校区|开发区|辖区",
+    r"路\s*\d|\d+\s*路",
+    r"大厦|邮编|写字楼",
+))
+
+
+def _is_plausible_subject(item: str) -> bool:
+    """单条目判定：是否像真实初试科目（代码区间闸 + 地址名称闸）。"""
+    if not item or not isinstance(item, str):
+        return False
+    text = item.strip()
+    if not text:
+        return False
+    if any(p.search(text) for p in _ADDRESS_NAME_PATTERNS):
+        return False
+    m = re.match(r"^[（(]?(\d{3})[）)]?", text)
+    if m:
+        code = m.group(1)
+        return code in _NATIONAL_SUBJECT_CODES or 600 <= int(code) <= 999
+    return True
+
+
+def filter_subjects(subjects: List[str]) -> List[str]:
+    """消费侧后置过滤：剔除伪科目（门牌号/楼栋名被误判），保留真实科目。
+
+    在 ``_extract_subjects`` 的输出被组装进 evidence 之前调用：
+      * 代码区间闸：代码须为真实统考/联考代码，或落在自命题常见区间 600–999；
+        门牌号（500/268/106…）在此被挡下；
+      * 名称黑名单闸：含地址/楼栋特征（号/楼/室/路/街/区/大厦…）一律剔除。
+    过滤后为空时，调用方走既有「未提取到细分指标」降级，不得输出空列表冒充成功。
+    """
+    return [s for s in subjects if _is_plausible_subject(s)]
+
 
 
 class DocumentExtractor:
@@ -137,7 +201,10 @@ class DocumentExtractor:
             evidences.append(ev_quota)
 
         # 4. 提取初试科目信息 (如 408, 101, 204 等)
-        subjects = self._extract_subjects(html_text)
+        # [UT2 修复·地址被当科目] 消费侧后置过滤：门牌号/楼栋名（实测
+        # `(500)号办公楼`）不得作为科目进入证据；过滤为空则本条证据不生成
+        # （渲染层如实显示「暂未提取到细分指标」，不输出空列表冒充成功）。
+        subjects = filter_subjects(self._extract_subjects(html_text))
         if subjects:
             ev_sub = build_evidence(
                 field_name="初试科目配置",
@@ -397,7 +464,8 @@ class DocumentExtractor:
                 evidences.append(ev_majors)
 
         # 抽取初试科目 (408、政治、英语等)
-        subjects = self._extract_subjects(text)
+        # [UT2 修复·地址被当科目] 与 HTML 链同口径：消费侧后置过滤伪科目。
+        subjects = filter_subjects(self._extract_subjects(text))
         if subjects:
             ev_sub = build_evidence(
                 field_name="PDF大纲/目录初试科目",

@@ -14,7 +14,7 @@
 用法::
 
     from gui.widgets.icons import render_icon, SVG_TEMPLATES, ICON_KEYS
-    pm = render_icon("today", size=20, color="#a78bfa")
+    pm = render_icon("today", size=20, color="#2dd4bf")
     label.setPixmap(pm)
 """
 
@@ -122,7 +122,7 @@ SVG_TEMPLATES: Dict[str, str] = {
 ICON_KEYS: Tuple[str, ...] = tuple(SVG_TEMPLATES.keys())
 
 #: 回退色（theme 色不可用时）
-_FALLBACK_COLOR = "#a78bfa"
+_FALLBACK_COLOR = "#2dd4bf"
 
 
 def _format_svg(key: str, color: str) -> str:

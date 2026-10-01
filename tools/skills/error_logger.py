@@ -17,7 +17,12 @@ import sys
 from datetime import datetime, date, timedelta
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
+
+ROOT = resolve_workspace_root(__file__)
 
 try:
     from skills import get_subject_name

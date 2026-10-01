@@ -166,15 +166,36 @@ def _cmd_watch(args: List[str]) -> None:
     elif sub in ("--check", "-c", "check"):
         print(colorize("\n[📡 正在轮询监控高校研究生院与研招办最新简章公告...]\n", C.CYAN))
         findings = watcher.check_updates()
+        if not findings:
+            print(colorize("[!] 当前没有正在监控的高校。使用 ky watch <高校名> 添加监控目标。\n", C.YELLOW))
+            return
+        watched_now = watcher.list_watched()
         for f in findings:
-            if f.get("status") == "UPDATED":
+            st = f.get("status")
+            if st == "UPDATED":
                 print(colorize(f"  🔥 [发现新动态] {f['school']}:", C.GREEN))
                 for t in f.get("alert_titles", []):
                     print(f"     - {t}")
-            elif f.get("status") == "UNCHANGED":
+            elif st == "BASELINED":
+                # [F1 修复·BASELINED 误报] 首次巡检只建立基线（finding 无 msg 字段），
+                # 此前落入 else 显示假消息「请求超时」（实测 fetch 成功、标题已入库）。
+                print(colorize(f"  📌 {f['school']}: 首次巡检已建立基线，待下次比对新增简章", C.CYAN))
+            elif st == "FETCH_FAILED":
+                print(colorize(f"  ⚠️ {f['school']}: {f.get('msg') or '访问超时或受阻'}", C.YELLOW))
+            elif st == "UNCHANGED":
                 print(colorize(f"  ✓ {f['school']}: 站点指纹正常，暂无新增简章", C.BLUE))
             else:
-                print(colorize(f"  ⚠️ {f['school']}: {f.get('msg', '请求超时')}", C.YELLOW))
+                # [F1 修复] 未知状态不再伪造「请求超时」，如实回显 msg/状态码。
+                print(colorize(f"  ⚠️ {f['school']}: {f.get('msg') or st or '未知状态'}", C.YELLOW))
+        # [F1 修复·报告层接入] 与 TUI（tools/tui_navigator.py 巡检分支）同口径：
+        # 轮询后把 findings 落盘为 Markdown 巡检报告。此前 CLI 只逐条 print，
+        # 无要点、无落盘路径，同场景 TUI 却已有「巡检报告已落盘」——两端体验不一致。
+        report_path = watcher.save_report(findings, watched_now)
+        if report_path:
+            print(colorize(f"\n[+] 巡检报告已落盘: {report_path}", C.GREEN))
+            print(colorize("    报告含每所高校的监控页面、上次/本次巡检时间、新增要点与页面标题样本。", C.DIM))
+        else:
+            print(colorize("\n[!] 当前为只读模式或落盘失败，报告未写入磁盘，以上要点即本次巡检结果。", C.YELLOW))
         print()
     elif sub in ("--list", "-l", "list") or not sub:
         watched = watcher.list_watched()

@@ -33,7 +33,13 @@ TOOLS = ROOT / "tools"
 
 
 def get_app_version() -> str:
-    """动态获取项目版本号，优先从 tools/version.py 或 pyproject.toml 读取，兜底 3.1.1"""
+    """动态获取项目版本号，优先从 tools/version.py 或 pyproject.toml 读取。
+
+    [K2 版本工程] 全部解析手段都失败时兜底 ``0.0.0+unknown``（与
+    tools/version.py 的 UNKNOWN_VERSION 同口径），**不再伪装成某个具体版本号**
+    —— 旧兜底硬编码 "3.1.1"，版本升级后忘记改这行，产物会带着一个看似正常
+    实则过期的版本号发出去，比显式的 unknown 更难排查。
+    """
     try:
         from version import get_version
         v = get_version()
@@ -61,7 +67,9 @@ def get_app_version() -> str:
         except Exception:
             pass
 
-    return "3.1.1"
+    print("[warn] 无法解析项目版本号（tools.version 与 pyproject.toml 均不可用），"
+          "回退 0.0.0+unknown —— 产物版本将标记为未知，请检查仓库完整性")
+    return "0.0.0+unknown"
 
 
 def check_prerequisites() -> bool:

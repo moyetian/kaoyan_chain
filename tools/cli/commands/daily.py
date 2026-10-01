@@ -218,7 +218,7 @@ def _cmd_wechat(args: List[str]) -> None:
 
 
 # 注册日常命令
-register(Command('today', ("today", "--today", "tasks", "--tasks"), '[--json] [--no-flash]', '查看今日四科任务清单；加 --json 输出结构化数据；--no-flash 隐藏研招速递', handler=_cmd_today))
+register(Command('today', ("today", "--today", "tasks", "--tasks"), '[--json] [--no-flash]', '查看今日任务清单；加 --json 输出结构化数据；--no-flash 隐藏研招速递', handler=_cmd_today))
 register(Command('done', ("done", "--done"), '<关键词>', '快速将包含关键词的今日任务标记为完成并回写状态', handler=_cmd_done, write=True))
 register(Command('map', ("map", "--map", "knowledge", "--knowledge"), '[科目] [--json]', '官方考试大纲知识点图谱与掌握度映射', handler=_cmd_map))
 register(Command('calc', ("calc", "--calc", "verify", "--verify"), '<表达式>', '基于 SymPy 高精度数学符号验算 (极限/导数/积分/ODE/矩阵，别名: verify)', handler=_cmd_calc))

@@ -148,3 +148,79 @@ def test_find_existing_mistake_record_scan_failure_returns_none(monkeypatch):
     monkeypatch.setattr(exam, "error_logger", SimpleNamespace(scan_error_records=_boom))
     assert _find_existing_mistake_record(
         subject="pro", title="任意", question="任意") is None
+
+
+# ───────────── 判分缺陷修复组回归（编号答案 / 数值防虚高 / 单行连写） ─────────────
+
+def test_numbered_standard_answer_falls_back_to_text_hit_and_never_archives(monkeypatch):
+    """[回归·分点编号误伤判分] 标准答案带（1）（2）（3）分点编号时，学员正常文本
+    作答必须判「文本答案命中」（match_level=2），且绝不触发错题归档。
+
+    缺陷现场：旧实现只要标准答案含数字就强制走数值分支（key_nums={1,2,3}），
+    而学员作答正文无数字 token 可覆盖编号 → 判 0「数值不符」并被自动归档进
+    FSRS 队列。本用例作答正文刻意不含数字，旧分支必判 0，修复后走文本比对命中。
+    """
+    created = []
+    marked = []
+    monkeypatch.setattr(exam, "error_logger", SimpleNamespace(
+        scan_error_records=lambda subject=None: [],
+        log_error_record=lambda **kw: created.append(kw) or "ok",
+        mark_error_status=lambda **kw: marked.append(kw) or (False, "无既有记录")))
+    std = ("（1）示例大学的考查要点包括概念界定。"
+           "（2）示例大学的考查要点包括原理阐述。"
+           "（3）示例大学的考查要点包括联系实际。")
+    keys = [{"id": 1, "title": "示例大学核心考点自测题",
+             "question": "示例大学考查要点简述。",
+             "standard_answer": std, "error_type": "概念漏洞"}]
+    paper = "<!-- EXAM_ANSWER_KEYS: " + json.dumps(keys) + " -->"
+    result = exam.grade_exam_paper(
+        paper,
+        "1. 示例大学的考查要点包括概念界定。示例大学的考查要点包括原理阐述。"
+        "示例大学的考查要点包括联系实际。")
+    assert result["success"]
+    # match_level=2 的可观测契约：满分通过率 + 无待复核 + 命中依据 + 零归档
+    assert result["pass_rate"] == 100, result["report"]
+    assert "文本答案命中" in result["report"]
+    assert "数值不符" not in result["report"]
+    assert result["need_review"] == []
+    assert result["updated_records"] == []
+    assert created == [] and marked == [], "命中判定不得触发错题归档"
+
+
+def test_numeric_standard_answer_guard_both_directions(monkeypatch):
+    """[回归·P0 防虚高双向] 纯数值标准答案（888）：
+    ① 作答覆盖数值 → 数值命中，满分且不归档；
+    ② 作答乱写、不含该数值 → 判 0 并归档（绝不因乱写而虚高给分）。
+    """
+    created = []
+    monkeypatch.setattr(exam, "error_logger", SimpleNamespace(
+        scan_error_records=lambda subject=None: [],
+        log_error_record=lambda **kw: created.append(kw) or "ok",
+        mark_error_status=lambda **kw: (False, "无既有记录")))
+    keys = [{"id": 1, "title": "示例专业数值自测题",
+             "question": "示例专业数值题干：写出最终计算结果。",
+             "standard_answer": "888", "error_type": "计算失误"}]
+    paper = "<!-- EXAM_ANSWER_KEYS: " + json.dumps(keys) + " -->"
+
+    hit = exam.grade_exam_paper(paper, "1. 888")
+    assert hit["success"]
+    assert hit["pass_rate"] == 100, hit["report"]
+    assert "数值命中" in hit["report"]
+    assert created == [], "数值命中不得归档"
+
+    miss = exam.grade_exam_paper(paper, "1. 完全无关的作答内容")
+    assert miss["success"]
+    assert miss["score"] == 0 and miss["pass_rate"] == 0
+    assert "数值不符" in miss["report"]
+    assert len(created) == 1, "答错必须归档进错题 / FSRS 复测队列"
+    assert miss["updated_records"] == [created[0]["title"]]
+
+
+def test_single_line_multi_question_answers_all_parsed():
+    """[回归·单行连写作答] 三题答案连写在同一行（句读分隔）必须全部识别；
+    旧实现只认行首/空白边界，第 2/3 题整题漏判为「未提交」。
+    """
+    _, answers, error = parse_answers(
+        "第1题：示例答案甲。第2题：示例答案乙。第3题：示例答案丙。", {1, 2, 3})
+    assert not error
+    assert answers == {1: "示例答案甲。", 2: "示例答案乙。", 3: "示例答案丙。"}

@@ -295,6 +295,7 @@ def test_watcher_save_is_gated_by_read_only_mode(tmp_path, monkeypatch):
 
     w = watcher_mod.AdmissionWatcher.__new__(watcher_mod.AdmissionWatcher)
     w.watch_data = {"x": {"name": "测试大学"}}
+    w.watch_file = target  # __new__ 绕过 __init__，需显式给足落位依赖
 
     _set_read_only(True)
     try:
@@ -318,6 +319,7 @@ def test_watcher_save_still_writes_by_default(tmp_path, monkeypatch):
 
     w = watcher_mod.AdmissionWatcher.__new__(watcher_mod.AdmissionWatcher)
     w.watch_data = {"x": {"name": "测试大学"}}
+    w.watch_file = target  # __new__ 绕过 __init__，需显式给足落位依赖
     w._save()
 
     assert target.exists()

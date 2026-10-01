@@ -34,6 +34,11 @@ import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Any, Dict, List, Optional, Tuple
 
 try:  # 脚本式路径（tools/ 已在 sys.path）
@@ -509,7 +514,7 @@ def _default_root() -> Path:
     env = os.environ.get("KY_WORKSPACE_ROOT")
     if env:
         return Path(env)
-    return Path(__file__).resolve().parent.parent.parent
+    return resolve_workspace_root(__file__)
 
 
 __all__ = [

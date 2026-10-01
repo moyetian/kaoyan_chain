@@ -16,9 +16,22 @@ import re
 import threading
 import urllib.parse
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Any, Dict, List, Optional, Tuple
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+# [审计 2026-09-30 P1-7 出站收敛] LLM 请求携带 `Authorization: Bearer <key>`，
+# 此前裸 urlopen 默认跟随 3xx —— 恶意 base_url 回 302 即可收割 Key。统一走
+# net_guard.safe_urlopen（SSRF 校验 + 逐跳复核 + 跨主机剥离 Authorization）。
+try:
+    from net_guard import safe_urlopen
+except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
+    from tools.net_guard import safe_urlopen  # type: ignore
+
+ROOT = resolve_workspace_root(__file__)
 _LOG = logging.getLogger(__name__)
 
 # [多角色实测·递归修复 v3] 线程级递归深度守卫：同一线程嵌套进入在线研究
@@ -438,8 +451,26 @@ class AgenticResearchEngine:
                 pass
         return {}
 
+    def reload_config(self) -> Dict[str, Any]:
+        """重新从工作区 ky_config.json 读取配置（含超时刷新）。
+
+        [缺陷修复·配置快照过期] 引擎此前只在 ``__init__`` 时读一次配置：
+        用户在设置中心保存 API Key 后，横幅判定仍读启动时快照，必须重启
+        GUI 才显示"已激活"。现提供显式重载点，供横幅刷新/设置保存后调用。
+        """
+        self.config = self._load_config()
+        try:
+            self.timeout = float(self.config.get("request_timeout") or 90.0)
+        except (TypeError, ValueError):
+            self.timeout = 90.0
+        return self.config
+
     def is_api_configured(self) -> bool:
-        """检查是否配置了真实有效的大模型 API Key"""
+        """检查是否配置了真实有效的大模型 API Key（每次调用重读配置，防止快照过期）"""
+        try:
+            self.reload_config()
+        except Exception:  # pragma: no cover - 读盘失败时退回内存快照
+            pass
         key = (self.config.get("api_key") or "").strip()
         if not key or key.startswith("sk-xxxx") or len(key) < 8:
             return False
@@ -551,7 +582,8 @@ class AgenticResearchEngine:
                     req_timeout = self.timeout
                 req = urllib.request.Request(endpoint, data=req_data, headers=headers, method="POST")
                 try:
-                    with urllib.request.urlopen(req, timeout=req_timeout) as resp:
+                    # [审计 2026-09-30 P1-7] 出站收敛：经 safe_urlopen 发送（原为裸 urlopen）。
+                    with safe_urlopen(req, timeout=req_timeout) as resp:
                         raw_bytes = resp.read()
                         headers_obj = getattr(resp, "headers", None)
                         enc = headers_obj.get("Content-Encoding", "").lower() if headers_obj and hasattr(headers_obj, "get") else ""
@@ -821,6 +853,9 @@ class AgenticResearchEngine:
 
         # 初试科目识别
         majors: List[str] = []
+        # 标记本画像的「初试科目」是否来自最末的通用兜底（既无本地库实录、也无专业专用分支）。
+        # [反幻觉] 该标记决定 catalog_source 能否自称"已核验"：兜底科目不得贴信任标签。
+        majors_from_generic_fallback = False
         # 1. 优先从 entity.departments 提取
         dept_info = None
         if entity and entity.departments:
@@ -848,7 +883,14 @@ class AgenticResearchEngine:
             elif any(k in major_keyword for k in ("计算机", "软件", "0812", "0854")):
                 majors = ["(101)思想政治理论", "(201)英语(一)或(204)英语(二)", "(301)数学(一)或(302)数学(二)", "(408)计算机学科专业基础或院校自命题"]
             else:
-                majors = ["(101)思想政治理论", "(201)外国语", "(301/自命题)业务课一", "(8xx/自命题)业务课二"]
+                # [反幻觉修复] 走到这里说明本地高校库没有该专业的任何实录科目，
+                # 也没有可用的专业专用分支。旧实现输出 "(301/自命题)业务课一" —— 把
+                # "业务课一可能是数学一"的猜测写成了带统考代码的形式，心理学、法律(非法学)
+                # 等根本不考数学的专业会被误导去复习数学。现一律去掉科目代码推测：
+                # 只保留对所有专业都成立的统考科目，业务课如实标注未核验。
+                majors = ["(101)思想政治理论", "(201)外国语",
+                          "业务课一（科目代码未核验）", "业务课二（科目代码未核验）"]
+                majors_from_generic_fallback = True
 
         # 分数线趋势、报录比、一志愿保护
         # [诚信红线] 本地高校库只收录**可核验的结构化事实**（代码/地区/层次/官网/初试科目）。
@@ -877,10 +919,15 @@ class AgenticResearchEngine:
             pitfalls = "建议提前研读目标学院当期考试大纲与指定教材，紧跟自命题真题历年题型演变与论述深度，切勿忽视政治英语统考科目基本功"
 
         # 数据源属性：只如实反映本次画像的真实来源，绝不谎报"已深度检索"
-        catalog_source = (
-            "[LOCAL_DB_VERIFIED 本地高校库实录]" if not is_unverified_school
-            else "[UNVERIFIED 未核验]"
-        )
+        if is_unverified_school:
+            catalog_source = "[UNVERIFIED 未核验]"
+        elif majors_from_generic_fallback:
+            # 院校代码/地区/层次/官网仍是本地高校库实录，但**初试科目**是通用兜底推测。
+            # [诚信红线] catalog_source 是信任标签：把推测科目标成「本地高校库实录」
+            # 会让考生误以为科目已经核对过。故此处整体降级为未核验，并指明未核验的部分。
+            catalog_source = "[UNVERIFIED 通用兜底·初试科目代码未核验]"
+        else:
+            catalog_source = "[LOCAL_DB_VERIFIED 本地高校库实录]"
 
         return {
             "name": name,
@@ -905,10 +952,22 @@ class AgenticResearchEngine:
 # 全局便捷单例与函数
 _default_engine: Optional[AgenticResearchEngine] = None
 
-def get_research_engine() -> AgenticResearchEngine:
+def get_research_engine(workspace_root: Optional[Path] = None) -> AgenticResearchEngine:
+    """取研究引擎单例。
+
+    [缺陷修复·工作区不同源] 调用方可显式传入工作区根（如 GUI 传入
+    ``MainWindow.workspace_root``）；与单例当前工作区不一致时重建单例，
+    确保"设置写在哪、引擎就读哪"，不再依赖模块级 ROOT 推导。
+    """
     global _default_engine
     if _default_engine is None:
-        _default_engine = AgenticResearchEngine()
+        _default_engine = AgenticResearchEngine(workspace_root=workspace_root)
+    elif workspace_root is not None:
+        try:
+            if Path(workspace_root).resolve() != Path(_default_engine.workspace_root).resolve():
+                _default_engine = AgenticResearchEngine(workspace_root=workspace_root)
+        except Exception:  # pragma: no cover - 路径异常时沿用既有单例
+            pass
     return _default_engine
 
 def research_university_profile(school_name: str, major_keyword: str = "", api_config: Optional[dict] = None,

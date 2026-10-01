@@ -18,7 +18,22 @@ from __future__ import annotations
 import json
 import sqlite3
 import logging
+import sys
 from pathlib import Path
+
+# [F3 修复·脚本直跑导入引导] `py tools/search/knowledge_store.py` 时 sys.path[0]
+# 是 tools/search/，`from workspace`（在 tools/ 下）与 `from tools.workspace`
+# （需仓库根）双双失败（实测 ModuleNotFoundError）。按 init_workspace.py
+# 既有模式把 tools/search、tools、仓库根插入 path 后再导入。
+_HERE = Path(__file__).resolve().parent
+for _p in (str(_HERE), str(_HERE.parent), str(_HERE.parent.parent)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import List, Tuple, Optional, Dict, Any
 from dataclasses import dataclass
 
@@ -30,7 +45,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 
 #: 默认知识库路径（单一真源）。调用方若只想「读」知识库（如 ky rag），
 #: 应先判这个文件是否存在 —— KnowledgeStore() 一构造就会建库建表，
@@ -79,6 +94,14 @@ class KnowledgeStore:
         """初始化数据库连接和表结构"""
         self.conn = sqlite3.connect(str(self.db_path))
         self.conn.row_factory = sqlite3.Row
+
+        # [K3] 启用 WAL 日志模式：读写并发互不阻塞（看板/检索与入库并存时
+        # 避免「database is locked」），崩溃恢复也更稳。不支持 WAL 的文件系统
+        # 回落默认模式，不阻断初始化。
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.Error as e:
+            logger.warning("⚠️ 启用 WAL 日志模式失败（保持默认模式）: %s", e)
 
         # 尝试加载 sqlite-vec 扩展
         self.has_vector = self._try_load_vec_extension()

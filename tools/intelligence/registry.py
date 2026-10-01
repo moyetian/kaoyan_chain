@@ -12,6 +12,11 @@ import json
 import sys
 import urllib.parse
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Dict, Any, List, Optional, Tuple
 import yaml
 from .models import UniversityEntity
@@ -33,7 +38,7 @@ def _resolve_data_path(subpath: str) -> Path:
         ):
             if candidate.exists():
                 return candidate
-    return Path(__file__).resolve().parent.parent.parent / "data" / subpath
+    return resolve_workspace_root(__file__) / "data" / subpath
 
 
 REGISTRY_PATH = _resolve_data_path("universities/registry.json")

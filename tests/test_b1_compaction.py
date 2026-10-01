@@ -437,17 +437,23 @@ def test_focus_prioritizes_matching_message_in_rule_summary(tmp_path):
 
 
 class _RecordingHooks:
-    """只记录 BeforeCompact 调用次数与上下文的最小替身。"""
+    """记录 BeforeCompact / AfterCompact 调用次数与上下文的最小替身。"""
 
     def __init__(self):
         self.calls = []
+        self.after_calls = []
 
     def trigger_before_compact(self, messages, context):
         self.calls.append({"count": len(messages), "context": dict(context)})
 
+    def trigger_after_compact(self, messages, context):
+        # [K7-U5] AfterCompact 由死事件变为活事件：compact_context 压缩完成后调用
+        self.after_calls.append({"count": len(messages), "context": dict(context)})
+
 
 def test_before_compact_hook_still_triggered(tmp_path):
-    """既有契约：压缩前仍触发 BeforeCompact 钩子；未触发压缩则不调用。"""
+    """既有契约：压缩前触发 BeforeCompact、压缩后触发 AfterCompact；
+    未触发压缩则两者都不调用。"""
     ce = _make_engine(tmp_path)
     messages = _build_long_history(ce)
     hooks = _RecordingHooks()
@@ -456,7 +462,11 @@ def test_before_compact_hook_still_triggered(tmp_path):
     assert len(hooks.calls) == 1
     assert hooks.calls[0]["count"] == len(messages)
     assert hooks.calls[0]["context"].get("active_subject") == "math"
+    # [K7-U5] 压缩完成后 AfterCompact 同样被触发（此前无任何触发链）
+    assert len(hooks.after_calls) == 1
+    assert hooks.after_calls[0]["context"].get("active_subject") == "math"
 
     ce.compact_context([{"role": "system", "content": "s"},
                         {"role": "user", "content": "u"}], hook_manager=hooks)
     assert len(hooks.calls) == 1, "未触发压缩时不得调用 BeforeCompact"
+    assert len(hooks.after_calls) == 1, "未触发压缩时不得调用 AfterCompact"

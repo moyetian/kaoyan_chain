@@ -307,7 +307,9 @@ def test_get_text_caps_response_read_size(monkeypatch):
         def __exit__(self, *a):  # noqa: D102
             return False
 
-    monkeypatch.setattr(urllib.request, "urlopen",
+    # [审计 2026-09-30 P1-7] get_text 出站已收敛到模块级 safe_urlopen，
+    # 打桩接缝随之从 urllib.request.urlopen 迁移到 _http.safe_urlopen。
+    monkeypatch.setattr(_http, "safe_urlopen",
                         lambda req, timeout=10, context=None: _Resp())
     text = _http.get_text("https://yz.example.edu.cn/notice.html")
 
@@ -351,7 +353,7 @@ def test_cert_error_fails_honestly_by_default(monkeypatch):
     默认即「如实失败」，且不得发起任何未验证连接。
     """
     probe = _InsecureSslProbe()
-    monkeypatch.setattr(urllib.request, "urlopen", probe)
+    monkeypatch.setattr(_http, "safe_urlopen", probe)
     status = {}
 
     with pytest.raises(_http.ProviderError) as excinfo:
@@ -365,7 +367,7 @@ def test_cert_error_fails_honestly_by_default(monkeypatch):
 def test_cert_error_reports_unverified_only_when_explicitly_opted_in(monkeypatch, caplog):
     """显式 ``allow_insecure_ssl=True`` 时才降级，且必须暴露 ``ssl_verified=False`` 并留日志。"""
     probe = _InsecureSslProbe()
-    monkeypatch.setattr(urllib.request, "urlopen", probe)
+    monkeypatch.setattr(_http, "safe_urlopen", probe)
     status = {}
 
     with caplog.at_level("WARNING"):
@@ -380,7 +382,7 @@ def test_cert_error_reports_unverified_only_when_explicitly_opted_in(monkeypatch
 def test_insecure_ssl_fallback_can_be_disabled(monkeypatch):
     """显式 ``allow_insecure_ssl=False`` 时证书错误必须直接报错，不得降级。"""
     probe = _InsecureSslProbe()
-    monkeypatch.setattr(urllib.request, "urlopen", probe)
+    monkeypatch.setattr(_http, "safe_urlopen", probe)
     status = {}
 
     with pytest.raises(_http.ProviderError):
@@ -395,7 +397,7 @@ def test_insecure_ssl_fallback_can_be_disabled(monkeypatch):
 def test_verified_ssl_keeps_status_true(monkeypatch):
     """正常证书链下状态必须是已验证 —— 证明该标记确有区分能力。"""
     monkeypatch.setattr(
-        urllib.request, "urlopen",
+        _http, "safe_urlopen",
         lambda req, timeout=10, context=None: _fake_response(
             b"<html><body>ok</body></html>",
             {"Content-Type": "text/html; charset=utf-8"}))

@@ -16,15 +16,17 @@ rail 分组（用户拍板）：
 from __future__ import annotations
 
 try:  # pragma: no cover - 取决于运行方式
+    from gui import theme_apply
     from gui.views.function_cards import CARD_ITEMS
     from gui.widgets.command_palette import (
-        TOOL_PREFIX, VIEW_PREFIX, CommandPalette, PaletteEntry,
+        CLI_MAIN_COMMAND_COUNT, TOOL_PREFIX, VIEW_PREFIX, CommandPalette, PaletteEntry,
     )
     from gui.widgets.nav_rail import KYNavRail
 except ImportError:  # pragma: no cover
+    from tools.gui import theme_apply  # type: ignore
     from tools.gui.views.function_cards import CARD_ITEMS  # type: ignore
     from tools.gui.widgets.command_palette import (  # type: ignore
-        TOOL_PREFIX, VIEW_PREFIX, CommandPalette, PaletteEntry,
+        CLI_MAIN_COMMAND_COUNT, TOOL_PREFIX, VIEW_PREFIX, CommandPalette, PaletteEntry,
     )
     from tools.gui.widgets.nav_rail import KYNavRail  # type: ignore
 
@@ -98,14 +100,35 @@ def _grouped_entries() -> tuple:
 #: 命令面板条目（4 个页面 + 10 个工具动作，按四桶分组）
 PALETTE_ENTRIES = _grouped_entries()
 
+
+def _collapsed_from_settings() -> bool:
+    """读 QSettings 记忆的 rail 折叠态（缺失 / 异常 / 任意后端差异一律安全解析）。
+
+    ``QSettings`` 在 bool 的存回类型上各平台后端不完全一致（bool / "true" /
+    1），故统一按字符串归一化判断，而非直接 ``bool(raw)``（后者对 "false" 会
+    错误地判为 True）。
+    """
+    raw = theme_apply.read_pref(theme_apply.KEY_RAIL_COLLAPSED, False)
+    return str(raw).strip().lower() in ("1", "true", "yes")
+
+
+def _on_rail_toggle(rail: KYNavRail) -> None:
+    """NavToggle 点击：切换折叠态并持久化（写「切换后」的状态）。"""
+    collapsed = rail.is_expanded()          # 当前展开 → 本次点击即折叠
+    rail.set_expanded(not collapsed)
+    theme_apply.write_pref(theme_apply.KEY_RAIL_COLLAPSED, collapsed)
+
+
 # ════════════════════════════════════════════════════════════════
-# [W13-7 · 42 覆盖边界声明] GUI 可执行面 vs ``ky`` CLI 主命令全集
+# [W13-7 · CLI 主命令覆盖边界声明] GUI 可执行面 vs ``ky`` CLI 主命令全集
 # ════════════════════════════════════════════════════════════════
 # GUI（rail「工具」组 + Ctrl+K 命令面板）的可执行面 = ``CARD_ITEMS`` 的 10 个别名，
 # 它们是 ``tui_navigator.execute_action`` 支持的 11 个别名的子集（不含 ``exit``：
-# GUI 关闭走窗口自身）。本批**不承诺** 42 个 CLI 主命令全部在 GUI 可达——完整
+# GUI 关闭走窗口自身）。本批**不承诺** CLI 主命令全部在 GUI 可达——完整
 # 命令请见 ``ky commands``。下面把「可达 / 不可达」显式列全，audit 测试与 CLI
 # 注册表逐一对账（防未来新增命令时静默漏声明）。
+# 总数常量 ``CLI_MAIN_COMMAND_COUNT`` 的单一真源在 ``widgets/command_palette.py``
+# （面板提示文案与 rail 审计共用），此处仅 re-export 供既有导入路径使用。
 
 #: GUI 动作别名 → CLI 主命令规范名（``compose`` 是 ``exam`` 的注册别名；
 #: ``diff`` 由 CLI 分发层重写为 ``fetch diff``；``wechat_search`` 由 TUI 分发器承接）
@@ -125,19 +148,16 @@ GUI_ACTION_TO_COMMAND = {
 #: GUI 可执行的动作别名（唯一来源：``CARD_ITEMS``）
 GUI_ACTION_ALIASES = tuple(alias for _icon, _title, _desc, alias in CARD_ITEMS)
 
-#: CLI 主命令总数（``ky commands`` 实测口径，W13 批）
-CLI_MAIN_COMMAND_COUNT = 42
-
 #: GUI 可达的 CLI 主命令（10 个）
 GUI_REACHABLE_COMMANDS = frozenset(GUI_ACTION_TO_COMMAND.values())
 
-#: GUI 无分发路径的 CLI 主命令（42 − 10 = 32 个）——完整命令见 ``ky commands``
+#: GUI 无分发路径的 CLI 主命令（43 − 10 = 33 个）——完整命令见 ``ky commands``
 GUI_UNREACHABLE_COMMANDS = frozenset({
     "version", "help", "commands", "config", "doctor", "status", "subject",
     "plan", "done", "map", "calc", "exam-submit", "review", "diagnose",
     "admission", "mount", "key", "notify", "rollback", "memory", "fatigue",
     "relieve", "style", "clawbot", "gui", "menu", "bridge", "serve", "view",
-    "session", "rag", "gain",
+    "session", "rag", "gain", "tools",
 })
 
 
@@ -154,6 +174,10 @@ def build(win) -> KYNavRail:
     rail.view_clicked.connect(win._on_nav_view_clicked)
     rail.tool_clicked.connect(win._on_card_clicked)
     rail.palette_btn.clicked.connect(win._open_command_palette)
+    # 双态折叠：NavToggle 点击切换并写 QSettings；构建时按 QSettings 恢复上次状态
+    rail.toggle_btn.clicked.connect(lambda _checked=False: _on_rail_toggle(rail))
+    if _collapsed_from_settings():
+        rail.set_expanded(False)
 
     color = win._theme.color("acc") if hasattr(win, "_theme") else ""
     rail.refresh_icons(color)

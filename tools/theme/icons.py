@@ -29,6 +29,11 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
+
 #: 子集 sprite 相对工作区根的路径
 SPRITE_REL = Path("docs") / "assets" / "icons.svg"
 
@@ -144,8 +149,8 @@ _SUBSET_ID_RE = re.compile(r'<symbol id="i-([^"]+)"')
 
 
 def sprite_path(workspace_root: Optional[Path] = None) -> Path:
-    """子集 sprite 的绝对路径（默认以本模块上溯三级为工作区根）。"""
-    root = Path(workspace_root) if workspace_root else Path(__file__).resolve().parent.parent.parent
+    """子集 sprite 的绝对路径（默认以统一工作区根解析）。"""
+    root = Path(workspace_root) if workspace_root else resolve_workspace_root(__file__)
     return root / SPRITE_REL
 
 

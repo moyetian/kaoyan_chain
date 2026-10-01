@@ -4,6 +4,7 @@
 包含全局路径、配置读写、学科定义与安全检查
 """
 
+import difflib
 import json
 import os
 import re
@@ -11,6 +12,11 @@ import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Any, Dict, Optional, Tuple
 
 try:
@@ -18,7 +24,7 @@ try:
 except ImportError:
     from ky_io import atomic_write_text, read_text_fallback
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 CONFIG_FILE = ROOT / "ky_config.json"
 HISTORY_FILE = ROOT / "ky_history.json"
 
@@ -138,7 +144,7 @@ def _guard_before_config_write() -> None:
     """
     try:
         target = Path(CONFIG_FILE).resolve()
-        root = Path(__file__).resolve().parent.parent.parent
+        root = resolve_workspace_root(__file__)
         if target != (root / "ky_config.json").resolve():
             return  # 测试重定向或非真实路径，无需守卫
 
@@ -421,8 +427,53 @@ def get_today_tasks_data() -> dict:
             return {"subjects": {}}
     return state_to_cli_dict(load_dashboard_state(ROOT))
 
+#: [UT4 修复·CLI-1] 模块名同义词组：建档向导与报到补写两条生成路径对同一
+#: 学习环节使用不同模块名（UT4 实测：建档模板写「核心知识点」，报到重建写
+#: 「核心精讲」，政治建档模板另有「核心考点」）。考生照建档文案打卡会被
+#: 磁盘新名冷拒 —— 匹配时把关键词扩展到同义词组，磁盘名/渲染名互为别名。
+_MODULE_SYNONYM_GROUPS: Tuple[Tuple[str, ...], ...] = (
+    ("核心精讲", "核心知识点", "核心考点"),
+)
+
+
+def _expand_module_aliases(keyword: str) -> Tuple[str, ...]:
+    """[UT4 修复·CLI-1] 返回与关键词互为别名的模块名（不含关键词自身）。"""
+    for _group in _MODULE_SYNONYM_GROUPS:
+        if keyword in _group:
+            return tuple(_name for _name in _group if _name != keyword)
+    return ()
+
+
+def _list_checkin_module_names(subject: str = None) -> list:
+    """[UT4 修复·CLI-1] 收集当前可打卡的模块名（今日任务表格首列），
+    供打卡关键词匹配失败时给出候选与模糊建议。"""
+    names = []
+    for _dir_name, _s_key in (
+        ("01-数学", "math"), ("02-英语", "eng"),
+        ("03-思想政治理论", "pol"), ("04-专业课", "pro"),
+    ):
+        if subject and subject != _s_key:
+            continue
+        _tf = ROOT / _dir_name / "_状态" / "今日任务.md"
+        if not _tf.exists():
+            continue
+        for _l in read_text_safe(_tf).splitlines():
+            if ("|" in _l and not _l.replace(" ", "").startswith("|---|")
+                    and "完成状态" not in _l and "模块" not in _l):
+                _first = _l.strip().strip("|").split("|")[0].strip()
+                if _first:
+                    names.append(_first)
+    return names
+
+
 def mark_today_task_done(keyword: str, subject: str = None) -> Tuple[bool, str]:
-    """在今日任务中根据关键词匹配并标记为 [x] 完成"""
+    """在今日任务中根据关键词匹配并标记为 [x] 完成
+
+    [UT4 修复·CLI-1] 匹配基于磁盘任务原文；建档名/渲染名经同义词组互认
+    （如「核心知识点」↔「核心精讲」）。匹配失败时列出当前可打卡模块名并
+    以 difflib 给出最近似建议，不再冷失败。
+    """
+    _aliases = _expand_module_aliases(keyword)
 
     def _humanize(line: str) -> str:
         # [收尾修复·回显竖线] 此前把整行表格原文（含 | 竖线）直接打印。
@@ -452,7 +503,9 @@ def mark_today_task_done(keyword: str, subject: str = None) -> Tuple[bool, str]:
         lines = content.splitlines()
         new_lines = []
         for line in lines:
-            if "|" in line and keyword in line and not line.replace(" ", "").startswith("|---|") and "完成状态" not in line and "模块" not in line:
+            # [UT4 修复·CLI-1] 关键词或其同义别名命中即视为同一任务环节。
+            if ("|" in line and (keyword in line or any(_a in line for _a in _aliases))
+                    and not line.replace(" ", "").startswith("|---|") and "完成状态" not in line and "模块" not in line):
                 if "[x]" in line.lower():
                     match_info = f"任务此前已是完成状态: {_humanize(line)}"
                     matched = True
@@ -469,10 +522,48 @@ def mark_today_task_done(keyword: str, subject: str = None) -> Tuple[bool, str]:
                 new_lines.append(line)
         if matched:
             atomic_write_text(task_file, "\n".join(new_lines))
+            # [P2 修复·打卡完成率滞后] 打卡后立即重算今日完成率。此前唯一
+            # 记录点是 SessionEnd 钩子（agent/hooks.py）—— 打卡后看板/复盘
+            # 仍显示旧值，直到下次会话结束（实测 0/9 → 下次会话后才 1/9）。
+            # 统计口径与 SessionEnd 钩子逐条一致；同步失败不阻断打卡本身
+            # （SessionEnd 钩子仍会兜底重算，属可自愈副作用）。
+            try:
+                total_n = done_n = 0
+                for _d in ("01-数学", "02-英语", "03-思想政治理论", "04-专业课"):
+                    _tf = ROOT / _d / "_状态" / "今日任务.md"
+                    if not _tf.exists():
+                        continue
+                    for _l in read_text_safe(_tf).splitlines():
+                        if ("|" in _l and not _l.replace(" ", "").startswith("|---|")
+                                and "完成状态" not in _l and "模块" not in _l):
+                            total_n += 1
+                            if "[x]" in _l.lower():
+                                done_n += 1
+                if total_n:
+                    try:
+                        import study_planner as _sp
+                    except ImportError:  # pragma: no cover
+                        from tools import study_planner as _sp
+                    _sp.record_daily_completion(
+                        rate=round(done_n / total_n * 100, 1),
+                        total=total_n, completed=done_n)
+            except Exception:
+                pass
             return True, match_info
 
     if not matched:
-        return False, f"未找到包含关键词「{keyword}」的今日任务"
+        # [UT4 修复·CLI-1] 匹配失败不得冷失败：列出当前可打卡模块名，并以
+        # difflib 给出最近似建议（UT4 实测「打卡 核心知识点」时磁盘已改名
+        # 「核心精讲」，旧文案无任何候选提示，考生无所适从）。
+        _names = _list_checkin_module_names(subject)
+        _msg = f"未找到包含关键词「{keyword}」的今日任务"
+        if _names:
+            _uniq = list(dict.fromkeys(_names))
+            _msg += f"｜当前可打卡模块：{'、'.join(_uniq)}"
+            _close = difflib.get_close_matches(keyword, _uniq, n=1, cutoff=0.4)
+            if _close:
+                _msg += f"；你是否想打卡「{_close[0]}」？可输入：打卡 {_close[0]}"
+        return False, _msg
     return True, match_info
 
 def manage_coaching_style(choice: str = None) -> Tuple[str, bool]:

@@ -151,7 +151,8 @@ def test_retry_on_transient_http_errors_then_success(monkeypatch):
             raise urllib.error.HTTPError(req.full_url, 503, "Service Unavailable", {}, None)
         return MockHTTPResponse(b"<html><body><h1>Success after retry</h1></body></html>")
 
-    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+    # [审计 2026-09-30 P1-7] get_text 出站已收敛到模块级 safe_urlopen，打桩接缝随之迁移。
+    monkeypatch.setattr("tools.search.providers._http.safe_urlopen", mock_urlopen)
 
     # backoff_base 设小加速测试
     result = get_text("https://example.edu.cn/test", max_retries=3, backoff_base=0.01)
@@ -164,7 +165,8 @@ def test_retry_exhaustion_raises_provider_error(monkeypatch):
     def mock_urlopen(req, timeout, context):
         raise urllib.error.HTTPError(req.full_url, 502, "Bad Gateway", {}, None)
 
-    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+    # [审计 2026-09-30 P1-7] get_text 出站已收敛到模块级 safe_urlopen，打桩接缝随之迁移。
+    monkeypatch.setattr("tools.search.providers._http.safe_urlopen", mock_urlopen)
 
     with pytest.raises(ProviderError) as exc_info:
         get_text("https://example.edu.cn/server_error", max_retries=2, backoff_base=0.01)
@@ -194,7 +196,8 @@ def test_retry_on_network_timeout_and_connection_reset(monkeypatch):
             raise ConnectionResetError("Connection reset by peer")
         return MockHTTPResponse()
 
-    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+    # [审计 2026-09-30 P1-7] get_text 出站已收敛到模块级 safe_urlopen，打桩接缝随之迁移。
+    monkeypatch.setattr("tools.search.providers._http.safe_urlopen", mock_urlopen)
 
     result = get_text("https://example.edu.cn/network_flaky", max_retries=3, backoff_base=0.01)
     assert attempts == 3
@@ -210,7 +213,8 @@ def test_non_retryable_404_fails_immediately(monkeypatch):
         attempts += 1
         raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
 
-    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+    # [审计 2026-09-30 P1-7] get_text 出站已收敛到模块级 safe_urlopen，打桩接缝随之迁移。
+    monkeypatch.setattr("tools.search.providers._http.safe_urlopen", mock_urlopen)
 
     with pytest.raises(ProviderError) as exc_info:
         get_text("https://example.edu.cn/404", max_retries=3, backoff_base=0.01)

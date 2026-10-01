@@ -25,6 +25,17 @@ try:
 except ImportError:
     from cli.repl.renderer import C, colorize
 
+# [审计 2026-09-30 P1-7 出站收敛] 钉钉 / 飞书 / 企业微信三路 IM Webhook 统一走
+# net_guard.safe_urlopen（SSRF 校验 + 逐跳复核 + 连接 IP pin）。
+# QQ OneBot **例外保持裸 urlopen**：官方文档明确支持「NapCat/OneBot 11 本地模式」
+# （docs/BOT_INTEGRATION_GUIDE.md 第四章，配置模板示例即 http://127.0.0.1:3000），
+# safe_urlopen 会拦回环地址、直接废掉该功能；且 endpoint 来自用户可信配置
+# （agent 写 ky_config.json 已被沙箱写保护拦截）、请求不带任何凭证头，风险低。
+try:
+    from net_guard import safe_urlopen
+except ImportError:  # pragma: no cover
+    from tools.net_guard import safe_urlopen  # type: ignore
+
 def _dingtalk_sign(secret: str, ts: str) -> str:
     """计算钉钉加签签名 (HMAC-SHA256 + Base64 + URL编码)"""
     string_to_sign = f"{ts}\n{secret}"
@@ -48,7 +59,7 @@ def send_to_dingtalk(webhook_url: str, text: str, secret: Optional[str] = None) 
     }
     req = urllib.request.Request(target_url, data=json.dumps(data).encode("utf-8"), headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with safe_urlopen(req, timeout=10) as resp:
             ret = json.loads(resp.read().decode("utf-8"))
             return (ret.get("errcode") == 0), ret.get("errmsg", "ok")
     except Exception as e:
@@ -64,7 +75,7 @@ def send_to_feishu(webhook_url: str, text: str) -> Tuple[bool, str]:
     }
     req = urllib.request.Request(webhook_url, data=json.dumps(data).encode("utf-8"), headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with safe_urlopen(req, timeout=10) as resp:
             ret = json.loads(resp.read().decode("utf-8"))
             return (ret.get("code") == 0 or ret.get("StatusCode") == 0), ret.get("msg", "ok")
     except Exception as e:
@@ -80,7 +91,7 @@ def send_to_wechat(webhook_url: str, text: str) -> Tuple[bool, str]:
     }
     req = urllib.request.Request(webhook_url, data=json.dumps(data).encode("utf-8"), headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with safe_urlopen(req, timeout=10) as resp:
             ret = json.loads(resp.read().decode("utf-8"))
             return (ret.get("errcode") == 0), ret.get("errmsg", "ok")
     except Exception as e:
@@ -99,6 +110,9 @@ def send_to_qq(endpoint: str, target_id: Any, text: str) -> Tuple[bool, str]:
     }
     req = urllib.request.Request(url, data=json.dumps(data).encode("utf-8"), headers={"Content-Type": "application/json"})
     try:
+        # [审计 2026-09-30 P1-7] 刻意不收敛到 safe_urlopen：OneBot 本地模式
+        # （http://127.0.0.1:...）是文档支持的正当部署，回环地址会被安全校验
+        # 拦截；endpoint 来自用户可信配置且本请求不带凭证头。见模块顶部说明。
         with urllib.request.urlopen(req, timeout=10) as resp:
             ret = json.loads(resp.read().decode("utf-8"))
             return (ret.get("status") == "ok"), str(ret)

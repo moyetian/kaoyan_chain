@@ -43,7 +43,7 @@ def sanitize_public_data(data: dict) -> dict:
         safe_metrics.append(g2)
     safe_subjects = [{k: s.get(k) for k in ("key", "name", "icon", "color", "dark", "notes", "ok")} for s in data.get("subjects", [])]
     # 通用科目短名表：maps[].subject_name 取自考纲文件标题，可能是真实自命题
-    # 科目全称（如「自命题专业课科目」），
+    # 科目全称（如「601 数学分析 801 高等代数」），
     # 会随 Pages 公开发布。发布前一律泛化为通用短名（与看板卡片所用名一致）。
     generic_names = dict(_GENERIC_SUBJECT_NAMES)
     for s in data.get("subjects", []):

@@ -16,10 +16,20 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
+
 try:  # [B1 同类] LLM 请求经安全通道发送（双导入路径兼容）
     from net_guard import safe_urlopen
 except ImportError:  # pragma: no cover
     from tools.net_guard import safe_urlopen  # type: ignore
+
+try:  # [K4] 统一 LLM 出口（双导入路径兼容）
+    from llm_client import ChatRequest, LLMError, request_chat
+except ImportError:  # pragma: no cover
+    from tools.llm_client import ChatRequest, LLMError, request_chat  # type: ignore
 
 # 确保父目录与 tools 在 sys.path 中
 tools_dir = Path(__file__).resolve().parent.parent
@@ -165,7 +175,11 @@ def _get_normalized_chat_url(base_url: str) -> str:
             return f"{b}/v1/chat/completions"
 
 def call_text_llm(messages, config, stream=True):
-    """通用文本大模型调用 (支持流式与非流式)"""
+    """通用文本大模型调用 (支持流式与非流式)
+
+    [K4] 发送已收敛进 ``llm_client.request_chat``（``stream=False``、
+    ``max_retries=0``）；函数签名与中文错误串格式保持不变。
+    """
     base_url = config.get("base_url", "https://api.deepseek.com/v1")
     url = _get_normalized_chat_url(base_url)
     api_key = config.get("api_key", "").strip()
@@ -184,31 +198,28 @@ def call_text_llm(messages, config, stream=True):
     if stream and ky_cli and hasattr(ky_cli, "stream_chat"):
         return ky_cli.stream_chat(messages, config)
 
-    # 非流式 HTTP POST
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
-        "User-Agent": "Kaoyan-Vision-Solver/1.0",
-        "Connection": "close",
-        "Accept-Encoding": "gzip, deflate, identity"
-    }
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": config.get("temperature", 0.3),
-        "stream": False
-    }
-
+    # 非流式：统一客户端发送（url 已是完整端点，request_chat 会原样使用）
+    req = ChatRequest(
+        messages=messages,
+        model=model,
+        temperature=config.get("temperature", 0.3),
+        stream=False,
+        timeout=120.0,
+        api_key=api_key,
+        base_url=url,
+        headers_extra={
+            "User-Agent": "Kaoyan-Vision-Solver/1.0",
+            "Accept-Encoding": "gzip, deflate, identity",
+        },
+    )
     try:
-        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
         # [B1 同类·跳转泄漏 Bearer] 安全通道发送。
-        with safe_urlopen(req, timeout=120) as resp:
-            text = _read_and_decompress(resp)
-            res = json.loads(text)
-            return res["choices"][0]["message"]["content"]
-    except urllib.error.HTTPError as e:
-        err_msg = e.read().decode("utf-8", errors="ignore")
-        return f"[主模型 API 请求错误 {e.code}]: {err_msg}"
+        data = request_chat(req, max_retries=0, urlopen_fn=safe_urlopen)
+        return data["choices"][0]["message"]["content"]
+    except LLMError as e:
+        if e.status is not None:
+            return f"[主模型 API 请求错误 {e.status}]: {e.body or str(e)}"
+        return f"[主模型连接异常]: {e}"
     except Exception as e:
         return f"[主模型连接异常]: {e}"
 
@@ -377,7 +388,7 @@ def health_check() -> dict:
     from pathlib import Path as _Path
     cfg: dict = {}
     try:
-        root = _Path(__file__).resolve().parent.parent.parent
+        root = resolve_workspace_root(__file__)
         cfg = _json.loads((root / "ky_config.json").read_text(encoding="utf-8"))
     except Exception:
         cfg = {}

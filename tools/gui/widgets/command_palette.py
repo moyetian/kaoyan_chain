@@ -41,6 +41,10 @@ from PySide6.QtWidgets import (
 VIEW_PREFIX = "view:"
 TOOL_PREFIX = "tool:"
 
+#: CLI 主命令总数（``ky commands`` 实测口径）——单一真源：
+#: 面板提示文案与 rail 审计声明（``views/nav_rail.py``）共用本常量。
+CLI_MAIN_COMMAND_COUNT = 43
+
 #: 分组标题行的 UserRole 值：空 key（``visible_keys()`` 过滤；执行前二次拦截）
 GROUP_HEADER_KEY = ""
 
@@ -105,7 +109,8 @@ class CommandPalette(QDialog):
         self.list.itemClicked.connect(lambda _item: self.activate_current())
         layout.addWidget(self.list, stretch=1)
 
-        self.hint = QLabel("↑↓ 选择 · Enter 执行 · Esc 关闭 · 完整 42 条命令见 ky commands")
+        self.hint = QLabel(
+            f"↑↓ 选择 · Enter 执行 · Esc 关闭 · 完整 {CLI_MAIN_COMMAND_COUNT} 条命令见 ky commands")
         self.hint.setObjectName("PaletteHint")
         layout.addWidget(self.hint)
 

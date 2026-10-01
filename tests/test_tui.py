@@ -160,7 +160,24 @@ def test_textual_app_boots_with_menu_and_summary():
     _run(scenario())
 
 
-def test_textual_app_keyboard_and_digit_dispatch():
+def test_textual_app_keyboard_and_digit_dispatch(monkeypatch):
+    # 隔离真实副作用：数字「1」派发 today 动作 → ky_cli.print_today_tasks_summary
+    # 的「研招速递」会对真实监控库联网 check_updates() 并落盘真实
+    # .memory/admission_watch.json（实测：全量 pytest 期间时间戳被刷新）。
+    # 本测试只验证按键分发；按「TUI 实际调用的函数对象」定位其模块全局打桩
+    # （list_watched() 返回空 → check_updates 不执行，零联网零写盘），
+    # 免疫 tools./非 tools. 双导入造成的模块实例分裂。
+    import types
+
+    from ky_cli import print_today_tasks_summary as _today_summary
+
+    class _NoWatch:
+        def list_watched(self):
+            return []
+
+    monkeypatch.setitem(_today_summary.__globals__, "intelligence",
+                        types.SimpleNamespace(AdmissionWatcher=_NoWatch))
+
     async def scenario():
         app = tui_app.KaoyanTUI()
         async with app.run_test(size=(120, 40)) as pilot:

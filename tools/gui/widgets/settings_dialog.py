@@ -72,7 +72,7 @@ class SettingsDialog(QDialog):
             return {
                 "fg": t.color("fg") or ("#f8fafc" if dark else "#0f172a"),
                 "mut": t.color("mut") or ("#94a3b8" if dark else "#64748b"),
-                "acc": t.color("acc") or ("#a78bfa" if dark else "#7c3aed"),
+                "acc": t.color("acc") or ("#2dd4bf" if dark else "#0f766e"),
                 "ok": t.color("ok") or ("#34d399" if dark else "#059669"),
                 "bad": t.color("bad") or ("#f87171" if dark else "#ef4444"),
                 "surf2": t.color("surf2") or ("#1e293b" if dark else "#f1f5f9"),
@@ -80,7 +80,7 @@ class SettingsDialog(QDialog):
             }
         except Exception:
             return {
-                "fg": "#f8fafc", "mut": "#94a3b8", "acc": "#a78bfa",
+                "fg": "#f8fafc", "mut": "#94a3b8", "acc": "#2dd4bf",
                 "ok": "#34d399", "bad": "#f87171", "surf2": "#1e293b", "line": "#1e293b",
             }
 
@@ -386,7 +386,7 @@ class SettingsDialog(QDialog):
         """打开系统选色器，结果以 hex 写入主色输入框。"""
         old = self.acc_edit.text().strip()
         initial = QColor(old) if old else self._win._theme.color("acc")
-        color = QColorDialog.getColor(initial or QColor("#a78bfa"), self, "选择主色")
+        color = QColorDialog.getColor(initial or QColor("#2dd4bf"), self, "选择主色")
         if color.isValid():
             self.acc_edit.setText(color.name())
 

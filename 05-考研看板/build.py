@@ -73,6 +73,7 @@ from web.snapshot import (  # noqa: E402
     snapshot_opt_in,
     write_state_snapshot,
 )
+from web.theme_vars import json_inline_escape  # noqa: E402
 
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -82,6 +83,20 @@ from web.snapshot import (  # noqa: E402
 - 数据：进度条模式（表格 → 指标对象）
 用法：python build.py
 """
+
+# [UT4 修复·WEB-1] 内嵌今日任务卡倒计时同口径：今日任务.md 的
+# 「研考倒计时：N 天」是建档/刷新当日的静态快照文本，看板 hero 倒计时却按
+# 构建当日重算——同屏出现「80 天」与「79 天」矛盾（UT4 三沙箱实测）。
+# 构建时把今日任务正文里的该字段按当日 EXAM_DAY1 重算替换，保证构建产物层
+# 与 hero 一致；源文件本身的重算由 study_planner 负责（两层独立成立）。
+_TODAY_COUNTDOWN_RE = re.compile(r"(研考)?倒计时：\s*\d+\s*天")
+
+
+def sync_today_countdown(text: str, days_left: int) -> str:
+    """把今日任务正文里的「（研考）倒计时：N 天」替换为按当日重算的天数。"""
+    return _TODAY_COUNTDOWN_RE.sub(
+        lambda m: f"{m.group(1) or ''}倒计时：{days_left} 天", text)
+
 
 import re
 import json
@@ -121,12 +136,30 @@ def build(offline: bool = False):
     parse_warnings = []        # ← 新增：解析告警收集
     sections_status = []       # ← 新增：每个 section 解析状态（用于快照诊断）
 
+    # [审计 2026-09-30 PF-6 读取缓存] SECTIONS 共 21 条但只对应 8 个源文件：同一份
+    # Markdown 会被不同关键词反复 get_section 切片，此前每条都重读一次磁盘。
+    # 缓存放在**构建局部**（而非全局 lru_cache）：同进程多次 build（测试/看板连续
+    # 重建）时不会读到上一轮的陈旧内容。
+    _read_memo: dict = {}
+
+    def read_memo(path):
+        key = str(path)
+        if key in _read_memo:
+            return _read_memo[key]
+        content = read(path)
+        _read_memo[key] = content
+        return content
+
     for s in SUBJECTS:
         ok = s["dir"].is_dir()
         subj_meta.append({
             "key": s["key"], "name": s["name"], "icon": icon_html(s["icon"]),
             "color": s["color"], "dark": s["dark"],
             "target": s["target"], "full": s["full"],
+            # [UT4 修复·WEB-2] 目标分区间原文（如「120-130 分」）随快照透传，
+            # 数值 target 维持现状兼容；脱敏快照的白名单不含该字段（个人备考
+            # 目标不随 Pages 发布），完整模式与本地看板 JS 可消费。
+            "target_text": s.get("target_text"),
             "notes": count_notes(s) if ok else None, "ok": ok,
         })
         if not ok:
@@ -137,7 +170,7 @@ def build(offline: bool = False):
             continue
 
         for rel, kw, tab, ov in SECTIONS.get(s["key"], []):
-            md = read(s["dir"] / rel)
+            md = read_memo(s["dir"] / rel)
             if md is None:
                 warn_msg = f"[{s['name']}] 源文件不存在或读取失败：{rel}（kw={kw!r}）"
                 parse_warnings.append({"severity": "error", "subject": s["key"], "kw": kw, "msg": warn_msg})
@@ -154,7 +187,8 @@ def build(offline: bool = False):
             sections_status.append({"subject": s["key"], "kw": kw, "status": "ok", "path": rel, "tab": tab})
 
             if tab == "today":
-                today_html.append((s, md2html(sec)))
+                # [UT4 修复·WEB-1] md2html 前先重算倒计时（见 sync_today_countdown）
+                today_html.append((s, md2html(sync_today_countdown(sec, d_day1))))
                 continue
 
             tables = parse_tables(sec)
@@ -202,6 +236,12 @@ def build(offline: bool = False):
             print(f"  {prefix} {w['msg']}")
         print()
 
+    # [P2-3 修复·四科文案残留] 品牌区小字与空态说明此前硬编码「四科」，
+    # 不考数学（3 科）/199 管综（2 科）方案下与真实科目数不符。SUBJECTS 已由
+    # web/config.py 按方案过滤，len(SUBJECTS) 即实际科目数。
+    _cn_num = {2: "两", 3: "三", 4: "四", 5: "五", 6: "六"}
+    _subj_label = f"{_cn_num.get(len(SUBJECTS), str(len(SUBJECTS)))}科"
+
     # 今日
     if today_html:
         th = []
@@ -221,7 +261,7 @@ def build(offline: bool = False):
             "<div class='empty'>"
             f"<div class='ei'>{sprite_icon('clipboard', 24)}</div>"
             "<div class='empty-t'>今日任务尚未生成</div>"
-            "<div class='empty-d'>这里会显示四科今日任务清单与勾选状态</div>"
+            f"<div class='empty-d'>这里会显示{_subj_label}今日任务清单与勾选状态</div>"
             "<button class='cta' type='button' data-help='today-help'"
             " aria-expanded='false' aria-controls='today-help'>如何生成今日任务？</button>"
             "<div class='empty-help' id='today-help' hidden>"
@@ -318,7 +358,11 @@ def build(offline: bool = False):
         "trend": trend_history,
     }
     html_data = sanitize_public_data(data) if snapshot_opt_in() else data
-    payload = json.dumps(html_data, ensure_ascii=False).replace("</", "<\\/")
+    # [审计 2026-09-30 P1-10 内联 JSON 转义] 此前仅 `.replace("</", "<\\/")` 防护：
+    # 挡不住 `<!--`、HTML 实体二次解析与 U+2028/U+2029 行终止符；现一次性转义
+    # 五个序列（`&`/`<`/`>`/U+2028/U+2029）。`<` → `\u003c` 天然覆盖 `</script>`
+    # 防护语义；str.translate 单遍映射不会把 `\u0026` 二次转义成 `\u005cu0026`。
+    payload = json_inline_escape(json.dumps(html_data, ensure_ascii=False))
 
     # [P2-2 修复·除零] 起跑日 ≥ 初试日（ky_config.json 自相矛盾）时 total_days<=0，
     # 原先 `day_no / total_days` 会抛 ZeroDivisionError 中断整个看板构建
@@ -352,6 +396,8 @@ def build(offline: bool = False):
         # 本地入口默认完整模式，发布链路（sync_publish --force / update_dashboard
         # --push / CI）必须只接受带该标记的产物，防止完整版被误部署。
         "SANITIZED_ATTR": ' data-sanitized="1"' if snapshot_opt_in() else "",
+        # [P2-3 修复] 品牌区小字「N科备考中枢」按实际科目数动态化（2/3/4 科）。
+        "SUBJECT_COUNT_LABEL": _subj_label,
         # [W13 验收修复·F8] 起跑日若非配置/打卡记录而来，而是「初试前 180 天」
         # 的估算值，须在看板上如实标注，避免考生把估算值误当真实起跑时间。
         "PLAN_ESTIMATED": "（按初试前 180 天估算）" if PLAN_START_ESTIMATED else "",

@@ -25,6 +25,18 @@ except ImportError:
     _rust = None
     _HAS_RUST_EXT = False
 
+#: 占位大纲标记（单一真源：syllabus_manager.PRO_PLACEHOLDER_MARKER）。
+#: [问题5 修复·专业课无大纲却谎称按纲出题] 系统为自命题科目生成的骨架大纲
+#: 含此标记；挂载时必须如实告知 AI「这是待填骨架」，否则 LLM 会向学员
+#: 宣称「已按考纲出题」。导入失败时退回字面量（与真源同值，由测试钉住）。
+try:
+    try:
+        from syllabus_manager import PRO_PLACEHOLDER_MARKER as _SYLLABUS_PLACEHOLDER_MARKER
+    except ImportError:  # pragma: no cover - 包式导入上下文
+        from tools.syllabus_manager import PRO_PLACEHOLDER_MARKER as _SYLLABUS_PLACEHOLDER_MARKER
+except Exception:  # pragma: no cover - 极端环境下不阻断上下文组装
+    _SYLLABUS_PLACEHOLDER_MARKER = "【待自填"
+
 
 class ContextEngine:
     def __init__(self, workspace_root: Path, active_subject: str = "math",
@@ -54,8 +66,13 @@ class ContextEngine:
     def set_subject(self, subject: str):
         self.active_subject = subject
 
-    def build_system_prompt(self, tools_description: str = "") -> str:
-        """多层次组装系统提示词"""
+    def build_system_prompt(self, tools_description: str = "", kaoyan_ctx=None) -> str:
+        """多层次组装系统提示词
+
+        [K6] ``kaoyan_ctx``（KaoyanContext / 鸭子类型对象）：非 None 时
+        ``target_school`` 直接取 ctx（不再读盘 ky_config.json），保证 Agent
+        提示与 hook 判定使用**同一份**目标校；None 保持旧行为（读工作区配置）。
+        """
         sys_parts = []
 
         # 0. 三级分层记忆挂载
@@ -97,18 +114,28 @@ class ContextEngine:
             if p and p.exists():
                 txt = self._read_safe(p)
                 if txt.strip():
+                    if label == "考试大纲":
+                        txt = self._annotate_syllabus(txt)
                     state_snippets.append(f"--- [{label}] ({p.name}) ---\n{txt}")
 
         if state_snippets:
             sys_parts.append(f"\n=== 【当前学员学情档案与记忆状态 ({name})】 ===\n" + "\n\n".join(state_snippets))
 
-        # 4. 扫描参考资料白名单
+        # 4. 扫描参考资料白名单（递归含子目录；与 material_scanner 同源实现）
+        # [问题5 根因修复·子目录资料不识别] 旧实现只 iterdir() 单层：学员把
+        # 资料整理进子目录（如 参考资料/英语真题/2020.pdf）后此处扫描不到，
+        # Agent 回复「未放置资料」。现递归并显示相对路径（同名文件可区分）。
         mat_dir = s_dir / "参考资料"
         mat_files = []
-        if mat_dir.exists():
-            for f in mat_dir.iterdir():
-                if f.is_file() and f.name.lower() not in ("readme.md", ".gitkeep", ".gitignore"):
-                    mat_files.append(f.name)
+        try:
+            try:
+                from skills.material_scanner import iter_material_files, relative_label
+            except ImportError:  # pragma: no cover - 包式导入上下文
+                from tools.skills.material_scanner import iter_material_files, relative_label
+            mat_files = [relative_label(mat_dir, f)
+                         for f in iter_material_files(mat_dir)]
+        except Exception:
+            mat_files = []
 
         if mat_files:
             sys_parts.append(
@@ -129,15 +156,20 @@ class ContextEngine:
         # 4.5 目标院校招考情报、考纲变动与社媒真实经验档案动态挂载
         intel_snippets = []
         target_school = ""
-        cfg_file = self.workspace_root / "ky_config.json"
-        if cfg_file.exists():
-            try:
-                import json
-                cfg_obj = json.loads(self._read_safe(cfg_file))
-                sp = cfg_obj.get("study_plan", {})
-                target_school = sp.get("school", "").strip()
-            except Exception:
-                pass
+        # [K6] 优先取统一上下文（与 hooks.school_scope_guard 同源）；
+        # kaoyan_ctx 为 None 时保持旧行为：从工作区 ky_config.json 读取。
+        if kaoyan_ctx is not None:
+            target_school = str(getattr(kaoyan_ctx, "target_school", "") or "").strip()
+        else:
+            cfg_file = self.workspace_root / "ky_config.json"
+            if cfg_file.exists():
+                try:
+                    import json
+                    cfg_obj = json.loads(self._read_safe(cfg_file))
+                    sp = cfg_obj.get("study_plan", {})
+                    target_school = sp.get("school", "").strip()
+                except Exception:
+                    pass
 
         if target_school and target_school != "未指定":
             # 检索 .memory/experiences/<学校>_*.md 或 docs/experiences/<学校>_*.md
@@ -306,7 +338,7 @@ class ContextEngine:
         return heuristic_count_messages(messages)
 
     def compact_context(self, messages: List[Dict[str, Any]], hook_manager=None,
-                        focus: Optional[str] = None) -> List[Dict[str, Any]]:
+                        focus: Optional[str] = None, force: bool = False) -> List[Dict[str, Any]]:
         """
         Context Compaction 算法:
         当估算 Token 超过**压缩水位**（可用预算 = 窗口 − 输出预留，取其 70%；
@@ -319,9 +351,13 @@ class ContextEngine:
         摘要模式由 `agent.compact_mode` 决定（`rule_only` / `llm`，非法回落前者）；
         `llm` 模式失败时**静默降级**回规则摘要，绝不因摘要失败而中断会话。
         `focus` 为可选关注点：规则模式下命中的消息在 goal/progress 抽取时优先保留。
+
+        [K8] ``force=True``：跳过 Token 水位判定（仅保留「消息数 > 6」这一
+        可压缩前提），供 run 主循环在**上游报上下文超长**（overflow）时强制
+        压缩后重试；默认 False 行为不变。
         """
         cur_tokens = self.estimate_tokens(messages)
-        if cur_tokens <= self.compact_watermark or len(messages) <= 6:
+        if len(messages) <= 6 or (not force and cur_tokens <= self.compact_watermark):
             return messages
 
         # 触发 BeforeCompact Hook 提取关键记忆
@@ -381,6 +417,12 @@ class ContextEngine:
         compacted.append({"role": "system", "content": summary_text})
         compacted.extend(keep_tail)
 
+        # [K7-U5] 压缩完成后的扩展点：HookEvent.AFTER_COMPACT 此前已定义但
+        # 无任何触发链（死事件）；现补上调用，注册方可在压缩结果上做校验/审计。
+        if hook_manager:
+            hook_manager.trigger_after_compact(
+                compacted, {"active_subject": self.active_subject})
+
         return compacted
 
     def _notice_rule_summary_once(self) -> None:
@@ -398,6 +440,25 @@ class ContextEngine:
             except Exception:
                 continue
         return ""
+
+    def _annotate_syllabus(self, txt: str) -> str:
+        """如实标注考试大纲状态：占位/骨架大纲必须显式告知 AI。
+
+        [问题5 修复·专业课无大纲却谎称按纲出题] 自命题科目由系统生成的骨架
+        大纲含 ``PRO_PLACEHOLDER_MARKER``。此前原样挂载，LLM 读后向学员宣称
+        「已按考纲出题 / 已按大纲安排复习」——实际文件里只有【待自填】。
+        现附加显式状态说明，把「按纲出题」的宣称条件收紧为真实大纲。
+        """
+        if _SYLLABUS_PLACEHOLDER_MARKER and _SYLLABUS_PLACEHOLDER_MARKER in txt:
+            return (
+                "⚠️【大纲状态：待填骨架·非真实考纲】本文件为系统生成的占位骨架，"
+                "正文含【待自填】标记，尚未包含目标院校的真实考点。\n"
+                "严禁向学员宣称「已按考纲出题 / 已按大纲复习 / 大纲已导入」；"
+                "如需按纲出题，必须先提示学员从目标院校研究生院官网下载真实大纲，"
+                "替换 04-专业课/考试大纲.md 后再执行。\n\n"
+                + txt
+            )
+        return txt
 
 
 # 别名兼容

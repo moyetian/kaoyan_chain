@@ -21,6 +21,11 @@ import re
 import json
 import argparse
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from datetime import datetime, date, timedelta
 from typing import Optional
 
@@ -31,7 +36,7 @@ if hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = resolve_workspace_root(__file__)
 CONFIG_FILE = ROOT / "ky_config.json"
 
 # [W12 P0-1] 与 ky_cli.py / init_workspace.py 一致：tools 目录与仓库根都入 path。
@@ -306,10 +311,11 @@ def get_config_summary() -> dict:
 
 
 def get_today_progress() -> tuple[int, int]:
-    """统计今日四科总任务数与已完成数（返回 ``(已完成, 总数)``）。
+    """统计今日各科总任务数与已完成数（返回 ``(已完成, 总数)``）。
 
     [缺陷修复·三端重复解析] 原先自带一份与 CLI / GUI 不同的解析实现。
     现统一委托 tools/state 共享层，三端数字必然一致。
+    [UT4 修复·CLI-5] docstring 中性化：「四科」→「各科」（三科模式同样适用）。
     """
     state = load_dashboard_state(ROOT)
     return state.completed, state.total
@@ -386,7 +392,7 @@ MENU_GROUPS = [
         "⚡ 核心备考与实战攻坚 (Core Preparation)",
         Colors.YELLOW,
         [
-            ("1", "今日任务 (Daily Tasks)", "📋", "查看四科任务量、打卡推进与行动指引", "today"),
+            ("1", "今日任务 (Daily Tasks)", "📋", "查看任务量、打卡推进与行动指引", "today"),
             ("2", "靶向组卷 (Exam Composer)", "🎯", "按考点与难度梯度智能拼卷演练", "compose"),
             ("3", "同源变式 (Variant Retrieval)", "🔄", "针对薄弱考点或错题智能检索同源题", "variant"),
         ]
@@ -492,7 +498,7 @@ def render_header() -> str:
     )
     lines.append(render_box_line(row2, W, 'left'))
 
-    # 第三行：辅导风格与今日四科任务打卡进度
+    # 第三行：辅导风格与今日各科任务打卡进度（[UT4 修复·CLI-5] 四科→各科）
     task_stat_str = f"{done_tasks}/{total_tasks} 完成 ({today_pct:.1f}%)" if total_tasks > 0 else "待生成 (去报道)"
     row3 = (
         f"🛡️  辅导风格: {colorize(info['style'], Colors.WHITE)}    │  "
@@ -769,31 +775,56 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
                 info = get_config_summary()
                 s = info.get("school")
                 if s and s not in ("未指定", "目标院校"):
-                    watcher.add_watch(s)
+                    add_res = watcher.add_watch(s)
+                    if not add_res.get("success"):
+                        print(colorize(f"\n[!] 自动纳入监控失败: {add_res.get('msg')}", Colors.YELLOW))
+                        print(colorize("    请在「设置」核对目标院校，或使用 ky watch add <校名> 手动添加。", Colors.DIM))
             findings = watcher.check_updates()
-            print(colorize(f"\n[+] 招考动态巡检完成，已监控 {len(watcher.list_watched())} 所高校：", Colors.GREEN))
+            watched_now = watcher.list_watched()
+            if not findings:
+                print(colorize("\n[!] 当前没有正在监控的高校。请先在设置中配置目标院校，"
+                               "或使用 ky watch add <校名> 添加监控目标。", Colors.YELLOW))
+                return True
+            print(colorize(f"\n[+] 招考动态巡检完成，已监控 {len(watched_now)} 所高校：", Colors.GREEN))
             for f in findings:
                 st = f.get("status")
                 status_color = Colors.GREEN if st == "UPDATED" else (Colors.YELLOW if st == "FETCH_FAILED" else Colors.CYAN)
                 if st == "UPDATED":
                     titles = f.get("alert_titles") or []
-                    msg = "发现简章变动 -> " + ("; ".join(titles[:3]) if titles else "页面指纹已更新")
+                    print(f"  • {f.get('school')}: {colorize(f'发现 {len(titles)} 条新动态', status_color)}")
+                    for t in titles[:5]:
+                        print(f"      - {t}")
+                    if len(titles) > 5:
+                        print(f"      …… 另有 {len(titles) - 5} 条见报告文件")
                 elif st == "FETCH_FAILED":
-                    msg = f.get("msg", "访问超时或受阻")
+                    print(f"  • {f.get('school')}: {colorize(f.get('msg', '访问超时或受阻'), status_color)}")
                 else:
-                    msg = "暂无变动"
-                print(f"  • {f.get('school')}: {colorize(msg, status_color)}")
-        elif cmd_alias == "build":
-            b_script = ROOT / "05-考研看板" / "build.py"
-            if b_script.exists():
-                import subprocess
-                # [W13 收口·本地入口分模式] 显式完整模式，与 更新看板.bat / ky build 一致；
-                # 否则走缺省脱敏，把本地完整看板产物覆盖掉。
-                subprocess.run([sys.executable, str(b_script)], check=False,
-                               env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0"})
-                print(colorize("\n[+] 考研看板已构建完成！可打开 docs/index.html 查看。", Colors.GREEN))
+                    print(f"  • {f.get('school')}: {colorize('暂无变动（页面指纹未变化）', status_color)}")
+            # 报告落盘：含每校监控页面、巡检时间、新增要点与页面标题样本
+            report_path = watcher.save_report(findings, watched_now)
+            if report_path:
+                print(colorize(f"\n[+] 巡检报告已落盘: {report_path}", Colors.GREEN))
+                print(colorize("    报告含每所高校的监控页面、上次/本次巡检时间、新增要点与页面标题样本。", Colors.DIM))
             else:
+                print(colorize("\n[!] 当前为只读模式或落盘失败，报告未写入磁盘，以上要点即本次巡检结果。", Colors.YELLOW))
+        elif cmd_alias == "build":
+            # [问题7 根因修复] 统一走 dashboard_build：frozen（exe 版）下旧实现
+            # subprocess.run([sys.executable, build.py]) 的 sys.executable 是 GUI
+            # 主程序自身 —— 实测点击「更新看板」弹出的是第二个 GUI 主界面、构建
+            # 从未发生。现 frozen 改进程内执行（见 tools/dashboard_build.py）。
+            try:
+                from dashboard_build import run_dashboard_build
+            except ImportError:  # pragma: no cover - 包式导入上下文
+                from tools.dashboard_build import run_dashboard_build
+            # [W13 收口·本地入口分模式] 显式完整模式，与 更新看板.bat / ky build 一致；
+            # 否则走缺省脱敏，把本地完整看板产物覆盖掉。
+            rc = run_dashboard_build(workspace_root=ROOT, snapshot_opt_in=False)
+            if rc == 0:
+                print(colorize("\n[+] 考研看板已构建完成！可打开 docs/index.html 查看。", Colors.GREEN))
+            elif rc == 127:
                 print(colorize("\n[!] 未找到 05-考研看板/build.py 脚本", Colors.RED))
+            else:
+                print(colorize(f"\n[!] 看板构建失败（退出码 {rc}），请检查上方输出。", Colors.RED))
         elif cmd_alias in ("wechat_search", "wechat", "wx"):
             # [P0 修复] 非交互默认词此前硬编码「408计算机考研经验」，
             # 对自命题考生（如 814 信号与系统）完全无关；改为取自考生档案。

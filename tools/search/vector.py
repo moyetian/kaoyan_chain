@@ -17,12 +17,27 @@
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
+
+# [F3 修复·脚本直跑导入引导] `py tools/search/vector.py` 时 sys.path[0] 是
+# tools/search/，`from workspace`（在 tools/ 下）与 `from tools.workspace`
+# （需仓库根）双双失败（实测 ModuleNotFoundError）。按 init_workspace.py
+# 既有模式把 tools/search、tools、仓库根插入 path 后再导入。
+_HERE = Path(__file__).resolve().parent
+for _p in (str(_HERE), str(_HERE.parent), str(_HERE.parent.parent)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 
 # 全局状态
 _ENCODER: Optional['VectorEncoder'] = None

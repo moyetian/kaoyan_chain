@@ -12,7 +12,12 @@
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
+
+ROOT = resolve_workspace_root(__file__)
 
 # [C2 修复·惰性导入] 此前用 ``from skills import pdf_extractor, error_logger``
 # 取兄弟模块。该写法会在本模块导入期把 pdf_extractor **重新绑定进包命名空间**，

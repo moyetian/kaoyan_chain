@@ -118,8 +118,9 @@ body{margin:0;background:var(--bg);color:var(--fg);
    一角、主次不分。现改为一张渐变 hero 卡：环形进度 + 大数字倒计时 +
    初试日期 + 备考进度条，科目归档条收进卡内底部。
    渐变方向取 315deg（左下浅 → 右上深）：文字所在的左上角落在 acc-grad-to
-   一端，五套预设下 on-acc 对它的对比度均 ≥5:1；若沿用 135deg，浅色预设的
-   文字会压在 acc-grad-from（#a78bfa）上，实测仅 2.72:1，不达 AA。 */
+   一端，五套预设下 on-acc 对 grad-to 的对比度均 ≥5:1（最紧的 eye-green
+   为 5.04:1）；若沿用 135deg，文字会压在 acc-grad-from 浅端，对比度收窄
+   （eye-green 白字实测仅 3.35:1，低于正文 AA）。 */
 .hero{position:relative;overflow:hidden;color:var(--on-acc);
  background:linear-gradient(315deg,var(--acc-grad-from),var(--acc-grad-to));
  border-radius:calc(var(--radius) * 1px);box-shadow:var(--elev-2);
@@ -228,6 +229,12 @@ body{margin:0;background:var(--bg);color:var(--fg);
  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sub .sv{font-size:var(--fs-body);font-weight:800;font-variant-numeric:tabular-nums;color:var(--fg)}
 .sub .su{font-size:10px;color:var(--mut)}
+/* [UT4 修复·WEB-2] 学科小卡目标分行：包一层纵向容器让科目名/目标分各自成行，
+   无目标分（脱敏构建）时容器退化为一行，布局与改造前完全一致 */
+.sub .scol{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px}
+.sub .scol .sn{flex:0 0 auto}   /* 列容器内取消纵向拉伸，科目名保持固有行高 */
+.sub .stg{font-size:10px;color:var(--mut);font-weight:600;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
 @media(max-width:520px){.sub .su{display:none}}
 @media(prefers-color-scheme:dark){:root:not([data-t=light]) .sub .si{color:var(--cd)}}
 :root[data-t=dark] .sub .si{color:var(--cd)}
@@ -503,7 +510,7 @@ footer{text-align:center;color:var(--mut);font-size:var(--fs-caption);padding:va
   <!-- 品牌区（桌面侧栏顶部；移动端底栏无空间，CSS 里隐藏） -->
   <div class="brand">
     <span class="brand-mark" aria-hidden="true"><svg class="icn" width="20" height="20" focusable="false"><use href="#i-cap"/></svg></span>
-    <span class="brand-txt"><b>考研学习链</b><small>四科备考中枢</small></span>
+    <span class="brand-txt"><b>考研学习链</b><small>{{SUBJECT_COUNT_LABEL}}备考中枢</small></span>
   </div>
   <nav class="bar" role="tablist" aria-label="看板页签">
     <button role="tab" id="tab-today" aria-controls="p-today" aria-selected="true" tabindex="0" class="on" data-p="today"><i class="ic"><svg class="icn" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-today"/></svg></i>今日</button>
@@ -669,7 +676,7 @@ function isDark(){
   if(a&&KY_MODE[a]!==undefined) return KY_MODE[a]==='dark';
   return matchMedia('(prefers-color-scheme:dark)').matches;
 }
-function col(o){return isDark()?(o.dark||o.color):(o.color||'#4f46e5');}
+function col(o){return isDark()?(o.dark||o.color):(o.color||'#0f766e');}
 
 /* 遮罩自测按钮的眼睛图标（sprite）。注意必须经 innerHTML 注入，
    直接写 HTML 字符串时引号需成对，否则整个 <script> 块会 SyntaxError。 */
@@ -708,9 +715,14 @@ var MASK_EYE_HTML = iconBox('eye',14);
   var h='';
   D.subjects.forEach(function(s){
     var v = s.notes===null ? '—' : s.notes;
+    /* [UT4 修复·WEB-2] 目标分消费点：优先取区间原文（如 120-130 分），
+       兜底用数值 target；脱敏构建两者皆无时整行隐藏 */
+    var tg = s.target_text || (s.target===undefined||s.target===null ? '' : String(s.target));
     h += "<div class='sub' style='--c:"+s.color+";--cd:"+s.dark+"'>"
        + "<div class='si'>"+s.icon+"</div>"   /* icon 已在构建期经 icon_html 白名单消毒，这里不能再 esc，否则 SVG 源码会被当文本显示 */
-       + "<div class='sn'>"+esc(s.name)+"</div>"
+       + "<div class='scol'><div class='sn'>"+esc(s.name)+"</div>"
+       + (tg ? "<div class='stg'>目标 "+esc(tg)+"</div>" : "")
+       + "</div>"
        + "<div class='sv'>"+v+"</div>"
        + "<div class='su'>"+(s.notes===null?'规划中':'篇归档')+"</div></div>";
   });
@@ -1307,7 +1319,7 @@ function fireConfetti() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
   const particles = [];
-  const colors = ['#8b5cf6', '#10b981', '#f59e0b', '#3b82f6', '#ec4899'];
+  const colors = ['#14b8a6', '#10b981', '#f59e0b', '#3b82f6', '#ec4899'];
   for (let i = 0; i < 60; i++) {
     particles.push({
       x: canvas.width / 2, y: canvas.height / 2 + 100,

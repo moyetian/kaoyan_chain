@@ -194,13 +194,23 @@ def test_check_dashboard_build_forces_full_mode(tmp_path, monkeypatch):
         "check_dashboard 重建必须显式完整模式，否则覆盖本地完整产物"
 
 
-#: (相对路径, 期望的 subprocess.run 调用数)——这些文件里所有 subprocess.run 均为
+#: (相对路径, 期望的 subprocess.run 调用数)——这些文件里的 subprocess.run 均为
 #: 看板构建，故用「全调用点必须带完整模式 env」作断言；调用数一并钉住，
 #: 防止新增调用点后断言静默放过。
+#: [问题7 迁移] tui_navigator / study_planner 的重建点已改走
+#: ``dashboard_build.run_dashboard_build``（frozen 下进程内执行，不再起子进程），
+#: 移入下方 _MIGRATED_REBUILD_SOURCES 单独守护。
 _REBUILD_SOURCES = [
+    ("tools/cli/repl/loop.py", 2),
+]
+
+#: 已迁移到 ``dashboard_build.run_dashboard_build`` 的看板重建点：
+#: (相对路径, 期望的调用数)。frozen（exe）下 ``sys.executable`` 指向 GUI
+#: 主程序，直调子进程会再弹一个主界面（问题7 根因）；迁移后的调用点必须
+#: 走统一执行器且显式完整模式（``snapshot_opt_in=False``）。
+_MIGRATED_REBUILD_SOURCES = [
     ("tools/tui_navigator.py", 1),
     ("tools/study_planner.py", 1),
-    ("tools/cli/repl/loop.py", 2),
 ]
 
 
@@ -221,10 +231,30 @@ def _run_call_env_sources(source: str):
     return out
 
 
+def _run_dashboard_build_call_sources(source: str):
+    """返回源码里所有 ``run_dashboard_build(...)`` 调用的源码段。"""
+    tree = ast.parse(source)
+    out = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "run_dashboard_build"):
+            out.append(ast.get_source_segment(source, node) or "")
+    return out
+
+
 def test_detector_flags_missing_env_call():
     """阴性对照：检测器必须能识别「subprocess.run 未传 env」。"""
     bad = "import subprocess\nsubprocess.run([sys.executable, 'build.py'])\n"
     assert _run_call_env_sources(bad) == [None]
+
+
+def test_detector_flags_migrated_call_missing_full_mode():
+    """阴性对照：检测器必须能识别「run_dashboard_build 未显式完整模式」。"""
+    bad = ("from dashboard_build import run_dashboard_build\n"
+           "run_dashboard_build(workspace_root=ROOT)\n")
+    calls = _run_dashboard_build_call_sources(bad)
+    assert len(calls) == 1
+    assert "snapshot_opt_in=False" not in calls[0]
 
 
 @pytest.mark.parametrize("rel,n_expected", _REBUILD_SOURCES,
@@ -238,3 +268,16 @@ def test_all_local_rebuild_points_pass_full_mode_env(rel, n_expected):
     for env_src in env_sources:
         assert env_src is not None and "KY_SNAPSHOT_OPT_IN" in env_src, \
             f"{rel} 存在未显式完整模式的 build 调用: {env_src!r}"
+
+
+@pytest.mark.parametrize("rel,n_expected", _MIGRATED_REBUILD_SOURCES,
+                         ids=[p for p, _ in _MIGRATED_REBUILD_SOURCES])
+def test_migrated_rebuild_points_use_full_mode(rel, n_expected):
+    """迁移后的看板重建点必须走统一执行器且显式完整模式（问题7 守护）。"""
+    source = (ROOT / rel).read_text(encoding="utf-8")
+    calls = _run_dashboard_build_call_sources(source)
+    assert len(calls) == n_expected, \
+        f"{rel} 的 run_dashboard_build 调用数变了（{len(calls)} != {n_expected}），请同步维护本测试"
+    for call in calls:
+        assert "snapshot_opt_in=False" in call, \
+            f"{rel} 的 run_dashboard_build 调用未显式完整模式: {call!r}"

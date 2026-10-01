@@ -70,7 +70,7 @@ def _make_runner(tmp_path, exec_results, max_steps=8):
                          permission_mode="auto", quiet=True, max_steps=max_steps)
     counters = {}
 
-    def fake_exec(name, args, interactive=True):
+    def fake_exec(name, args, interactive=True, call_id=""):
         seq = exec_results.get(name)
         if not seq:
             return "ok"

@@ -21,24 +21,37 @@ def _cmd_ingest(args: List[str]) -> None:
         print(colorize("""
 考研试题与备考资料智能切片入库管道 (ky ingest)
 用法：
-  ky ingest <试题文件路径.md/.txt/.pdf> [--subject=pro/math/eng/pol] [--source=题源出处]
+  ky ingest <试题文件路径.md/.txt/.pdf> [--subject=pro/math/eng/pol] [--source=题源出处] [--no-llm] [--llm-budget=N]
 示例：
   ky ingest 2024年408统考真题.txt --subject=pro --source="2024统考408真题"
   ky ingest 历年数学二中值定理题集.md --subject=math --source="数二历年证明题精选"
+  ky ingest 803真题回忆_2024.md --subject=pro --llm-budget=3   （本次最多 3 次 LLM 采分点补全）
 说明：
   自动分块切片单题，识别题型 (选择/填空/大题)，提取步骤采分点并格式化为标准白名单题目卡片，
   自动归档入对应科目的 参考资料/ 目录。
+  LLM 采分点补全默认封顶 10 次/次入库（调用前会提示候选题数），
+  可用 --llm-budget=N 调整上限、--llm-budget=0 或 --no-llm 完全跳过。
 """, C.YELLOW))
         sys.exit(0 if ("--help" in args or "-h" in args) else 1)
 
     target_file = None
     target_subject = "pro"
     source_title = ""
+    llm_enrich = None
+    llm_budget = None
     for a in args[1:]:
         if a.startswith("--subject=") or a.startswith("-s="):
             target_subject = a.split("=", 1)[1].strip()
         elif a.startswith("--source="):
             source_title = a.split("=", 1)[1].strip()
+        elif a == "--no-llm":
+            llm_enrich = False
+        elif a.startswith("--llm-budget="):
+            try:
+                llm_budget = int(a.split("=", 1)[1].strip())
+            except ValueError:
+                print(colorize("[!] --llm-budget 需为整数（如 --llm-budget=3；0=跳过；负数=不限）", C.RED))
+                sys.exit(1)
         elif not a.startswith("-"):
             if target_file is None:
                 target_file = a
@@ -63,7 +76,8 @@ def _cmd_ingest(args: List[str]) -> None:
     if material_ingestion:
         pipe = material_ingestion.get_material_ingestion_pipeline()
         print(colorize(f"\n[📥 正在对试题文档【{p.name}】执行智能分块与采分点切片入库...]\n", C.CYAN))
-        res = pipe.ingest_file(p, subject=target_subject, source_name=source_title or p.stem)
+        res = pipe.ingest_file(p, subject=target_subject, source_name=source_title or p.stem,
+                               llm_enrich=llm_enrich, llm_budget=llm_budget)
         if res.get("success"):
             print(colorize(f"  ✓ {res.get('summary')}", C.GREEN))
             print(colorize(f"  • 白名单题目卡片集已生成至: {res.get('target_path')}\n", C.BOLD))
@@ -77,16 +91,25 @@ def run_material_ingest(arg: str = "") -> bool:
     """REPL /ingest 实现：与 CLI ky ingest 同源同口径。"""
     tokens = str(arg or "").split()
     target_file, subject, source_title = "", "pro", ""
+    llm_enrich, llm_budget = None, None
     for t in tokens:
         if t.startswith("--subject=") or t.startswith("-s="):
             subject = t.split("=", 1)[1].strip() or "pro"
         elif t.startswith("--source="):
             source_title = t.split("=", 1)[1].strip()
+        elif t == "--no-llm":
+            llm_enrich = False
+        elif t.startswith("--llm-budget="):
+            try:
+                llm_budget = int(t.split("=", 1)[1].strip())
+            except ValueError:
+                print(colorize("[!] --llm-budget 需为整数（如 --llm-budget=3；0=跳过；负数=不限）", C.RED))
+                return False
         elif not t.startswith("-") and not target_file:
             target_file = t
     if not target_file:
-        print(colorize("用法: /ingest <试题文件路径> [--subject=pro/math/eng/pol] [--source=题源出处]\n"
-                       "示例: /ingest 2024年408统考真题.txt --subject=pro --source=\"2024统考408真题\"", C.YELLOW))
+        print(colorize("用法: /ingest <试题文件路径> [--subject=pro/math/eng/pol] [--source=题源出处] [--no-llm] [--llm-budget=N]\n"
+                       "示例: /ingest 2024年408统考真题.txt --subject=pro --source=\"2024统考408真题\" --llm-budget=5", C.YELLOW))
         return False
     p = Path(target_file)
     if not p.exists():
@@ -104,7 +127,8 @@ def run_material_ingest(arg: str = "") -> bool:
         return False
     pipe = material_ingestion.get_material_ingestion_pipeline()
     print(colorize(f"\n[📥 正在对试题文档【{p.name}】执行智能分块与采分点切片入库...]\n", C.CYAN))
-    res = pipe.ingest_file(p, subject=subject, source_name=source_title or p.stem)
+    res = pipe.ingest_file(p, subject=subject, source_name=source_title or p.stem,
+                           llm_enrich=llm_enrich, llm_budget=llm_budget)
     if res.get("success"):
         print(colorize(f"  ✓ {res.get('summary')}", C.GREEN))
         for card in (res.get("cards") or [])[:10]:
@@ -135,7 +159,7 @@ def _cmd_mount(args: List[str]) -> None:
     apply_flag = any(a in ("--apply", "--write") for a in args)
     yes_flag = any(a in ("-y", "--yes") for a in args)
 
-    print(colorize("\n[🔍 正在智能扫描本地四科 参考资料/ 目录与考研资料库...]\n", C.CYAN))
+    print(colorize("\n[🔍 正在智能扫描本地 参考资料/ 目录与考研资料库...]\n", C.CYAN))
 
     # [P1-8 修复·默认只读] 先只读盘点并展示将发生的变更；写回必须显式 --apply。
     # 此前 ky mount（0 份资料）也会把目标高校塞进简章雷达、重写 config 与 AGENTS.md

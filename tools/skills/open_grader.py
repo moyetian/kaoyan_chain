@@ -38,11 +38,35 @@ try:  # [B1 同类] LLM 请求经安全通道发送（双导入路径兼容）
     from net_guard import safe_urlopen
 except ImportError:  # pragma: no cover
     from tools.net_guard import safe_urlopen  # type: ignore
+
+try:  # [K4] 统一 LLM 出口（双导入路径兼容）
+    from llm_client import (
+        ChatRequest,
+        LLMError,
+        classify_http_error,
+        normalize_openai_url,
+        parse_retry_after,
+        request_chat,
+    )
+except ImportError:  # pragma: no cover
+    from tools.llm_client import (  # type: ignore
+        ChatRequest,
+        LLMError,
+        classify_http_error,
+        normalize_openai_url,
+        parse_retry_after,
+        request_chat,
+    )
 from dataclasses import dataclass, field
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 
 #: 项目既定错因五分类（AGENTS.md 硬约束）+ 「无」表示未发现明确错因
 MISTAKE_TYPES = ("概念漏洞", "审题偏差", "公式记错", "计算失误", "书写丢分", "无")
@@ -73,10 +97,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 _RUBRIC_CACHE: "OrderedDict[str, Tuple[List[Dict[str, Any]], bool]]" = OrderedDict()
 _CACHE_LOCK = threading.Lock()
 
-#: 4xx 中「重试无意义」的状态码（鉴权/路由/请求体问题，重试只会浪费时间与配额）
-_NON_RETRYABLE_STATUS = (400, 401, 403, 404, 405, 415, 422)
-#: 4xx 中「重试有意义」的状态码（限流/超时/冲突——尤其 429，实测曾被其打断）
-_RETRYABLE_STATUS = (408, 409, 425, 429)
+#: [K4] HTTP 状态码的「可重试」判定表已收敛到 ``llm_client.classify_http_error``
+#: （400/401/403/404/405/415/422 → 不重试；408/409/425/429 与全部 5xx → 重试；
+#: 400+工具关键词 → tools_unsupported）。``_is_retryable`` 仅做委托。
 
 
 def _cache_get(key: str) -> Optional[Tuple[List[Dict[str, Any]], bool]]:
@@ -243,86 +266,63 @@ def build_ensemble(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
 def _normalize_openai_url(base_url: str, path: str) -> str:
     """拼接 OpenAI 兼容端点。
 
-    按真实网关差异逐条兜住（原实现只判断 `endswith("/v1")`，会把 Gemini 兼容层
-    `.../v1beta/openai` 拼成 `.../v1beta/openai/v1/chat/completions` 而 404）：
-
-      * 尾斜杠可有可无；
-      * 已是完整端点（以目标 path 结尾）—— 原样返回；
-      * 已带版本段（/v1、/v1beta …）或已指向 /openai 兼容根 —— 直接拼接；
-      * 其余（如 https://api.deepseek.com）—— 自动补 /v1。
+    [K4] 拼接规则已收敛为 ``llm_client.normalize_openai_url`` 单一实现
+    （按真实网关差异逐条兜住：尾斜杠可有可无、已是完整端点原样返回、已带
+    版本段（/v1、/v1beta …）或 /openai 兼容根直接拼接、其余自动补 /v1）。
+    本函数保留原名（测试锚点）并沿用「空 base_url 返回空串」的既有语义。
     """
-    base = (base_url or "").strip().rstrip("/")
+    base = (base_url or "").strip()
     if not base:
         return ""
-    tail = path.lstrip("/")
-    if base.endswith("/" + tail):
-        return base
-    if re.search(r"/v\d+[a-z]*$", base) or base.endswith("/openai"):
-        return f"{base}/{tail}"
-    return f"{base}/v1/{tail}"
+    return normalize_openai_url(base, path)
 
 
 class OpenAICompatClient:
-    """极简 OpenAI 兼容客户端（仅 chat/completions，标准库实现）。"""
+    """极简 OpenAI 兼容客户端（仅 chat/completions，标准库实现）。
+
+    [K4] HTTP 发送已收敛进 ``llm_client.request_chat``（``stream=False``、
+    ``max_retries=0``）：本类不重试，重试决策统一交给 ``_call_with_retry``；
+    异常仍归一为 ``RuntimeError("HTTP {status}")`` 形态（``_status_of`` 依赖），
+    并把统一客户端解析出的 ``Retry-After`` 挂在异常的 ``retry_after`` 属性上。
+    """
 
     def __init__(self, endpoint: Dict[str, Any], timeout: float = 45.0):
         self.endpoint = endpoint or {}
         self.timeout = timeout
 
     def chat(self, messages: List[Dict[str, Any]]) -> Optional[str]:
-        url = _normalize_openai_url(self.endpoint.get("base_url", ""), "chat/completions")
+        base_url = self.endpoint.get("base_url", "")
+        url = _normalize_openai_url(base_url, "chat/completions")
         api_key = (self.endpoint.get("api_key") or "").strip()
         if not url or not api_key:
             return None
 
-        payload = {
-            "model": self.endpoint.get("model", ""),
-            "messages": messages,
-            "temperature": self.endpoint.get("temperature", 0.2),
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-            "User-Agent": "Mozilla/5.0 Kaoyan-Study-Chain-OpenGrader/1.0",
-            "Connection": "close",
-            "Accept-Encoding": "gzip, deflate, identity",
-        }
-        req = urllib.request.Request(
-            url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+        req = ChatRequest(
+            messages=messages,
+            model=self.endpoint.get("model", ""),
+            temperature=self.endpoint.get("temperature", 0.2),
+            stream=False,
+            timeout=self.timeout,
+            api_key=api_key,
+            base_url=base_url,
+            headers_extra={
+                "User-Agent": "Mozilla/5.0 Kaoyan-Study-Chain-OpenGrader/1.0",
+                "Accept-Encoding": "gzip, deflate, identity",
+            },
+        )
         try:
             # [B1 同类·跳转泄漏 Bearer] 安全通道发送。
-            with safe_urlopen(req, timeout=self.timeout) as resp:
-                raw_bytes = resp.read()
-                headers_obj = getattr(resp, "headers", None)
-                enc = headers_obj.get("Content-Encoding", "").lower() if headers_obj and hasattr(headers_obj, "get") else ""
-                if enc == "gzip":
-                    import gzip
-                    try:
-                        raw_bytes = gzip.decompress(raw_bytes)
-                    except Exception:
-                        pass
-                elif enc == "deflate":
-                    import zlib
-                    try:
-                        raw_bytes = zlib.decompress(raw_bytes)
-                    except Exception:
-                        try:
-                            raw_bytes = zlib.decompress(raw_bytes, -zlib.MAX_WBITS)
-                        except Exception:
-                            pass
-                text = raw_bytes.decode("utf-8", errors="ignore").strip()
-        except urllib.error.HTTPError as e:
+            data = request_chat(req, max_retries=0, sleep_fn=time.sleep,
+                                urlopen_fn=safe_urlopen)
+        except LLMError as e:
             # 4xx 为配置/请求问题，重试无意义，交由上层记为弃权
-            raise RuntimeError(f"HTTP {e.code}") from e
+            if e.status is not None:
+                exc = RuntimeError(f"HTTP {e.status}")
+                exc.retry_after = e.retry_after  # type: ignore[attr-defined]
+                raise exc from e
+            raise RuntimeError(f"{type(e).__name__}: {e}") from e
         except Exception as e:
             raise RuntimeError(f"{type(e).__name__}: {e}") from e
-
-        if text.startswith("<!doctype html") or text.startswith("<html"):
-            raise RuntimeError("服务端返回网页而非 API JSON，请检查 base_url 配置")
-        try:
-            data = json.loads(text)
-        except Exception as e:
-            raise RuntimeError(f"响应非 JSON: {e}") from e
 
         # 部分网关（代理/中转）以 HTTP 200 + {"error": {...}} 返回失败。
         # 若不识别，会被上层误判为「模型弃权」，丢失真实错误原因，极难排查。
@@ -378,7 +378,7 @@ def _status_of(err: BaseException) -> Optional[int]:
 
 
 def _is_retryable(err: BaseException) -> bool:
-    """判断该错误是否值得重试。
+    """判断该错误是否值得重试（[K4] 分类委托统一客户端 ``classify_http_error``）。
 
     修正原实现「一切 4xx 直接放弃」的问题：429（限流）与 408（超时）恰恰是
     最该重试的两类，原逻辑却当场放弃——本模块开发过程中就曾被 429 打断。
@@ -386,17 +386,24 @@ def _is_retryable(err: BaseException) -> bool:
     status = _status_of(err)
     if status is None:
         return True                      # 无状态码：网络中断 / DNS / TLS / 超时
-    if status in _NON_RETRYABLE_STATUS:
-        return False                     # 鉴权或请求体错误，重试无意义
-    if status in _RETRYABLE_STATUS or status >= 500:
-        return True
-    return False
+    retryable, _kind = classify_http_error(status, str(err) or "")
+    return retryable
 
 
 def _retry_delay(err: BaseException, attempt: int, timeout: float) -> float:
-    """退避时长：优先遵循网关 Retry-After，否则线性退避，上限为单次超时。"""
-    m = re.search(r"Retry-After[:=\s]+(\d+(?:\.\d+)?)", str(err) or "", re.I)
-    delay = float(m.group(1)) if m else 0.5 * (attempt + 1)
+    """退避时长：优先遵循网关 Retry-After，否则线性退避，上限为单次超时。
+
+    [K4] Retry-After 由统一客户端用 ``parse_retry_after`` 解析后挂在异常的
+    ``retry_after`` 属性上；兼容历史形态：异常文本带 ``Retry-After: N`` 时
+    仍按文本解析（同样经 ``parse_retry_after`` 归一）。
+    """
+    delay = getattr(err, "retry_after", None)
+    if delay is None:
+        m = re.search(r"Retry-After[:=\s]+(\d+(?:\.\d+)?)", str(err) or "", re.I)
+        if m:
+            delay = parse_retry_after({"Retry-After": m.group(1)})
+    if delay is None:
+        delay = 0.5 * (attempt + 1)
     return max(0.0, min(delay, max(1.0, float(timeout))))
 
 

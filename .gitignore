@@ -264,3 +264,8 @@ data/knowledge/
 # NON_PUBLISH_PATH_PATTERNS（sync_publish 导出走文件系统遍历、不读 .gitignore，
 # 缺任何一层都会漏：只靠 git 层则导出即进公开副本，只靠导出层则 git 层裸奔）。
 *.shadow.jsonl
+
+# ── UI 重构设计参考效果图不入库（2026-09-30）──
+# 三张效果图（浅色私教工作台 / 深色对话刷题 / 深色研招情报）是 Teal 重构的
+# 设计依据，体积大且非源码，本机留存即可。
+效果图*.png

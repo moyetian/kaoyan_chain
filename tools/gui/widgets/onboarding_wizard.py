@@ -36,9 +36,11 @@ except ImportError:
     )
 
 try:
-    from tools.intelligence.registry import UniversityRegistry
+    # [审计 2026-09-30 · 中影响] 改用注册表单例入口：直接 UniversityRegistry()
+    # 每次都会重载 1834 所高校实体（实测 +126~144ms），且与其余调用点不共享缓存。
+    from tools.intelligence.registry import get_registry
 except ImportError:
-    UniversityRegistry = None  # type: ignore
+    get_registry = None  # type: ignore
 
 
 # 预设模型服务商
@@ -177,11 +179,11 @@ class OnboardingWizard(QDialog):
         self._worker: Optional[ConnectivityWorker] = None
         self._probe_worker: Optional[ProbeModelsWorker] = None
 
-        # 高校注册表
+        # 高校注册表（走单例，避免每次构建向导都重载 1834 实体）
         self._registry = None
-        if UniversityRegistry is not None:
+        if get_registry is not None:
             try:
-                self._registry = UniversityRegistry()
+                self._registry = get_registry()
             except Exception:
                 self._registry = None
 
@@ -206,8 +208,10 @@ class OnboardingWizard(QDialog):
             return {
                 "fg": t.color("fg") or ("#f8fafc" if dark else "#0f172a"),
                 "mut": t.color("mut") or ("#94a3b8" if dark else "#64748b"),
-                "acc": t.color("acc") or ("#a78bfa" if dark else "#7c3aed"),
-                "on_acc": t.color("on-acc") or ("#1e1b4b" if dark else "#ffffff"),
+                "acc": t.color("acc") or ("#2dd4bf" if dark else "#0f766e"),
+                "on_acc": t.color("on-acc") or ("#042f2e" if dark else "#ffffff"),
+                "acc_hover": t.color("acc-hover") or ("#52dbca" if dark else "#0f6562"),
+                "acc_press": t.color("acc-press") or ("#6ee0d3" if dark else "#0f5858"),
                 "ok": t.color("ok") or ("#34d399" if dark else "#059669"),
                 "warn": t.color("warn") or ("#fbbf24" if dark else "#b45309"),
                 "bad": t.color("bad") or ("#f87171" if dark else "#ef4444"),
@@ -218,7 +222,8 @@ class OnboardingWizard(QDialog):
             }
         except Exception:
             return {
-                "fg": "#f8fafc", "mut": "#94a3b8", "acc": "#a78bfa", "on_acc": "#1e1b4b",
+                "fg": "#f8fafc", "mut": "#94a3b8", "acc": "#2dd4bf", "on_acc": "#042f2e",
+                "acc_hover": "#52dbca", "acc_press": "#6ee0d3",
                 "ok": "#34d399", "warn": "#fbbf24", "bad": "#f87171",
                 "surf": "#111827", "surf2": "#1e293b", "line": "#1e293b", "is_dark": True,
             }
@@ -348,9 +353,9 @@ class OnboardingWizard(QDialog):
 
         self.btn_next = QPushButton("下一步")
         self.btn_next.setStyleSheet(
-            "QPushButton { background-color: #7c3aed; color: #ffffff; border: 1px solid #8b5cf6; "
-            "border-radius: 6px; padding: 7px 20px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #6d28d9; color: #ffffff; }"
+            f"QPushButton {{ background-color: {c['acc']}; color: {c['on_acc']}; border: 1px solid {c['acc']}; "
+            f"border-radius: 6px; padding: 7px 20px; font-weight: bold; }}"
+            f"QPushButton:hover {{ background-color: {c['acc_hover']}; color: {c['on_acc']}; }}"
         )
         self.btn_next.clicked.connect(self._on_next_step)
 
@@ -517,7 +522,7 @@ class OnboardingWizard(QDialog):
         # ── 实体参考资料放置与入库卡片 ──
         mat_card = QFrame()
         mat_card.setFrameShape(QFrame.Shape.StyledPanel)
-        mat_card.setStyleSheet(f"background: rgba(124, 58, 237, 0.06); border: 1px solid rgba(124, 58, 237, 0.25); border-radius: 8px; padding: 10px;")
+        mat_card.setStyleSheet(f"background: rgba(45, 212, 191, 0.08); border: 1px solid rgba(45, 212, 191, 0.3); border-radius: 8px; padding: 10px;")
         m_layout = QVBoxLayout(mat_card)
         m_layout.setSpacing(8)
 
@@ -808,7 +813,7 @@ class OnboardingWizard(QDialog):
         # 私教风格单选组
         style_box = QFrame()
         style_box.setFrameShape(QFrame.Shape.StyledPanel)
-        style_box.setStyleSheet(f"background: rgba(124, 58, 237, 0.06); border: 1px solid rgba(124, 58, 237, 0.2); border-radius: 8px; padding: 8px;")
+        style_box.setStyleSheet(f"background: rgba(45, 212, 191, 0.08); border: 1px solid rgba(45, 212, 191, 0.3); border-radius: 8px; padding: 8px;")
         sb_layout = QVBoxLayout(style_box)
         sb_layout.setSpacing(6)
         sb_title = QLabel("🎓 <b>当前激活辅导风格选择：</b>")
@@ -847,9 +852,11 @@ class OnboardingWizard(QDialog):
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         form.setSpacing(8)
 
-        # 服务商预设 + 官方控制台快捷跳转按钮
-        acc_text = "#c4b5fd" if c.get("is_dark", True) else "#6d28d9"
-        border_col = "#7c3aed" if c.get("is_dark", True) else "#8b5cf6"
+        # 服务商预设 + 官方控制台快捷跳转按钮（配色取自主题 token）
+        acc_text = c["acc"]
+        border_col = c["acc"]
+        acc_soft_bg = ("rgba(45, 212, 191, 0.15)" if c.get("is_dark", True)
+                       else "rgba(15, 118, 110, 0.12)")
         prov_row = QHBoxLayout()
         self.provider_combo = QComboBox()
         for p_name in PROVIDER_PRESETS:
@@ -858,9 +865,9 @@ class OnboardingWizard(QDialog):
         self.btn_open_console = QPushButton("🔗 获取 Key / 控制台")
         self.btn_open_console.setToolTip("在浏览器中直接打开所选官方模型服务商控制台")
         self.btn_open_console.setStyleSheet(
-            f"QPushButton {{ background: rgba(124, 58, 237, 0.15); color: {acc_text}; border: 1px solid {border_col}; "
+            f"QPushButton {{ background: {acc_soft_bg}; color: {acc_text}; border: 1px solid {border_col}; "
             f"font-weight: bold; padding: 5px 12px; border-radius: 6px; }}"
-            f"QPushButton:hover {{ background: #7c3aed; color: #ffffff; }}"
+            f"QPushButton:hover {{ background: {c['acc']}; color: {c['on_acc']}; }}"
         )
         self.btn_open_console.clicked.connect(self._open_provider_console)
         prov_row.addWidget(self.provider_combo, stretch=1)
@@ -902,9 +909,9 @@ class OnboardingWizard(QDialog):
         self.btn_probe_models = QPushButton("🔍 探查模型")
         self.btn_probe_models.setToolTip("自动探测该端点支持的全部上游模型并生成下拉选项")
         self.btn_probe_models.setStyleSheet(
-            f"QPushButton {{ background: rgba(124, 58, 237, 0.15); color: {acc_text}; border: 1px solid {border_col}; "
+            f"QPushButton {{ background: {acc_soft_bg}; color: {acc_text}; border: 1px solid {border_col}; "
             f"font-weight: bold; padding: 5px 12px; border-radius: 6px; }}"
-            f"QPushButton:hover {{ background: #7c3aed; color: #ffffff; }}"
+            f"QPushButton:hover {{ background: {c['acc']}; color: {c['on_acc']}; }}"
             f"QPushButton:disabled {{ background: {c['surf2']}; color: {c['mut']}; border: 1px solid {c['line']}; }}"
         )
         self.btn_probe_models.clicked.connect(self._probe_upstream_models)
@@ -939,9 +946,9 @@ class OnboardingWizard(QDialog):
         tf_title = QLabel(f"🔌 <b style='color:{c['fg']}; font-size: 13px;'>连通性自检面板</b>")
         self.btn_test_api = QPushButton("⚡ 一键测试 API 与搜索连通性")
         self.btn_test_api.setStyleSheet(
-            "QPushButton { background-color: #7c3aed; color: #ffffff; font-weight: bold; padding: 7px 16px; border-radius: 6px; border: 1px solid #8b5cf6; }"
-            "QPushButton:hover { background-color: #6d28d9; color: #ffffff; }"
-            "QPushButton:pressed { background-color: #5b21b6; color: #ffffff; }"
+            f"QPushButton {{ background-color: {c['acc']}; color: {c['on_acc']}; font-weight: bold; padding: 7px 16px; border-radius: 6px; border: 1px solid {c['acc']}; }}"
+            f"QPushButton:hover {{ background-color: {c['acc_hover']}; color: {c['on_acc']}; }}"
+            f"QPushButton:pressed {{ background-color: {c['acc_press']}; color: {c['on_acc']}; }}"
             f"QPushButton:disabled {{ background-color: {c['surf2']}; color: {c['mut']}; border: 1px solid {c['line']}; }}"
         )
         self.btn_test_api.clicked.connect(self._run_connectivity_test)
@@ -1437,19 +1444,19 @@ class OnboardingWizard(QDialog):
         for idx, lbl in enumerate(self.step_labels):
             if idx == self._current_step:
                 lbl.setStyleSheet(
-                    "background: #7c3aed; color: #ffffff; font-weight: bold; font-size: 13px; "
-                    "padding: 6px 12px; border-radius: 6px; border: 1px solid #a78bfa;"
+                    f"background: {c['acc']}; color: {c['on_acc']}; font-weight: bold; font-size: 13px; "
+                    f"padding: 6px 12px; border-radius: 6px; border: 1px solid {c['acc']};"
                 )
             elif idx < self._current_step:
                 if is_dark:
                     lbl.setStyleSheet(
-                        "background: rgba(124, 58, 237, 0.25); color: #c4b5fd; font-weight: 600; font-size: 13px; "
-                        "padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(167, 139, 250, 0.4);"
+                        "background: rgba(45, 212, 191, 0.25); color: #5eead4; font-weight: 600; font-size: 13px; "
+                        "padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(94, 234, 212, 0.4);"
                     )
                 else:
                     lbl.setStyleSheet(
-                        "background: #ede9fe; color: #6d28d9; font-weight: 600; font-size: 13px; "
-                        "padding: 6px 12px; border-radius: 6px; border: 1px solid #c4b5fd;"
+                        "background: #ccfbf1; color: #0f766e; font-weight: 600; font-size: 13px; "
+                        "padding: 6px 12px; border-radius: 6px; border: 1px solid #99f6e4;"
                     )
             else:
                 if is_dark:
@@ -1463,7 +1470,7 @@ class OnboardingWizard(QDialog):
                         "padding: 6px 12px; border-radius: 6px; border: 1px solid #e2e8f0;"
                     )
 
-        arrow_color = "#a78bfa" if is_dark else "#7c3aed"
+        arrow_color = c["acc"]
         for arrow in self.step_arrows:
             arrow.setStyleSheet(f"color: {arrow_color}; font-size: 13px; font-weight: bold;")
 
@@ -1749,6 +1756,13 @@ class OnboardingWizard(QDialog):
         try:
             saved = save_onboarding_config(self.config_path, full_cfg, self.workspace_root)
             self.config_saved.emit(saved)
+            # [问题3/6 修复] 联动同步中的异常不再静默：在成功弹窗中如实展示
+            # （此前同步失败毫无痕迹，用户只看到「报到后 0/0 / 不考数学」）。
+            warn_block = ""
+            warns = saved.get("_sync_warnings") or []
+            if warns:
+                warn_block = ("\n\n⚠️ 以下联动同步未完成（可在设置中心重试）：\n"
+                              + "\n".join(f"• {w}" for w in warns))
             QMessageBox.information(
                 self,
                 "建档成功",
@@ -1757,7 +1771,8 @@ class OnboardingWizard(QDialog):
                 f"报考专业：{saved['target_major']}\n"
                 f"初试倒计时：{saved['study_plan'].get('days_left')} 天\n"
                 f"当前辅导风格：{saved['coaching_style']}\n\n"
-                f"教育部考纲与各科复习档案已同步配置完毕。",
+                f"教育部考纲与各科复习档案已同步配置完毕，今日任务已生成。"
+                f"{warn_block}",
             )
             self.accept()
         except Exception as e:

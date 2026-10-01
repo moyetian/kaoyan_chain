@@ -4,7 +4,7 @@
 一键体检：
   1. Python 执行环境与 Windows 控制台编码
   2. 核心考研专有依赖项 (sympy, pypdf, Pillow, rapidocr)
-  3. 四科目录体系、顶层 AGENTS.md 协议与状态文件完整性
+  3. 科目目录体系、顶层 AGENTS.md 协议与状态文件完整性
   4. 配置文件 (ky_config.json) 与大模型 API Key 连通性状态
   5. 看板构建环境 (05-考研看板) 与 Webhook 网关端口 (8088)
   6. Git 隐私隔离与敏感文件防泄漏防护
@@ -15,6 +15,15 @@ import json
 import re
 import socket
 from pathlib import Path
+
+# [审计 2026-09-30 P1-7 出站收敛] 探活请求统一走 net_guard.safe_urlopen：
+# 此前裸 urlopen 携带 `Authorization: Bearer <key>` 且默认跟随 3xx —— 恶意/被
+# 劫持的上游用一次 302 即可把 API Key 转发到任意目标。safe_urlopen 对初始 URL
+# 与每一跳做 SSRF 校验，且跨主机跳转时剥离 Authorization。
+try:
+    from net_guard import safe_urlopen  # noqa: E402
+except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
+    from tools.net_guard import safe_urlopen  # type: ignore  # noqa: E402
 
 # Windows UTF-8 控制台兼容
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
@@ -153,7 +162,57 @@ def check_item(title, ok, detail_ok="", detail_fail="", warn=False):
     print(f"  {status_tag} {title}{detail_str}")
     return ok
 
-def run_doctor(return_summary=False):
+def check_persistence_state(root=None):
+    """Read-only validation of the agent's durable state directories."""
+    root = Path(root or ROOT)
+    memory = root / ".memory"
+    if not memory.exists():
+        check_item("持久化状态 (.memory)", True, "尚未产生运行时状态，首次运行后将自动创建", warn=True)
+        return {"ok": True, "checked": 0, "errors": []}
+
+    errors = []
+    checked = 0
+    candidates = [memory / "papers.jsonl"]
+    candidates.extend(sorted((memory / "sessions").glob("*.jsonl"))
+                       if (memory / "sessions").exists() else [])
+    candidates.extend(sorted((memory / "exam_keys").glob("*.json"))
+                       if (memory / "exam_keys").exists() else [])
+    for path in candidates:
+        checked += 1
+        try:
+            text = path.read_text(encoding="utf-8")
+            if not text.strip():
+                errors.append(f"{path.relative_to(root)} 为空")
+                continue
+            if path.name == "papers.jsonl" or path.suffix == ".jsonl":
+                for line_no, line in enumerate(text.splitlines(), 1):
+                    if not line.strip():
+                        continue
+                    try:
+                        json.loads(line)
+                    except Exception as exc:
+                        errors.append(f"{path.relative_to(root)} 第 {line_no} 行 JSON 损坏: {type(exc).__name__}")
+            elif path.name != ".salt" and not text.startswith("ENC1:"):
+                # 历史明文答案文件仍允许兼容，但必须是合法 JSON。
+                try:
+                    json.loads(text)
+                except Exception as exc:
+                    errors.append(f"{path.relative_to(root)} 载荷不可解析: {type(exc).__name__}")
+        except Exception as exc:
+            errors.append(f"{path.relative_to(root)} 不可读: {type(exc).__name__}: {exc}")
+    ok = not errors
+    detail = f"已检查 {checked} 个持久化文件"
+    if errors:
+        detail += "；" + "；".join(errors[:3])
+    check_item("持久化状态完整性", ok, detail if ok else "", detail if not ok else "")
+    return {"ok": ok, "checked": checked, "errors": errors}
+
+
+# Public spelling retained for callers that want the read-only probe directly.
+check_persistence = check_persistence_state
+
+
+def run_doctor(return_summary=False, check_persistence=False):
     print(color("\n============================================================", C.CYAN))
     print(color("  🩺 考研全科 AI 私人教师 · 全系统健康诊断 (ky doctor)", C.BOLD + C.CYAN))
     print(color("============================================================\n", C.CYAN))
@@ -345,7 +404,9 @@ def run_doctor(return_summary=False):
         warnings += 1
 
     # ── 3. 工作区架构与协议规范 ──
-    print(color("\n【3. 四科目录架构与外置状态机】", C.BOLD))
+    # [UT4 修复·CLI-5] 文案中性化：三科（不考数学/单科自命题）考生同样运行
+    # doctor，节标题按科目数中性表述，不再默认四科统考视角。
+    print(color("\n【3. 科目目录架构与外置状态机】", C.BOLD))
     agents_root = ROOT / "AGENTS.md"
     if not check_item("顶层总控中枢协议 (AGENTS.md)", agents_root.exists() and agents_root.stat().st_size > 500, "总控协议完整挂载"):
         issues += 1
@@ -516,7 +577,9 @@ def run_doctor(return_summary=False):
                     models_url,
                     headers={"Authorization": "Bearer " + api_key},
                 )
-                with urllib.request.urlopen(req, timeout=4) as resp:
+                # [审计 2026-09-30 P1-7] 出站收敛：经 safe_urlopen 发送（SSRF 校验 +
+                # 逐跳复核 + 跨主机跳转剥离 Authorization），不再用裸 urlopen。
+                with safe_urlopen(req, timeout=4) as resp:
                     data = json.loads(resp.read().decode("utf-8", errors="ignore"))
                 ids = {str(m.get("id", "")) for m in (data.get("data") or [])}
                 model_found = model_name in ids
@@ -553,7 +616,9 @@ def run_doctor(return_summary=False):
                     )
                     # [根因修复·假红] 旧阈值 15s 小于上游真实延迟（本机实测：短提示 2.9s、
                     # 长提示 36.7s，P95 在 37s 以上），导致"慢"被当成"挂"。提到 60s。
-                    with urllib.request.urlopen(creq, timeout=60) as resp:
+                    # [审计 2026-09-30 P1-7] 出站收敛：同样经 safe_urlopen（该请求也带
+                    # `Authorization: Bearer <key>`，是 302 转发 Key 的第二处风险点）。
+                    with safe_urlopen(creq, timeout=60) as resp:
                         _ = resp.read()
                     chat_ok = True
                     chat_status = "ok"
@@ -663,25 +728,33 @@ def run_doctor(return_summary=False):
     # （pyproject 2.7.0 / ky_cli 打印 v2.6.0 / gui 包 2.5.0 / TUI Banner v2.5），
     # 用户在任何一端看到的版本都不同，无法据此判断该不该升级。
     # 现收敛到 tools/version.py 单一真源，这里做一次回归体检。
+    # [K2 版本工程] 一致性判定收敛到 tools/check_version_consistency.py 的
+    # check_version_consistency() 单一实现（三处对照：pyproject.toml / 根
+    # installer.iss / get_version()），doctor 只负责展示 —— 禁止第二份实现；
+    # 此前 doctor 只对比 get_version() 与 GUI 包版本，而 GUI 包的 __version__
+    # 本身就取自 get_version()，等于自证，覆盖不到 pyproject / installer.iss 的漂移。
     try:
         try:
-            from version import get_version
+            from check_version_consistency import check_version_consistency
         except ImportError:
-            from tools.version import get_version
+            from tools.check_version_consistency import check_version_consistency
+        ver_ok, ver_info = check_version_consistency()
+        runtime_ver = str(ver_info["runtime"])
         try:
             import gui as _gui_pkg
             gui_ver = str(getattr(_gui_pkg, "__version__", ""))
         except Exception:
-            gui_ver = get_version()
-        ver = get_version()
-        consistent = ver != "0.0.0+unknown" and gui_ver == ver
-        check_item("版本号单一真源 (tools/version.py)", consistent,
-                   f"各端一致：v{ver}",
-                   f"版本不一致：pyproject={ver} / GUI 包={gui_ver}，请检查 tools/version.py 的取值")
+            gui_ver = runtime_ver
+        consistent = bool(ver_ok) and gui_ver == runtime_ver
+        check_item("版本号单一真源 (pyproject / installer.iss / tools.version)", consistent,
+                   f"各端一致：v{runtime_ver}",
+                   f"版本不一致：{ver_info['detail']}"
+                   + (f" / GUI 包={gui_ver}" if gui_ver != runtime_ver else ""))
         if not consistent:
             warnings += 1
     except Exception as _e:
-        check_item("版本号单一真源 (tools/version.py)", False, "", f"版本读取失败: {_e}")
+        check_item("版本号单一真源 (pyproject / installer.iss / tools.version)", False,
+                   "", f"版本读取失败: {_e}")
         warnings += 1
 
     # [新增·主题入口] 用户可自定义界面主题（颜色/圆角/密度/字号）。
@@ -790,6 +863,13 @@ def run_doctor(return_summary=False):
         check_item("技能中枢健康自检", False, "", f"自检失败: {_e}", warn=True)
         warnings += 1
 
+    persistence = None
+    if check_persistence:
+        print(color("\n【7.8 Agent 持久化状态检查】", C.BOLD))
+        persistence = check_persistence_state(ROOT)
+        if not persistence["ok"]:
+            issues += 1
+
     # ── 总结与处方 ──
     print(color("\n" + "=" * 60, C.CYAN))
     if issues == 0 and warnings == 0:
@@ -806,7 +886,8 @@ def run_doctor(return_summary=False):
             "warnings": warnings,
             "has_sympy": has_sympy,
             "has_pypdf": has_pypdf,
-            "has_pillow": has_pillow
+            "has_pillow": has_pillow,
+            "persistence": persistence,
         }
     return issues == 0
 

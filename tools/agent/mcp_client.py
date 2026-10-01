@@ -20,6 +20,7 @@ doctor 展示。``start()`` 返回值保持 bool 以兼容既有调用方。
 import os
 import json
 import queue
+import re
 import threading
 import time
 import subprocess
@@ -28,12 +29,19 @@ from typing import Dict, Any, List, Optional
 
 class MCPProcessClient:
     """管理单个外部 MCP Server 的子进程通信 (stdio JSON-RPC 2.0)"""
-    def __init__(self, name: str, command: str, args: List[str], env: Optional[Dict[str, str]] = None, cwd: Optional[Path] = None):
+    def __init__(self, name: str, command: str, args: List[str], env: Optional[Dict[str, str]] = None, cwd: Optional[Path] = None,
+                 workspace_root: Optional[Path] = None):
         self.name = name
         self.command = command
         self.args = args
         self.env = env
         self.cwd = cwd
+        #: [审计 2026-09-30 P1-3] 工作区根（可选）。用于启动前拒绝「指向工作区内
+        #: 文件」的 command —— ky_config.json 在工作区根且 agent 可写工作区，
+        #: 若不校验，「写一个脚本进工作区 + 把 mcp_servers.command 指过去」即可
+        #: 让下次启动 Popen 任意代码。None = 无工作区上下文（直接构造的调用方），
+        #: 该场景下无法做精确的归属判定，仅保留原有行为。
+        self.workspace_root = Path(workspace_root) if workspace_root else None
         self.process: Optional[subprocess.Popen] = None
         self.msg_id = 0
         self.is_initialized = False
@@ -105,6 +113,56 @@ class MCPProcessClient:
                 continue
             return resp
 
+    def _workspace_local_command_error(self) -> str:
+        """[审计 2026-09-30 P1-3] 校验 command 是否指向工作区内文件；命中返回错误文案。
+
+        攻破链：``ky_config.json`` 位于工作区根、agent 的 ``write_file`` 能写工作区
+        内任意位置 —— 先落一个脚本进工作区，再把 ``mcp_servers.<name>.command``
+        指向它，下次启动 AgentRunner 时 ``Popen`` 直接执行任意代码。启动前拒绝
+        「解析后落在工作区内」的路径型 command 即切断该扩权链。
+
+        判定规则：
+          * 裸命令名（``npx`` / ``python`` / ``uvx``，不含 ``/`` ``\\``）维持现状
+            放行，由操作系统按 PATH 解析（与既有配置/测试兼容）；
+          * 含路径分隔符的 command：先解析为绝对路径（相对路径按子进程 cwd 解析，
+            与 ``Popen`` 的解析基准一致），若位于工作区内 → 拒绝；
+          * 无工作区上下文（``workspace_root is None``）时无从做**精确**归属判定，
+            维持原有行为，不误伤直接构造的调用方。
+        """
+        cmd = str(self.command or "")
+        # [审计 2026-09-30 P1-3 补] 除路径分隔符外，Windows 驱动器前缀
+        # （``C:evil.exe`` 是「驱动器相对路径」，不含分隔符）也必须进入归属校验。
+        if not cmd or not re.search(r"[/\\]|^[A-Za-z]:", cmd):
+            return ""
+        if self.workspace_root is None:
+            return ""
+        candidate = Path(cmd)
+        if not candidate.is_absolute():
+            # 驱动器相对路径（``C:evil.exe``）的解析基准是子进程「当前盘的当前
+            # 目录」，父进程无法精确复现该基准，且正常配置绝不会使用这种形式 ——
+            # 无法可靠归属判定的一律拒绝（fail-closed）。
+            if re.match(r"^[A-Za-z]:", cmd):
+                return (
+                    f"安全拦截：MCP server 命令使用了无法可靠校验的驱动器相对路径 [{cmd}]。"
+                    "请改用系统级安装的绝对路径命令（如 C:/Program Files/...），"
+                    "或 npx/python 等 PATH 裸命令名。"
+                )
+            base = Path(self.cwd) if self.cwd else Path(self.workspace_root)
+            candidate = base / candidate
+        try:
+            resolved = candidate.resolve()
+            ws_resolved = Path(self.workspace_root).resolve()
+        except OSError:
+            return ""
+        if not resolved.is_relative_to(ws_resolved):
+            return ""
+        return (
+            f"安全拦截：MCP server 命令指向工作区内文件 [{resolved}]。"
+            "工作区内的文件可被 agent 写入，不得作为外部服务命令启动（防配置扩权）；"
+            "请在 ky_config.json 的 mcp_servers 中配置系统级安装的绝对路径命令"
+            "（如 C:/Program Files/... 下的可执行文件），或 npx/python 等 PATH 裸命令名。"
+        )
+
     def start(self, timeout: int = 15) -> bool:
         """启动 MCP Server 子进程并执行 initialize 握手。
 
@@ -125,6 +183,12 @@ class MCPProcessClient:
         self.server_info = {}
         self._request_failures = 0
         self._last_tool_count = 0
+        # [审计 2026-09-30 P1-3] 启动前拒绝指向工作区内的命令（防「写脚本 + 改配置」扩权）。
+        # 拒绝原因写入 last_error，由 manager 汇总进 failed / mcp_health（可辨识）。
+        _blocked = self._workspace_local_command_error()
+        if _blocked:
+            self.last_error = _blocked
+            return False
         cmd_list = [self.command] + self.args
         try:
             merged_env = os.environ.copy()
@@ -398,7 +462,9 @@ class MCPClientManager:
                 command=cmd,
                 args=args,
                 env=s_conf.get("env"),
-                cwd=self.workspace_root
+                cwd=self.workspace_root,
+                # [审计 2026-09-30 P1-3] 传入工作区根，启动前拒绝工作区内的 command
+                workspace_root=self.workspace_root,
             )
             if client.start(timeout=start_timeout):
                 self.clients[s_name] = client

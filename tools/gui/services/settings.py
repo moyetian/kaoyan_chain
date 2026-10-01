@@ -10,7 +10,12 @@ import urllib.error
 import urllib.request
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, Optional
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 try:
@@ -28,6 +33,11 @@ try:  # [B1 同类] 探活请求经安全通道发送（双导入路径兼容）
 except ImportError:  # pragma: no cover
     from tools.net_guard import safe_urlopen  # type: ignore
 
+try:  # [D8] 矩阵合计行摸底汇总与 study_planner 同源，避免两处实现漂移
+    from study_planner import baseline_total_label
+except ImportError:  # pragma: no cover
+    from tools.study_planner import baseline_total_label  # type: ignore
+
 # [P10 修复] 占位符名单从隐私策略单一事实源取（避免与规则表产物漂移）。
 try:
     from privacy_policy import MAJOR_PLACEHOLDERS, SCHOOL_PLACEHOLDERS
@@ -35,7 +45,7 @@ except ImportError:  # pragma: no cover
     from tools.privacy_policy import MAJOR_PLACEHOLDERS, SCHOOL_PLACEHOLDERS
 
 
-ROOT = Path(__file__).resolve().parent.parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 
 
 def read_config(path) -> dict:
@@ -145,25 +155,32 @@ def update_agents_md(workspace_root: Path | str, plan: dict) -> None:
         table_rows = [
             f"| **科目一：{pro_name}** | {plan.get('pro_baseline', '摸底120')} | **{plan.get('pro_target', '140+ 分')}** | {plan.get('pro_hours', 3.5)} 小时 | 199 管理类综合能力 (初数75分+逻辑60分+写作65分) |",
             f"| **科目二：{e_name}** | {plan.get('eng_baseline', '摸底水平')} | **{plan.get('eng_target', '70+ 分')}** | {plan.get('eng_hours', 2.5)} 小时 | 英语二核心得分盘，阅读主干与功能句型固化 |",
-            f"| **合计** | [摸底总分] | **{plan.get('total_target', '215+ 分')}** | {plan.get('total_hours', 6.0)} 小时 | **199联考总分300分，初试不考政治与统考数学** |",
+            f"| **合计** | {baseline_total_label(plan, ['pro_baseline', 'eng_baseline'])} | **{plan.get('total_target', '215+ 分')}** | {plan.get('total_hours', 6.0)} 小时 | **199联考总分300分，初试不考政治与统考数学** |",
         ]
     elif is_mode_b:
         table_rows = [
-            "| **科目一：不考数学** | 不考数学 | **不考数学** | 0.0 小时 | 攻克必考核心题型，严防超纲，规避计算失误，步骤规范化 |",
+            # [同族修复·不考数学策略列] 此前写「攻克必考核心题型…」数学文案，
+            # 与「不考数学」自相矛盾（study_planner.py 996 行 / init_workspace.py
+            # P4 先例同族，GUI 路径此前遗漏）。
+            "| **科目一：不考数学** | 不考数学 | **不考数学** | 0.0 小时 | 本方案不考数学，不安排数学学习任务 |",
             f"| **科目二：{e_name}** | {plan.get('eng_baseline', '摸底水平')} | **{plan.get('eng_target', '65+ 分')}** | {plan.get('eng_hours', 2.0)} 小时 | 搭积木拆解长难句，定位阅读选项逻辑，固化作文功能句模板 |",
             f"| **科目三：{p_name}** | {plan.get('pol_baseline', '摸底水平')} | **{plan.get('pol_target', '70+ 分')}** | {plan.get('pol_hours', 1.0)} 小时 | 单选+多选得分盘（38~42分），帽子词秒杀，后期背诵闭环 |",
             f"| **科目四：{pro_name}** | {plan.get('pro_baseline', '摸底水平')} | **{plan.get('pro_target', '120-130 分')}** | {plan.get('pro_hours', 2.0)} 小时 | 权威教材体系+历年真题深度解剖，白名单题源抽题门禁 |",
             f"| **科目五：{pro2_name or '专业课二'}** | {plan.get('pro2_baseline', '摸底水平')} | **{plan.get('pro2_target', '120-130 分')}** | {plan.get('pro2_hours', 2.0)} 小时 | 针对第二门自命题考纲深化推导与背诵闭环 |",
-            f"| **合计** | [摸底总分] | **{plan.get('total_target', '375+ 分')}** | {plan.get('total_hours', 7.0)} 小时 | **结构性提分，稳拿基本盘，拒绝偏难怪题** |",
+            f"| **合计** | {baseline_total_label(plan, ['eng_baseline', 'pol_baseline', 'pro_baseline', 'pro2_baseline'])} | **{plan.get('total_target', '375+ 分')}** | {plan.get('total_hours', 7.0)} 小时 | **结构性提分，稳拿基本盘，拒绝偏难怪题** |",
         ]
     else:
-        m_row = "| **科目一：不考数学** | 不考数学 | **不考数学** | 0.0 小时 | 攻克必考核心题型，严防超纲，规避计算失误，步骤规范化 |" if math_off else f"| **科目一：{m_name}** | {plan.get('math_baseline', '摸底60')} | **{plan.get('math_target', '110+ 分')}** | {plan.get('math_hours', 2.5)} 小时 | 攻克必考核心题型，严防超纲，规避计算失误，步骤规范化 |"
+        # [同族修复·不考数学策略列] math_off 分支此前写数学策略文案（自相矛盾）；
+        # else 分支是正常数学行，文案保持不变。
+        m_row = "| **科目一：不考数学** | 不考数学 | **不考数学** | 0.0 小时 | 本方案不考数学，不安排数学学习任务 |" if math_off else f"| **科目一：{m_name}** | {plan.get('math_baseline', '摸底60')} | **{plan.get('math_target', '110+ 分')}** | {plan.get('math_hours', 2.5)} 小时 | 攻克必考核心题型，严防超纲，规避计算失误，步骤规范化 |"
+        _bt_keys = (["eng_baseline", "pol_baseline", "pro_baseline"] if math_off
+                    else ["math_baseline", "eng_baseline", "pol_baseline", "pro_baseline"])
         table_rows = [
             m_row,
             f"| **科目二：{e_name}** | {plan.get('eng_baseline', '摸底水平')} | **{plan.get('eng_target', '65+ 分')}** | {plan.get('eng_hours', 2.0)} 小时 | 搭积木拆解长难句，定位阅读选项逻辑，固化作文功能句模板 |",
             f"| **科目三：{p_name}** | {plan.get('pol_baseline', '摸底水平')} | **{plan.get('pol_target', '70+ 分')}** | {plan.get('pol_hours', 1.0)} 小时 | 单选+多选得分盘（38~42分），帽子词秒杀，后期背诵闭环 |",
             f"| **科目四：{pro_name}** | {plan.get('pro_baseline', '摸底水平')} | **{plan.get('pro_target', '120-130 分')}** | {plan.get('pro_hours', 2.0)} 小时 | 权威教材体系+历年真题深度解剖，白名单题源抽题门禁 |",
-            f"| **合计** | [摸底总分] | **{plan.get('total_target', '370+ 分')}** | {plan.get('total_hours', 6.5)} 小时 | **结构性提分，稳拿基本盘，拒绝偏难怪题** |",
+            f"| **合计** | {baseline_total_label(plan, _bt_keys)} | **{plan.get('total_target', '370+ 分')}** | {plan.get('total_hours', 6.5)} 小时 | **结构性提分，稳拿基本盘，拒绝偏难怪题** |",
         ]
 
     new_table_block = table_header + "\n" + "\n".join(table_rows)
@@ -217,6 +234,83 @@ def update_agents_md(workspace_root: Path | str, plan: dict) -> None:
         content = content.replace("### 二、四种私教辅导风格设定", schedule_section + "\n\n### 二、四种私教辅导风格设定")
 
     atomic_write_text(agents_path, content)
+
+
+def sync_workspace_from_plan(ws: Path, plan: Dict[str, Any],
+                             include_today_tasks: bool = True) -> List[str]:
+    """按 study_plan 联动更新工作区，返回未完成项的警告列表。
+
+    [问题3 修复·配置未全局流通] 向导保存与设置中心保存此前各写一套联动
+    （或干脆缺步骤），改动一处漏一处；且异常一律 ``except: pass`` 静默 ——
+    学员看到「填了信息却不生效」而现场毫无痕迹。现收口为单一实现：
+      1) 各科 AGENTS.md（update_subject_agents）
+      2) 四科考试大纲（apply_syllabus_selection）
+      3) 院校简章监控初始化
+      4) 各科总规划与今日任务（generate_plan_and_today_files，可选）
+    """
+    sync_warnings: List[str] = []
+
+    # 1) 各科 AGENTS.md
+    try:
+        try:
+            from tools import study_planner
+        except ImportError:
+            import study_planner
+        study_planner.update_subject_agents(plan, workspace_root=ws)
+    except Exception as exc:
+        sync_warnings.append(f"各科 AGENTS.md 同步失败：{exc}")
+
+    # 2) 四科考试大纲
+    try:
+        try:
+            from tools import syllabus_manager
+        except ImportError:
+            import syllabus_manager
+        syllabus_manager.apply_syllabus_selection(
+            math_key=plan.get("math_key", "none" if plan.get("math_name") == "不考数学" else "math1"),
+            eng_key=plan.get("eng_key", "eng1"),
+            pro_type=plan.get("pro_type", "custom"),
+            pro_name=plan.get("pro_name", "专业课"),
+            pro2_name=plan.get("pro2_name", ""),
+            school=plan.get("school", "目标院校"),
+            major=plan.get("major", "报考专业"),
+            auto_write=True,
+            workspace_root=ws,
+        )
+    except Exception as exc:
+        sync_warnings.append(f"考试大纲同步失败：{exc}")
+
+    # 3) 院校简章监控
+    try:
+        try:
+            from tools.intelligence.watcher import AdmissionWatcher
+        except ImportError:
+            from intelligence.watcher import AdmissionWatcher
+        # [问题3 补修] 显式传 ws：此前无参实例化只认模块级真实 ROOT，
+        # 测试传 tmp 工作区时监控条目会落进真实仓库（实测污染）。
+        watcher = AdmissionWatcher(workspace_root=ws)
+        target_school = str(plan.get("school") or "").strip()
+        if target_school and target_school != "目标院校":
+            for item in watcher.list_watched():
+                code = item.get("chsi_code")
+                if code:
+                    watcher.remove_watch(code)
+            watcher.add_watch(target_school)
+    except Exception as exc:
+        sync_warnings.append(f"院校简章监控初始化失败：{exc}")
+
+    # 4) 各科总规划与今日任务（重建语义：已有当日文件会先备份再覆盖）
+    if include_today_tasks:
+        try:
+            try:
+                from tools import study_planner
+            except ImportError:
+                import study_planner
+            study_planner.generate_plan_and_today_files(plan, workspace_root=ws)
+        except Exception as exc:
+            sync_warnings.append(f"今日任务与总规划生成失败：{exc}")
+
+    return sync_warnings
 
 
 def save_onboarding_config(
@@ -281,58 +375,22 @@ def save_onboarding_config(
     merged["relief_mode_active"] = False
 
     # 1. 原子落盘 ky_config.json
-    atomic_write_text(path, json.dumps(merged, ensure_ascii=False, indent=2))
+    # [审计 2026-09-30 P1-9] sensitive=True：含明文 api_key / webhook，POSIX 收紧
+    # 0600、Windows 走 icacls 仅授当前用户（此前 GUI 保存路径未传该参数）。
+    atomic_write_text(path, json.dumps(merged, ensure_ascii=False, indent=2),
+                      sensitive=True)
 
     # 2. 正则更新根目录 AGENTS.md
     update_agents_md(ws, plan)
 
-    # 3. 同步更新各子目录 AGENTS.md
-    try:
-        try:
-            from tools import study_planner
-        except ImportError:
-            import study_planner
-        study_planner.update_subject_agents(plan, workspace_root=ws)
-    except Exception:
-        pass
+    # 3. 联动更新各科 AGENTS.md / 大纲 / 监控 / 今日任务（单一实现，见上）
+    # [问题3/6 修复·联动静默失败] 异常不再 except: pass 静默吞掉：收集为警告
+    # 随返回值交给 UI 展示 —— 此前「向导填了信息却没同步」在现场毫无痕迹。
+    sync_warnings = sync_workspace_from_plan(ws, plan, include_today_tasks=True)
 
-    # 4. 同步更新四科考试大纲
-    try:
-        try:
-            from tools import syllabus_manager
-        except ImportError:
-            import syllabus_manager
-        syllabus_manager.apply_syllabus_selection(
-            math_key=plan.get("math_key", "none" if plan.get("math_name") == "不考数学" else "math1"),
-            eng_key=plan.get("eng_key", "eng1"),
-            pro_type=plan.get("pro_type", "custom"),
-            pro_name=plan.get("pro_name", "专业课"),
-            pro2_name=plan.get("pro2_name", ""),
-            school=plan.get("school", "目标院校"),
-            major=plan.get("major", "报考专业"),
-            auto_write=True,
-            workspace_root=ws,
-        )
-    except Exception:
-        pass
-
-    # 5. 自动重置院校监控
-    try:
-        try:
-            from tools.intelligence.watcher import AdmissionWatcher
-        except ImportError:
-            from intelligence.watcher import AdmissionWatcher
-        watcher = AdmissionWatcher()
-        target_school = plan.get("school", "").strip()
-        if target_school and target_school != "目标院校":
-            for item in watcher.list_watched():
-                code = item.get("chsi_code")
-                if code:
-                    watcher.remove_watch(code)
-            watcher.add_watch(target_school)
-    except Exception:
-        pass
-
+    if sync_warnings:
+        # 旁路键：落盘已完成（在上面），该键仅供 UI 展示，不会被写进配置。
+        merged["_sync_warnings"] = sync_warnings
     return merged
 
 
@@ -345,6 +403,7 @@ def save_settings(path, *, api_key, base_url, model, school, major, exam_date, s
     if not model.strip():
         raise ValueError("请填写模型名称。")
     config = read_config(path)
+    old_plan = dict(config.get("study_plan") or {})
     plan = dict(config.get("study_plan") or {})
     plan.update(school=school, major=major, exam_date=exam_date, style_name=style)
     try:
@@ -353,12 +412,36 @@ def save_settings(path, *, api_key, base_url, model, school, major, exam_date, s
         pass
     config.update(api_key=api_key, base_url=base_url, model=model,
                   study_plan=plan, coaching_style=style)
-    atomic_write_text(path, json.dumps(config, ensure_ascii=False, indent=2))
+    # [审计 2026-09-30 P1-9] 同 save_onboarding_config：含明文 api_key，
+    # POSIX 收紧 0600、Windows 走 icacls 仅授当前用户。
+    atomic_write_text(path, json.dumps(config, ensure_ascii=False, indent=2),
+                      sensitive=True)
     ws = Path(path).parent
+    sync_warnings: List[str] = []
     try:
         update_agents_md(ws, plan)
-    except Exception:
-        pass
+    except Exception as exc:
+        sync_warnings.append(f"根 AGENTS.md 同步失败：{exc}")
+
+    # [问题3 修复·设置中心配置未全局流通] 与向导保存同源联动：此前设置中心
+    # 改科目/目标院校只更新根 AGENTS.md，各科 AGENTS.md / 大纲 / 今日任务全部
+    # 不动，报到时仍按旧方案执行。仅当「影响任务的字段」确有变化时才重建今日
+    # 任务（重建=备份后覆盖），避免单纯改 API Key 也覆盖考生当日已勾选的任务。
+    _task_fields = (
+        "exam_mode", "math_key", "math_name", "eng_key", "eng_name",
+        "pro_type", "pro_name", "pro2_name", "pol_disabled",
+        "math_hours", "eng_hours", "pol_hours", "pro_hours", "pro2_hours",
+        "math_weakness", "eng_weakness", "pol_weakness", "pro_weakness", "pro2_weakness",
+        "math_books", "eng_books", "pol_books", "pro_books", "pro2_books",
+    )
+    _task_changed = any(
+        str(old_plan.get(k) or "") != str(plan.get(k) or "") for k in _task_fields)
+    sync_warnings += sync_workspace_from_plan(
+        ws, plan, include_today_tasks=_task_changed)
+
+    if sync_warnings:
+        # 旁路键：落盘已完成（在上面），该键仅供 UI 展示，不会被写进配置。
+        config["_sync_warnings"] = sync_warnings
     return config
 
 

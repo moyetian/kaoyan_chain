@@ -16,7 +16,7 @@
 **可执行阴性对照**（见各用例 docstring）。
 
 W13-7 追加：命令面板四桶分组标题行（不可选中 / 计数契约不破 / 键盘流跳过）+
-「42 覆盖边界声明」审计（面板可执行别名 ⊆ ``MENU_OPTIONS``，差集与 CLI 注册表对账）。
+「CLI 主命令覆盖边界声明」审计（面板可执行别名 ⊆ ``MENU_OPTIONS``，差集与 CLI 注册表对账）。
 
 W13 验收修复追加：命令面板空结果提示行（R3-1：无匹配不再是零提示空白列表）+
 口语搜索别名（R3-2：``PaletteEntry.keywords``，「考情 / 刷题 / 报到」等词可命中）。
@@ -58,9 +58,11 @@ from tools.theme import build_theme, render_qss  # noqa: E402
 # 双导入路径（``gui.*`` / ``tools.gui.*``）会让同名类成为两个对象：main_window
 # 优先走 ``gui.*``，测试必须从**同一条路径**取类，否则 isinstance 会假红。
 try:  # pragma: no cover - 取决于运行方式
-    from gui.widgets.nav_rail import KYNavRail
+    from gui.widgets.nav_rail import KYNavRail, RAIL_COLLAPSED_WIDTH, RAIL_WIDTH
 except ImportError:  # pragma: no cover
-    from tools.gui.widgets.nav_rail import KYNavRail  # type: ignore
+    from tools.gui.widgets.nav_rail import (  # type: ignore
+        KYNavRail, RAIL_COLLAPSED_WIDTH, RAIL_WIDTH,
+    )
 
 try:  # pragma: no cover - 取决于运行方式
     from gui.views import nav_rail as nav_rail_view
@@ -138,6 +140,9 @@ def test_nav_rail_replaces_tiled_cards_and_visible_tabs(win):
 def test_nav_rail_has_two_groups_with_expected_items(win):
     """rail 分「视图」「工具」两组，条目与原 4 页签 / 10 卡一一对应。"""
     rail = win.nav_rail
+    # [阶段 D 前置] 折叠态下视图项文字被清空（原文在 tooltip 里）——本用例
+    # 断言展开态文案，先显式展开（断言语义不变）。
+    rail.set_expanded(True)
     assert rail.group_titles == ["视图", "工具"], (
         f"rail 应有「视图/工具」两组，实际 {rail.group_titles}")
 
@@ -162,6 +167,8 @@ def test_nav_rail_has_two_groups_with_expected_items(win):
 def test_nav_active_state_is_slim_accent_bar_not_giant_highlight(win):
     """激活态 = 左侧 3px 强调条 + acc-sub 底；结构上是紧凑行而非巨型高亮块。"""
     rail = win.nav_rail
+    # [阶段 D 前置] 本用例断言展开态几何（252px 完整栏），先显式展开。
+    rail.set_expanded(True)
 
     # 结构：紧凑行（远小于页面高度）。下限 34px 对应 #NavItem 的 QSS min-height
     # （30px）+ 上下 padding（4+4）—— 点击目标不得被全局 QPushButton 规则压回 22px。
@@ -465,7 +472,7 @@ def test_qss_renders_with_p2_selectors_for_all_presets():
         assert "{{" not in qss and "}}" not in qss, f"预设 {preset} 存在未替换占位符"
 
 
-# ── ⑦ W13-7：命令面板分组标题行 + 42 覆盖边界 ──────────────────
+# ── ⑦ W13-7：命令面板分组标题行 + CLI 主命令覆盖边界 ──────────────────
 
 def _palette_header_rows(palette) -> list:
     """当前面板列表里的分组标题行行号（判据：无 UserRole key）。"""
@@ -569,9 +576,9 @@ def test_palette_keyboard_skips_group_headers(win, app):
 
 
 def test_w13_palette_command_coverage_boundary_audit():
-    """W13-7 · 42 覆盖边界审计：面板可执行别名 ⊆ MENU_OPTIONS；差集与 CLI 对账。
+    """W13-7 · CLI 主命令覆盖边界审计：面板可执行别名 ⊆ MENU_OPTIONS；差集与 CLI 对账。
 
-    本批**不承诺** 42 个 CLI 主命令全部 GUI 可达——可达 10 / 不可达 32 是显式
+    本批**不承诺**全部 CLI 主命令 GUI 可达——可达 10 / 不可达 33 是显式
     声明（``GUI_REACHABLE_COMMANDS`` / ``GUI_UNREACHABLE_COMMANDS``），此处与
     ``ky`` CLI 注册表逐一对账，防未来新增命令时静默漏声明。
     """
@@ -585,14 +592,14 @@ def test_w13_palette_command_coverage_boundary_audit():
     assert gui_aliases <= menu_aliases, (
         f"面板可执行别名必须全部落在 MENU_OPTIONS：{sorted(gui_aliases - menu_aliases)}")
 
-    # ② 42 主命令：可达 / 不可达声明与 CLI 注册表逐一对账
+    # ② CLI 主命令全集：可达 / 不可达声明与 CLI 注册表逐一对账
     dispatch._init_all_commands()
     registered = {cmd.name for cmd in dispatch.list_commands()}
-    assert len(registered) == nav_rail_view.CLI_MAIN_COMMAND_COUNT == 42
+    assert len(registered) == nav_rail_view.CLI_MAIN_COMMAND_COUNT == 43
     assert nav_rail_view.GUI_REACHABLE_COMMANDS.isdisjoint(nav_rail_view.GUI_UNREACHABLE_COMMANDS)
     assert nav_rail_view.GUI_REACHABLE_COMMANDS | nav_rail_view.GUI_UNREACHABLE_COMMANDS == registered, (
-        "42 覆盖边界声明与 CLI 注册表漂移：请同步 nav_rail.GUI_REACHABLE/UNREACHABLE_COMMANDS")
-    assert len(nav_rail_view.GUI_UNREACHABLE_COMMANDS) == 32
+        "覆盖边界声明与 CLI 注册表漂移：请同步 nav_rail.GUI_REACHABLE/UNREACHABLE_COMMANDS")
+    assert len(nav_rail_view.GUI_UNREACHABLE_COMMANDS) == 33
 
     # ③ 每个 GUI 动作别名都映射到一个真实注册的主命令
     assert set(nav_rail_view.GUI_ACTION_TO_COMMAND) == gui_aliases
@@ -746,3 +753,99 @@ def test_palette_empty_hint_qss_compiles_for_all_presets():
         assert "transparent" in block, f"预设 {preset} 的提示行背景应为透明"
         assert f"color: {theme.color('mut')}" in block, (
             f"预设 {preset} 的 #PaletteEmptyHint 应使用弱化色 mut")
+
+
+# ── ⑨ 阶段 D：rail 双态折叠（252px 展开 ↔ 56px 图标栏） ─────────
+
+def test_nav_rail_collapse_roundtrip(win, app):
+    """折叠 → 56px 图标栏（文字清空存 tooltip、工具卡区隐藏）；展开全部还原。
+
+    阴性对照：若 set_expanded 只改宽度、不清文字 / 不隐藏工具卡 / 不置
+    ``collapsed`` 属性，本用例逐条变红。
+    """
+    rail = win.nav_rail
+    rail.set_expanded(True)
+    app.processEvents()
+    texts = [item.text() for item in rail.view_items]
+    assert texts == list(TAB_TITLES)
+    assert all(card.isVisible() for card in rail.tool_items)
+
+    rail.set_expanded(False)
+    app.processEvents()
+    assert rail.width() == RAIL_COLLAPSED_WIDTH < RAIL_WIDTH, \
+        f"折叠态宽度应为 {RAIL_COLLAPSED_WIDTH}px，实际 {rail.width()}px"
+    for item, text in zip(rail.view_items, texts):
+        assert item.text() == "", "折叠态视图项只留图标（文字清空）"
+        assert item.toolTip() == text, "原文必须保留在 tooltip"
+        assert item.property("collapsed") is True, \
+            "折叠属性未置位（QSS #NavItem[collapsed=\"true\"] 不生效）"
+    assert all(not card.isVisible() for card in rail.tool_items), \
+        "折叠态 10 个工具卡必须隐藏"
+    assert not rail.brand_label.isVisible(), "折叠态品牌文字应隐藏"
+    assert not rail.palette_btn.isVisible(), \
+        "折叠态命令面板按钮应隐藏（Ctrl+K 快捷键仍可用）"
+
+    rail.set_expanded(True)
+    app.processEvents()
+    assert rail.width() == RAIL_WIDTH
+    assert [item.text() for item in rail.view_items] == texts
+    assert all(item.property("collapsed") is False for item in rail.view_items)
+    assert all(card.isVisible() for card in rail.tool_items)
+
+
+def test_nav_rail_toggle_persists_and_restores(win, app):
+    """NavToggle 点击切换折叠并写 QSettings；新窗口构建时恢复该状态。
+
+    QSettings 键为 ``ui/rail_collapsed``（主题偏好同源 org/app）。本用例写入
+    的值由 conftest 的隔离 fixture 在收尾时清除，不影响其它用例与本机 GUI。
+    """
+    from tools.gui import theme_apply
+
+    def _collapsed_pref() -> bool:
+        raw = theme_apply.read_pref(theme_apply.KEY_RAIL_COLLAPSED)
+        return str(raw).strip().lower() in ("1", "true")
+
+    rail = win.nav_rail
+    rail.set_expanded(True)
+    rail.toggle_btn.click()
+    app.processEvents()
+    assert not rail.is_expanded(), "点击 NavToggle 应折叠"
+    assert _collapsed_pref(), "折叠态应写入 QSettings（ui/rail_collapsed）"
+
+    # 端到端：新窗口构建时按 QSettings 恢复折叠态
+    win2 = MainWindow()
+    win2.show()
+    app.processEvents()
+    try:
+        assert not win2.nav_rail.is_expanded(), "重建窗口应恢复上次的折叠态"
+        assert win2.nav_rail.width() == RAIL_COLLAPSED_WIDTH
+        assert win2.nav_rail.view_items[0].text() == ""
+    finally:
+        win2.close()
+
+    rail.toggle_btn.click()
+    app.processEvents()
+    assert rail.is_expanded(), "再次点击 NavToggle 应展开"
+    assert not _collapsed_pref(), "展开态应写回 QSettings"
+
+
+def test_nav_rail_collapse_survives_theme_toggle(win, app):
+    """切主题（重设全局 styleSheet）后折叠态与 ``collapsed`` 属性仍生效。
+
+    ``MainWindow._toggle_theme`` 会重设 QApplication 样式表并对 rail 幂等重放
+    折叠态（unpolish/polish）——本用例钉住该行为：切主题不得把 56px 图标栏
+    打回文字态。
+    """
+    rail = win.nav_rail
+    rail.set_expanded(False)
+    app.processEvents()
+    win._toggle_theme()
+    app.processEvents()
+    try:
+        assert not rail.is_expanded()
+        assert rail.width() == RAIL_COLLAPSED_WIDTH
+        assert all(item.property("collapsed") is True for item in rail.view_items)
+        assert all(item.text() == "" for item in rail.view_items)
+        assert all(not card.isVisible() for card in rail.tool_items)
+    finally:
+        win._toggle_theme()          # 切回，避免影响其它用例

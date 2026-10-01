@@ -9,11 +9,13 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
+
 # 支持打包冻结环境与普通源码环境路径自适应
-if getattr(sys, "frozen", False):
-    ROOT = Path(sys.executable).resolve().parent
-else:
-    ROOT = Path(__file__).resolve().parent.parent
+ROOT = resolve_workspace_root(__file__)
 
 TOOLS = ROOT / "tools"
 LOGS_DIR = ROOT / "logs"

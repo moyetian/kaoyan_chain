@@ -108,15 +108,15 @@ def render_ansi(theme: Theme, truecolor: Optional[bool] = None,
 
     # 语义补充字段（TUI 新增能力：次要文字与语义色可直接取用）
     palette["MUTED"] = _fg(theme.color("mut", "#94a3b8"))
-    palette["ACCENT"] = _fg(theme.color("acc", "#a78bfa"))
+    palette["ACCENT"] = _fg(theme.color("acc", "#2dd4bf"))
     palette["OK"] = _fg(theme.color("ok", "#34d399"))
     palette["WARN"] = _fg(theme.color("warn", "#fbbf24"))
     palette["BAD"] = _fg(theme.color("bad", "#f87171"))
     palette["BG"] = _bg(theme.color("bg", "#090d16"))
     # 深色终端上让强调色再亮一点、浅色终端上再深一点，保证对比度
     palette["ACCENT_SOFT"] = _fg(
-        lighten(theme.color("acc", "#a78bfa"), 0.25) if theme.mode == "dark"
-        else darken(theme.color("acc", "#a78bfa"), 0.15))
+        lighten(theme.color("acc", "#2dd4bf"), 0.25) if theme.mode == "dark"
+        else darken(theme.color("acc", "#2dd4bf"), 0.15))
     palette["SEP"] = _fg(mix(theme.color("line", "#1e293b"), theme.color("mut", "#94a3b8"), 0.5))
     return palette
 

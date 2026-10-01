@@ -193,6 +193,26 @@ def _cfg(math_key="none", math_name="不考数学"):
     return {"study_plan": {"math_key": math_key, "math_name": math_name}}
 
 
+def _stub_intel_no_watch(monkeypatch):
+    """掐断 today 摘要「研招速递」的真实巡检副作用。
+
+    ``renderer.print_today_tasks_summary`` 在 news_flash 开启且监控库非空时会
+    真实联网 ``check_updates()`` 并落盘真实 ``.memory/admission_watch.json``
+    （实测：全量 pytest 期间真实工作区监控库时间戳被刷新）。本组测试只验证
+    分段文案，stub 掉该模块引用即可：``list_watched()`` 返回空 →
+    ``check_updates`` 不执行，零联网零写盘。
+    """
+    import types
+    from tools.cli.repl import renderer
+
+    class _NoWatch:
+        def list_watched(self):
+            return []
+
+    monkeypatch.setattr(renderer, "intelligence",
+                        types.SimpleNamespace(AdmissionWatcher=_NoWatch))
+
+
 def test_is_math_disabled_covers_none_and_other_modes():
     """R2-A4：判定单源覆盖 none / 中文名 / mode_b 双专业课 / 政治停考。"""
     from tools.cli import shared
@@ -226,6 +246,7 @@ def test_today_summary_hides_math_segment_when_math_none(monkeypatch, capsys, tm
     """R2-A4：不考数学时 ky today 不得输出空的【数学】段，口令指向英语。"""
     from tools.cli.repl import renderer
     _seed_today_files(tmp_path)
+    _stub_intel_no_watch(monkeypatch)
     monkeypatch.setattr(renderer, "ROOT", tmp_path)
     monkeypatch.setattr(renderer, "load_config", lambda: _cfg("none"))
     monkeypatch.setattr(renderer, "get_today_tasks_data",
@@ -243,6 +264,7 @@ def test_today_summary_keeps_math_segment_when_math2(monkeypatch, capsys, tmp_pa
     """R2-A4 防过度修复：数学二方案下【数学】段与「数学报到」必须照常出现。"""
     from tools.cli.repl import renderer
     _seed_today_files(tmp_path)
+    _stub_intel_no_watch(monkeypatch)
     monkeypatch.setattr(renderer, "ROOT", tmp_path)
     monkeypatch.setattr(renderer, "load_config", lambda: _cfg("math2", "数学二 (302)"))
     monkeypatch.setattr(renderer, "get_today_tasks_data",

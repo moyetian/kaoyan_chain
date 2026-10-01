@@ -274,8 +274,17 @@ class Sandbox:
             pass
 
         if not is_in_workspace:
+            # [审计 2026-09-30 P1-1] 带**分隔符边界**的目录归属判定。
+            # 旧实现 `str(resolved).lower().startswith(str(extra_p).lower())` 是纯
+            # 字符串前缀比较：授权 `base/refs` 后，兄弟目录 `base/refs-secret/victim.md`
+            # 因前缀相同被一并放行（实测可读写越界）。为什么不能靠补一个分隔符了事：
+            # 授权目录自身（无尾分隔符）与子路径两种情况要同时成立，手工拼接极易
+            # 在 Windows 分隔符/大小写上再出错。`Path.is_relative_to` 按**路径分量**
+            # 比较，天然满足全部边界（本机 py3.12 实测：refs-secret → False、
+            # refs 自身 → True、REFS 大小写变体 → True、跨盘符 → False），且
+            # 两个操作数在 `__init__` / 上文均已 resolve，无符号链接歧义。
             is_in_extra = any(
-                str(resolved).lower().startswith(str(extra_p).lower())
+                resolved.is_relative_to(extra_p)
                 for extra_p in self.allowed_extra_paths
             )
 
@@ -326,6 +335,20 @@ class Sandbox:
         if not is_in_workspace and is_in_extra:
             _log_external_read(resolved, raw_path)
             _record_external_read(resolved)
+
+        # [审计 2026-09-30 P1-3] ky_config.json 写保护。
+        # 背景：ky_config.json 位于工作区根且 agent 的写工具（write_file /
+        # edit_file / delete_file 等，均走本函数且 read_only=False）能写工作区
+        # 内任意路径 —— 攻破链是「改写 mcp_servers / agent.allowed_extra_paths /
+        # permission_mode 等字段」自扩权限，或借 mcp_client 的 Popen 执行任意
+        # 命令。此处只拦 agent 工具的**写路径**：只读（read_file）不拦；CLI 自身
+        # 的 save_config 不走沙箱，不受影响。判定用 resolve 后的路径与工作区根
+        # ky_config.json 做 normcase 归一比较（Windows 大小写不敏感）。
+        if not read_only and os.path.normcase(str(resolved)) == os.path.normcase(
+                str(self.workspace_root / "ky_config.json")):
+            raise SecurityException(
+                "安全拦截：agent 工具禁止改写运行配置 ky_config.json"
+                "（含 API Key 与权限设置），请让用户在终端用 `ky config` 修改")
 
         return resolved
 

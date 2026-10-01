@@ -52,6 +52,11 @@ def _cmd_rollback(args: List[str]) -> None:
       ky rollback --checkpoint <名称>     回滚指定检查点
       ky rollback --file <相对路径>       只回滚该文件（取含它的最新检查点）
       ky rollback --dry-run              只预览，不动磁盘
+
+    快照范围（如实说明）：
+      覆盖 Agent 的**文件写工具**（write_file / edit_file / delete_file）等
+      文件级写操作的写前快照（任何权限模式通用）；**领域工具**写入（错题归档
+      log_mistake、打卡、看板构建等）不走此快照，需按各数据自身方式恢复。
     """
     try:
         from tools.agent import PermissionManager
@@ -80,7 +85,12 @@ def _cmd_rollback(args: List[str]) -> None:
         if opts["list"]:
             ckpts = pm.list_checkpoints()
             if not ckpts:
-                print(colorize("\n[!] 暂无任何快照检查点（.checkpoint/ 为空）\n", C.YELLOW))
+                # [P2 修复·快照边界误解] 领域工具（log_mistake/打卡/看板）写入
+                # 不走写前快照，此处为空时如实说明边界，避免考生误以为
+                # 「刚才的错题归档丢失了」（matmech 沙箱实测的困惑点）。
+                print(colorize("\n[!] 暂无任何快照检查点（.checkpoint/ 为空）\n"
+                               "    注：写前快照仅覆盖 Agent 文件写工具（write_file/edit_file/delete_file）；\n"
+                               "    错题归档（log_mistake）、打卡、看板构建等**领域工具写入**不在快照范围。\n", C.YELLOW))
                 return
             print(colorize(f"\n📦 共 {len(ckpts)} 个快照检查点（新 → 旧）：\n", C.BOLD))
             for ck in ckpts[:20]:
@@ -337,7 +347,7 @@ def _cmd_view(args: List[str]) -> None:
 
 # 注册集成辅助命令
 register(Command('notify', ("notify", "--notify"), '[内容]', '一键推送今日任务/晨报到微信、QQ、钉钉、飞书群', handler=_cmd_notify, write=True))
-register(Command('rollback', ("rollback", "--rollback", "restore", "--restore"), '[--list | --checkpoint <名称> | --file <相对路径>] [--dry-run]', '快照回滚：默认回最近一次；可按检查点 / 按文件精确回滚（写前快照，任何模式通用）', handler=_cmd_rollback, write=True))
+register(Command('rollback', ("rollback", "--rollback", "restore", "--restore"), '[--list | --checkpoint <名称> | --file <相对路径>] [--dry-run]', '快照回滚：默认回最近一次；可按检查点 / 按文件精确回滚（写前快照覆盖文件写工具，任何模式通用；领域工具写入不在内）', handler=_cmd_rollback, write=True))
 register(Command('memory', ("memory", "--memory"), '[status|prune]', '三级分层记忆健康度诊断与滚动修剪归档', handler=_cmd_memory, write=True))
 register(Command('fatigue', ("fatigue", "--fatigue"), '', '检查疲劳度与完成率监控警报', handler=_cmd_fatigue))
 register(Command('relieve', ("relieve", "--relieve"), '[--keep-style] [--off]', '一键启动智能减负模式 (任务下调 25%)；--keep-style 不改风格，--off 恢复', handler=_cmd_relieve, write=True))

@@ -107,7 +107,15 @@ def test_inno_setup_scripts_specification():
     [R2-B3] `installer.iss` 在仓库根，任何检出（含干净检出/CI）都应被校验，因此本用例
     **不整条 skip**；仅当 `dist/installer.iss` 存在时才追加校验 dist 分支，否则打印说明。
     这样既不会在无 dist 时误报失败，也不会把仓库根那份守卫一起关掉。
+
+    [K2 版本工程] 版本断言不再硬编码 —— 此前写死 `MyAppVersion "3.1.1"`，每次版本
+    升级（pyproject.toml 与 installer.iss 同步后）本用例必红，等于把「正常升级」
+    误报成「打包缺陷」。现从单一真源 `tools.version` 动态取值，保持原意：
+    installer.iss 的 MyAppVersion 必须与项目当前版本一致。
     """
+    from tools.version import get_version
+
+    expected_version = get_version()
     targets = [("仓库根", ROOT_ISS_PATH)]
     if DIST_ISS_PATH.exists():
         targets.append(("dist", DIST_ISS_PATH))
@@ -120,7 +128,11 @@ def test_inno_setup_scripts_specification():
 
         # 1. 验证版本号与应用名称
         assert 'MyAppName "考研学习链"' in content
-        assert 'MyAppVersion "3.1.1"' in content
+        assert f'MyAppVersion "{expected_version}"' in content, (
+            f"{label} installer.iss 的 MyAppVersion 与项目版本不一致："
+            f"期望 {expected_version}（真源 pyproject.toml，"
+            "installer.iss 由 tools/build_package.py 构建时同步生成）"
+        )
         assert 'MyAppExeName "KaoyanStudyChain.exe"' in content
 
         # 2. 验证纯正简体中文语言包与自定义消息

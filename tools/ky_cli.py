@@ -8,6 +8,11 @@
 import sys
 from pathlib import Path
 
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
+
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -17,7 +22,7 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
 
 # 保证 tools 目录与项目根目录加入 sys.path
 _HERE = Path(__file__).resolve().parent
-_ROOT = _HERE.parent
+_ROOT = resolve_workspace_root(__file__)
 for _p in (str(_ROOT), str(_HERE)):
     if _p not in sys.path:
         sys.path.insert(0, _p)

@@ -113,7 +113,10 @@ def test_placeholder_map_covers_template():
                  "EXAM_YEAR", "EXAM_MMDD",
                  # [W13 验收修复·发布链路/F8] 脱敏标记与起跑日估算标注，
                  # 由 build() 的 values 提供（前者随构建模式取值，后者随配置）
-                 "SANITIZED_ATTR", "PLAN_ESTIMATED"}
+                 "SANITIZED_ATTR", "PLAN_ESTIMATED",
+                 # [UT4 补记] 品牌区「N科」动态标签（build() values 提供；
+                 # 上一批次加了占位符但漏更本白名单，UT4 补记）
+                 "SUBJECT_COUNT_LABEL"}
     assets = {k.strip("{}") for k in mapping}
     missing = declared - data_keys - assets
     assert not missing, f"模板占位符无人提供: {missing}"

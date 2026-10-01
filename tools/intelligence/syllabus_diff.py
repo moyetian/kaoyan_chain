@@ -16,6 +16,11 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Any, List, Optional, Tuple, Set
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from datetime import datetime
 
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
@@ -23,7 +28,7 @@ try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方
 except ImportError:  # pragma: no cover
     from tools.ky_io import atomic_write_text  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 
 #: [W12 P1-5] 科目目录 → 显示名映射（公共课考纲与具体学校无关，命名标「全国统考」）
 _SUBJECT_DIR_LABELS = {

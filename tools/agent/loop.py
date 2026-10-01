@@ -9,9 +9,6 @@ import re
 import sys
 import json
 import time
-import random
-import urllib.request
-import urllib.error
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Callable
 
@@ -19,9 +16,12 @@ from .sandbox import Sandbox
 from .permissions import PermissionManager
 from .tools_impl import ToolRegistry
 from .context_engine import ContextEngine
+from .kaoyan_context import KaoyanContext
 from .memory import MemoryManager
 from .hooks import HookManager
 from .mcp_client import MCPClientManager
+from .turn_recovery import DoomLoopBreaker
+from .runtime import RunBudgetExceeded, RunLimits, RunRuntime, RunState
 from .session_log import (
     SessionLog,
     RESUME_TAIL_MESSAGES,
@@ -39,10 +39,12 @@ from .session_log import (
     EVENT_SESSION_END,
 )
 
-try:  # 网络访问安全与响应体积上限（双导入路径兼容）
-    from net_guard import MAX_HTTP_RESPONSE_BYTES, decompress_limited, safe_urlopen
+try:  # 网络访问安全（双导入路径兼容）；[K4] 读取/解压上限随 SSE 设施进 llm_client，
+    # 但 ``decompress_limited`` 保留在本模块命名空间：既有测试桩点
+    # （test_w1_llm_telemetry）按 ``loop_module.decompress_limited`` 注入。
+    from net_guard import decompress_limited, safe_urlopen
 except ImportError:  # pragma: no cover
-    from tools.net_guard import MAX_HTTP_RESPONSE_BYTES, decompress_limited, safe_urlopen  # type: ignore
+    from tools.net_guard import decompress_limited, safe_urlopen  # type: ignore
 
 try:  # [B3b] 压缩摘要头部常量的唯一实现处在 compaction（loop 不再保留私有副本）
     from .compaction import COMPACT_SUMMARY_PREFIX
@@ -50,18 +52,35 @@ except ImportError:  # pragma: no cover
     from tools.agent.compaction import COMPACT_SUMMARY_PREFIX  # type: ignore
 
 
-def normalize_openai_url(base_url: str, endpoint: str = "chat/completions") -> str:
-    """智能规范化 OpenAI 兼容接口地址 (自动补齐 /v1 容错，并兼容 /v1, /v2, /v3, /v4 等多版本端点与反代)"""
-    import re
-    b = (base_url or "https://api.deepseek.com/v1").strip().rstrip("/")
-    ep = (endpoint or "chat/completions").strip().lstrip("/")
-    if b.endswith("/" + ep) or b.endswith("/chat/completions"):
-        return b
-    # 若已显式包含 API 版本号路径（如 /v1, /v2, /v3, /v4 等）
-    if re.search(r"/v\d+(?:/.*)?$", b):
-        return f"{b}/{ep}"
-    # 针对未带版本号的标准根代理或中转站，补充 /v1
-    return f"{b}/v1/{ep}"
+try:  # [K4] 统一 LLM 出口：SSE 基础设施 / 结构化异常 / URL 归一（双导入路径兼容）
+    from llm_client import (
+        ChatRequest,
+        LLMDeterministicError,
+        LLMResponseTooLargeError,
+        LLMRetryExhausted,
+        _SSE_READ_CHUNK,
+        _STREAM_STALL_TIMEOUT,
+        normalize_openai_url,
+        request_chat,
+    )
+except ImportError:  # pragma: no cover
+    from tools.llm_client import (  # type: ignore
+        ChatRequest,
+        LLMDeterministicError,
+        LLMResponseTooLargeError,
+        LLMRetryExhausted,
+        _SSE_READ_CHUNK,
+        _STREAM_STALL_TIMEOUT,
+        normalize_openai_url,
+        request_chat,
+    )
+
+#: [K4] ``normalize_openai_url`` 已收敛为 ``llm_client`` 单一实现（本模块 re-export）。
+#: 兼容既有导入路径：doctor.py / school_scout.py / agentic_research.py /
+#: vision_solver.py / cli.agent.__init__ 等仍从本模块或 engine 取该函数。
+#: [K4] ``_SSE_READ_CHUNK`` / ``_STREAM_STALL_TIMEOUT`` 常量随 SSE 基础设施搬入
+#: ``llm_client``，此处 re-export 保住 ``tests/test_w8_streaming_client.py`` 的
+#: 直接导入；``_stream_timeout()`` 的超时策略仍留在本模块（调用方决定）。
 
 
 #: [B3a] ``COMPACT_SUMMARY_PREFIX``（从 compaction 导入）用于识别「本次
@@ -74,194 +93,32 @@ def normalize_openai_url(base_url: str, endpoint: str = "chat/completions") -> s
 # （60.5s 被 RemoteDisconnected 掐断），12/50 题因此产出空答案；同内容改流式可完整
 # 跑满 96.8s（首块 3.5s、2460 个 SSE 块）。故两个 LLM 调用默认改走 stream=true，
 # 逐块累积重建出与非流式完全一致的 ``choices[0].message`` 结构。
+# [K4] 解析设施（``_StreamAccumulator`` / ``_consume_sse`` / ``_post_chat`` 等）
+# 已整体搬入 ``llm_client``；本模块只保留调用策略：超时计算（``_stream_timeout``）、
+# spinner/on_open 观感、error_kind 遥测与返回 None 契约。
 
-#: 单次 ``read`` 的字节数。注意 ``HTTPResponse.read(n)`` 会**攒满 n 字节或 EOF**
-#: 才返回（本机流式服务端实测），所以它是解析粒度而非时延保证；停滞检测靠的是
-#: socket 单次 recv 超时（见 ``_STREAM_STALL_TIMEOUT``）。
-_SSE_READ_CHUNK = 4096
-
-#: [W8] 流式请求的「块间停滞超时」（秒）。流式下 socket 超时天然退化为单次读超时
-#: （每收到数据即重置），因此它同时是①健康慢流的上限（块持续到达即可远超此时长）
-#: 与②完全停滞流的判死阈值——90s 内无任何数据即抛错，交给既有重试/退避逻辑。
-#: 有效超时 = ``min(request_timeout, 本值)``（用户显式调低 request_timeout 时从严）。
-_STREAM_STALL_TIMEOUT = 90.0
+#: 思维链标签（模型偶发把思考块标签泄漏进正文 content）
+_THINK_BLOCK_RE = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.DOTALL | re.IGNORECASE)
+_THINK_TAG_RE = re.compile(r"</?think(?:ing)?>?", re.IGNORECASE)
 
 
-class _ResponseTooLargeError(ValueError):
-    """[W8] 上游响应（累积/解压后）超过安全体积上限。
+def _strip_think_tags(text: str) -> str:
+    """移除模型输出中偶发泄漏的思维链标签（``<think…`` / ``</think>`` 等）。
 
-    继承 ``ValueError``：``_call_llm_without_tools`` 的通用 except 把 ValueError
-    归为 ``invalid_response``（与旧实现的降级路径错误分类保持一致）；``_call_llm``
-    则在通用 except 之前单独捕获它并落 ``too_large``。
+    [P2 修复·思维链标签泄漏] 三沙箱实测：批改输出在工具调用转场处泄漏 1 次
+    ``</think>``（ASCII，非终端显示伪影）——模型把思考块的收尾标签混进了正文
+    ``content``，而 content 会直接 print 给考生、写入对话历史与交付档案。
+    此处统一清洗：先删除完整的 ``<think…>…</think…>`` 块，再清除残余的
+    孤立开/闭标签（含被截断的无 ``>`` 尾巴，如行尾的 ``</think``）；确实
+    发生过清除时顺带收敛空行，避免标签原位留下多行空白。
     """
-
-
-class _StreamAccumulator:
-    """[W8] 累积 OpenAI 兼容流式响应的 delta，重建非流式响应结构。
-
-    重建目标（与旧非流式回包逐字段同形）::
-
-        {"choices": [{"index": 0,
-                      "message": {"role": "assistant", "content": "...",
-                                  "tool_calls": [{"id", "type",
-                                                  "function": {"name", "arguments"}}]},
-                      "finish_reason": "stop"}],
-         "usage": {...}  # 仅在网关回传时出现
-
-    * ``content`` / ``reasoning_content``：按到达顺序拼接；
-    * ``tool_calls``：**按 index 归并**——``function.arguments`` 分片拼接成完整
-      JSON 字符串，``id`` / ``function.name`` 取首个非空值（部分网关每块重复发送）；
-    * ``usage``：尽力而为，取自最后一个带 usage 的块（需请求侧 ``stream_options``）；
-    * ``finish_reason``：透传上游所报值；上游未报时按 tool_calls/stop 兜底重建。
-    """
-
-    def __init__(self) -> None:
-        self.content_parts: List[str] = []
-        self.reasoning_parts: List[str] = []
-        self.tool_calls: Dict[int, Dict[str, Any]] = {}
-        self.finish_reason: Optional[str] = None
-        self.usage: Optional[Dict[str, Any]] = None
-
-    # -- 输入 --
-
-    def feed_line(self, line) -> None:
-        """喂入一行 SSE 文本（``data: {...}`` / ``data: [DONE]`` / 裸 JSON 容错）。"""
-        if isinstance(line, bytes):
-            try:
-                line = line.decode("utf-8", errors="ignore")
-            except Exception:  # pragma: no cover - decode 不会抛
-                return
-        text = str(line).strip()
-        if not text:
-            return
-        if text.startswith("data:"):
-            payload = text[len("data:"):].strip()
-        elif text.startswith("{"):
-            # 容错：个别网关省略 data: 前缀，直接给一行 JSON
-            payload = text
-        else:
-            return
-        if payload in ("[DONE]", "[done]"):
-            return
-        try:
-            obj = json.loads(payload)
-        except Exception:
-            return
-        self.feed(obj)
-
-    def feed(self, obj: Any) -> None:
-        """喂入一个已解析的流式块（dict）。"""
-        if not isinstance(obj, dict):
-            return
-        usage = obj.get("usage")
-        if isinstance(usage, dict):
-            self.usage = usage
-        choices = obj.get("choices")
-        if not isinstance(choices, list):
-            return
-        for choice in choices:
-            if not isinstance(choice, dict):
-                continue
-            if choice.get("finish_reason"):
-                self.finish_reason = choice["finish_reason"]
-            delta = choice.get("delta")
-            if not isinstance(delta, dict):
-                # 兼容：少数网关在流式块里直接给 message 而非 delta
-                delta = choice.get("message") if isinstance(choice.get("message"), dict) else None
-            if not delta:
-                continue
-            content = delta.get("content")
-            if isinstance(content, str) and content:
-                self.content_parts.append(content)
-            reasoning = delta.get("reasoning_content") or delta.get("reasoning")
-            if isinstance(reasoning, str) and reasoning:
-                self.reasoning_parts.append(reasoning)
-            tool_calls = delta.get("tool_calls")
-            if isinstance(tool_calls, list):
-                for tc in tool_calls:
-                    self._feed_tool_call(tc)
-
-    def _feed_tool_call(self, tc: Any) -> None:
-        if not isinstance(tc, dict):
-            return
-        try:
-            idx = int(tc.get("index", 0))
-        except (TypeError, ValueError):
-            idx = 0
-        slot = self.tool_calls.setdefault(
-            idx, {"id": None, "type": None,
-                  "function": {"name": None, "arguments": ""}})
-        if tc.get("id") and not slot["id"]:
-            slot["id"] = str(tc["id"])
-        if tc.get("type") and not slot["type"]:
-            slot["type"] = str(tc["type"])
-        fn = tc.get("function")
-        if not isinstance(fn, dict):
-            return
-        name = fn.get("name")
-        if isinstance(name, str) and name and not slot["function"]["name"]:
-            slot["function"]["name"] = name
-        args = fn.get("arguments")
-        if isinstance(args, str):
-            slot["function"]["arguments"] += args
-        elif isinstance(args, dict):
-            # 容错：少数网关在流式块里直接给对象
-            slot["function"]["arguments"] += json.dumps(args, ensure_ascii=False)
-
-    # -- 输出 --
-
-    def is_empty(self) -> bool:
-        """是否什么都没累积到（用于判断「整段文本其实不是 SSE」）。"""
-        return not (self.content_parts or self.tool_calls
-                    or self.finish_reason or self.usage)
-
-    def to_response(self) -> Dict[str, Any]:
-        message: Dict[str, Any] = {
-            "role": "assistant",
-            "content": "".join(self.content_parts),
-        }
-        if self.reasoning_parts:
-            message["reasoning_content"] = "".join(self.reasoning_parts)
-        if self.tool_calls:
-            calls: List[Dict[str, Any]] = []
-            for idx in sorted(self.tool_calls):
-                slot = self.tool_calls[idx]
-                fn = slot.get("function") or {}
-                calls.append({
-                    "id": slot.get("id") or f"call_stream_{idx}_{int(time.time() * 1000)}",
-                    "type": slot.get("type") or "function",
-                    "function": {
-                        "name": fn.get("name") or "",
-                        "arguments": fn.get("arguments") or "{}",
-                    },
-                })
-            message["tool_calls"] = calls
-        finish_reason = self.finish_reason
-        if not finish_reason:
-            finish_reason = "tool_calls" if self.tool_calls else "stop"
-        resp: Dict[str, Any] = {"choices": [{
-            "index": 0,
-            "message": message,
-            "finish_reason": finish_reason,
-        }]}
-        if self.usage is not None:
-            resp["usage"] = self.usage
-        return resp
-
-
-def _parse_sse_text(raw_text: str) -> Optional[Dict[str, Any]]:
-    """把整段 SSE 文本（被代理缓冲/未标 Content-Type 的回包）重建为响应 dict。
-
-    非 SSE（不含 ``data:`` 行或什么都没解析出）返回 ``None``，由调用方走原异常路径。
-    """
-    if "data:" not in raw_text:
-        return None
-    acc = _StreamAccumulator()
-    for line in raw_text.splitlines():
-        acc.feed_line(line)
-    if acc.is_empty():
-        return None
-    return acc.to_response()
+    s = str(text or "")
+    if "<think" not in s.lower() and "</think" not in s.lower():
+        return s
+    new = _THINK_TAG_RE.sub("", _THINK_BLOCK_RE.sub("", s))
+    if new != s:
+        new = re.sub(r"\n{3,}", "\n\n", new)
+    return new
 
 
 class AgentRunner:
@@ -287,6 +144,9 @@ class AgentRunner:
         self.config = config
         self.workspace_root = workspace_root
         self.max_steps = max_steps
+        self.runtime = RunRuntime(
+            limits=RunLimits.from_config(config, fallback_steps=max_steps)
+        )
         self.stream_callback = stream_callback
         self.step_callback = step_callback
         self.live_callback = live_callback
@@ -350,6 +210,17 @@ class AgentRunner:
         self._history_summary: Optional[str] = None  # 最近一次压缩摘要（resume 重建用）
         self._closed = False
 
+        # [K6] 考研统一上下文（科目/数学编码/目标校/专业/初试日）：构造一次；
+        # run() 开头按最新配置重建（学员中途切换科目/院校即时生效）。
+        self.kaoyan_ctx = KaoyanContext.from_config(
+            self.config,
+            workspace_root=self.sandbox.workspace_root,
+            session_id=self._session_id,
+        )
+        # [K8] 最近一次 LLM 失败的分流提示（"overflow" / "auth" / None）——
+        # 由 _call_llm 的失败路径设置、成功路径清空；run 主循环据此分流。
+        self._last_llm_error_hint: Optional[str] = None
+
     @staticmethod
     def _resolve_timeout(explicit, config) -> float:
         """解析请求超时秒数：显式参数 > 配置项 > 默认 120；非法值一律回落默认。"""
@@ -383,6 +254,8 @@ class AgentRunner:
     def set_subject(self, subject: str):
         self.config["active_subject"] = subject
         self.context_engine.set_subject(subject)
+        # [K6] 同步统一上下文（math_key 按新科目归一：非数学科目置 None）
+        self.kaoyan_ctx = self.kaoyan_ctx.with_subject(subject)
 
     # ── [B3a] 会话持久化辅助 ─────────────────────────────────────────────
 
@@ -492,14 +365,28 @@ class AgentRunner:
                 pass
 
     def run(self, user_input: str, interactive: bool = True) -> str:
-        """运行完整的 Agent Loop 交互循环"""
-        # 把当前数学科目编码注入 ctx，便于 hooks.py 的考纲红线区分 math1/2/3/396
-        study_plan = self.config.get("study_plan") or {}
-        ctx = {
-            "active_subject": self.config.get("active_subject", "math"),
-            "math_key": study_plan.get("math_key", "math2") if self.config.get("active_subject") == "math" else None,
-            "user_input": user_input,
-        }
+        """运行完整的 Agent Loop 交互循环。"""
+        self.runtime.start(user_input, session_id=self._session_id or "")
+        try:
+            self.runtime.transition(RunState.PROMPT)
+        except ValueError:
+            pass
+        runtime_budget_exhausted = False
+        # [K6] 每轮按最新配置重建统一上下文（热切换生效），导出 hooks 消费的
+        # ctx：active_subject/math_key 供考纲红线区分 math1/2/3/396，
+        # target_school 供 school_scope_guard 判定院校范围。
+        self.kaoyan_ctx = KaoyanContext.from_config(
+            self.config,
+            workspace_root=self.sandbox.workspace_root,
+            session_id=self._session_id,
+        )
+        # [K9] 配置热切换时同步上下文引擎；否则 hooks 已切到新科目，
+        # 但系统提示仍会继续挂载上一次运行的学科协议与状态文件。
+        try:
+            self.context_engine.set_subject(self.kaoyan_ctx.active_subject or "math")
+        except Exception:
+            pass
+        ctx = self.kaoyan_ctx.hook_ctx(user_input)
         # [B3b] resume 恢复必须先于 SessionStart 判定：恢复成功的会话在源文件里
         # 已经触发过 SessionStart 钩子，本次不得重复触发（`_session_started`
         # 会被置 True）。普通新建会话（session_id 为 None）零开销直接返回。
@@ -514,6 +401,7 @@ class AgentRunner:
         if not api_key:
             err_msg = "[!] 错误: 未配置大模型 API Key！请在终端输入 /config 进行配置。"
             print(f"\033[91m{err_msg}\033[0m")
+            self.runtime.fail("missing_api_key")
             return err_msg
 
         # [B3a] 有效会话开始：惰性创建日志并记录 session_start
@@ -526,8 +414,8 @@ class AgentRunner:
                 "user_input": user_input[:500],
             })
 
-        # 1. 组装对话上下文
-        sys_prompt = self.context_engine.build_system_prompt()
+        # 1. 组装对话上下文（[K6] 目标校等统一走 kaoyan_ctx，与 hook 同源）
+        sys_prompt = self.context_engine.build_system_prompt(kaoyan_ctx=self.kaoyan_ctx)
         
         # 构建当前请求的消息列表
         active_messages: List[Dict[str, Any]] = [{"role": "system", "content": sys_prompt}]
@@ -555,6 +443,14 @@ class AgentRunner:
         # [W11 拦截引导升级] 同类拦截连续计数（回合级作用域：GUI 每条消息新建
         # runner、CLI 会话级复用 runner，都应以「一次 run」为计数窗口）。
         _block_streaks = {"safety": 0, "search": 0}
+        # [K7-U3] 计数与文案生成已迁入 hooks.block_streak_guard（PostToolUse,
+        # priority 60）：状态与决策通道经 ctx 传递；决策由 loop 原位消费
+        # （tool 消息入列之后），消息顺序与事件顺序与抽取前逐字一致。
+        ctx["block_streaks"] = _block_streaks
+        ctx["block_streak_decisions"] = []
+        ctx["block_escalate_threshold"] = self._BLOCK_ESCALATE_THRESHOLD
+        # [K8] Doom-loop 熔断器（run 级作用域；每轮 run 重置计数）。
+        self._doom_loop = DoomLoopBreaker()
         # [收尾答案] 模型若每一步都在调工具，循环会因步数耗尽而退出、final_answer
         # 保持空串（评测实测 50/50 题如此）。用两个标记支撑收尾恢复：
         #   last_assistant_text —— 最后一条非空 assistant 文本（兜底回退用）；
@@ -563,6 +459,10 @@ class AgentRunner:
         #   文本；两者皆无才返回空串，让 GUI/REPL 走各自的诊断提示。
         last_assistant_text = ""
         api_failed = False
+        # [K8 错误分类分流] auth 失败（401/403，key 无效重试必败）→ 跳过收尾链；
+        # overflow（400/413 上下文超长）→ 强制压缩后重试一次（恰一次）。
+        auth_failed = False
+        overflow_retried = False
 
         # [W8-C 产物落盘闸门] 评测实测（RES-002）：prompt 已硬性要求「必须用 write_file
         # 实际写入 output/report.json」，模型仍可能零 write_file 调用、收尾时**幻觉声称**
@@ -577,19 +477,62 @@ class AgentRunner:
 
         while True:      # [W8-C] 闸门重入：产物缺失时最多再进 2 次主循环（每次 +6 步）
             while step < step_budget:
+                try:
+                    self.runtime.step()
+                except RunBudgetExceeded:
+                    runtime_budget_exhausted = True
+                    final_answer = "本轮已达到 Agent 运行预算，已停止继续调用模型。"
+                    break
                 step += 1
+                try:
+                    self.runtime.transition(RunState.MODEL)
+                except ValueError:
+                    pass
                 if self.step_callback and step == 1:
                     self.step_callback("⏳ [私教审阅中] 正在分析题干要求与教学规划...")
-            
+
+                # [K7-U2] 每轮迭代开始扩展点（无注册 = 恒等；hook 可返回改写
+                # 后的 messages，返回 None 保持不变）。
+                active_messages = self.hooks.trigger_prepare_next_turn(active_messages, ctx)
+
                 # 向 LLM 请求（带 tools 参数）
+                # [K7-U2] 请求前扩展点（紧邻 _call_llm；无注册 = 恒等）。
+                active_messages = self.hooks.trigger_prepare_request(active_messages, ctx)
                 response_data = self._call_llm(active_messages)
                 if not response_data:
+                    # [K8 错误分类分流] overflow（400/413 上下文超长）→ 强制
+                    # 压缩后重试一次；auth（401/403）→ 标记跳过收尾链；其余
+                    # 维持现状（W7 的 api_failed 收尾尝试不变）。
+                    hint = getattr(self, "_last_llm_error_hint", None)
+                    if hint == "overflow" and not overflow_retried:
+                        overflow_retried = True
+                        before_compact = list(active_messages)
+                        active_messages = self.context_engine.compact_context(
+                            active_messages, hook_manager=self.hooks, force=True)
+                        self._log_compact_if_happened(before_compact, active_messages)
+                        if self.step_callback:
+                            self.step_callback(
+                                "🗜️ [上下文超限] 已强制压缩历史消息并重试本轮请求")
+                        continue
                     api_failed = True
+                    if hint == "auth":
+                        auth_failed = True
+                    # [K7-U2] 迭代末扩展点（空响应出口）。
+                    self.hooks.trigger_finish_turn(active_messages, ctx)
+                    break
+
+                try:
+                    self.runtime.record_usage(response_data.get("usage"))
+                except RunBudgetExceeded:
+                    runtime_budget_exhausted = True
+                    final_answer = "本轮已达到 Agent Token 预算，已停止继续调用模型。"
                     break
 
                 choice = response_data.get("choices", [{}])[0]
                 message = choice.get("message", {})
-                content = message.get("content") or ""
+                # [P2 修复·思维链标签泄漏] 统一出口清洗：content 会流向
+                # print / 对话历史 / last_assistant_text / final_answer 四处。
+                content = _strip_think_tags(message.get("content") or "")
                 tool_calls = message.get("tool_calls") or []
                 reasoning = message.get("reasoning_content") or message.get("reasoning")
                 if reasoning and self.step_callback:
@@ -620,6 +563,16 @@ class AgentRunner:
                         tc_id = tc.get("id", f"call_{int(time.time()*1000)}")
                         fn_info = tc.get("function", {})
                         fn_name = fn_info.get("name", "")
+                        try:
+                            self.runtime.transition(RunState.TOOL)
+                            self.runtime.tool_call(fn_name)
+                        except (RunBudgetExceeded, ValueError):
+                            exec_result = "RuntimeStopped: tool-call budget exhausted"
+                            active_messages.append({
+                                "role": "tool", "tool_call_id": tc_id,
+                                "name": fn_name, "content": exec_result,
+                            })
+                            continue
                         fn_args_raw = fn_info.get("arguments", "{}")
 
                         if isinstance(fn_args_raw, str):
@@ -646,6 +599,7 @@ class AgentRunner:
 
                         # 触发 PreToolUse 钩子 (沙箱与考纲红线硬拦截)
                         allow, hook_reason, mod_args = self.hooks.trigger_pre_tool_use(fn_name, fn_args, ctx)
+                        fused = False
                         if not allow:
                             if not self.quiet:
                                 print(f"   \033[91m↳ [考纲红线拦截]: {hook_reason}\033[0m")
@@ -653,14 +607,28 @@ class AgentRunner:
                                 self.step_callback(f"   ↳ [考纲红线拦截]: {hook_reason}")
                             exec_result = f"HookBlocked: {hook_reason}"
                         else:
-                            # 执行工具
-                            exec_result = self.tool_registry.execute_tool(fn_name, mod_args, interactive=interactive)
-                            # 触发 PostToolUse 钩子 (自检与联动)
-                            exec_result = self.hooks.trigger_post_tool_use(fn_name, mod_args, exec_result, ctx)
+                            # [K8] Doom-loop 熔断：同签名（工具名+参数）连续 ≥3 次
+                            # → 不再执行，合成 tool 结果提示改道（事件 kind=
+                            # doom_loop_fused）。hook 拦截的调用不计数（只观察
+                            # 真正要执行的调用，避免与 W11 升级计数相互干扰）。
+                            fused, streak = self._doom_loop.observe(fn_name, mod_args)
+                            if fused:
+                                exec_result = self._doom_loop.fused_result(fn_name, streak)
+                                if self.step_callback:
+                                    self.step_callback(
+                                        f"   ↳ [死循环熔断] {fn_name} 连续 {streak} "
+                                        f"次同签名调用，已跳过执行")
+                            else:
+                                # 执行工具（call_id 供输出超预算落盘命名）
+                                exec_result = self.tool_registry.execute_tool(
+                                    fn_name, mod_args, interactive=interactive, call_id=tc_id)
+                                # 触发 PostToolUse 钩子 (自检与联动)
+                                exec_result = self.hooks.trigger_post_tool_use(fn_name, mod_args, exec_result, ctx)
 
                         # 简短结果提示
                         res_preview = str(exec_result)[:80].replace("\n", " ")
-                        is_err = "Error" in exec_result or "PermissionDenied" in exec_result or "HookBlocked" in exec_result
+                        is_err = ("Error" in exec_result or "PermissionDenied" in exec_result
+                                  or "HookBlocked" in exec_result or "DoomLoopFused" in exec_result)
                         if not self.quiet:
                             if is_err:
                                 print(f"   \033[93m↳ 结果: {res_preview}...\033[0m")
@@ -677,6 +645,10 @@ class AgentRunner:
                             "content": exec_result
                         }
                         active_messages.append(tool_msg)
+                        try:
+                            self.runtime.transition(RunState.OBSERVE)
+                        except ValueError:
+                            pass
 
                         # [W10 检索行为引导] 搜索引擎直抓被拦 → 在对话流内追加明确的
                         # 用户消息，把模型拉回 web_search。实测：系统提示级引导 + 工具
@@ -690,74 +662,41 @@ class AgentRunner:
                         # 合并脚本（~3 分钟）直至任务超时——单条重复文案对 flash 级模型
                         # 惯性无效时，需要更强的信号。成功执行同类工具即重置计数
                         # （「连续」语义，而非历史累计）。
-                        block_kind = None
-                        if fn_name == "fetch_url" and "已拦截搜索引擎直抓" in str(exec_result):
-                            block_kind = "search"
-                        elif fn_name == "run_command" and (
-                                "安全拦截：" in str(exec_result)
-                                or "PermissionDenied:" in str(exec_result)):
-                            block_kind = "safety"
-
-                        if block_kind:
-                            _block_streaks[block_kind] += 1
-                            streak = _block_streaks[block_kind]
-                            escalated = streak >= self._BLOCK_ESCALATE_THRESHOLD
-                            if block_kind == "search":
-                                if escalated:
-                                    guide = (f"（系统提示）你已连续 {streak} 次尝试直抓搜索"
-                                             f"引擎且均被拦截。此路径在本环境已被彻底禁用"
-                                             f"——更换搜索引擎、猜测站内 URL、编写脚本抓取"
-                                             f"都不会成功。唯一有效的检索方式是 web_search"
-                                             f" 工具，请立即调用 web_search"
-                                             f"(query=\"你要搜索的关键词\")，"
-                                             f"不要再用 fetch_url 打开任何搜索引擎地址。")
-                                    nudge_kind = "search_guard_escalation"
-                                else:
-                                    guide = ("（系统提示）搜索引擎直抓已被拦截。请立即调用 "
-                                             "web_search 工具完成检索"
-                                             "（如 web_search(query=\"你要搜索的关键词\")），"
-                                             "不要再尝试其他搜索引擎，也不要猜测站内 URL 路径。")
-                                    nudge_kind = "search_guard_nudge"
+                        # [K7-U3] 计数与文案生成已原位抽取到 hooks.block_streak_guard
+                        # （PostToolUse, priority 60）；本处原位消费其决策（追加消息 +
+                        # 写事件），位置与抽取前一致 → 消息/事件顺序逐字不变。
+                        _decisions = ctx.get("block_streak_decisions")
+                        if _decisions:
+                            for guide, nudge_kind in _decisions:
                                 active_messages.append({"role": "user", "content": guide})
                                 self._append_event(EVENT_USER, {"content": guide,
                                                                 "kind": nudge_kind})
-                            elif escalated:
-                                # safety 类 1-2 次不注入（拦截文案本身已含替代路径提示，
-                                # 保持既有行为）；达到阈值才注入「停止试探」警告。
-                                guide = (f"（系统提示）你已连续 {streak} 次触发命令安全拦截。"
-                                         f"本环境的命令执行已按白名单严格限制——更换命令、"
-                                         f"编写脚本、调整参数都会同样被拒，继续尝试只会"
-                                         f"浪费步数并可能导致任务超时。请立即停止命令试探，"
-                                         f"改用内置工具完成任务：读文件 read_file"
-                                         f"（PDF 自动提取文本）、搜索 grep / search_files、"
-                                         f"写产物 write_file / edit_file、真题抽题"
-                                         f"read_exam_paper。")
-                                active_messages.append({"role": "user", "content": guide})
-                                self._append_event(EVENT_USER, {"content": guide,
-                                                                "kind": "safety_guard_escalation"})
-                        else:
-                            # 成功执行同类工具 → 重置该类连续计数（「连续」语义）。
-                            if fn_name == "fetch_url":
-                                _block_streaks["search"] = 0
-                            elif fn_name == "run_command":
-                                _block_streaks["safety"] = 0
+                            _decisions.clear()
 
                         # [B3a] 记 tool_result 事件（parent 串到对应 tool_call）。
                         # 超长结果按 TOOL_RESULT_MAX_CHARS 截断存储并在 payload 标注；
                         # resume 重建不依赖 tool 事件，故截断不破坏 rebuild 语义。
+                        # [K8] 熔断调用在 payload 标注 kind=doom_loop_fused。
                         result_text = str(exec_result)
-                        self._append_event(EVENT_TOOL_RESULT, {
+                        _result_payload = {
                             "tool_call_id": tc_id,
                             "name": fn_name,
                             "content": result_text[:TOOL_RESULT_MAX_CHARS],
                             "truncated": len(result_text) > TOOL_RESULT_MAX_CHARS,
                             "original_chars": len(result_text),
-                        }, parent=call_event_id)
+                        }
+                        if fused:
+                            _result_payload["kind"] = "doom_loop_fused"
+                        self._append_event(EVENT_TOOL_RESULT, _result_payload,
+                                           parent=call_event_id)
 
                     # 工具回包可能包含大文件或多轮结果，在循环内动态防爆压缩
                     before_compact = list(active_messages)
                     active_messages = self.context_engine.compact_context(active_messages, hook_manager=self.hooks)
                     self._log_compact_if_happened(before_compact, active_messages)
+
+                    # [K7-U2] 迭代末扩展点（工具往返出口）。
+                    self.hooks.trigger_finish_turn(active_messages, ctx)
 
                     # 继续下一轮循环，让 LLM 拿到工具结果进行最终综合分析
                     continue
@@ -766,15 +705,22 @@ class AgentRunner:
                 final_answer = content
                 # 打字机流式输出给学员
                 self._display_final_answer(final_answer)
+                # [K7-U2] 迭代末扩展点（最终答案出口）。
+                self.hooks.trigger_finish_turn(active_messages, ctx)
                 break
 
             # 3.5 [收尾答案] 步数耗尽 / 模型空回复 → 再要一次「禁用工具的最终答复」。
             # [W7 收尾强化] API 硬失败时**不再跳过收尾**：网络可能只是瞬断，先试
             # 一次低成本的极简收尾（短消息、快请求），失败再试全量——原来直接跳过
             # 是空答案题（19/50）的主要失分路径（见 _recover_final_answer）。
-            if not final_answer:
-                final_answer = self._recover_final_answer(
-                    active_messages, last_assistant_text, api_failed=api_failed)
+            # [K8 错误分类分流] auth 硬失败（401/403，key 无效）例外：收尾请求
+            # 同样必败，跳过（省一次注定失败的请求与等待）；有兜底文本仍回退。
+            if not final_answer and not runtime_budget_exhausted:
+                if auth_failed:
+                    final_answer = last_assistant_text or ""
+                else:
+                    final_answer = self._recover_final_answer(
+                        active_messages, last_assistant_text, api_failed=api_failed)
 
             # [W8-C 产物闸门] 产物是否真的落盘？缺文件才 nudge；网络硬失败且毫无产出时
             # 跳过——那种情况再发请求只会白等超时，不可能写出文件。
@@ -790,6 +736,7 @@ class AgentRunner:
                     break
                 deliverable_nudges += 1
                 step_budget = step + self._DELIVERABLE_NUDGE_STEPS
+                self.runtime.extend_step_budget(step_budget)
                 api_failed = False
                 final_answer = ""
                 nudge_text = self._deliverable_nudge_text(missing)
@@ -807,7 +754,9 @@ class AgentRunner:
 
         # [W10 JSON 交付自检] 疑似 JSON 答案但语法非法（内容完整、括号/引号/
         # 键名错位）→ 一次性语法修复，只修语法不改内容；失败保留原答案。
-        final_answer = self._repair_json_answer(final_answer, active_messages)
+        # [K8] auth 硬失败（401/403）跳过：修复请求同样必败，不烧注定失败的调用。
+        if not auth_failed:
+            final_answer = self._repair_json_answer(final_answer, active_messages)
 
         # [B3a] 更新历史：与 session_log.rebuild_history 共用同一 compose_history
         # 语义（最近一条压缩摘要 + 最后 RESUME_TAIL_MESSAGES 条消息），
@@ -828,6 +777,14 @@ class AgentRunner:
         if self.live_callback:
             self.live_callback("user", user_input)
             self.live_callback("assistant", final_answer)
+
+        # [K7-U2/U4] run 收尾扩展点（收尾链末端；无注册 = 恒等）。收尾链本身
+        # （_recover_final_answer / _repair_json_answer / _emit_citations）不
+        # 搬迁 —— 有大量测试钉住其行为，本批仅补扩展点。
+        ctx["final_answer"] = final_answer
+        self.runtime.complete(final_answer)
+        ctx["runtime"] = self.runtime.snapshot()
+        self.hooks.trigger_finish_run(ctx)
 
         # [D0] 关闭写入批次：下一次 run 的文件写入另起一个快照批次。
         # （异常路径由下一次 begin_write_batch 兜底重置，不会串批。）
@@ -1091,9 +1048,14 @@ class AgentRunner:
             tail = list(messages)
             tail.append({"role": "user", "content": instruction})
             data = self._call_llm(tail, allow_tools=False)
+            try:
+                self.runtime.record_usage((data or {}).get("usage"))
+            except RunBudgetExceeded:
+                return ""
             choice = ((data or {}).get("choices") or [{}])[0] or {}
             message = choice.get("message") or {}
-            return message.get("content") or ""
+            # [P2 修复·思维链标签泄漏] 收尾答案同样要过清洗（最终答复出口）
+            return _strip_think_tags(message.get("content") or "")
         except Exception:
             return ""
 
@@ -1189,108 +1151,34 @@ class AgentRunner:
             return _STREAM_STALL_TIMEOUT
         return min(val, _STREAM_STALL_TIMEOUT) if val > 0 else _STREAM_STALL_TIMEOUT
 
-    def _consume_sse(self, resp) -> Dict[str, Any]:
-        """[W8] 逐块读取 SSE 响应体并重建响应 dict。
+    #: [K8] overflow 分流的 body 特征词（HTTP 400/413 响应体命中即判定为
+    #: 「上下文超长」——各家网关措辞不一，取低误报的通用短语）。
+    _OVERFLOW_BODY_HINTS = (
+        "context length", "context_length", "maximum context",
+        "context window", "too long", "reduce the length",
+        "exceeds the maximum", "max_tokens",
+    )
 
-        读循环里任何网络异常（RemoteDisconnected / 读超时 / IncompleteRead）都会
-        向上抛出 → 被 ``_call_llm`` 的既有网络异常分支捕获并重试；已累积的半截
-        内容一律丢弃，绝不把残缺流当成功回包（不伪造）。
+    @classmethod
+    def _classify_error_hint(cls, status: Any, err_text: str = "") -> Optional[str]:
+        """[K8] 错误分流提示：``"overflow"`` / ``"auth"`` / None。
+
+        独立于 llm_call 事件的 error_kind 遥测（遥测值逐字不变）；仅用于
+        run 主循环的分流决策：
+          - auth（401/403）：key 无效，重试必败 → 跳过收尾链；
+          - overflow（400/413 且 body 含上下文长度特征）：强制压缩重试一次。
         """
-        acc = _StreamAccumulator()
-        buf = b""
-        total = 0
-        while True:
-            piece = resp.read(_SSE_READ_CHUNK)
-            if not piece:
-                break
-            total += len(piece)
-            if total > MAX_HTTP_RESPONSE_BYTES:
-                raise _ResponseTooLargeError()
-            buf += piece
-            while b"\n" in buf:
-                line, buf = buf.split(b"\n", 1)
-                acc.feed_line(line)
-        if buf:
-            acc.feed_line(buf)
-        if acc.is_empty():
-            # 空流 / 全是无法解析的噪声 → 如实报错走重试，绝不伪造成「模型空回复」。
-            raise ValueError("上游流式回包为空或无法解析（未收到任何有效 data 块）")
-        return acc.to_response()
-
-    def _parse_llm_response(self, resp, url: str) -> Dict[str, Any]:
-        """[W8] 解析一次 chat/completions 回包（流式 SSE 优先，JSON 回退）。
-
-        * ``Content-Type: text/event-stream``（且未压缩）→ 增量解析 SSE；
-        * 其余一律按**原非流式方式**整体读取：解压 → HTML 检查 → ``json.loads``；
-          若 JSON 解析失败但正文含 ``data:`` 行，再尝试按被代理缓冲的 SSE 文本
-          重建（网关漏标 Content-Type 时的容错）。
-        """
-        headers_obj = getattr(resp, "headers", None)
-        ctype = ""
-        enc = ""
-        if headers_obj is not None and hasattr(headers_obj, "get"):
-            try:
-                ctype = str(headers_obj.get("Content-Type", "") or "").lower()
-            except Exception:
-                ctype = ""
-            try:
-                enc = str(headers_obj.get("Content-Encoding", "") or "").lower()
-            except Exception:
-                enc = ""
-        # 压缩过的流无法边收边解压 → 只能走整体读取（见下方注释）。
-        compressed = enc.strip() not in ("", "identity")
-        if "text/event-stream" in ctype and not compressed:
-            return self._consume_sse(resp)
-        # [P2 修复] 读取与解压都加上体积上限（解压炸弹防护）。
-        # [W8 实测] HTTPResponse.read(n) 对 Content-Length / chunked 两种流式回包
-        # 都是「攒满 n 字节或 EOF 才返回」（本机流式服务端验证），因此这里单次
-        # 读取即可拿到完整回包；增量解析只走上面的 event-stream 分支。
-        raw_bytes = resp.read(MAX_HTTP_RESPONSE_BYTES)
-        raw_bytes, _truncated = decompress_limited(raw_bytes, enc)
-        if _truncated:
-            raise _ResponseTooLargeError()
-        raw_text = raw_bytes.decode("utf-8", errors="ignore").strip()
-        if raw_text.startswith("<!doctype html") or raw_text.startswith("<html"):
-            raise ValueError(f"服务端返回了网页 HTML 而非 API JSON 数据 (请求地址: {url})，请检查 base_url 配置")
         try:
-            data = json.loads(raw_text)
-        except json.JSONDecodeError:
-            data = _parse_sse_text(raw_text)
-            if data is None:
-                raise
-        if not isinstance(data, dict):
-            raise ValueError("上游返回了非对象 JSON，无法作为 chat/completions 回包解析")
-        return data
-
-    def _post_chat(self, url: str, headers: Dict[str, str],
-                   payload: Dict[str, Any], timeout: float,
-                   on_open: Optional[Callable[[], None]] = None) -> Dict[str, Any]:
-        """[W8] 发一次 chat/completions 请求并解析回包。
-
-        ``stream_options``（``include_usage``）属尽力而为：网关若因此报 400，
-        **摘掉该字段立即重发一次**（不消耗网络重试次数、不阻断整个调用）。
-        其余异常原样抛出，由调用方的既有 except 链分类处理。
-        """
-        for round_no in (0, 1):
-            data_bytes = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
-            try:
-                with safe_urlopen(req, timeout=timeout) as resp:
-                    if on_open:
-                        on_open()
-                    return self._parse_llm_response(resp, url)
-            except urllib.error.HTTPError as e:
-                if round_no == 0 and e.code == 400 and "stream_options" in payload:
-                    try:
-                        e.read(MAX_HTTP_RESPONSE_BYTES)
-                    except Exception:
-                        pass
-                    # 就地摘除：后续（重试）attempt 不再重复踩同一个 400
-                    payload.pop("stream_options", None)
-                    continue
-                raise
-        # 理论不可达：round 0 要么 return、要么 continue、要么 raise。
-        raise RuntimeError("stream_options 降级重试未能收敛")  # pragma: no cover
+            code = int(status)
+        except (TypeError, ValueError):
+            return None
+        if code in (401, 403):
+            return "auth"
+        if code in (400, 413):
+            body = str(err_text or "").lower()
+            if any(t in body for t in cls._OVERFLOW_BODY_HINTS):
+                return "overflow"
+        return None
 
     def _call_llm(self, messages: List[Dict[str, Any]],
                   allow_tools: bool = True,
@@ -1298,16 +1186,22 @@ class AgentRunner:
         """调用兼容 OpenAI tools 规范的模型 API。
 
         [W8] 默认走**流式**（``stream: true``）以绕开网关 ~60s 硬超时；回包统一
-        重建成与非流式同形的 dict（见 :class:`_StreamAccumulator`）。
+        重建成与非流式同形的 dict（见 ``llm_client._StreamAccumulator``）。
 
         ``allow_tools=False`` 时不携带 ``tools`` / ``tool_choice`` 字段 ——
         [收尾答案] 步数耗尽后的收尾请求专用：明确要求模型直接作答、不再规划
         新的工具调用（见 :meth:`_recover_final_answer`）。
 
         ``tools_subset`` 非空时只携带清单内工具的 schema（收尾兜底场景用）。
+
+        [K4] 发送 / 分类重试 / SSE 解析已收敛进 ``llm_client.request_chat``
+        （重试与退避公式逐字保持：max_retries=2，429/5xx 与网络类各自的
+        退避+抖动，Retry-After 优先）。本方法只保留：payload 组装、
+        spinner/on_open 观感、error_kind 遥测（too_large / http_400_downgrade /
+        http_{code} / network / invalid_response / exception 逐字不变）与
+        「失败返回 None」契约。
         """
         raw_base_url = self.config.get("base_url", "https://api.deepseek.com/v1")
-        url = normalize_openai_url(raw_base_url, "chat/completions")
         api_key = self.config.get("api_key", "").strip()
         model = self.config.get("model", "deepseek-chat")
 
@@ -1324,7 +1218,11 @@ class AgentRunner:
             _prompt_chars = -1
 
         def _emit_llm_call(ok: bool, error_kind: Optional[str] = None,
-                           usage: Any = None, attempts: int = 1) -> None:
+                           usage: Any = None, attempts: int = 1,
+                           hint: Optional[str] = None) -> None:
+            # [K8] 分流提示：成功即清空；失败由调用方显式给出（HTTP 类经
+            # _emit_http_failure 依 body 分类），未给出时置 None（不残留上次）。
+            self._last_llm_error_hint = None if ok else hint
             self._append_event(EVENT_LLM_CALL, {
                 "model": model,
                 "allow_tools": bool(allow_tools),
@@ -1339,35 +1237,31 @@ class AgentRunner:
 
         # [W8] 流式请求声明 ``Accept-Encoding: identity``：压缩流会被中间代理缓冲，
         # 且增量 SSE 无法边收边解压（实测探针以 identity 跑满 96.8s 成功）。
-        # 若上游仍压缩，_parse_llm_response 会走整体读取 + 有上限解压的回退路径。
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-            "User-Agent": "Mozilla/5.0 Kaoyan-Study-Chain-Agent/1.0",
-            "Connection": "close",
-            "Accept-Encoding": "identity"
-        }
-
+        # 若上游仍压缩，llm_client._parse_llm_response 会走整体读取 + 有上限
+        # 解压的回退路径。
         tools_list = self.tool_registry.get_openai_tools(tools_subset) if allow_tools else []
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": self.config.get("temperature", 0.3),
-            "max_tokens": self.config.get("max_tokens", 4096),
+        req = ChatRequest(
+            messages=messages,
+            model=model,
+            temperature=self.config.get("temperature", 0.3),
+            max_tokens=self.config.get("max_tokens", 4096),
             # [W8] 默认流式：绕开网关 ~60s 硬超时（非流式 60.5s 被掐断的实测根因）。
-            "stream": True,
+            stream=True,
+            tools=tools_list or None,
+            tool_choice="auto" if tools_list else None,
             # 尽力而为：网关支持时在末尾块回传真 usage；不支持则由 _post_chat 摘除重发。
-            "stream_options": {"include_usage": True},
-        }
-        if tools_list:
-            payload["tools"] = tools_list
-            payload["tool_choice"] = "auto"
-
-        _timeout = self._stream_timeout()
+            stream_options={"include_usage": True},
+            timeout=self._stream_timeout(),
+            api_key=api_key,
+            base_url=raw_base_url,
+            headers_extra={
+                "User-Agent": "Mozilla/5.0 Kaoyan-Study-Chain-Agent/1.0",
+                "Connection": "close",
+                "Accept-Encoding": "identity",
+            },
+        )
 
         import threading
-        import socket
-        import http.client
 
         stop_spinner = threading.Event()
 
@@ -1404,111 +1298,94 @@ class AgentRunner:
         # [W7b 拥塞避让] 退避 0.5/1.5s→2/6s：实测失败呈「波动性拥塞」特征
         # （10 分钟桶失败率 0-41% 起伏、同题连败 6 分钟而同期他题成功），
         # 短退避的重试仍落在同一拥塞窗口内 → 三连败；拉长退避以错过窗口。
-        max_retries = 2
-        _backoffs = (2.0, 6.0)
-        for attempt in range(max_retries + 1):
-            # 内层循环只服务一件事：stream_options 被网关 400 拒绝时摘字段重发
-            # （不消耗网络重试次数）。其余分支通过 break 落回外层 for 的下一次尝试。
-            while True:
-                try:
-                    # [B1 同类·跳转泄漏 Bearer] 经 safe_urlopen 发送：SSRF 逐跳复核 +
-                    # 跨域剥离 Authorization。UnsafeURLError 由下方通用 except 收口。
-                    # [P2 修复] 响应读取/解压都有体积上限（解压炸弹防护），
-                    # 该逻辑随 [W8] 统一收敛进 _parse_llm_response。
-                    resp_data = self._post_chat(
-                        url, headers, payload, _timeout, on_open=_on_response_open)
-                    _emit_llm_call(True, usage=resp_data.get("usage"), attempts=attempt + 1)
-                    return resp_data
-                except _ResponseTooLargeError:
-                    stop_spinner.set()
-                    spinner_thread.join(timeout=0.2)
-                    print("\n\033[91m[响应过大] 上游响应解压后超过安全体积上限，已拒绝处理。\033[0m\n")
-                    if self.step_callback:
-                        self.step_callback("❌ [响应过大] 上游响应解压后超过安全体积上限，已拒绝处理。")
-                    _emit_llm_call(False, "too_large")
-                    return None
-                except urllib.error.HTTPError as e:
-                    err_msg = e.read(MAX_HTTP_RESPONSE_BYTES).decode("utf-8", errors="ignore")
-                    err_low = err_msg.lower()
-                    # 某些端点或反代对 tools、tool_choice、schema 敏感而报 400
-                    if e.code == 400 and (
-                        "tool" in err_low
-                        or "function" in err_low
-                        or "support" in err_low
-                        or "param" in err_low
-                        or "extra" in err_low
-                        or "unknown" in err_low
-                        or "invalid" in err_low
-                    ):
-                        stop_spinner.set()
-                        spinner_thread.join(timeout=0.2)
-                        if self.step_callback:
-                            self.step_callback("⚡ [自动兼容] 检测到端点对工具调用敏感 (HTTP 400)，已平滑切换为纯文本对话模式...")
-                        _emit_llm_call(False, "http_400_downgrade")
-                        return self._call_llm_without_tools(messages)
-                    # [W7 收尾强化] 5xx / 429 属瞬时故障（网关抖动 / 限流），退避后重试
-                    # [W7b 拥塞避让] 退避 1/3s→2/6s（与网络类退避同量级），错过拥塞窗口
-                    if e.code in (429, 500, 502, 503, 504) and attempt < max_retries:
-                        time.sleep(2.0 + attempt * 4.0 + random.random() * 1.0)
-                        break       # 落回外层 for → 下一次尝试（等价于原 continue）
-                    stop_spinner.set()
-                    spinner_thread.join(timeout=0.2)
-                    print(f"\n\033[91m[API 错误 {e.code}]: {err_msg}\033[0m\n")
-                    if self.step_callback:
-                        self.step_callback(f"❌ [API 响应异常 HTTP {e.code}]: {err_msg}")
-                    _emit_llm_call(False, f"http_{e.code}", attempts=attempt + 1)
-                    return None
-                except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionResetError, http.client.RemoteDisconnected) as e:
-                    if attempt < max_retries:
-                        time.sleep(_backoffs[attempt] + random.random() * 0.5)
-                        break       # 落回外层 for → 下一次尝试（等价于原 continue）
-                    stop_spinner.set()
-                    spinner_thread.join(timeout=0.2)
-                    print(f"\n\033[91m[连接异常]: {e}\033[0m\n")
-                    _emit_llm_call(False, "network", attempts=attempt + 1)
-                    return None
-                except Exception as e:
-                    stop_spinner.set()
-                    spinner_thread.join(timeout=0.2)
-                    print(f"\n\033[91m[连接异常]: {e}\033[0m\n")
-                    _emit_llm_call(False, "invalid_response" if isinstance(e, ValueError) else "exception")
-                    return None
-        # [审查 P6] 显式返回：循环体所有路径均已 return/break 到外层，
-        # 此处理论上不可达（max_retries=2 时第三圈必在 except 分支返回）；
-        # 补显式 None 消除静态检查的隐式返回告警（RET503）。
-        return None
+        # [K4] 上述公式已随请求逻辑收敛进 ``llm_client.compute_backoff``（逐字保持）。
+        stats: Dict[str, Any] = {}
+
+        def _stop_spinner() -> None:
+            stop_spinner.set()
+            spinner_thread.join(timeout=0.2)
+
+        def _emit_http_failure(status: Any, err_msg: str) -> None:
+            print(f"\n\033[91m[API 错误 {status}]: {err_msg}\033[0m\n")
+            if self.step_callback:
+                self.step_callback(f"❌ [API 响应异常 HTTP {status}]: {err_msg}")
+            _emit_llm_call(False, f"http_{status}", attempts=stats.get("attempts", 1),
+                           hint=self._classify_error_hint(status, err_msg))
+
+        try:
+            # [B1 同类·跳转泄漏 Bearer] 经 safe_urlopen 发送：SSRF 逐跳复核 +
+            # 跨域剥离 Authorization。UnsafeURLError 由下方通用 except 收口。
+            # [P2 修复] 响应读取/解压都有体积上限（解压炸弹防护）。
+            resp_data = request_chat(
+                req,
+                max_retries=2,
+                on_open=_on_response_open,
+                stats=stats,
+                sleep_fn=time.sleep,
+                urlopen_fn=safe_urlopen,
+                decompress_fn=decompress_limited,
+            )
+            _emit_llm_call(True, usage=resp_data.get("usage"),
+                           attempts=stats.get("attempts", 1))
+            return resp_data
+        except LLMResponseTooLargeError:
+            _stop_spinner()
+            print("\n\033[91m[响应过大] 上游响应解压后超过安全体积上限，已拒绝处理。\033[0m\n")
+            if self.step_callback:
+                self.step_callback("❌ [响应过大] 上游响应解压后超过安全体积上限，已拒绝处理。")
+            _emit_llm_call(False, "too_large")
+            return None
+        except LLMRetryExhausted as e:
+            # 可重试故障重试耗尽：5xx/429 → http_{code}；网络类 → network
+            _stop_spinner()
+            if e.status is not None:
+                _emit_http_failure(e.status, e.body or str(e))
+            else:
+                print(f"\n\033[91m[连接异常]: {e.last_error or e}\033[0m\n")
+                _emit_llm_call(False, "network", attempts=stats.get("attempts", 1))
+            return None
+        except LLMDeterministicError as e:
+            # 某些端点或反代对 tools、tool_choice、schema 敏感而报 400
+            if e.kind == "tools_unsupported":
+                _stop_spinner()
+                if self.step_callback:
+                    self.step_callback("⚡ [自动兼容] 检测到端点对工具调用敏感 (HTTP 400)，已平滑切换为纯文本对话模式...")
+                _emit_llm_call(False, "http_400_downgrade")
+                return self._call_llm_without_tools(messages)
+            _stop_spinner()
+            if e.status is not None:
+                _emit_http_failure(e.status, e.body or str(e))
+            else:
+                # 空流/坏包（LLMEmptyStreamError 等）→ invalid_response（与旧
+                # ValueError 分类一致）；其余非 HTTP 确定性错误 → exception。
+                print(f"\n\033[91m[连接异常]: {e}\033[0m\n")
+                _emit_llm_call(False, "invalid_response" if isinstance(e, ValueError) else "exception")
+            return None
+        except Exception as e:
+            _stop_spinner()
+            print(f"\n\033[91m[连接异常]: {e}\033[0m\n")
+            _emit_llm_call(False, "invalid_response" if isinstance(e, ValueError) else "exception")
+            return None
 
     def _call_llm_without_tools(self, messages: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        """降级纯文本请求 (针对不支持 tools 字段或对 payload 敏感的轻量/非标模型)"""
+        """降级纯文本请求 (针对不支持 tools 字段或对 payload 敏感的轻量/非标模型)
+
+        [K4] 发送已收敛进 ``llm_client.request_chat``（``max_retries=0``，
+        与旧实现一致的单次尝试）；保留：400+system/role 的「系统指令合并进
+        首条消息」一次性重试、error_kind 遥测（http_{code} / invalid_response /
+        exception）与返回 None 契约。
+        """
         raw_base_url = self.config.get("base_url", "https://api.deepseek.com/v1")
-        url = normalize_openai_url(raw_base_url, "chat/completions")
         api_key = self.config.get("api_key", "").strip()
         model = self.config.get("model", "deepseek-chat")
-
-        # [W8] 同 _call_llm：流式请求 + identity 编码（增量 SSE 不可边收边解压）。
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-            "User-Agent": "Mozilla/5.0 Kaoyan-Study-Chain-Agent/1.0",
-            "Connection": "close",
-            "Accept-Encoding": "identity"
-        }
-
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": self.config.get("temperature", 0.3),
-            "max_tokens": self.config.get("max_tokens", 4096),
-            # [W8] 收尾链同样走流式，避免 60s 网关墙把「最后一根救命稻草」掐断。
-            "stream": True,
-            "stream_options": {"include_usage": True},
-        }
-        _timeout = self._stream_timeout()
 
         # [W1 埋点] 降级路径同样落 llm_call 事件（allow_tools=False 可辨识）。
         started = time.monotonic()
 
-        def _emit(ok: bool, error_kind: Optional[str] = None, usage: Any = None) -> None:
+        def _emit(ok: bool, error_kind: Optional[str] = None, usage: Any = None,
+                  hint: Optional[str] = None) -> None:
+            # [K8] 分流提示（与 _call_llm 同契约：成功清空、失败不残留）
+            self._last_llm_error_hint = None if ok else hint
             self._append_event(EVENT_LLM_CALL, {
                 "model": model,
                 "allow_tools": False,
@@ -1519,20 +1396,41 @@ class AgentRunner:
                 "usage": usage if isinstance(usage, dict) else None,
             })
 
-        def _send(p_data):
-            """[W8] 与 _call_llm 共用 _post_chat：流式解析 + stream_options 400 降级。"""
-            # [B1 同类] 同 _call_llm：安全通道发送（调用方通用 except 收口）。
-            # [P2 修复] 同 _call_llm：读取与解压都加上体积上限（在 _parse_llm_response 内）。
-            return self._post_chat(url, headers, p_data, _timeout)
+        def _make_req(cur_msgs: List[Dict[str, Any]]) -> ChatRequest:
+            """[W8] 同 _call_llm：流式 + identity 编码（增量 SSE 不可边收边解压）。"""
+            return ChatRequest(
+                messages=cur_msgs,
+                model=model,
+                temperature=self.config.get("temperature", 0.3),
+                max_tokens=self.config.get("max_tokens", 4096),
+                # [W8] 收尾链同样走流式，避免 60s 网关墙把「最后一根救命稻草」掐断。
+                stream=True,
+                stream_options={"include_usage": True},
+                timeout=self._stream_timeout(),
+                api_key=api_key,
+                base_url=raw_base_url,
+                headers_extra={
+                    "User-Agent": "Mozilla/5.0 Kaoyan-Study-Chain-Agent/1.0",
+                    "Connection": "close",
+                    "Accept-Encoding": "identity",
+                },
+            )
+
+        def _send(cur_msgs: List[Dict[str, Any]]) -> Dict[str, Any]:
+            """[B1 同类] 同 _call_llm：安全通道发送（调用方通用 except 收口）。
+            [P2 修复] 读取与解压都加上体积上限（在 llm_client 内）。"""
+            return request_chat(_make_req(cur_msgs), max_retries=0,
+                                sleep_fn=time.sleep, urlopen_fn=safe_urlopen,
+                                decompress_fn=decompress_limited)
 
         try:
-            result = _send(payload)
+            result = _send(messages)
             _emit(True, usage=result.get("usage") if isinstance(result, dict) else None)
             return result
-        except urllib.error.HTTPError as e2:
-            e2_err = e2.read().decode("utf-8", errors="ignore")
+        except LLMDeterministicError as e2:
+            err_text = e2.body or str(e2)
             # 若某些特定模型拒绝 system 消息，将系统提示词合并进首个 user 消息重试
-            if e2.code == 400 and ("system" in e2_err.lower() or "role" in e2_err.lower()):
+            if e2.status == 400 and ("system" in err_text.lower() or "role" in err_text.lower()):
                 new_msgs = []
                 sys_prefix = ""
                 for m in messages:
@@ -1543,16 +1441,29 @@ class AgentRunner:
                 if new_msgs and sys_prefix:
                     new_msgs[0]["content"] = sys_prefix + str(new_msgs[0].get("content", ""))
                 try:
-                    result = _send({"model": model, "messages": new_msgs,
-                                    "temperature": self.config.get("temperature", 0.3),
-                                    "stream": True,
-                                    "stream_options": {"include_usage": True}})
+                    result = _send(new_msgs)
                     _emit(True, usage=result.get("usage") if isinstance(result, dict) else None)
                     return result
                 except Exception:
                     pass
-            print(f"\n\033[91m[降级纯文本请求错误 HTTP {e2.code}]: {e2_err}\033[0m\n")
-            _emit(False, f"http_{e2.code}")
+            if e2.status is not None:
+                print(f"\n\033[91m[降级纯文本请求错误 HTTP {e2.status}]: {err_text}\033[0m\n")
+                _emit(False, f"http_{e2.status}",
+                      hint=self._classify_error_hint(e2.status, err_text))
+            else:
+                # 响应过大 / 空流等坏包（继承 ValueError）→ invalid_response，
+                # 与旧实现的降级路径错误分类保持一致。
+                print(f"\n\033[91m[纯文本对话异常]: {err_text}\033[0m\n")
+                _emit(False, "invalid_response" if isinstance(e2, ValueError) else "exception")
+            return None
+        except LLMRetryExhausted as e2:
+            if e2.status is not None:
+                print(f"\n\033[91m[降级纯文本请求错误 HTTP {e2.status}]: {e2.body}\033[0m\n")
+                _emit(False, f"http_{e2.status}",
+                      hint=self._classify_error_hint(e2.status, e2.body or ""))
+            else:
+                print(f"\n\033[91m[纯文本对话异常]: {e2.last_error or e2}\033[0m\n")
+                _emit(False, "exception")
             return None
         except Exception as exc:
             print(f"\n\033[91m[纯文本对话异常]: {exc}\033[0m\n")
@@ -1597,7 +1508,9 @@ class AgentRunner:
                 if not self.quiet:
                     sys.stdout.write(text[i:i + step])
                     sys.stdout.flush()
-                time.sleep(0.02)
+                    # [审计 2026-09-30 · 中影响] sleep 只服务终端打字机手感；
+                    # quiet（GUI）场景不再制造 1000 字 ≈ 1.7s 的人为延迟。
+                    time.sleep(0.02)
         elif not self.quiet:
             for char in text:
                 sys.stdout.write(char)

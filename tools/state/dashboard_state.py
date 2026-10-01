@@ -28,6 +28,11 @@ import logging
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Any, Dict, Optional, Tuple
 
 from .task_parser import TaskItem, parse_task_lines, pct
@@ -172,7 +177,7 @@ def load_config(workspace_root: Optional[Path] = None) -> Dict[str, Any]:
 
 
 def _default_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
+    return resolve_workspace_root(__file__)
 
 
 def _plan(cfg: Dict[str, Any]) -> Dict[str, Any]:

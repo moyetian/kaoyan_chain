@@ -20,10 +20,24 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
+
+# [F3 修复·脚本直跑导入引导] `py tools/search/cache.py` 时 sys.path[0] 是
+# tools/search/，后续 `from tools.*` 需要仓库根在 path 中。
+_HERE = Path(__file__).resolve().parent
+for _p in (str(_HERE), str(_HERE.parent), str(_HERE.parent.parent)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+# [F3 修复·相对导入] 脚本直跑时 __package__ 为空，`from .models import ...`
+# 报 "attempted relative import with no known parent package"（实测）。
+# 直跑场景显式声明包名，使相对导入解析为 tools.search.* 唯一模块身份。
+if __name__ == "__main__" and not __package__:
+    __package__ = "tools.search"
 
 from .models import SearchResult
 
@@ -31,6 +45,11 @@ try:  # 双导入路径兼容
     from tools.ky_io import guard_write
 except ImportError:  # pragma: no cover
     from ky_io import guard_write
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 
 _LOG = logging.getLogger(__name__)
 
@@ -96,7 +115,7 @@ class SearchCache:
         self.enabled = bool(enabled)
         self.max_entries = int(max_entries)
         self.ttl_map = dict(ttl_map or DEFAULT_TTL)
-        self.path = Path(path) if path else (Path(__file__).resolve().parent.parent.parent
+        self.path = Path(path) if path else (resolve_workspace_root(__file__)
                                              / ".memory" / "search_cache.json")
         self._entries: Dict[str, CacheEntry] = {}
         self.hits = 0

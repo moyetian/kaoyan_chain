@@ -695,11 +695,16 @@ def test_session_command_registered_and_safe_mode():
 def test_gui_worker_shares_session_id(tmp_path, monkeypatch):
     """同一 GUI 会话的所有消息复用同一个 session_id（不落盘、跨实例稳定）。"""
     pytest.importorskip("PySide6")
+    import types
+
     from tools.gui.workers import agent_worker as aw
 
     monkeypatch.setattr(aw, "ROOT", tmp_path)
     monkeypatch.setattr(aw.AgentWorker, "_shared_session_id", None)
-    sid1 = aw.AgentWorker._resolve_session_id()
-    sid2 = aw.AgentWorker._resolve_session_id()
+    # _resolve_session_id 已改为实例方法（用 self.workspace_root 定位会话目录，
+    # 修 exe 双根分裂）；此处以最小桩实例调用，不构造 QThread / Qt 信号。
+    stub = types.SimpleNamespace(workspace_root=tmp_path)
+    sid1 = aw.AgentWorker._resolve_session_id(stub)
+    sid2 = aw.AgentWorker._resolve_session_id(stub)
     assert sid1 and sid1 == sid2
     assert not (tmp_path / ".memory").exists(), "只生成 id，懒创建不碰磁盘"

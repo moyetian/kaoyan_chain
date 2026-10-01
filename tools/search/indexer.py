@@ -16,13 +16,36 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 from pathlib import Path
+
+# [F3 修复·脚本直跑导入引导] `py tools/search/indexer.py` 时 sys.path[0] 是
+# tools/search/，`from workspace`（在 tools/ 下）与 `from tools.workspace`
+# （需仓库根）双双失败（实测 ModuleNotFoundError）。按 init_workspace.py
+# 既有模式把 tools/search、tools、仓库根插入 path 后再导入。
+_HERE = Path(__file__).resolve().parent
+for _p in (str(_HERE), str(_HERE.parent), str(_HERE.parent.parent)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+# [F3 修复·相对导入] build_index()/rebuild_index() 内使用
+# `from .knowledge_store import ...` 相对导入；脚本直跑时 __package__ 为空，
+# 报 "attempted relative import with no known parent package"（实测）。
+# 直跑场景显式声明包名（包式导入 / `py -m tools.search.indexer` 不触发此分支），
+# 使相对导入解析为 tools.search.* 唯一模块身份，避免再复制一份顶层模块。
+if __name__ == "__main__" and not __package__:
+    __package__ = "tools.search"
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import List, Generator
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 
 
 @dataclass

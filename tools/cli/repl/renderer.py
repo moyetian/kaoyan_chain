@@ -158,14 +158,14 @@ def _token(name: str, fallback: str) -> str:
 def _styles() -> Dict[str, Style]:
     """语义色集合：主色/成功/警告/失败/说明 —— 全部来自主题 token。"""
     return {
-        "accent": Style(color=_token("acc", "#a78bfa"), bold=True),
-        "accent_plain": Style(color=_token("acc", "#a78bfa")),
+        "accent": Style(color=_token("acc", "#2dd4bf"), bold=True),
+        "accent_plain": Style(color=_token("acc", "#2dd4bf")),
         "ok": Style(color=_token("ok", "#34d399")),
         "warn": Style(color=_token("warn", "#fbbf24")),
         "bad": Style(color=_token("bad", "#f87171")),
         "muted": Style(color=_token("mut", "#94a3b8")),
         "value": Style(color=_token("fg", "#f8fafc")),
-        "title": Style(color=_token("acc", "#a78bfa"), bold=True),
+        "title": Style(color=_token("acc", "#2dd4bf"), bold=True),
     }
 
 
@@ -412,7 +412,7 @@ def _subject_style(subject: str) -> Style:
     token, fallback = {
         "math": ("chart-1", "#60a5fa"), "eng": ("chart-2", "#34d399"),
         "pol": ("chart-3", "#fbbf24"), "pro": ("chart-4", "#f472b6"),
-    }.get(subject, ("acc", "#a78bfa"))
+    }.get(subject, ("acc", "#2dd4bf"))
     return Style(color=_token(token, fallback), bold=True)
 
 
@@ -565,7 +565,7 @@ def _palette_sections(math_off: bool) -> List[Tuple[str, List[Tuple[str, str]]]]
     照着输入只会被拒），故按 ``is_math_disabled`` 动态决定是否展示数学路由。
     """
     subject_section: List[Tuple[str, str]] = [
-        ("/today", "查看四科今日必做任务清单与完成进度打钩（或直接输入 /done <词>）"),
+        ("/today", "查看今日必做任务清单与完成进度打钩（或直接输入 /done <词>）"),
     ]
     if not math_off:
         subject_section.append(
@@ -598,7 +598,7 @@ def _palette_sections(math_off: bool) -> List[Tuple[str, List[Tuple[str, str]]]]
             ("/paste", "从剪贴板直接取图批改（截图后无需保存文件，一键提交）"),
             ("/calc <式子>", "数学高精度验算（微分方程/二次型/级数/极限/微积分/矩阵）"),
             ("/dissect <句>", "英语长难句搭积木解剖（主干骨架/从句解构/考点词/润色翻译）"),
-            ("/pdf [关键词]", "全文检索四科资料库中的官方教材与历年真题"),
+            ("/pdf [关键词]", "全文检索资料库中的官方教材与历年真题"),
             ("/skills", "查看当前已装载的所有技能详细清单与状态"),
         ]),
         ("🌐 前端联动与外设协同", [
@@ -616,7 +616,7 @@ def _palette_sections(math_off: bool) -> List[Tuple[str, List[Tuple[str, str]]]]
             ("/gain", "学习增益代理指标周趋势报告（复测通过率/错因复发/计划完成率，本地落盘）"),
             ("/rollback", "快照回滚：默认回最近一次；`/rollback --list` 查看快照，--file/--checkpoint 精确回滚"),
             ("/plan", "个人专属定制化必考方案向导（时间/考纲/白名单/学情摸底/作息）"),
-            ("/status", "查看考研总战役大盘态势、倒计时与四科目标矩阵"),
+            ("/status", "查看考研总战役大盘态势、倒计时与目标矩阵"),
             ("/config", "分类多选管理菜单：配置大模型 API 与机器人 Webhook"),
             ("/clear", "清空当前会话上下文"),
             ("/exit", "退出私教终端（落盘记忆与会话钩子）"),
@@ -668,6 +668,18 @@ def print_command_palette(cfg: Optional[dict] = None) -> None:
 # ══════════════════════════════════════════════════════════════
 # 状态大盘
 # ══════════════════════════════════════════════════════════════
+
+#: [UT4 修复·CLI-4] AGENTS.md 里的「(倒计时约 N 天)」是建档当日写下的静态快照，
+#: 日期推进后与状态盘标题按当日重算的倒计时同屏矛盾（UT4 实测 79/80 并存）。
+#: 展示快照值时一律剥离该后缀 —— 倒计时以面板标题的动态口径为唯一真源。
+_STATIC_COUNTDOWN_SUFFIX_RE = re.compile(
+    r"\s*[（(]\s*倒计时约\s*-?\d+\s*天\s*[)）]\s*$")
+
+
+def _strip_static_countdown_suffix(value: str) -> str:
+    """[UT4 修复·CLI-4] 剥离 AGENTS.md 快照值尾部的静态「(倒计时约 N 天)」后缀。"""
+    return _STATIC_COUNTDOWN_SUFFIX_RE.sub("", str(value or ""))
+
 
 def print_status_summary() -> None:
     """打印考研总战役大盘态势、打卡 Streak 与周日休整关怀提示。
@@ -762,6 +774,9 @@ def print_status_summary() -> None:
                 override = overrides.get(str(entry["key"]))
                 if override:
                     entry["value"] = override
+                # [UT4 修复·CLI-4] 初试日期等快照行剥离建档静态「(倒计时约 N 天)」
+                # 后缀，与面板标题的当日动态倒计时保持单一口径。
+                entry["value"] = _strip_static_countdown_suffix(entry["value"])
             console.print(Panel(
                 _kv_grid(entries),
                 title=Text(_clean_md(title), style=st["title"]),

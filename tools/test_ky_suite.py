@@ -101,6 +101,10 @@ def run_tests():
         # 测试期间对它的追加会跨运行累积（曾积 36 条同质 stage0 残留，把评测
         # 误导成 RMSE=1.0 的红灯）。纳入快照/还原，与 .memory/*.md 同等待遇。
         ".memory/*.jsonl",
+        # [问题3 补漏] 测试组 19-19 会对监控雷达 add_watch("华科") 再 remove_watch，
+        # 写盘点在 .memory/admission_watch.json；该文件此前不在快照范围（.json 只
+        # 覆盖 exam_keys/），中间态与时间戳变化会真实落在工作区。
+        ".memory/admission_watch.json",
         ".memory/exam_keys/*.json",
         "docs/index.html",
         "docs/state_snapshot.json",

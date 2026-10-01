@@ -26,17 +26,120 @@ def _safe_href(url) -> str:
     return u if re.match(r"^https?://", u, re.I) else "#"
 
 
+# ── 社媒经验档案的身份归属判定 ──────────────────────────────────────────────
+# [修复·社媒区渲染历史残留卡片] 四位/五角色实测：看板社媒区把
+# ``.memory/experiences/*.md`` 全部文件原样渲染（最多 4 张），于是换了身份的
+# 考生会在自己看板里看到别人（甚至是「目标院校_报考专业」占位档案）的院校名，
+# 既困惑又在发布模式下明文泄漏报考意向。此前只有排序偏好（匹配的排前面），
+# 没有「属不属于当前考生」的过滤，故此处补身份过滤。
+# 占位档案（未替换的模板占位符）与不匹配当前身份的档案一律剔除，
+# 过滤后为空则回落既有空态分支。
+_PLACEHOLDER_TOKENS = ("目标院校", "报考专业", "目标专业", "通用院校", "未指定", "待填写")
+
+
+def _norm_id(s) -> str:
+    """身份串归一化：去空白与常见括号标点，避免「040200 心理学」/「040200心理学」判为不同。"""
+    return re.sub(r"[\s（）()【】\[\]〔〕·・,，、:：`'\"']", "", str(s or ""))
+
+
+def _is_placeholder(*parts) -> bool:
+    """任一身份字段仍是未替换的模板占位符（如「目标院校」「报考专业」）即为占位档案。"""
+    for p in parts:
+        s = str(p or "")
+        if not s:
+            continue
+        for tok in _PLACEHOLDER_TOKENS:
+            if tok in s:
+                return True
+    return False
+
+
+def _exp_identity(path: pathlib.Path, txt: str):
+    """从经验档案里取 ``(院校, 专业)``，优先正文「目标高校 / 学科专业」字段，回落文件名。
+
+    文件名形如「<院校>_<专业>.md」；追加写入的档案可能只有「<院校>.md」且无正文字段。
+    """
+    school = ""
+    major = ""
+    m = re.search(r"目标高校[^\n]*?`([^`\n]+)`", txt)
+    if m:
+        school = m.group(1).strip()
+    m = re.search(r"学科专业[^\n]*?`([^`\n]+)`", txt)
+    if m:
+        major = m.group(1).strip()
+    stem = path.stem
+    if "_" in stem:
+        f_school, _, f_major = stem.partition("_")
+        school = school or f_school.strip()
+        major = major or f_major.strip()
+    else:
+        school = school or stem.strip()
+    return school, major
+
+
+def _same_id(a: str, b: str) -> bool:
+    """双向包含匹配：兼容「北大 / 北京大学」「心理学 / 040200 心理学」这类简写。"""
+    if not a or not b:
+        return False
+    return a in b or b in a
+
+
+def _exp_matches_identity(path: pathlib.Path, target_school: str, target_major: str) -> bool:
+    """该经验档案是否属于当前考生身份（院校必须一致；专业已知且冲突则剔除）。"""
+    if not target_school:
+        # 未配置身份时无法判定归属，宁可不渲染，避免他人院校名串进看板
+        return False
+    if _is_placeholder(path.stem):
+        return False
+    try:
+        txt = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        txt = ""
+    f_school, f_major = _exp_identity(path, txt)
+    if _is_placeholder(f_school, f_major):
+        return False
+    if not _same_id(_norm_id(target_school), _norm_id(f_school)):
+        return False
+    nm, fm = _norm_id(target_major), _norm_id(f_major)
+    if nm and fm and not _same_id(nm, fm):
+        return False
+    return True
+
+
+def _school_watch_state(it: dict) -> str:
+    """监控院校卡片的三态判定：UPDATED / UNCHANGED / PENDING_BASELINE。
+
+    [P2 修复·基线未建立假正常] 无 updates 时旧实现一律 UNCHANGED（绿色
+    「指纹正常」）——但基线未建立（首次抓取失败 / last_hash 为空）时系统
+    根本没有可比对的指纹，绿色「正常」是假信号（三沙箱实测：TLS 抓取失败后
+    雷达仍显示绿色正常）。判定口径供本地卡片与脱敏聚合徽章共用，避免
+    「同一状态两处实现、只修一处」。
+
+    外部巡检 JSON 自带的 ``status`` 字段优先（兼容旧形状）；无 status 时
+    按 ``updates`` / ``baseline_complete`` + ``last_hash`` 推断。
+    """
+    st = it.get("status")
+    if st:
+        return str(st)
+    if it.get("updates"):
+        return "UPDATED"
+    _baseline_ok = bool(it.get("baseline_complete")) and bool(it.get("last_hash"))
+    return "UNCHANGED" if _baseline_ok else "PENDING_BASELINE"
+
+
 def build_radar_html(root_path: pathlib.Path) -> str:
     """构建【📡 招考与考纲变动雷达】全景 HTML 模块 (Sprint 7)"""
     sections = []
 
     # 获取学员当前目标院校
     target_school = ""
+    target_major = ""
     cfg_file = root_path / "ky_config.json"
     if cfg_file.exists():
         try:
             cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
             target_school = cfg.get("study_plan", {}).get("school") or cfg.get("target_school") or ""
+            target_major = cfg.get("study_plan", {}).get("major") or ""
         except Exception:
             pass
 
@@ -73,6 +176,16 @@ def build_radar_html(root_path: pathlib.Path) -> str:
     w_html.append("<section class='radar-sec'><h3><span><svg viewBox='0 0 24 24' width='16' height='16' stroke='currentColor' stroke-width='2' fill='none'><path d='M12 2v20M2 12h20M12 7a5 5 0 0 0-5 5M12 3a9 9 0 0 0-9 9'/></svg></span>目标院校简章监控雷达 (Admission Watcher)</h3>")
     if watch_items and sanitize:
         n = len(watch_items)
+        # [P2 同族修复·聚合徽章假正常] 脱敏模式（手机端发布的默认形态）下
+        # 旧实现无条件显示绿色「指纹轮询正常」；基线未建立时同样是假信号。
+        # 按与本地卡片同源的 _school_watch_state 聚合：有变动 > 基线未建立 > 正常。
+        _states = [_school_watch_state(it) for it in watch_items]
+        if "UPDATED" in _states:
+            _agg_cls, _agg_text = "radar-badge add", "发现新简章/变动"
+        elif "PENDING_BASELINE" in _states:
+            _agg_cls, _agg_text = "radar-badge mod", "基线未建立（官网抓取失败）"
+        else:
+            _agg_cls, _agg_text = "radar-badge del", "指纹轮询正常"
         w_html.append(
             "<div style='font-size:12px;color:var(--mut);margin-bottom:8px'>"
             f"已配置 <b>{n}</b> 所监控院校，系统自动轮询其研究生院公告并比对哈希指纹变动：</div>"
@@ -80,23 +193,43 @@ def build_radar_html(root_path: pathlib.Path) -> str:
         w_html.append(
             "<div class='radar-card'><div class='radar-card-h'>"
             "<span>监控中院校（已脱敏）</span>"
-            "<span class='radar-badge del'>指纹轮询正常</span></div>"
+            f"<span class='{_agg_cls}'>{_agg_text}</span></div>"
             "<div style='font-size:12px;color:var(--mut);'>院校名称、研究生院官网与简章标题仅保留在本机 "
             "<code>.memory/admission_watch.json</code>，不随公开看板发布。</div></div>"
         )
     elif watch_items:
         w_html.append("<div style='font-size:12px;color:var(--mut);margin-bottom:8px'>系统自动每隔周期轮询目标高校研究生院公告，比对哈希指纹变动：</div>")
         for it in watch_items:
-            st = it.get("status", "UNCHANGED")
+            # [问题4 同族修复·键不匹配] 落盘记录（watcher._save 写入）的字段是
+            # ``name`` / ``updates`` / ``recent_titles``；此前这里读
+            # ``school`` / ``status`` / ``alert_titles``，全部回落默认值 ——
+            # 本地完整模式下卡片长期显示「高校 · 指纹正常·未见变动」占位，
+            # 考生看不到任何有效信息（实测）。现按落盘结构取值，并保留对
+            # ``school``/``status``/``alert_titles`` 形状的兼容（外部巡检 JSON）。
+            _updates = it.get("updates") or []
+            _last_update = _updates[-1] if _updates else {}
+            # [P2 修复·基线未建立假正常] 无 updates 时旧实现一律 UNCHANGED
+            # 「指纹正常·未见变动」——但基线未建立（首次抓取失败 / last_hash
+            # 为空）时系统根本没有可比对的指纹，绿色"正常"是假信号（三沙箱
+            # 实测：TLS 抓取失败后雷达仍显示绿色正常）。现区分三态：变动 /
+            # 正常 / 基线未建立（橙色徽章如实提示）。判定与脱敏聚合徽章共用
+            # _school_watch_state，避免两处实现漂移。
+            st = _school_watch_state(it)
             is_new = st == "UPDATED"
-            badge_cls = "radar-badge add" if is_new else "radar-badge del"
-            st_text = "发现新简章/变动" if is_new else "指纹正常·未见变动"
+            is_pending = st == "PENDING_BASELINE"
+            if is_new:
+                badge_cls, st_text = "radar-badge add", "发现新简章/变动"
+            elif is_pending:
+                badge_cls, st_text = "radar-badge mod", "基线未建立（官网抓取失败）"
+            else:
+                badge_cls, st_text = "radar-badge del", "指纹正常·未见变动"
             w_html.append("<div class='radar-card'>")
             # [P2-6b 修复·显式 null] 这些字段来自外部巡检 JSON，默认值只对「缺键」
             # 生效，对显式 `"school": null` 无效 —— `html.escape(None)` 直接抛
             # AttributeError，而 build.py 调用本函数时无 try 包裹，整个看板构建失败。
             # 故一律先 `str(it.get(k) or 默认值)` 再转义。
-            w_html.append(f"<div class='radar-card-h'><span>{html.escape(str(it.get('school') or '高校'))}</span><span class='{badge_cls}'>{st_text}</span></div>")
+            _card_name = it.get('school') or it.get('name') or '高校'
+            w_html.append(f"<div class='radar-card-h'><span>{html.escape(str(_card_name))}</span><span class='{badge_cls}'>{st_text}</span></div>")
             # [P2-6 修复·属性注入] last_check / url 均来自外部巡检 JSON，必须转义；
             # url 另加协议白名单（只放行 http(s)），否则 'javascript:' 与单引号闭合可注入。
             w_html.append(
@@ -105,10 +238,17 @@ def build_radar_html(root_path: pathlib.Path) -> str:
                 f"<a href='{html.escape(_safe_href(it.get('url')), quote=True)}' target='_blank' "
                 "rel='noopener noreferrer' style='color:var(--acc);text-decoration:none;'>研究生院/招办官网 ↗</a></div>"
             )
-            if it.get("alert_titles"):
+            # 「简章线索」只认真实巡检发现的 alert_titles（updates 历史）；
+            # 基线建立初期没有 updates 时回落展示 recent_titles，但必须如实
+            # 标注为「标题样本」——它们可能只是官网导航栏目，不是新简章。
+            _real_alerts = it.get("alert_titles") or _last_update.get("alert_titles") or []
+            _sample_titles = [] if _real_alerts else (it.get("recent_titles") or [])
+            _shown_titles = _real_alerts or _sample_titles
+            if _shown_titles:
+                _titles_label = "最新简章线索" if _real_alerts else "最近页面标题样本"
                 w_html.append("<div style='font-size:12px;margin-top:6px;background:var(--surf);padding:6px 10px;border-radius:6px;'>")
-                w_html.append("<b>最新简章线索:</b><ul style='margin:4px 0 0 16px;padding:0;'>")
-                for at in (it.get("alert_titles") or [])[:3]:
+                w_html.append(f"<b>{_titles_label}:</b><ul style='margin:4px 0 0 16px;padding:0;'>")
+                for at in (_shown_titles or [])[:3]:
                     # 列表项同样可能含显式 null，先转成 str 再转义（否则同样 AttributeError）
                     w_html.append(f"<li>{html.escape(str(at or ''))}</li>")
                 w_html.append("</ul></div>")
@@ -164,6 +304,10 @@ def build_radar_html(root_path: pathlib.Path) -> str:
     if not exp_dir.exists():
         exp_dir = root_path / "docs" / "experiences"
     exp_files = sorted(list(exp_dir.glob("*.md")), key=lambda p: (0 if target_school and target_school in p.name else 1, -p.stat().st_mtime)) if exp_dir.exists() else []
+    # [修复·社媒区渲染历史残留卡片] 只保留属于当前考生身份（院校一致、专业不冲突）
+    # 且非占位模板的档案；历史身份与「目标院校_报考专业」占位卡片一律剔除，
+    # 过滤后为空则走下方既有空态分支。
+    exp_files = [p for p in exp_files if _exp_matches_identity(p, target_school, target_major)]
     # [审查修复] 脱敏模式（默认开启）：隐私目录中的院校名与本地路径不得写入公开看板
     if exp_files:
         exp_html.append("<div style='font-size:12px;color:var(--mut);margin-bottom:8px'>聚合知乎、B站、小红书实名学长学姐真实就读体验与避坑指南 (AI 置信度降噪清洗)：</div>")

@@ -16,12 +16,26 @@ import re
 import os
 import json
 from pathlib import Path
+from typing import Dict, List
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from datetime import datetime, date
 
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
     from ky_io import atomic_write_text  # noqa: E402
 except ImportError:  # pragma: no cover
     from tools.ky_io import atomic_write_text  # noqa: E402
+
+# [审计 2026-09-30 P1-7 出站收敛] 规划生成的大模型请求携带 `Authorization: Bearer
+# <key>`，此前裸 urlopen 默认跟随 3xx —— 恶意 base_url 回 302 即可收割 Key。
+# 统一走 net_guard.safe_urlopen（SSRF 校验 + 逐跳复核 + 跨主机剥离 Authorization）。
+try:
+    from net_guard import safe_urlopen  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.net_guard import safe_urlopen  # type: ignore  # noqa: E402
 
 # [根因修复·日期硬编码] 初试日期统一由 exam_calendar 提供，替代本文件内
 # `f"{year}-12-19"` 与 `plan.get('exam_date', '2026-12-19' / '2027-12-19')` 等多处硬编码
@@ -33,6 +47,55 @@ except ImportError:  # pragma: no cover
 # plan 中缺失 exam_date 时的兜底初试日：按日历推算，绝不写死年份
 _FALLBACK_EXAM_DATE = exam_calendar.resolve_exam_date({})[0].isoformat()
 
+#: 摸底分解析：只认「数字 + 分」的明确写法（「50分」「摸底40分」）。
+_BASELINE_SCORE_RE = re.compile(r"(\d+)\s*分")
+
+
+def baseline_total_label(plan, keys) -> str:
+    """把各科摸底文本汇总为矩阵表「合计」行文案（D8 修复：不再残留 [摸底总分] 占位符）。
+
+    摸底字段是自由文本（「摸底 58 分」「四级 480，摸底 58 分」「未启动」都合法）。
+    每科取**最后一个 ≤300 的「N分」数值**（摸底分通常写在句末；「四级 480 分，
+    摸底 58 分」中 480 是四级成绩、58 才是摸底分，>300 的值直接剔除）；任一科
+    找不到有效数值 → 返回「见各科摸底」。不猜测、不把定性描述折算成分数。
+    """
+    total = 0
+    for k in keys:
+        scores = [int(x) for x in _BASELINE_SCORE_RE.findall(str(plan.get(k, "") or ""))]
+        valid = [s for s in scores if s <= 300]
+        if not valid:
+            return "见各科摸底"
+        total += valid[-1]
+    return f"约 {total} 分"
+
+
+_CN_SUBJECT_NUM = {1: "一", 2: "两", 3: "三", 4: "四", 5: "五", 6: "六"}
+
+
+def subject_count_label(plan) -> str:
+    """按方案实际科目数返回「N科」中文标签（如「四科」「三科」「两科」）。
+
+    [P2-3 修复·四科文案残留] 此前总结页/进度提示硬编码「四科」，不考数学
+    （实际 3 科）或 199 管综（实际 2 科）的考生会看到与方案不符的文案。
+    口径与各处 math_disabled / is_mode_b / is_mode_c 判定一致：
+    mode_c（199 管综）= 管综+英语 2 科；mode_b（不考数学双专业课）=
+    英语+政治+专业课一+专业课二 4 科；不考数学 = 3 科；常规统考 = 4 科。
+    """
+    pro_name = str(plan.get("pro_name", ""))
+    pro2_name = str(plan.get("pro2_name", "") or "").strip()
+    is_mode_c = (plan.get("exam_mode") in ("mode_c", "mgmt_199")
+                 or plan.get("pol_disabled") or "199" in pro_name)
+    is_mode_b = (plan.get("exam_mode") in ("mode_b", "no_math_dual_pro")
+                 or bool(pro2_name))
+    math_off = (is_mode_b or is_mode_c
+                or str(plan.get("math_key", "")).lower() in {"none", "no", "不考数学"}
+                or plan.get("math_name") == "不考数学")
+    if is_mode_c:
+        n = 2
+    else:
+        n = 3 + (0 if math_off else 1) + (1 if is_mode_b else 0)
+    return f"{_CN_SUBJECT_NUM.get(n, str(n))}科"
+
 #: 工作区根。默认是「本文件上两级」（即仓库根），但允许 ``KY_WORKSPACE_ROOT``
 #: 环境变量覆盖。
 #:
@@ -42,7 +105,7 @@ _FALLBACK_EXAM_DATE = exam_calendar.resolve_exam_date({})[0].isoformat()
 #: 跑一次守卫测试就会在真实仓库留下被改写的 AGENTS.md/规划/今日任务）。
 #: 调用方（测试）把 KY_WORKSPACE_ROOT 指向自己的 tmp 工作区即可彻底隔离。
 ROOT = Path(os.environ.get("KY_WORKSPACE_ROOT")
-            or Path(__file__).resolve().parent.parent)
+            or resolve_workspace_root(__file__))
 CONFIG_FILE = ROOT / "ky_config.json"
 
 # 跨平台控制台 UTF-8 编码保护 (防止 Windows GBK 环境乱码或崩溃)
@@ -124,24 +187,23 @@ def scan_local_materials(subject_rel_path):
     """
     真实扫描本地各科目 参考资料/ 目录中的实际文件 (严防虚构不存在的书籍)
     subject_rel_path: 如 '01-数学' / '02-英语' / '03-思想政治理论' / '04-专业课'
-    返回: 文件名列表（过滤 .gitkeep, .gitignore, readme 等占位文件）
+    返回: 相对「参考资料/」的路径列表（递归含子目录；过滤 .gitkeep/readme 等占位文件）
+
+    [问题5 根因修复·子目录资料不识别] 旧实现只 iterdir() 单层：学员把资料
+    整理进子目录（如 参考资料/英语真题/2020.pdf）后扫描不到，向导与报到
+    显示「未放置资料」。现与 material_scanner.iter_material_files 同源递归。
     """
     mat_dir = ROOT / subject_rel_path / "参考资料"
-    if not mat_dir.exists():
-        return []
     valid_exts = {".pdf", ".doc", ".docx", ".epub", ".txt", ".md", ".png", ".jpg", ".jpeg"}
-    files = []
     try:
-        for p in mat_dir.iterdir():
-            if p.name.startswith(".") or p.name.lower().startswith("readme"):
-                continue
-            if p.is_file() and (p.suffix.lower() in valid_exts or not p.suffix):
-                files.append(p.name)
-            elif p.is_dir():
-                files.append(f"{p.name}/")
+        try:
+            from material_scanner import iter_material_files, relative_label
+        except ImportError:
+            from tools.skills.material_scanner import iter_material_files, relative_label
+        files = iter_material_files(mat_dir, valid_exts=valid_exts)
+        return sorted(relative_label(mat_dir, f) for f in files)
     except Exception:
-        pass
-    return sorted(files)
+        return []
 
 def calculate_countdown(target_date_str):
     """计算距离初试日期的倒计时天数
@@ -160,6 +222,47 @@ def calculate_countdown(target_date_str):
         except Exception:
             return 0
 
+
+def _days_left_now(plan) -> int:
+    """[UT4 修复·PLANNER-3] 按当日与 exam_date 实时重算倒计时（钳非负）。
+
+    plan 里的 ``days_left`` 是建档当日写入的快照，跨日引用会与动态口径矛盾
+    （UT4 西医沙箱 P1-4 实测：09-30 建档写 80，10-01 报到重写今日任务仍 80）。
+    口径与 apply_study_plan 写根 AGENTS.md 的 G2/G2-b 修复一致：exam_date 可
+    解析则按当日重算并钳非负；不可解析时回退快照值（同样钳非负）。
+    """
+    _exam = (plan or {}).get("exam_date") or _FALLBACK_EXAM_DATE
+    try:
+        return max(0, (date.fromisoformat(str(_exam)) - date.today()).days)
+    except (TypeError, ValueError):
+        try:
+            return max(0, int((plan or {}).get("days_left", 0) or 0))
+        except (TypeError, ValueError):
+            return 0
+
+
+def is_custom_math_key(math_key) -> bool:
+    """[UT4 修复·PLANNER-6] 判定数学科目是否为「院校自主命题数学」（custom）。
+
+    custom 不在 MATH_SYLLABI（math1/math2/math3/math396）也不在 MATH_NONE_KEYS
+    （none/no/不考数学）中，由 init_workspace 完整向导选项 [5] 或非交互 preset
+    写入（math_key=custom）。自命题数学没有全国统考大纲，科目显示名与白名单
+    文案必须区别于统考科目——判定收口在本函数（单一真源），与
+    syllabus_manager.apply_syllabus_selection 的 custom 分支同口径。
+    """
+    k = str(math_key or "").strip().lower()
+    if not k or k in {"none", "no", "不考数学"}:
+        return False
+    try:
+        try:
+            from syllabus_manager import MATH_SYLLABI as _math_syllabi
+        except ImportError:  # pragma: no cover - 包式导入上下文
+            from tools.syllabus_manager import MATH_SYLLABI as _math_syllabi
+        return k not in _math_syllabi
+    except Exception:  # pragma: no cover - 模块不可用时按字面量判定
+        return k == "custom"
+
+
 def _brief_books(raw, max_items: int = 2) -> str:
     """把冗长的白名单资料清单折叠成「前 N 份 … 等 M 份」，避免单行超宽。
 
@@ -177,16 +280,40 @@ def _brief_books(raw, max_items: int = 2) -> str:
     return "、".join(items[:max_items]) + f" 等 {len(items)} 份"
 
 
-def _material_phrase(raw, verb: str) -> str:
+def _pro_syllabus_ready(workspace_root=None) -> bool:
+    """专业课考试大纲是否已就绪（``ready``）。
+
+    与 :func:`syllabus_manager.pro_syllabus_state` 同源判定。探测失败时按
+    「就绪」处理，维持既有文案——避免因探测异常向考生刷出无关警告。
+    """
+    try:
+        try:
+            from syllabus_manager import pro_syllabus_state
+        except ImportError:
+            from tools.syllabus_manager import pro_syllabus_state
+        root = Path(workspace_root) if workspace_root else ROOT
+        return pro_syllabus_state(root) == "ready"
+    except Exception:
+        return True
+
+
+def _material_phrase(raw, verb: str, *, is_pro: bool = False,
+                     workspace_root=None) -> str:
     """今日任务「题源出处」短语：有真实白名单时引用，无资料时不引用白名单。
 
     [P17 修复·无资料却派白名单刷题] 白名单为空时其默认值是一句
     「暂未放置实体资料（私教严格按【…】官方考纲出题，严禁虚构书目）」的说明，
     旧实现把整句塞进「精做白名单【…】20 道核心选择题自测」，读起来自相矛盾，
     还等于让考生去刷一份不存在的资料。无资料时改为「按官方考纲{verb}」。
+
+    [问题5 修复·专业课无大纲却宣称按纲] 公共课（英/政/数）有统考大纲，
+    「按官方考纲」属实；自命题专业课的大纲是考生自填件，占位/缺失时该短语
+    即为虚假承诺，改为如实标注「待导入」。
     """
     s = re.sub(r"^\[本地资料库已就绪\]:\s*", "", str(raw or "")).strip()
     if not s or s == "不考数学" or s.startswith("暂未放置实体资料"):
+        if is_pro and not _pro_syllabus_ready(workspace_root):
+            return f"（⚠️ 专业课大纲与真题待导入）{verb}"
         return f"按官方考纲{verb}"
     return f"{verb}白名单【{_brief_books(s)}】"
 
@@ -317,13 +444,36 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
             m_desc = info.get('description') or info.get('scope') or ''
             print(f"    [{k}] {info['name']} - {m_desc}")
         print("    [none] 不考数学")
-        m_choice = input("  请选择数学科目 (math1/math2/math3/396/none) [默认: math2]: ").strip().lower() or "math2"
+        # [问题3 同族修复·无效输入静默回退] 菜单键是 MATH_SYLLABI 的键
+        # （math396，不是 "396"），旧实现把任何无法识别的输入原样存进 plan：
+        # 考生输入 "2" 以为选了数学一，实际 math_key="2" → apply_syllabus_selection
+        # 走「院校自主命题数学」占位分支，01-数学/考试大纲.md 变成自命题骨架、
+        # 科目名显示「数学」，全程零提示。现改为：无效值显式告警并回退菜单默认值，
+        # 且提示串里的有效值取源码真源（不再手写 "396" 这类与键不一致的字样）。
+        _ok_math = "/".join(list(syllabus_manager.MATH_SYLLABI) + ["none"])
+        m_choice = input(f"  请选择数学科目 ({_ok_math}) [默认: math2]: ").strip().lower() or "math2"
+        if m_choice not in syllabus_manager.MATH_SYLLABI and m_choice not in syllabus_manager.MATH_NONE_KEYS:
+            # [UT4 修复·PLANNER-5] 旧文案「如需院校自命题数学请重跑 ky plan 并选择
+            # 对应项」是死胡同：ky plan 菜单本就没有自命题项（UT4 理论物理沙箱
+            # BUG-2）。改为指向真实可行路径：init_workspace 完整向导选项 [5]，
+            # 或非交互 preset 配置（math_key=custom）。
+            print(colorize(
+                f"  [!] 无效选择 '{m_choice}'，已回退使用默认 math2（有效值：{_ok_math}）。"
+                f"如需院校自主命题数学：请运行 py tools/init_workspace.py 完整向导并选择"
+                f" [5] 院校自主命题数学，或使用非交互 preset 配置（math_key=custom）。", C.YELLOW))
+            m_choice = "math2"
 
         print("\n  --- 请选择您的英语科目方案 ---")
         for k, info in syllabus_manager.ENGLISH_SYLLABI.items():
             e_desc = info.get('features') or info.get('scope') or ''
             print(f"    [{k}] {info['name']} - {e_desc}")
-        e_choice = input("  请选择英语科目 (eng1/eng2) [默认: eng2]: ").strip().lower() or "eng2"
+        _ok_eng = "/".join(syllabus_manager.ENGLISH_SYLLABI)
+        e_choice = input(f"  请选择英语科目 ({_ok_eng}) [默认: eng2]: ").strip().lower() or "eng2"
+        if e_choice not in syllabus_manager.ENGLISH_SYLLABI:
+            print(colorize(
+                f"  [!] 无效选择 '{e_choice}'，已回退使用默认 eng2（有效值：{_ok_eng}）。",
+                C.YELLOW))
+            e_choice = "eng2"
 
         print("\n  --- 请选择您的专业课方案 ---")
         print("    [1] 全国统考 408 计算机学科专业基础")
@@ -360,7 +510,16 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
     plan["eng_key"] = e_choice
     plan["pro_type"] = pro_type
     plan["pro_name"] = pro_name
-    m_title = syllabus_manager.MATH_SYLLABI.get(m_choice, {}).get("name", "数学") if m_choice != "none" else "不考数学"
+    # [UT4 修复·PLANNER-6] math_key=custom（院校自主命题数学）此前回落通用名
+    # 「数学」，白名单又宣称「按官方考纲出题」——自命题数学无全国统考大纲，
+    # 显示名与防幻觉锚点双失真（UT4 理论物理沙箱 BUG-5：三端统一显示通用名）。
+    # 现默认名改为「数学（院校自命题）」；考生已自定义过科目名（非通用「数学」）
+    # 时不覆盖。
+    if m_choice != "none" and is_custom_math_key(m_choice):
+        _prev_math_name = str(plan.get("math_name") or "").strip()
+        m_title = _prev_math_name if _prev_math_name and _prev_math_name != "数学" else "数学（院校自命题）"
+    else:
+        m_title = syllabus_manager.MATH_SYLLABI.get(m_choice, {}).get("name", "数学") if m_choice != "none" else "不考数学"
     e_title = syllabus_manager.ENGLISH_SYLLABI.get(e_choice, {}).get("name", "英语")
     plan["math_name"] = m_title
     plan["eng_name"] = e_title
@@ -405,9 +564,20 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
     plan["eng_weakness"] = eng_weakness
     plan["pol_baseline"] = pol_baseline
     plan["pol_weakness"] = pol_weakness
+    # [P2-6 修复·建档缺字段] 政治科目名建档即写入，与 material_scanner 的
+    # mount 补齐口径同源（规范名「思想政治理论」）。此前唯一写入点是 ky mount
+    # 的 material_scanner 内存规范化：建档后未 mount 前 ky_config 缺该字段
+    # （三沙箱实测 mount 输出「pol_name 旧:（无）」）。既有值（若有）不覆盖。
+    if not str(plan.get("pol_name") or "").strip():
+        plan["pol_name"] = "思想政治理论"
     plan["pro_baseline"] = pro_baseline
     plan["pro_weakness"] = pro_weakness
-    print(colorize("  [√] 学情摸底档案建立完毕，痛点已注入专属私教薄弱项雷达！\n", C.GREEN))
+    # [P2 修复·宣称与实况不符] 此处只完成摸底数据收集（写入 plan），雷达与
+    # 学员档案的实际注入发生在建档收尾 generate_plan_and_today_files（见
+    # seed_radars_from_plan / init_state_profiles_from_plan）。旧文案「痛点
+    # 已注入…雷达」在此时点为不实宣称（三沙箱实测：向导结束后雷达仍全为
+    # 「待首次自测评估」）。现如实描述时点。
+    print(colorize("  [√] 学情摸底数据已记录，建档收尾将自动注入各科薄弱项雷达与学员档案！\n", C.GREEN))
 
     # ── 维度 4: 手头备考资料白名单 (真实扫描与核验，杜绝 AI 凭空捏造) ──
     print(colorize("【维度 4/7 · 📚 手头已有备考资料白名单真实核验】", C.BOLD))
@@ -418,15 +588,46 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
     local_pol_files = scan_local_materials("03-思想政治理论")
     local_pro_files = scan_local_materials("04-专业课")
 
-    def make_default_book_label(files, subj_name):
+    def make_default_book_label(files, subj_name, key=None):
+        """白名单缺省文案。
+
+        [问题5 补修·向导绕过占位检测] 此前这里一律写「私教严格按【…】官方考纲
+        出题」，而非交互路径的 ``_material_phrase`` / 挂载路径的
+        ``pro_books_placeholder_text`` 都已按大纲三态分档 —— 同一要求两处实现
+        只修了一处，于是自命题大纲仍是【待自填】占位时，「今日任务」如实标注
+        「专业课大纲与真题待导入」，而 AGENTS.md 与 ky_config.json 却宣称
+        「按【837 …】官方考纲出题」。现专业课统一复用
+        ``pro_books_placeholder_text``（与 ky mount 同源），数学/英语/政治
+        （内置统考大纲不会是占位）维持原文案。
+
+        [问题8 修复·不考数学却要求按纲出题] 不考数学时数学白名单一律写中性
+        表述「不考数学」，不再生成「按【不考数学】官方考纲出题」这类自相矛盾文案。
+        """
         if files:
             return f"[本地资料库已就绪]: {', '.join(files)}"
+        if key == "math" and (str(plan.get("math_key", "")).lower() in {"none", "no", "不考数学"}
+                              or plan.get("math_name") == "不考数学"):
+            return "不考数学"
+        if key == "pro":
+            try:
+                try:
+                    from syllabus_manager import pro_books_placeholder_text
+                except ImportError:
+                    from tools.syllabus_manager import pro_books_placeholder_text
+                return pro_books_placeholder_text(ROOT, str(subj_name))
+            except Exception:
+                pass
+        if key == "math" and is_custom_math_key(plan.get("math_key")):
+            # [UT4 修复·PLANNER-6] 自命题数学无全国统考大纲，白名单缺省文案
+            # 不得宣称「官方考纲」（UT4 理论物理沙箱 BUG-5），改按自命题大纲
+            # 表述，与 material_scanner 的挂载文案同口径。
+            return "暂未放置实体资料（私教按目标院校自命题大纲出题，严禁虚构书目）"
         return f"暂未放置实体资料（私教严格按【{subj_name}】官方考纲出题，严禁虚构书目）"
 
-    def_m = make_default_book_label(local_math_files, m_title)
-    def_e = make_default_book_label(local_eng_files, e_title)
-    def_p = make_default_book_label(local_pol_files, "思想政治理论")
-    def_pro = make_default_book_label(local_pro_files, pro_name)
+    def_m = make_default_book_label(local_math_files, m_title, key="math")
+    def_e = make_default_book_label(local_eng_files, e_title, key="eng")
+    def_p = make_default_book_label(local_pol_files, "思想政治理论", key="pol")
+    def_pro = make_default_book_label(local_pro_files, pro_name, key="pro")
 
     if interactive:
         # [P16 修复·向导编号跳号] 不考数学时跳过数学问项，维度 4 的编号动态前移
@@ -653,8 +854,10 @@ def generate_expert_diagnostic_strategy(plan):
 """
 
     # 针对不同专业课学科类型动态适配诊断与处方
+    # [批4·关键词收紧] 原「计算」子串过宽（「计算数学」「计算物理」等专业名会
+    # 误命中计算机分支，被灌 C/C++ 代码书写建议），收紧为「计算机」。
     p_lower = pro_name.lower()
-    if any(k in p_lower for k in ("408", "计算", "软件")):
+    if any(k in p_lower for k in ("408", "计算机", "软件")):
         pro_diag = "专业课核心算法与大题推导失分关键在于算法逻辑书写不规范、缺少必要注释与复杂度分析，导致采分点严重流失。"
         pro_sol = """  1. 严格按照研究生阅卷标准训练三段式解答：① 自然语言设计思想（2~3行说明核心逻辑与数据结构）；② 规范 C/C++ 或核心代码书写（带清晰变量注释）；③ 时间复杂度与空间复杂度推导与结论；
   2. 紧扣官方考纲要求，吃透真题核心高频考点，规范专业术语表述，拒绝口语化答题。"""
@@ -723,7 +926,7 @@ def run_ai_study_plan_generation(plan, interactive=True):
         time.sleep(0.2)
         print(colorize(f"  [2/3] 正在对【英语/政治/专业课】核心失分盲区进行靶向突破与时间切分...", C.CYAN))
         time.sleep(0.2)
-        print(colorize(f"  [3/3] 正在基于白名单真实题源与官方考纲构建首日（Day 1）四科针对性任务清单...\n", C.CYAN))
+        print(colorize(f"  [3/3] 正在基于白名单真实题源与官方考纲构建首日（Day 1）{subject_count_label(plan)}针对性任务清单...\n", C.CYAN))
         time.sleep(0.1)
 
     ai_generated_text = None
@@ -751,52 +954,45 @@ def run_ai_study_plan_generation(plan, interactive=True):
 请为该学员输出严谨务实、直击痛点的《个人专属考研备考方案与首日突破任务单》{_math_guide}：
 1. 【全科提分战略定位与痛点攻坚指南】：针对{('数学【' + str(plan.get('math_weakness')) + '】、') if not _math_off else ''}英语【{plan.get('eng_weakness')}】、政治【{plan.get('pol_weakness')}】、专业课【{plan.get('pro_weakness')}】逐一给出实操破局战术与步骤规范；
 2. 【各科阶段推进里程碑与每日时间切分指导】：结合倒计时 {plan.get('days_left')} 天与当前阶段，明确各科在当前阶段的核心突破重点；
-3. 【今日（Day 1）四科针对性任务清单】：精确到具体攻坚知识点、练习题型、预计分钟数与自测动作。
+3. 【今日（Day 1）{subject_count_label(plan)}针对性任务清单】：精确到具体攻坚知识点、练习题型、预计分钟数与自测动作。
 要求：逻辑严密、直击痛点，严禁空泛套话！"""
 
         try:
-            import urllib.request
-            from ky_cli import normalize_openai_url
+            # [K4] 内联流式收敛进统一出口（原为自带 urllib + SSE 解析的实现）。
+            try:
+                from llm_client import ChatRequest, request_chat
+            except ImportError:  # pragma: no cover
+                from tools.llm_client import ChatRequest, request_chat  # type: ignore
             raw_base_url = cfg.get("base_url", "https://api.deepseek.com/v1")
-            url = normalize_openai_url(raw_base_url, "chat/completions")
             model = cfg.get("model", "deepseek-chat")
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Kaoyan-Study-Chain/1.0",
-                "Accept": "application/json",
-                "Connection": "close"
-            }
             messages = [
                 {"role": "system", "content": "你是一位深谙中国研究生入学考试命题规律、提分导向的考研全科专属总教练。请根据学员给出的 7 大维度个性化学情，输出严密、求真务实、直击薄弱项痛点的深度备考战略与任务清单。严禁虚构书籍或空泛套话。"},
                 {"role": "user", "content": prompt_text}
             ]
-            payload = {
-                "model": model,
-                "messages": messages,
-                "temperature": 0.4,
-                "stream": True
-            }
-            data_bytes = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
-            collected = []
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                for raw_line in resp:
-                    line = raw_line.decode("utf-8", errors="ignore").strip()
-                    if not line or not line.startswith("data:"):
-                        continue
-                    d_str = line[5:].strip()
-                    if d_str == "[DONE]":
-                        break
-                    try:
-                        delta = json.loads(d_str)
-                        token = delta.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                        if token:
-                            sys.stdout.write(token)
-                            sys.stdout.flush()
-                            collected.append(token)
-                    except Exception:
-                        pass
+            collected: List[str] = []
+
+            def _on_chunk(token: str) -> None:
+                sys.stdout.write(token)
+                sys.stdout.flush()
+                collected.append(token)
+
+            req = ChatRequest(
+                messages=messages,
+                model=model,
+                temperature=0.4,
+                stream=True,
+                timeout=60.0,
+                api_key=api_key,
+                base_url=raw_base_url,
+                headers_extra={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Kaoyan-Study-Chain/1.0",
+                    "Accept": "application/json",
+                    "Accept-Encoding": "identity",
+                },
+            )
+            # [审计 2026-09-30 P1-7] 出站收敛：经 safe_urlopen 发送（原为裸 urlopen）。
+            request_chat(req, max_retries=0, on_chunk=_on_chunk,
+                         urlopen_fn=safe_urlopen)
             print("\n")
             ai_generated_text = "".join(collected).strip()
         except Exception:
@@ -875,22 +1071,13 @@ def apply_study_plan(plan, interactive=True):
     content = agents_path.read_text(encoding="utf-8")
     content = re.sub(r"- \*\*目标院校\*\*：.*", f"- **目标院校**：`{plan.get('school', '目标院校')}`", content)
     content = re.sub(r"- \*\*报考专业\*\*：.*", f"- **报考专业**：`{plan.get('major', '报考专业')}`", content)
+    _exam_date_str = plan.get("exam_date") or _FALLBACK_EXAM_DATE
     # [G2 修复] 倒计时必须按 exam_date **实时重算**，不能取 plan 里存的 days_left：
     # 存值是上一轮写下的快照，一旦 exam_date 被改过（或配置被占位值冲过），
     # AGENTS.md 就会出现「初试日期：X（倒计时约 N 天）」而 N 与 X 对不上的自相矛盾。
-    _exam_date_str = plan.get("exam_date") or _FALLBACK_EXAM_DATE
-    try:
-        # [G2-b 修复·倒计时负数] 实时重算同样必须钳非负：考试当天/过期后
-        # `(exam_date - today).days` 为负，AGENTS.md 会写出「倒计时约 -3 天」，
-        # 与 calculate_countdown() / exam_calendar.countdown_days() 的 max(0, …)
-        # 口径不一致（全仓无任何地方依赖负数语义）。
-        _days_left = max(0, (date.fromisoformat(str(_exam_date_str)) - date.today()).days)
-    except (TypeError, ValueError):
-        # 存储快照同样钳非负：非法/过期日期回退到 plan["days_left"] 时也不得写负数。
-        try:
-            _days_left = max(0, int(plan.get("days_left", 0) or 0))
-        except (TypeError, ValueError):
-            _days_left = 0
+    # [UT4 修复·PLANNER-3] 重算口径收口到 _days_left_now（钳非负 + 快照回退），
+    # 与 ensure_subject_today_task 的今日任务刷新共用同一实现。
+    _days_left = _days_left_now(plan)
     content = re.sub(r"- \*\*初试日期\*\*：.*",
                      f"- **初试日期**：`{_exam_date_str}` (倒计时约 {_days_left} 天)",
                      content)
@@ -904,11 +1091,26 @@ def apply_study_plan(plan, interactive=True):
     content = re.sub(r"- \*\*当前激活辅导风格\*\*：.*", f"- **当前激活辅导风格**：`{plan.get('style_name', STYLES['1'][0])}`", content)
 
     # 矩阵表格更新
-    m_row = f"| **科目一：{m_name}** | {plan.get('math_baseline','[摸底]')} | **{plan.get('math_target','110+ 分')}** | {plan.get('math_hours',2.5)} 小时 | 攻克必考核心题型，严防超纲，规避计算失误，步骤规范化 |"
+    # [问题9 修复·不考数学行仍写数学策略] 该行此前硬编码数学战术文案，无
+    # math_disabled 分支 —— 不考数学考生的根 AGENTS.md 里照样出现「科目一：
+    # 不考数学 | 0.0 小时 | 攻克必考核心题型，严防超纲，规避计算失误，步骤规范化」。
+    # 现按 init_workspace.py 的 P4 先例改写实述（不安排数学学习任务）。
+    _math_off_row = (str(plan.get("math_key", "")).lower() in {"none", "no", "不考数学"}
+                     or plan.get("math_name") == "不考数学")
+    if _math_off_row:
+        m_row = (f"| **科目一：{m_name}** | 不考数学 | **不考数学** | "
+                 f"{plan.get('math_hours', 0.0)} 小时 | 本方案不考数学，不安排数学学习任务 |")
+    else:
+        m_row = f"| **科目一：{m_name}** | {plan.get('math_baseline','[摸底]')} | **{plan.get('math_target','110+ 分')}** | {plan.get('math_hours',2.5)} 小时 | 攻克必考核心题型，严防超纲，规避计算失误，步骤规范化 |"
     e_row = f"| **科目二：{e_name}** | {plan.get('eng_baseline','[摸底]')} | **{plan.get('eng_target','65+ 分')}** | {plan.get('eng_hours',2.0)} 小时 | 搭积木拆解长难句，定位阅读选项逻辑，固化作文功能句模板 |"
     p_row = f"| **科目三：思想政治理论** | {plan.get('pol_baseline','[摸底]')} | **{plan.get('pol_target','70+ 分')}** | {plan.get('pol_hours',1.0)} 小时 | 单选+多选得分盘（38~42分），帽子词秒杀，后期背诵闭环 |"
     pro_row = f"| **科目四：{pro_name}** | {plan.get('pro_baseline','[摸底]')} | **{plan.get('pro_target','120-130 分')}** | {plan.get('pro_hours',2.5)} 小时 | 权威教材体系+历年真题深度解剖，白名单题源抽题门禁 |"
-    tot_row = f"| **合计** | [摸底总分] | **{plan.get('total_target','370+ 分')}** | {plan.get('total_hours',8.5)} 小时 | **结构性提分，稳拿基本盘，拒绝偏难怪题** |"
+    # [D8 修复] 合计行摸底总分此前是未替换占位符 [摸底总分]；现按各科摸底文本
+    # 汇总（不考数学时不计数学行）。
+    _bt_keys = ["eng_baseline", "pol_baseline", "pro_baseline"]
+    if not _math_off_row:
+        _bt_keys.insert(0, "math_baseline")
+    tot_row = f"| **合计** | {baseline_total_label(plan, _bt_keys)} | **{plan.get('total_target','370+ 分')}** | {plan.get('total_hours',8.5)} 小时 | **结构性提分，稳拿基本盘，拒绝偏难怪题** |"
 
     content = re.sub(r"\|\s*\*\*科目一.*", m_row, content)
     content = re.sub(r"\|\s*\*\*科目二.*", e_row, content)
@@ -931,7 +1133,7 @@ def apply_study_plan(plan, interactive=True):
   - 数学薄弱点: `{plan.get('math_weakness', '导数中值定理、计算失误')}`
   - 英语薄弱点: `{plan.get('eng_weakness', '待诊断薄弱点、细节定位')}`
   - 政治薄弱点: `{plan.get('pol_weakness', '马原唯物辩证法、多选题漏选')}`
-  - 专业课薄弱点: `{plan.get('pro_weakness', '核心算法设计与证明步骤')}`
+  - 专业课薄弱点: `{plan.get('pro_weakness', '核心考点掌握与解答步骤规范')}`
 """
     if "### 【个性化学情与作息调节机制】" in content:
         content = re.sub(r"### 【个性化学情与作息调节机制】.*?(?=\n## 1\.|\n### 二、)", schedule_section.strip() + "\n\n", content, flags=re.DOTALL)
@@ -968,7 +1170,9 @@ def apply_study_plan(plan, interactive=True):
     # 5.1 重置院校监控列表：新身份生成时，监控列表应随目标院校切换，避免残留上一考生数据
     try:
         from tools.intelligence.watcher import AdmissionWatcher
-        watcher = AdmissionWatcher()
+        # [问题3 补修] 显式传 ROOT（与 CONFIG_FILE 同源，支持 KY_WORKSPACE_ROOT
+        # 隔离）：无参实例化只认模块级真实 ROOT，测试隔离场景下监控条目会外漏。
+        watcher = AdmissionWatcher(workspace_root=ROOT)
         school = plan.get("school", "").strip()
         if school:
             for item in watcher.list_watched():
@@ -983,16 +1187,19 @@ def apply_study_plan(plan, interactive=True):
     generate_plan_and_today_files(plan, ai_strategy=ai_strategy)
 
     # 6. 自动重新编译自测看板
-    build_py = ROOT / "05-考研看板" / "build.py"
-    if build_py.exists():
+    # [问题7 根因修复] 统一走 dashboard_build：frozen（exe 版）下旧实现
+    # subprocess.run([sys.executable, ...]) 的 sys.executable 是 GUI 主程序，
+    # 等于再弹一个主界面。frozen 改进程内执行（见 tools/dashboard_build.py）。
+    try:
         try:
-            import subprocess
-            # [W13 收口·本地入口分模式] 显式完整模式（与 更新看板.bat / ky build 一致）
-            subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"),
-                           capture_output=True,
-                           env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0"})
-        except Exception:
-            pass
+            from dashboard_build import run_dashboard_build
+        except ImportError:
+            from tools.dashboard_build import run_dashboard_build
+        # [W13 收口·本地入口分模式] 显式完整模式（与 更新看板.bat / ky build 一致）
+        run_dashboard_build(workspace_root=ROOT, snapshot_opt_in=False,
+                            capture_output=True)
+    except Exception:
+        pass
 
 def _safe_write_today_task(task_file: Path, today_str: str, content: str) -> str:
     """
@@ -1024,6 +1231,163 @@ def _safe_write_today_task(task_file: Path, today_str: str, content: str) -> str
     # 不同日 → 旧文件已被搁置，直接覆盖
     atomic_write_text(task_file, content)
     return "已覆盖（非同日任务）"
+
+
+#: 报到场景：科目 key → (目录, 任务行比例, 显示名兜底)
+_CHECKIN_SUBJECT_SPECS = {
+    "math": ("01-数学", (0.20, 0.55, 0.25), "数学"),
+    "eng": ("02-英语", (0.25, 0.35, 0.40), "英语"),
+    "pol": ("03-思想政治理论", (0.40, 0.40, 0.20), "思想政治理论"),
+    "pro": ("04-专业课", (0.30, 0.50, 0.20), "专业课"),
+}
+
+
+def _canonical_roll_call(subject_key: str) -> str:
+    """科目 key → 中文报到口令（单一真源：REPL 路由表 CHINESE_SUBJECT_MAP）。
+
+    [P1 修复·口令不可识别] 今日任务提示此前写「{科目显示名}报到」（如「803 经济学
+    综合报到」「308 护理综合报到」），而 REPL 仅对固定口令做精确匹配
+    （loop.py ``raw_cmd in CHINESE_SUBJECT_MAP``）—— 考生照做会落入 LLM 自由问答
+    路径（实测 92s+ 且产生计费），而非本地秒回报到。现反查路由真源表，保证提示中
+    的口令必定可被识别。
+    """
+    _fallback = {"math": "数学报到", "eng": "英语报到", "pol": "政治报到", "pro": "专业课报到"}
+    try:
+        try:
+            from cli.repl.router import CHINESE_SUBJECT_MAP
+        except ImportError:  # pragma: no cover
+            from tools.cli.repl.router import CHINESE_SUBJECT_MAP  # type: ignore
+    except ImportError:  # pragma: no cover
+        return _fallback.get(subject_key, "专业课报到")
+    for _cmd, _key in CHINESE_SUBJECT_MAP.items():
+        if _key == subject_key and _cmd.endswith("报到"):
+            return _cmd
+    return _fallback.get(subject_key, "专业课报到")
+
+
+def ensure_subject_today_task(plan, subject_key, workspace_root=None):
+    """报到场景：确保该科目「今日任务」文件存在且为当日版本。
+
+    [缺陷修复·报到后今日任务 0/0] 全仓唯一生成今日任务的入口是建档向导
+    （``generate_plan_and_today_files``）；报到/日常使用不会生成 —— 考生报到后
+    任务面板永远 0/0、本地也没有任何今日任务文件。本函数补齐该环节。
+
+    与建档向导生成的区别：
+      - 只处理报到的那一个科目，不重写总规划与其他科目文件；
+      - 文件已存在且为当日 → 原样保留（考生可能已勾选/编辑，绝不覆盖）；
+      - 生成走纯模板（不调用 LLM），保证报到响应速度与确定性。
+
+    返回 ``{"status": created|overwritten|exists|refreshed|disabled, "path": str, "task_count": int}``。
+    """
+    ws = Path(workspace_root) if workspace_root else ROOT
+    spec = _CHECKIN_SUBJECT_SPECS.get(subject_key)
+    if not spec:
+        return {"status": "disabled", "path": "", "task_count": 0}
+    folder, ratios, fallback_name = spec
+
+    plan = plan or {}
+    exam_mode = plan.get("exam_mode")
+    pro2_n = str(plan.get("pro2_name") or "").strip()
+    is_mode_b = exam_mode in ("mode_b", "no_math_dual_pro") or bool(pro2_n)
+    is_mode_c = exam_mode in ("mode_c", "mgmt_199") or plan.get("pol_disabled")
+    math_disabled = (is_mode_b or is_mode_c
+                     or str(plan.get("math_key", "")).lower() in {"none", "no", "不考数学"}
+                     or plan.get("math_name") == "不考数学")
+    if subject_key == "math" and math_disabled:
+        return {"status": "disabled", "path": "", "task_count": 0}
+    if subject_key == "pol" and is_mode_c:
+        return {"status": "disabled", "path": "", "task_count": 0}
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    # [UT4 修复·PLANNER-3] 倒计时按当日与 exam_date 实时重算，不能取 plan 里
+    # 的建档日快照：跨日报到重写时旧快照会把建档日的剩余天数原样写回
+    # （UT4 西医沙箱 P1-4 实测：09-30 建档写 80，10-01 报到重写后仍 80）。
+    days_left = _days_left_now(plan)
+    stage_name = plan.get("stage_name", "强化题型攻坚阶段")
+    subj_display = str(plan.get(f"{subject_key}_name") or fallback_name)
+    try:
+        hours = float(plan.get(f"{subject_key}_hours", 2.0) or 2.0)
+    except (TypeError, ValueError):
+        hours = 2.0
+    minutes = max(15, int(hours * 60))
+    weakness = str(plan.get(f"{subject_key}_weakness") or "").strip()
+
+    # 任务描述与「建档向导」同款口径（无薄弱点时走首日摸底话术）
+    _no_weak = (not weakness or "待首次自测" in weakness or "从零" in weakness
+                or weakness == "无")
+    if subject_key == "math":
+        desc = ("梳理考纲核心高频考点与必背公式，开展首日基础摸底自测"
+                if _no_weak else f"攻坚薄弱项【{weakness}】定理条件与构造技巧")
+        drill = f"{_material_phrase(plan.get('math_books'), '精选')}对应专题典型真题动笔演练"
+    elif subject_key == "eng":
+        desc = ("精读真题高频长难句语法骨架，开展首日主干拆解摸底"
+                if _no_weak else f"攻坚薄弱项【{weakness}】")
+        drill = "精读 1 篇历年真题阅读并定位干扰项逻辑"
+    elif subject_key == "pol":
+        desc = ("梳理考纲核心考点与帽子词框架，精选高频选择题摸底"
+                if _no_weak else f"梳理【{weakness}】知识框架")
+        drill = f"{_material_phrase(plan.get('pol_books'), '精做')} 20 道核心选择题自测"
+    else:
+        _pro_is_nursing = ("护理" in subj_display) or ("308" in subj_display)
+        # [问题5 修复] 大纲占位/缺失时不得写「专业课官方考纲」字样
+        _pro_ready = _pro_syllabus_ready(ws)
+        _pro_scope = ("专业课官方考纲核心知识体系" if _pro_ready
+                      else "专业课核心知识体系")
+        _pro_scope_short = "专业课考纲" if _pro_ready else "专业课主干知识"
+        desc = (f"聚焦{_pro_scope}，完成首日题型规范度摸底"
+                if _no_weak else f"聚焦{_pro_scope_short}与【{weakness}】推导")
+        drill = (f"{_material_phrase(plan.get('pro_books'), '选取', is_pro=True, workspace_root=ws)}"
+                 + ("名词解释、简答题与 1 道病例分析题，动笔完整书写" if _pro_is_nursing
+                    else "经典大题 2~3 道动笔完整书写"))
+
+    pro_label = "专业课一" if (subject_key == "pro" and is_mode_b) else "专业课"
+    title_label = subj_display if subject_key != "pro" else pro_label
+    # [P1 修复·口令不可识别] 提示必须是路由表能精确识别的规范口令，
+    # 而非拼接科目显示名（详见 _canonical_roll_call 注释）。
+    _roll_call = _canonical_roll_call(subject_key)
+    r1, r2, r3 = ratios
+    content = f"""# 今日{title_label}任务 ({today_str})
+
+> 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{minutes} 分钟
+
+| 模块 | 任务内容 | 预计用时 | 完成状态 |
+|---|---|---|---|
+| 核心精讲 | {desc} | {int(minutes * r1)} 分钟 | [ ] |
+| 习题精练 | {drill} | {int(minutes * r2)} 分钟 | [ ] |
+| 订正归档 | 在终端输入「交作业」，AI 按步骤采分并自动录入错题队列 | {int(minutes * r3)} 分钟 | [ ] |
+
+> **私教提示**：在输入框发送「{_roll_call}」，私教即可根据今日任务派发第一道针对性试题！
+"""
+    task_file = ws / folder / "_状态" / "今日任务.md"
+    if task_file.exists():
+        try:
+            old_text = task_file.read_text(encoding="utf-8")
+            first_line = old_text.splitlines()[0]
+        except Exception:
+            old_text, first_line = "", ""
+        if today_str in first_line:
+            # [P2 修复·「待导入」陈旧文案] 当日文件整体保留（防覆盖勾选/编辑），
+            # 但「专业课大纲与真题待导入」是建档当日状态快照：当天 mount 入库/
+            # 替换大纲后该文案即失真（三沙箱实测：报到最后仍显示待导入，看板
+            # 同步失真）。此处仅在「文件含陈旧标记且当前大纲已就绪」时做外科式
+            # 替换：只改「习题精练」行的题源短语，[x] 勾选与其余行原样保留。
+            if (subject_key == "pro" and "专业课大纲与真题待导入" in old_text
+                    and _pro_syllabus_ready(ws)):
+                _new_phrase = _material_phrase(plan.get("pro_books"), "选取",
+                                               is_pro=True, workspace_root=ws)
+                _patched = old_text.replace(
+                    "（⚠️ 专业课大纲与真题待导入）选取", _new_phrase)
+                if _patched != old_text:
+                    try:
+                        atomic_write_text(task_file, _patched)
+                        return {"status": "refreshed", "path": str(task_file),
+                                "task_count": 3}
+                    except Exception:
+                        pass
+            return {"status": "exists", "path": str(task_file), "task_count": 3}
+    status_raw = _safe_write_today_task(task_file, today_str, content)
+    status = "created" if status_raw == "已创建" else "overwritten"
+    return {"status": status, "path": str(task_file), "task_count": 3}
 
 
 def _generate_subject_task_content(subject_key: str, subject_display: str, plan: dict, today_str: str, default_template: str, workspace_root=None) -> str:
@@ -1102,24 +1466,30 @@ def generate_plan_and_today_files(plan, ai_strategy=None, workspace_root=None):
     if is_mode_c:
         table_rows = f"""| **{pro_n}** | {plan.get('pro_baseline', '120分')} | **{plan.get('pro_target', '140+ 分')}** | {pro_h} 小时 ({int(pro_h*60)}m) | 攻克【{plan.get('pro_weakness', '初数与逻辑综合')}】，199联考三合一综合能力 |
 | **{e_n}** | {plan.get('eng_baseline', '50分')} | **{plan.get('eng_target', '70+ 分')}** | {e_h} 小时 ({int(e_h*60)}m) | 攻克【{plan.get('eng_weakness', '长难句主干拆解')}】，搭积木拆解，定位阅读选项逻辑 |
-| **合计** | [摸底总分] | **{plan.get('total_target', '215+ 分')}** | {plan.get('total_hours', 6.0)} 小时 | **199联考总分300分，初试不考政治与统考数学** |"""
+| **合计** | {baseline_total_label(plan, ['pro_baseline', 'eng_baseline'])} | **{plan.get('total_target', '215+ 分')}** | {plan.get('total_hours', 6.0)} 小时 | **199联考总分300分，初试不考政治与统考数学** |"""
         books_rows = f"""- **199管综权威资料**：`{plan.get('pro_books')}`\n- **英语权威资料**：`{plan.get('eng_books')}`"""
         budget_row = f"- **每日精力预算**：{plan.get('total_hours', 6.0)} 小时 (199管综 {pro_h}h / 英语 {e_h}h)"
     elif is_mode_b:
-        table_rows = f"""| **科目一：不考数学** | 不考数学 | **不考数学** | 0.0 小时 (0m) | 攻克必考核心题型，严防超纲，规避计算失误，步骤规范化 |
+        # [同族修复·不考数学策略列] mode_b 模板此前策略列写「攻克必考核心题型…」
+        # 数学文案，与本文件第 45 行「不安排任何数学复习战术」自相矛盾（与
+        # AGENTS.md 主模板 996 行、init_workspace.py P4 先例同族，此处此前遗漏）。
+        table_rows = f"""| **科目一：不考数学** | 不考数学 | **不考数学** | 0.0 小时 (0m) | 本方案不考数学，不安排数学学习任务 |
 | **{e_n}** | {plan.get('eng_baseline', '50分')} | **{plan.get('eng_target', '65+ 分')}** | {e_h} 小时 ({int(e_h*60)}m) | 攻克【{plan.get('eng_weakness', '长难句主干拆解')}】，搭积木拆解，定位阅读选项逻辑 |
 | **思想政治理论** | {plan.get('pol_baseline', '50分')} | **{plan.get('pol_target', '70+ 分')}** | {p_h} 小时 ({int(p_h*60)}m) | 攻克【{plan.get('pol_weakness', '马原多选题')}】，单选拿满，帽子词秒杀 |
 | **{pro_n}** | {plan.get('pro_baseline', '80分')} | **{plan.get('pro_target', '120-130 分')}** | {pro_h} 小时 ({int(pro_h*60)}m) | 攻克【{plan.get('pro_weakness', '专业课一核心重点')}】，权威教材体系+真题深度解剖 |
 | **{pro2_n or '专业课二'}** | {plan.get('pro2_baseline', '80分')} | **{plan.get('pro2_target', '120-130 分')}** | {pro2_h} 小时 ({int(pro2_h*60)}m) | 攻克【{plan.get('pro2_weakness', '专业课二论述框架')}】，第二门自命题考纲深化推导与背诵闭环 |
-| **合计** | [摸底总分] | **{plan.get('total_target', '375+ 分')}** | {plan.get('total_hours', 7.0)} 小时 | **稳扎稳打拿牢核心得分盘，拒绝偏难怪题** |"""
+| **合计** | {baseline_total_label(plan, ['eng_baseline', 'pol_baseline', 'pro_baseline', 'pro2_baseline'])} | **{plan.get('total_target', '375+ 分')}** | {plan.get('total_hours', 7.0)} 小时 | **稳扎稳打拿牢核心得分盘，拒绝偏难怪题** |"""
         books_rows = f"""- **英语权威资料**：`{plan.get('eng_books')}`\n- **政治权威资料**：`{plan.get('pol_books')}`\n- **专业课一权威资料**：`{plan.get('pro_books')}`\n- **专业课二权威资料**：`{plan.get('pro2_books') or plan.get('pro_books')}`"""
         budget_row = f"- **每日精力预算**：{plan.get('total_hours', 7.0)} 小时 (英语 {e_h}h / 政治 {p_h}h / 专业课一 {pro_h}h / 专业课二 {pro2_h}h)"
     else:
         m_part = f"| **{m_n}** | {plan.get('math_baseline', '60分')} | **{plan.get('math_target', '110+ 分')}** | {m_h} 小时 ({int(m_h*60)}m) | 重点攻克【{plan.get('math_weakness', '计算失误')}】，规避失误，步骤规范化 |\n" if not math_disabled else ""
+        _bt_keys = ["eng_baseline", "pol_baseline", "pro_baseline"]
+        if not math_disabled:
+            _bt_keys.insert(0, "math_baseline")
         table_rows = f"""{m_part}| **{e_n}** | {plan.get('eng_baseline', '50分')} | **{plan.get('eng_target', '65+ 分')}** | {e_h} 小时 ({int(e_h*60)}m) | 攻克【{plan.get('eng_weakness', '长难句主干拆解')}】，搭积木拆解，定位阅读选项逻辑 |
 | **思想政治理论** | {plan.get('pol_baseline', '40分')} | **{plan.get('pol_target', '70+ 分')}** | {p_h} 小时 ({int(p_h*60)}m) | 攻克【{plan.get('pol_weakness', '马原多选题')}】，单选拿满，帽子词秒杀 |
-| **{pro_n}** | {plan.get('pro_baseline', '80分')} | **{plan.get('pro_target', '120-130 分')}** | {pro_h} 小时 ({int(pro_h*60)}m) | 攻克【{plan.get('pro_weakness', '核心算法设计')}】，权威教材体系+真题深度解剖 |
-| **合计** | [摸底总分] | **{plan.get('total_target', '370+ 分')}** | {plan.get('total_hours', 8.5)} 小时 | **稳扎稳打拿牢核心得分盘，拒绝偏难怪题** |"""
+| **{pro_n}** | {plan.get('pro_baseline', '80分')} | **{plan.get('pro_target', '120-130 分')}** | {pro_h} 小时 ({int(pro_h*60)}m) | 攻克【{plan.get('pro_weakness', '核心考点与解答步骤')}】，权威教材体系+真题深度解剖 |
+| **合计** | {baseline_total_label(plan, _bt_keys)} | **{plan.get('total_target', '370+ 分')}** | {plan.get('total_hours', 8.5)} 小时 | **稳扎稳打拿牢核心得分盘，拒绝偏难怪题** |"""
         m_b = f"- **数学权威资料**：`{plan.get('math_books')}`\n" if not math_disabled else ""
         books_rows = f"""{m_b}- **英语权威资料**：`{plan.get('eng_books')}`\n- **政治权威资料**：`{plan.get('pol_books')}`\n- **专业课权威资料**：`{plan.get('pro_books')}`"""
         budget_row = f"- **每日精力预算**：{plan.get('total_hours', 8.5)} 小时 (英语 {e_h}h / 政治 {p_h}h / 专业课 {pro_h}h)" if math_disabled else f"- **每日精力预算**：{plan.get('total_hours', 8.5)} 小时 (数学 {m_h}h / 英语 {e_h}h / 政治 {p_h}h / 专业课 {pro_h}h)"
@@ -1225,11 +1595,11 @@ def generate_plan_and_today_files(plan, ai_strategy=None, workspace_root=None):
 - **目标成绩**：`{plan.get('pro_target', '120-130 分')}` ｜ **摸底基准**：`{plan.get('pro_baseline', '80分')}`
 - **每日投入**：`{pro_h} 小时 ({int(pro_h*60)} 分钟)`
 - **核心白名单资料**：`{plan.get('pro_books')}`
-- **专属薄弱项攻坚**：`{plan.get('pro_weakness', '核心算法设计与证明步骤')}`
+- **专属薄弱项攻坚**：`{plan.get('pro_weakness', '核心考点掌握与解答步骤规范')}`
 
 ## 一、阶段攻坚路线 (当前处于: {stage_name})
 1. **基础构建期**：通读官方指定教材，掌握核心概念定义与底层原理；
-2. **专题突破期**：深挖高频大题与核心算法，规范推导与代码书写采分点；
+2. **专题突破期**：深挖高频大题与核心考点，规范解答推导与步骤采分点；
 3. **真题闭卷期**：近 10-15 年真题全真演练，形成考点分值地图；
 4. **押题回归期**：回归知识图谱骨架，消除一切薄弱项盲区。
 """)
@@ -1336,7 +1706,14 @@ def generate_plan_and_today_files(plan, ai_strategy=None, workspace_root=None):
         )
         _pro_practice = "名词解释、简答题与 1 道病例分析题，动笔完整书写"
     else:
-        pro_task_desc = "聚焦专业课官方考纲核心知识体系，完成首日题型规范度摸底" if (not pro_w or '待首次自测' in pro_w or '从零' in pro_w) else f"聚焦专业课考纲与【{pro_w}】推导"
+        # [问题5 修复] 大纲占位/缺失时不得写「专业课官方考纲」字样
+        _pro_ready = _pro_syllabus_ready(ws)
+        _pro_scope = ("专业课官方考纲核心知识体系" if _pro_ready
+                      else "专业课核心知识体系")
+        _pro_scope_short = "专业课考纲" if _pro_ready else "专业课主干知识"
+        pro_task_desc = (f"聚焦{_pro_scope}，完成首日题型规范度摸底"
+                         if (not pro_w or '待首次自测' in pro_w or '从零' in pro_w)
+                         else f"聚焦{_pro_scope_short}与【{pro_w}】推导")
         _pro_practice = "经典大题 2~3 道动笔完整书写"
     pro_task_file = ws / "04-专业课" / "_状态" / "今日任务.md"
     pro_task_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1348,7 +1725,7 @@ def generate_plan_and_today_files(plan, ai_strategy=None, workspace_root=None):
 | 模块 | 任务内容 | 预计用时 | 完成状态 |
 |---|---|---|---|
 | 核心知识点 | {pro_task_desc} | {int(pro_h*60*0.3)} 分钟 | [ ] |
-| 习题精练 | {_material_phrase(plan.get('pro_books'), '选取')}{_pro_practice} | {int(pro_h*60*0.5)} 分钟 | [ ] |
+| 习题精练 | {_material_phrase(plan.get('pro_books'), '选取', is_pro=True, workspace_root=ws)}{_pro_practice} | {int(pro_h*60*0.5)} 分钟 | [ ] |
 | AI 阅卷批改 | 将草稿或解答输入 CLI (可用 /img 上传草稿照片)，逐行诊断丢分点 | {int(pro_h*60*0.2)} 分钟 | [ ] |
 
 > **私教提示**：在终端输入 `/pro` 或 `专业课报到` 开始今日专业课攻坚！
@@ -1378,6 +1755,349 @@ def generate_plan_and_today_files(plan, ai_strategy=None, workspace_root=None):
         pro2_status = _safe_write_today_task(pro2_task_file, today_str, pro2_content)
         print(f"  - 专业课二今日任务: {pro2_status}")
 
+    # 7. 建档学情状态初始化（UT3 P2 批次）：痛点注入雷达 + 学员档案个性化。
+    # 独立 try：初始化失败不得阻断建档主流程（规划/任务/AGENTS 已写完）。
+    try:
+        init_state_profiles_from_plan(plan, workspace_root=ws)
+        seed_radars_from_plan(plan, workspace_root=ws)
+    except Exception as e:
+        print(colorize(f"  [!] 学情状态初始化提示: {e}", C.YELLOW))
+
+
+# ═══════════════ 建档学情状态初始化（UT3 P2 批次） ═══════════════
+
+def _weakness_is_real(raw) -> bool:
+    """痛点文本是否为考生真实填写（排除空值与各类默认占位话术）。"""
+    w = str(raw or "").strip()
+    if not w or w == "无":
+        return False
+    return not any(p in w for p in ("待首次自测", "待摸底", "从零"))
+
+
+def _first_table_block(lines):
+    """返回第一个表格块 [start, end] 行号区间（连续以 | 开头的行），无则 None。"""
+    start = end = None
+    for i, ln in enumerate(lines):
+        if ln.lstrip().startswith("|"):
+            if start is None:
+                start = i
+            end = i
+        elif start is not None:
+            break
+    return (start, end) if start is not None else None
+
+
+def _render_profile_from_template(tgt_text: str, tpl_text: str,
+                                  replacements: Dict[str, str]) -> str:
+    """行级模板渲染：仅替换「与模板对应行逐字一致」的行。
+
+    [P2 修复·绝不覆盖人工内容] 考生或私教编辑过的行不匹配模板行集合，
+    原样保留；仅模板态行（占位符 / 硬编码默认值）替换为 plan 真实值。
+    """
+    tpl_line_set = {l.strip() for l in tpl_text.splitlines()}
+    out = []
+    for ln in tgt_text.splitlines():
+        s = ln.strip()
+        if s in tpl_line_set and s in replacements:
+            out.append(replacements[s])
+        else:
+            out.append(ln)
+    text = "\n".join(out)
+    if tgt_text.endswith("\n"):
+        text += "\n"
+    return text
+
+
+def _replace_table_body_if_template(tgt_text: str, tpl_text: str,
+                                    rows: List[str]) -> str:
+    """若第一个表格块的数据行全部仍是模板行，则整体替换为 rows。
+
+    用于专业课学情档案的章节雷达：模板骨架（信号/系统类示例）在非对应
+    学科下是误导，且无法自动生成学科贴合章节 —— 替换为占位行（UT3
+    三沙箱 D-03 期望口径：「明确标注待生成」）。已编辑过表体的文件不动。
+    """
+    tgt_lines = tgt_text.splitlines()
+    blk = _first_table_block(tgt_lines)
+    if not blk:
+        return tgt_text
+    start, end = blk
+    body = tgt_lines[start + 2:end + 1]  # 表头 + 分隔行之后的数据行
+    # 「建档摸底核心卡点」是 seed_radars_from_plan 的注入行：不参与模板态
+    # 判据，替换后原样保留 —— 两个初始化函数以任意顺序被调用时互不干扰。
+    keep_rows = [l for l in body if "建档摸底核心卡点" in l]
+    body = [l for l in body if "建档摸底核心卡点" not in l]
+    tpl_line_set = {l.strip() for l in tpl_text.splitlines()}
+    if not body or not all(l.strip() in tpl_line_set for l in body):
+        return tgt_text
+    new_lines = tgt_lines[:start + 2] + list(rows) + keep_rows + tgt_lines[end + 1:]
+    text = "\n".join(new_lines)
+    if tgt_text.endswith("\n"):
+        text += "\n"
+    return text
+
+
+def _init_one_profile(tpl_fp: Path, tgt_fp: Path, title_re: str, title_new: str,
+                      replacements: Dict[str, str], table_rows=None) -> None:
+    """单份档案的模板态渲染（文件缺失时以模板为底稿生成）。"""
+    try:
+        tpl = tpl_fp.read_text(encoding="utf-8")
+    except Exception:
+        return
+    try:
+        base = tgt_fp.read_text(encoding="utf-8")
+    except Exception:
+        base = tpl
+    text = re.sub(title_re, title_new, base, count=1, flags=re.MULTILINE)
+    text = _render_profile_from_template(text, tpl, replacements)
+    if table_rows is not None:
+        text = _replace_table_body_if_template(text, tpl, table_rows)
+    if text != base:
+        atomic_write_text(tgt_fp, text)
+
+
+def init_state_profiles_from_plan(plan, workspace_root=None):
+    """建档收尾：把学情摸底数据初始化进各科「学员档案/学情档案」。
+
+    [P2 修复·档案模板残留] copy_templates 只做纯拷贝，建档收集的
+    科目/目标分/时长/院校/阶段从未写入档案 —— 三沙箱实测：数学档案保留
+    「[数学一 / 数学 / 数学三]」字面量、英语档案「120 分钟」（考生实际 90）、
+    政治档案「70+ 分」（考生实际 68+）、专业课档案保留「[你的目标院校]」
+    与「（模板）」标题、章节雷达为信号/系统类通用骨架。档案是 AI 会话启动
+    读取的外置记忆，残留会直接误导私教与考生。渲染只覆盖「仍与模板逐字
+    一致」的行，绝不触碰人工编辑过的内容。
+    """
+    ws = Path(workspace_root) if workspace_root else ROOT
+    plan = plan or {}
+    m_n = str(plan.get("math_name") or "数学")
+    e_n = str(plan.get("eng_name") or "英语")
+    pro_n = str(plan.get("pro_name") or "专业课")
+    school = str(plan.get("school") or "目标院校")
+    stage_name = str(plan.get("stage_name") or "强化题型攻坚阶段")
+    exam_mode = plan.get("exam_mode")
+    is_mode_c = exam_mode in ("mode_c", "mgmt_199") or plan.get("pol_disabled")
+    math_disabled = (is_mode_c
+                     or str(plan.get("math_key", "")).lower() in {"none", "no", "不考数学"}
+                     or plan.get("math_name") == "不考数学")
+
+    def _minutes(key: str, default_h: float) -> int:
+        try:
+            h = float(plan.get(f"{key}_hours", default_h) or default_h)
+        except (TypeError, ValueError):
+            h = default_h
+        return max(0, int(h * 60))
+
+    # ── 数学学员档案 ──
+    try:
+        if math_disabled:
+            _init_one_profile(
+                ws / "01-数学" / "_状态" / "学员档案.template.md",
+                ws / "01-数学" / "_状态" / "学员档案.md",
+                r"^# 数学学员档案$", "# 数学学员档案",
+                {
+                    "- **考试科目**：[数学一 / 数学 / 数学三]": "- **考试科目**：`不考数学`",
+                    "- **目标分数**：[待填，如：110 分]": "- **目标分数**：`不考数学`",
+                    "- **每日时间**：[待填，如：150 分钟]": "- **每日时间**：`0 分钟`",
+                    "- **核心题源**：[待填，如：经典习题册 + 历年真题]": "- **核心题源**：`不考数学`",
+                })
+        else:
+            repl = {
+                "- **考试科目**：[数学一 / 数学 / 数学三]": f"- **考试科目**：`{m_n}`",
+                "- **目标分数**：[待填，如：110 分]": f"- **目标分数**：`{plan.get('math_target', '110+ 分')}`",
+                "- **每日时间**：[待填，如：150 分钟]": f"- **每日时间**：`{_minutes('math', 2.0)} 分钟`",
+                "- **核心题源**：[待填，如：经典习题册 + 历年真题]": f"- **核心题源**：`{plan.get('math_books') or '暂未放置实体资料'}`",
+            }
+            if _weakness_is_real(plan.get("math_weakness")):
+                repl["- **高频薄弱点**：[待通过每日刷题逐步沉淀]"] = \
+                    f"- **高频薄弱点**：`{plan.get('math_weakness')}`"
+            _init_one_profile(
+                ws / "01-数学" / "_状态" / "学员档案.template.md",
+                ws / "01-数学" / "_状态" / "学员档案.md",
+                r"^# 数学学员档案$", f"# {m_n}学员档案", repl)
+    except Exception as e:
+        print(colorize(f"  [!] 数学学员档案初始化提示: {e}", C.YELLOW))
+
+    # ── 英语学员档案 ──
+    try:
+        _init_one_profile(
+            ws / "02-英语" / "_状态" / "学员档案.template.md",
+            ws / "02-英语" / "_状态" / "学员档案.md",
+            r"^# 英语学员档案$", f"# {e_n}学员档案",
+            {
+                "- **考试科目**：[英语一 / 英语]": f"- **考试科目**：`{e_n}`",
+                "- **目标分数**：[待填，如：65 分]": f"- **目标分数**：`{plan.get('eng_target', '65+ 分')}`",
+                "- **每日用时**：120 分钟": f"- **每日用时**：`{_minutes('eng', 2.0)} 分钟`",
+            })
+    except Exception as e:
+        print(colorize(f"  [!] 英语学员档案初始化提示: {e}", C.YELLOW))
+
+    # ── 政治学员档案 ──
+    try:
+        if not is_mode_c:
+            _init_one_profile(
+                ws / "03-思想政治理论" / "_状态" / "学员档案.template.md",
+                ws / "03-思想政治理论" / "_状态" / "学员档案.md",
+                r"^# 政治学员档案$", "# 政治学员档案",
+                {
+                    "- **目标成绩**：70+ 分": f"- **目标成绩**：`{plan.get('pol_target', '70+ 分')}`",
+                    "- **每日投入**：60 分钟": f"- **每日投入**：`{_minutes('pol', 1.0)} 分钟`",
+                })
+    except Exception as e:
+        print(colorize(f"  [!] 政治学员档案初始化提示: {e}", C.YELLOW))
+
+    # ── 专业课学情档案（根级 + _状态/ 两份，与 error_logger 雷达候选同源）──
+    pro_repl = {
+        "- **目标院校**：[你的目标院校]": f"- **目标院校**：`{school}`",
+        "- **专业课名称**：[你的专业课名称与代码]": f"- **专业课名称**：`{pro_n}`",
+        "- **目标成绩**：120 - 130 分 / 满分 150 分":
+            f"- **目标成绩**：`{plan.get('pro_target', '120-130 分')}` / 满分 150 分",
+        "- **当前阶段**：阶段一：基础概念与课后习题过关": f"- **当前阶段**：`{stage_name}`",
+    }
+    pro_rows = ["| — | 待私教按考纲与学习进度生成 | — | — | — |"]
+    for rel_dir in ("", "_状态"):
+        try:
+            sub = f"{rel_dir}/" if rel_dir else ""
+            _init_one_profile(
+                ws / "04-专业课" / sub / "学情档案.template.md",
+                ws / "04-专业课" / sub / "学情档案.md",
+                r"^# 专业课学情档案(?:（模板）)?$", f"# {pro_n}学情档案",
+                pro_repl, table_rows=pro_rows)
+        except Exception as e:
+            print(colorize(f"  [!] 专业课学情档案初始化提示: {e}", C.YELLOW))
+
+
+def _minimal_radar_md(title: str, header: str) -> str:
+    """[UT4 修复·PLANNER-1] 无模板兜底：生成最小可用的雷达/档案骨架文件。
+
+    仅含与该科注入行（row_fmt）列数一致的首个表格块（表头 + 分隔行）与
+    通用的「错因五分类」表 —— 数据行由 seed_radars_from_plan 的注入逻辑
+    紧随其后写入；查漏/看板据此可读到建档卡点，不再静默丢数据。
+    """
+    ncol = max(header.count("|") - 1, 1)
+    sep = "|" + "---|" * ncol
+    return (
+        f"# {title}（建档最小骨架）\n\n"
+        f"> 该文件在建档时缺失且无同名模板，已由建档流程生成最小骨架；"
+        f"建议运行 `py tools/init_workspace.py` 重建完整模板体系。\n\n"
+        f"{header}\n{sep}\n\n"
+        "## 错因五分类\n\n"
+        "| # | 错因 | 典型表现 | 改进动作 | 次数 |\n"
+        "|---|---|---|---|---|\n"
+        "| 1 | 计算失误 | 符号/代数/化简失误 | 每步只做一件事并回代验算 | 0 |\n"
+        "| 2 | 概念漏洞 | 定义不准/条件漏用 | 追溯课本定义与反例 | 0 |\n"
+        "| 3 | 公式记错 | 混淆公式符号/适用范围 | 默写卡强化记忆 | 0 |\n"
+        "| 4 | 审题偏差 | 遗漏限制条件/看错目标 | 圈画题干关键词 | 0 |\n"
+        "| 5 | 书写丢分 | 跳步/无结论/表述不严谨 | 严格按考研真题采分点步骤书写 | 0 |\n"
+    )
+
+
+def seed_radars_from_plan(plan, workspace_root=None):
+    """把建档痛点作为「建档摸底核心卡点」行注入各科雷达（占位态专用）。
+
+    [P2 修复·痛点未注入雷达] 建档向导宣称痛点已注入薄弱项雷达，但旧实现
+    只写 plan/AGENTS.md —— 雷达（copy_templates 纯拷贝）始终「待首次自测
+    评估」，查漏因此显示「暂无已登记的薄弱项」（三沙箱实测）。现注入一行
+    「建档摸底核心卡点」，查漏/看板即可读到考生自述卡点；注入幂等（先移除
+    旧行再写）；痛点未填或禁用科目跳过。雷达载体与查漏同源：04 用学情档案。
+
+    [UT4 修复·PLANNER-1] 非交互/preset 建档不跑 init_workspace.copy_templates()，
+    01/02/03 各科 `_状态/薄弱点雷达.md` 只有 .template 未实例化，旧实现对
+    `not fp.exists()` 静默 continue → 建档痛点丢失、doctor 必红（UT4 理论
+    物理沙箱 BUG-1，P1）。现分两档兜底：① 同名 .template.md 存在 → 先拷贝
+    实例化再注入（与完整向导产物一致）；② 模板也缺 → 生成最小可用骨架并
+    显式告警。04 专业课学情档案的幂等注入行为保持不变。
+    """
+    import shutil
+    ws = Path(workspace_root) if workspace_root else ROOT
+    plan = plan or {}
+    exam_mode = plan.get("exam_mode")
+    is_mode_c = exam_mode in ("mode_c", "mgmt_199") or plan.get("pol_disabled")
+    math_disabled = (is_mode_c
+                     or str(plan.get("math_key", "")).lower() in {"none", "no", "不考数学"}
+                     or plan.get("math_name") == "不考数学")
+
+    specs = [
+        ("math", math_disabled, ["01-数学/_状态/薄弱点雷达.md"],
+         "数学模块掌握度雷达", "| 模块名称 | 预估分值 | 当前评级 | 核心卡点与错因 |",
+         "| 建档摸底核心卡点 | — | 未测 | 建档卡点：{w}（自述） |"),
+        ("eng", False, ["02-英语/_状态/薄弱点雷达.md"],
+         "英语能力雷达与长难句卡片", "| 题型模块 | 熟练评级 | 主要失分原因 |",
+         "| 建档摸底核心卡点 | 未测 | 建档卡点：{w}（自述） |"),
+        ("pol", is_mode_c, ["03-思想政治理论/_状态/薄弱点雷达.md"],
+         "政治模块掌握度雷达", "| 模块 | 考题形式 | 目标分 | 当前评级 | 易混卡点 |",
+         "| 建档摸底核心卡点 | — | — | 未测 | 建档卡点：{w}（自述） |"),
+        ("pro", False, ["04-专业课/学情档案.md", "04-专业课/_状态/学情档案.md"],
+         "专业课学情档案", "| 章节 | 掌握度 | 薄弱点 | 优先级 | 备注 |",
+         "| 建档摸底核心卡点 | 建档卡点：{w}（自述） | — | — | — |"),
+    ]
+    for key, disabled, rel_paths, min_title, min_header, row_fmt in specs:
+        if disabled:
+            continue
+        w = str(plan.get(f"{key}_weakness") or "").strip()
+        for rel in rel_paths:
+            fp = ws / rel
+            if not fp.exists():
+                # [UT4 修复·PLANNER-1] 工作文件缺失不再静默跳过（见 docstring）。
+                _tpl = fp.with_suffix(".template.md")
+                try:
+                    fp.parent.mkdir(parents=True, exist_ok=True)
+                    if _tpl.exists():
+                        shutil.copy2(_tpl, fp)
+                        print(colorize(f"  [i] 已从模板实例化缺失文件: {rel}", C.YELLOW))
+                    else:
+                        atomic_write_text(fp, _minimal_radar_md(min_title, min_header))
+                        print(colorize(
+                            f"  [!] {rel} 缺失且无同名模板，已生成最小可用骨架；"
+                            f"建议运行 py tools/init_workspace.py 重建完整模板体系。", C.YELLOW))
+                except Exception as e:
+                    print(colorize(f"  [!] 建档状态文件兜底失败 ({rel}): {e}", C.YELLOW))
+                    continue
+            try:
+                text = fp.read_text(encoding="utf-8")
+                lines = [l for l in text.splitlines() if "建档摸底核心卡点" not in l]
+                if _weakness_is_real(w):
+                    blk = _first_table_block(lines)
+                    row = row_fmt.format(w=w)
+                    if blk:
+                        lines.insert(blk[1] + 1, row)
+                    else:
+                        lines.append(row)
+                new_text = "\n".join(lines)
+                if text.endswith("\n"):
+                    new_text += "\n"
+                if new_text != text:
+                    atomic_write_text(fp, new_text)
+            except Exception as e:
+                print(colorize(f"  [!] 薄弱点雷达注入提示 ({rel}): {e}", C.YELLOW))
+
+
+#: [UT4 修复·PLANNER-2] 04-专业课/AGENTS.md 缺失时的重建骨架（内容中性：
+#: 院校/科目名/白名单等由 update_subject_agents 的既有 re.sub 按 plan 回填）。
+#: UT4 三沙箱实测：骨架/隐私清理副本缺该文件时建档静默跳过，doctor 持续报
+#: 「缺失关键状态文件: AGENTS.md」，根 AGENTS.md 的「专业课报到」路由悬空。
+#: 骨架的「学员自定义配置区」行格式与仓库自带模板一致，保证回填正则可命中。
+_PRO_AGENTS_SKELETON = """# AGENTS.md —— 专业课通用私教系统协议模板
+
+> 本文件是通用专业课私教系统协议。本模板适用于全国统考（如 408计算机综合、311教育学等）与全国各高校自命题专业课。
+
+## 0. 你的身份与教学原则
+你是一位具有丰富考研专业课命题与阅卷经验的专属私教老师。你的原则是：
+1. **真题与考纲导向**：严格依据报考院校公布的最新考试大纲与历年真题规律组织教学；
+2. **拒绝盲目做偏题**：所有派题必须出自权威指定教材课后题或历年真题，严禁自编题；
+3. **步骤赋分批改**：解答题必须写明采分点与推导逻辑。
+
+### 学员自定义配置区（使用者自填）
+- **目标院校**：`目标院校`
+- **专业代码与名称**：`报考专业`
+- **专业课科目代码与名称**：`专业课`
+- **满分与目标成绩**：`目标 120-130 分` (摸底: [摸底])
+- **指定白名单资料**：`暂未放置实体资料（私教按目标院校自命题大纲出题，严禁虚构书目）`
+
+## 1. 交互口令
+- 输入 `专业课报到`：调取学情档案并派发今日核心习题；
+- 输入 `交作业`：上传解答，AI 分步打分并指出公式和推导漏洞；
+- 输入 `查漏`：调取掌握度评级与错题重做队列。
+"""
+
 
 def update_subject_agents(plan, workspace_root=None):
     """将真实白名单与薄弱项同步写入 01~04 各科专属 AGENTS.md (杜绝虚构书目)"""
@@ -1388,6 +2108,44 @@ def update_subject_agents(plan, workspace_root=None):
     pro2_n = plan.get("pro2_name", "").strip()
     is_mode_b = exam_mode in ("mode_b", "no_math_dual_pro") or bool(pro2_n)
     math_disabled = is_mode_b or is_mode_c or str(plan.get("math_key", "")).lower() in {"none", "no", "不考数学"} or plan.get("math_name") == "不考数学"
+
+    # [缺陷修复·None 字面量泄漏] GUI 向导产出的 study_plan 不含 *_books 键，
+    # 旧实现直接把 plan.get('math_books')（=None）经 f-string 写成字面量
+    # ``None`` 落进各科 AGENTS.md 白名单行（实测复现），agent 读到的白名单
+    # 是一句 "None" 而非规范占位说明。现统一归一化为与根 AGENTS.md 同款文案。
+    plan = dict(plan)
+    _book_defaults = {
+        "math_books": "不考数学" if math_disabled else str(plan.get("math_name") or "数学"),
+        "eng_books": str(plan.get("eng_name") or "英语"),
+        "pol_books": "政治",
+        "pro_books": str(pro_n or "专业课"),
+    }
+
+    # [问题5 修复·专业课无大纲却谎称按纲出题] 专业课为院校自命题：占位文案
+    # 按大纲真实状态分档（判定与文案收口在 syllabus_manager，见
+    # pro_books_placeholder_text）—— AGENTS.md 是 Agent 的常驻上下文，
+    # 源头写下的虚假承诺会被 LLM 原样复述给学员（实测）。
+    _pro_placeholder_text = None
+    try:
+        try:
+            from tools import syllabus_manager as _syl_mgr
+        except ImportError:
+            import syllabus_manager as _syl_mgr
+        _pro_placeholder_text = _syl_mgr.pro_books_placeholder_text(
+            ws, str(pro_n or "专业课"))
+    except Exception:
+        _pro_placeholder_text = None
+
+    for _bk, _blabel in _book_defaults.items():
+        if not str(plan.get(_bk) or "").strip():
+            if _bk == "pro_books" and _pro_placeholder_text:
+                plan[_bk] = _pro_placeholder_text
+            elif _bk == "math_books" and is_custom_math_key(plan.get("math_key")):
+                # [UT4 修复·PLANNER-6] 自命题数学无全国统考大纲，不得写
+                # 「按官方考纲出题」（UT4 理论物理沙箱 BUG-5 同族）。
+                plan[_bk] = "暂未放置实体资料（私教按目标院校自命题大纲出题，严禁虚构书目）"
+            else:
+                plan[_bk] = f"暂未放置实体资料（私教严格按【{_blabel}】官方考纲出题，严禁虚构书目）"
 
     # 数学
     m_file = ws / "01-数学" / "AGENTS.md"
@@ -1433,12 +2191,30 @@ def update_subject_agents(plan, workspace_root=None):
             if "### 学员配置区" not in t:
                 t += f"\n### 学员配置区\n- **目标分数**：`{plan.get('pol_target', '70+ 分')}` (摸底: {plan.get('pol_baseline', '40分')})\n- **每日投入**：`{plan.get('pol_hours', 1.0)} 小时`\n- **核心书目**：`{plan.get('pol_books')}`\n- **核心薄弱点**：`{plan.get('pol_weakness', '马原哲学原理')}`\n"
             else:
+                # [P1 修复·学情漏更新] 旧实现仅在「学员配置区」不存在时写入 目标分数/
+                # 每日投入，存在时（模板自带该区，属常态路径）只更新 核心书目/薄弱点
+                # —— 考生个性化目标与摸底被跳过，模板残留「70+ 分」「摸底40分」等
+                # 凭空数据（三科对照实测：仅政治有此缺陷）。照数学/英语分支补全四行。
+                t = re.sub(r"- \*\*目标分数\*\*：.*", f"- **目标分数**：`{plan.get('pol_target', '70+ 分')}` (摸底: {plan.get('pol_baseline', '40分')})", t)
+                t = re.sub(r"- \*\*每日投入\*\*：.*", f"- **每日投入**：`{plan.get('pol_hours', 1.0)} 小时`", t)
                 t = re.sub(r"- \*\*核心书目\*\*：.*", f"- **核心书目**：`{plan.get('pol_books')}`", t)
                 t = re.sub(r"- \*\*核心薄弱点\*\*：.*", f"- **核心薄弱点**：`{plan.get('pol_weakness')}`", t)
         atomic_write_text(p_file, t)
 
     # 专业课
     pro_file = ws / "04-专业课" / "AGENTS.md"
+    if not pro_file.exists():
+        # [UT4 修复·PLANNER-2] 缺失时按通用协议骨架重建并告警，不再静默跳过
+        # （UT4 三沙箱实测：骨架副本缺该文件 → 建档后永久缺失、doctor 必红）。
+        # 文件存在时维持现行为：绝不覆盖考生自改内容。重建后的配置区行紧接
+        # 被下方既有 re.sub 按 plan 回填（目标院校/科目名/白名单等）。
+        try:
+            atomic_write_text(pro_file, _PRO_AGENTS_SKELETON)
+            print(colorize(
+                "  [!] 04-专业课/AGENTS.md 缺失，已按通用协议骨架重建；"
+                "如你曾自定义该文件内容，请手动回填。", C.YELLOW))
+        except Exception as e:
+            print(colorize(f"  [!] 04-专业课/AGENTS.md 重建失败: {e}", C.YELLOW))
     if pro_file.exists():
         t = pro_file.read_text(encoding="utf-8")
         t = re.sub(r"- \*\*目标院校\*\*：.*", f"- **目标院校**：`{plan.get('school', '目标院校')}`", t)
@@ -1474,7 +2250,7 @@ def print_study_plan_summary(plan):
   • 私教辅导风格:    {C.GREEN}{plan.get('style_name', STYLES['1'][0])}{C.RESET}
   • 初试总分目标:    {C.RED}{C.BOLD}{plan.get('total_target', '370+ 分')}{C.RESET} (每日总精力预算: {C.CYAN}{plan.get('total_hours', 8.5)} 小时{C.RESET})
 
-{C.BOLD}【四科提分矩阵与薄弱项雷达】{C.RESET}"""
+{C.BOLD}【{subject_count_label(plan)}提分矩阵与薄弱项雷达】{C.RESET}"""
 
     # [P1 修复·math_key=none 贯穿] 不考数学时跳过数学科目显示
     subject_index = 1
@@ -1497,7 +2273,7 @@ def print_study_plan_summary(plan):
      - 白名单书目: {plan.get('pol_books', '核心考案+精选1000题+冲刺卷')}
   {subject_index + 2}. {C.BOLD}{pro_n}{C.RESET}:
      - 目标分 / 摸底分: {C.GREEN}{plan.get('pro_target', '120-130 分')}{C.RESET} / {C.DIM}{plan.get('pro_baseline', '80分')}{C.RESET}  (每日投入: {plan.get('pro_hours', 2.5)}h)
-     - 痛点防线: {C.YELLOW}{plan.get('pro_weakness', '核心算法设计、解答题推导步骤')}{C.RESET}
+     - 痛点防线: {C.YELLOW}{plan.get('pro_weakness', '核心考点掌握、解答题推导步骤')}{C.RESET}
      - 白名单书目: {plan.get('pro_books', '官方教材+历年真题')}"""
 
     summary_text += f"""
@@ -1505,7 +2281,7 @@ def print_study_plan_summary(plan):
 {C.BOLD}【科学作息与防疲劳减压机制】{C.RESET}
   • 每周放风休整: {C.CYAN}{plan.get('rest_weekly', '每周日晚放松休整')}{C.RESET}
   • 每月模考复盘: {C.CYAN}{plan.get('rest_monthly', '每月最后一个周日全真模考')}{C.RESET}
-{C.CYAN}╭── 📋 今日首日四科任务清单 (已全自动写入各科 _状态/今日任务.md) ───────╮{C.RESET}"""
+{C.CYAN}╭── 📋 今日首日{subject_count_label(plan)}任务清单 (已全自动写入各科 _状态/今日任务.md) ───────╮{C.RESET}"""
 
     # [P1 修复·math_key=none 贯穿] 不考数学时不显示数学任务行
     if not math_disabled:
@@ -1515,7 +2291,7 @@ def print_study_plan_summary(plan):
     summary_text += f"""
 {C.CYAN}│{C.RESET}  • {C.BOLD}{e_n:<18}{C.RESET} ({int(e_h*60)}分钟) : 拆解【{plan.get('eng_weakness','真题长难句')}】与阅读定位
 {C.CYAN}│{C.RESET}  • {C.BOLD}思想政治理论       {C.RESET} ({int(p_h*60)}分钟) : 攻坚【{plan.get('pol_weakness','马原哲学与帽子词')}】框架梳理
-{C.CYAN}│{C.RESET}  • {C.BOLD}{pro_n:<18}{C.RESET} ({int(pro_h*60)}分钟) : 突破【{plan.get('pro_weakness','核心算法推导')}】与解答规范
+{C.CYAN}│{C.RESET}  • {C.BOLD}{pro_n:<18}{C.RESET} ({int(pro_h*60)}分钟) : 突破【{plan.get('pro_weakness','核心考点推导')}】与解答规范
 {C.CYAN}╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
 
 👉 {C.BOLD}下一步直接在终端输入指令开始学习：{C.RESET}"""
@@ -1529,7 +2305,7 @@ def print_study_plan_summary(plan):
    - {C.GREEN}/eng{C.RESET}  或 {C.GREEN}英语报到{C.RESET}  ➔ 启动英语长难句与阅读精析
    - {C.GREEN}/pol{C.RESET}  或 {C.GREEN}政治报到{C.RESET}  ➔ 启动政治考点与帽子词自测
    - {C.GREEN}/pro{C.RESET}  或 {C.GREEN}专业课报到{C.RESET}➔ 启动专业课高频大题推导演练
-   - {C.YELLOW}/today{C.RESET}                ➔ 随时查看今日四科任务与完成状态
+   - {C.YELLOW}/today{C.RESET}                ➔ 随时查看今日{subject_count_label(plan)}任务与完成状态
    - {C.YELLOW}/plan{C.RESET}                 ➔ 随时动态调整备考方案与作息
 
 ✨ 所有规划文件已在各科目目录下生成完毕！

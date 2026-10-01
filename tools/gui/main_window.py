@@ -31,6 +31,11 @@ import sys
 from datetime import date
 from pathlib import Path
 
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
+
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -38,7 +43,7 @@ from PySide6.QtWidgets import (
     QTabWidget, QVBoxLayout, QWidget,
 )
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 TOOLS = ROOT / "tools"
 for p in (str(ROOT), str(TOOLS)):
     if p not in sys.path:
@@ -75,6 +80,11 @@ class MainWindow(QMainWindow):
         self._today = date.today()
         #: 本轮是否已流式输出过（决定收尾时是否补整段，避免答案打两遍）
         self._streamed = False
+        # [K7-U1] 关窗 SessionEnd：仅当本窗口真实发生过 Agent 会话（发过消息且
+        # 启动过 AgentRunner）才在关窗时触发一次日终复盘钩子；打开即关的「空窗」
+        # 不触发（避免无意义写盘/IM 推送）。
+        self._agent_session_ran = False
+        self._session_end_fired = False
 
         self.setWindowTitle("考研学习链 · 全科智能私教中枢")
         icon_path = self.workspace_root / "docs" / "assets" / "logo" / "logo.png"
@@ -232,6 +242,8 @@ class MainWindow(QMainWindow):
         """把服务层取到的头部数据写进控件（含倒计时与个性化元标签）。
 
         优先与当前内存中的 self.config 合并，确保设置与向导修改即刻毫秒级生效。
+        例外：``days_left`` 是派生字段（由 exam_date 推算），不走内存/存储快照
+        —— 见下方缺陷修复注释。
         """
         info = services.header_info(self.workspace_root)
         cfg = getattr(self, "config", None) or {}
@@ -240,11 +252,12 @@ class MainWindow(QMainWindow):
         major = plan.get("major") or cfg.get("target_major") or info["major"]
         style = cfg.get("coaching_style") or plan.get("style_name") or info["style"]
         style_short = style.split("·")[0] if "·" in style else (style.split()[0] if style else info["style_short"])
-        days = plan.get("days_left")
-        if days is None:
-            days = info["days_left"]
 
-        self.countdown_label.setText(f"初试倒计时: {days} 天")
+        # [缺陷修复·顶栏陈旧倒计时] 旧实现优先读 plan["days_left"]（ky_config.json
+        # 存储快照），而快照只在「保存设置」时补算（settings.py），挂机跨天/日常
+        # 启动永不刷新 —— 真机实测：配置存 90、真实 80，顶栏与今日页卡片同屏
+        # 互相矛盾。与 G2（study_planner）/ load_dashboard_state 同口径：现算。
+        self.countdown_label.setText(f"初试倒计时: {info['days_left']} 天")
         self.meta_label.setText(
             f"目标: {school} · {major}  |  "
             f"风格: {style_short}")
@@ -287,6 +300,10 @@ class MainWindow(QMainWindow):
 
     def on_config_updated(self, config: dict):
         """向导或设置中心保存后即时热更新 GUI 界面，无需重启。"""
+        # [问题3/6 修复] 剥离向导返回的联动同步旁路警告（仅供弹窗展示，
+        # 不是配置项；留在内存配置里会在下次保存时被写进 ky_config.json）。
+        config = dict(config)
+        sync_warnings = config.pop("_sync_warnings", None)
         self.config = config
         self._sync_header_text()
         self._load_today_task_progress()
@@ -297,6 +314,10 @@ class MainWindow(QMainWindow):
         major = plan.get("major") or config.get("target_major") or "报考专业"
         days = plan.get("days_left", "")
         self.chat_display.append(f"\n[√] 考研个性化档案已更新并即时生效：{school} · {major} (初试倒计时 {days} 天)")
+        if sync_warnings:
+            self.chat_display.append(
+                "\n[!] 建档联动同步存在未完成项：\n"
+                + "\n".join(f"    • {w}" for w in sync_warnings))
 
     def _toggle_theme(self):
         """在明暗预设间切换并持久化（改造前重启即回退深色）。"""
@@ -307,12 +328,24 @@ class MainWindow(QMainWindow):
         self._theme = theme_apply.set_preset(app, target, self.workspace_root)
         self._sync_theme_button()
         self._refresh_card_icons()
+        # [阶段 D · 双态折叠] 切主题重设了全局 styleSheet：对 rail 幂等重放一次
+        # 折叠态（视图项 unpolish/polish），确保 56px 图标栏的
+        # #NavItem[collapsed="true"] 属性选择器在重 polish 后仍然生效。
+        rail = getattr(self, "nav_rail", None)
+        if rail is not None:
+            rail.set_expanded(rail.is_expanded())
 
     # ════════════════════════════════════════════════════════════
     # 数据刷新（全部委托 services，本类不自行解析文件）
     # ════════════════════════════════════════════════════════════
 
     def _refresh_all(self):
+        # [PF-1 性能修复·审计 2026-09-30] 本方法经 header_info / subject_progress /
+        # error_queue_cards / error_queue_markdown 连调 services 多条路径，原先
+        # 每次刷新触发 5 次 load_state（约 20 次状态文件读）+ 2 次错题本全扫。
+        # 现由 services 层（gui/services/dashboard.py）按输入文件 mtime 指纹做
+        # memo（load_state 缓存 + error_queue_cards 指纹缓存），调用结构不变、
+        # 一次刷新收敛为 1 次真实读盘 —— 故此处不再做入口透传改造。
         self._sync_header_text()
         self._load_today_task_progress()
         self._refresh_error_tab()
@@ -704,15 +737,22 @@ class MainWindow(QMainWindow):
         except ImportError:  # pragma: no cover
             from gui.workers.agent_worker import AgentWorker  # type: ignore
 
-        self.agent_worker = AgentWorker(self.config, text)
+        self.agent_worker = AgentWorker(self.config, text,
+                                        workspace_root=self.workspace_root)
         self._worker_refs.append(self.agent_worker)
         # [S3 改善·流式输出与中间态上屏] 实时追加思考链、工具调用与文字片段
         self.agent_worker.chunk_signal.connect(self._on_agent_chunk)
         self.agent_worker.step_signal.connect(self._on_agent_step)
         self.agent_worker.finished_signal.connect(self._on_agent_reply)
         self.agent_worker.finished.connect(self._on_agent_finished)
+        # [K7-U1] 记录「真实 Agent 会话发生过」（关窗时据此触发 SessionEnd）
+        self.agent_worker.session_ran_signal.connect(self._mark_agent_session_ran)
         self._streamed = False
         self.agent_worker.start()
+
+    def _mark_agent_session_ran(self):
+        """[K7-U1] 标记本窗口已发生过真实 Agent 会话（跨线程信号槽）。"""
+        self._agent_session_ran = True
 
     def _on_agent_step(self, step_text: str):
         """私教动作/思考链实时上屏（系统气泡），免除查看外部命令行黑框。"""
@@ -747,6 +787,10 @@ class MainWindow(QMainWindow):
         else:
             self.chat_display.add_agent_message(reply)
         self._streamed = False
+        # [缺陷修复·报到后任务面板不刷新] 报到/交作业/打卡可能刚写入
+        # _状态/今日任务.md —— 回复上屏后立即刷新任务进度，不让考生等到
+        # 60 秒定时器或手动点「刷新今日进度」。
+        self._load_today_task_progress()
 
     # ════════════════════════════════════════════════════════════
     # 定时器与生命周期
@@ -787,7 +831,37 @@ class MainWindow(QMainWindow):
                 pass
         theme_apply.write_pref(theme_apply.KEY_LAST_TAB, self.tabs.currentIndex())
         theme_apply.write_geometry(self)
+        # [K7-U1 修复·GUI 关窗不触发 SessionEnd] CLI 三处退出路径都会
+        # trigger_session_end（日终复盘落盘 + 可选 IM 推送），GUI 此前没有 ——
+        # 桌面端考生永远收不到复盘卡。现仅当本窗口真实发生过 Agent 会话时
+        # 触发一次；任何失败静默降级，绝不阻塞关窗。
+        self._trigger_session_end_once()
         super().closeEvent(event)
+
+    def _trigger_session_end_once(self):
+        """[K7-U1] 关窗时触发一次 SessionEnd 钩子（幂等；仅真实会话过）。
+
+        构造独立 HookManager（内置 SessionEnd 钩子注册于构造时），与 CLI 的
+        ``agent_runner.hooks.trigger_session_end(...)`` 同语义。任何失败静默
+        降级 —— 关窗流程绝不因钩子异常被阻塞。
+        """
+        if not getattr(self, "_agent_session_ran", False):
+            return
+        if getattr(self, "_session_end_fired", False):
+            return
+        self._session_end_fired = True
+        try:
+            try:
+                from agent.hooks import HookManager
+            except ImportError:  # pragma: no cover - 包式导入上下文
+                from tools.agent.hooks import HookManager
+            cfg = getattr(self, "config", None) or {}
+            hm = HookManager(workspace_root=self.workspace_root)
+            hm.trigger_session_end({
+                "active_subject": cfg.get("active_subject", ""),
+            })
+        except Exception:
+            pass
 
 
 __all__ = ["FunctionCard", "MainWindow", "TAB_TITLES"]

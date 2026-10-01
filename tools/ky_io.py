@@ -9,10 +9,12 @@
 这类不一致 —— 一旦写入中途被打断，ky_config.json 会被截成半截 JSON，
 而它不在版本控制内，无法恢复，整个系统随即启动即崩。
 
-提供三类能力：
+提供四类能力：
   1. atomic_write_text   —— 原子写文本（同目录临时文件 + fsync + os.replace）
   2. safe_filename       —— 把任意字符串变成安全的单层文件名（防路径穿越）
   3. is_within           —— 路径包含关系判定（供写入前的边界断言）
+  4. harden_file_permissions —— 敏感文件/目录权限收紧到「仅当前用户」
+     （POSIX chmod 0600/0700；Windows icacls 移除继承、仅授当前用户）
 
 依赖说明
 --------
@@ -22,9 +24,11 @@
   这是本项目唯一引入的第三方 IO 依赖，且**不影响功能正确性**，仅影响多进程并发写同一文件时的互斥强度。
 """
 
+import getpass
 import hashlib
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import threading
@@ -236,6 +240,12 @@ def _align_to_umask(path: Path, mode: int = 0o666, sensitive: bool = False) -> N
     其他用户可读。
     """
     if os.name == "nt":
+        # [审计 2026-09-30 P1-9] 此前 Windows 一律直接 return，含明文 api_key 的
+        # ky_config.json 沿用 NTFS 默认权限（同机其他用户可读）。现敏感文件改走
+        # icacls 收紧（见 harden_file_permissions）；非敏感文件维持现状 —— 普通
+        # 项目文件不该被剥掉继承 ACL，也避免每次写盘都多起一个 icacls 进程。
+        if sensitive:
+            harden_file_permissions(path, is_dir=False)
         return
     target_mode = 0o600 if sensitive else (mode & ~_current_umask())
     try:
@@ -244,6 +254,71 @@ def _align_to_umask(path: Path, mode: int = 0o666, sensitive: bool = False) -> N
         # 权限对齐是尽力而为：失败不影响写入内容，但留痕以便排查权限异常
         import logging
         logging.getLogger(__name__).debug("chmod 权限对齐失败（已忽略）: %s -> %s", path, e)
+
+
+#: [审计 2026-09-30 P1-9] Windows 子进程无窗口标志（防 icacls 弹黑窗）。
+#: 非 Windows 平台该常量取 0，仅在 _harden_windows_acl 里使用（该函数只在
+#: Windows 分支被调用，测试直接调用时也容忍任意平台）。
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def _harden_windows_acl(path: Path, is_dir: bool = False) -> None:
+    """[审计 2026-09-30 P1-9] Windows ACL 收紧：移除继承，仅授予当前用户。
+
+    ``icacls <path> /inheritance:r /grant:r <user>[:F]`` ——
+    ``/inheritance:r`` 剥掉从父目录继承的 ACE（同机其他用户 / Everyone 随之
+    失效），``/grant:r`` 只给当前用户完全控制（目录带 ``(OI)(CI)``，使其中
+    新建的文件/子目录继续继承该 ACE）。
+
+    失败静默降级（任何异常 / 非零返回码只留 debug 日志，绝不抛出）：权限收紧
+    是纵深防御，不能因为 icacls 不可用（受限环境 / 非 Windows 上被直接调用）
+    而阻塞配置写盘等主流程。
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        try:
+            user = getpass.getuser()
+        except Exception:
+            # getpass 在某些无 pwd 条目的环境下会抛错；回落到环境变量
+            user = os.environ.get("USERNAME") or os.environ.get("USER") or ""
+        if not user:
+            logger.debug("Windows ACL 收紧跳过：无法确定当前用户名 (%s)", path)
+            return
+        grant = f"{user}:(OI)(CI)F" if is_dir else f"{user}:F"
+        proc = subprocess.run(
+            ["icacls", str(path), "/inheritance:r", "/grant:r", grant],
+            capture_output=True,
+            timeout=10,
+            creationflags=_CREATE_NO_WINDOW,
+        )
+        if proc.returncode != 0:
+            logger.debug("Windows ACL 收紧失败（已忽略）: %s (returncode=%s)",
+                         path, proc.returncode)
+    except Exception as e:
+        logger.debug("Windows ACL 收紧异常（已忽略）: %s -> %s", path, e)
+
+
+def harden_file_permissions(path: PathLike, is_dir: bool = False) -> None:
+    """[审计 2026-09-30 P1-9] 把敏感文件/目录的权限收紧到「仅当前用户」。
+
+    POSIX：``chmod 0600``（文件）/ ``0700``（目录）；
+    Windows：``icacls`` 移除继承并只授予当前用户（见 :func:`_harden_windows_acl`）——
+    此前 Windows 分支一律跳过，含明文 api_key 的 ``ky_config.json`` 与
+    ``%LOCALAPPDATA%/kaoyan-study-chain/config_backup/`` 沿用 NTFS 默认权限，
+    同机其他用户可读。
+
+    失败静默降级（不阻塞主流程，只留 debug 日志）：权限收紧是纵深防御。
+    """
+    try:
+        target = Path(path)
+        if os.name == "nt":
+            _harden_windows_acl(target, is_dir=is_dir)
+        else:
+            os.chmod(target, 0o700 if is_dir else 0o600)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug("权限收紧失败（已忽略）: %s -> %s", path, e)
 
 
 def atomic_write_text(path: PathLike, text: str, *, encoding: str = "utf-8",

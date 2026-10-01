@@ -19,6 +19,51 @@ import re
 from typing import Dict, Any, Callable, List, Tuple, Optional
 from pathlib import Path
 
+# ── [K6] 校名归一辅助（school_scope_guard 专用） ──────────────────────────
+#: 校名后缀（「大学 / 学院」可互换归一到主干）。
+_SCHOOL_SUFFIXES = ("大学", "学院")
+
+
+def _school_aliases(name: str) -> set:
+    """生成校名的等价写法集合（用于「是否同一所学校 / 学员是否提及」判定）。
+
+    规则（刻意宽松：误放行 ≫ 误阻断，宁可多放行也不误伤正常跨校提问）：
+      1. 全名（去空白）；
+      2. 「大学 / 学院」后缀的主干（长度 ≥ 3 才收 —— 避免「北京」这类
+         2 字主干把「北京师范大学」误判为提及「北京大学」）；
+      3. 常见简称：「主干前缀 + 学科首字 + 大」（合成农业 → 合成农大）。
+    """
+    n = re.sub(r"\s+", "", str(name or ""))
+    if not n:
+        return set()
+    alts = {n}
+    for suf in _SCHOOL_SUFFIXES:
+        if n.endswith(suf) and len(n) > len(suf):
+            stem = n[: -len(suf)]
+            if len(stem) >= 3:
+                alts.add(stem)
+                alts.add(stem[:-2] + stem[-2] + "大")
+            break
+    return alts
+
+
+def _same_school(a: str, b: str) -> bool:
+    """两个校名是否指同一所学校（别名归一后取交集比对）。"""
+    aa = _school_aliases(a)
+    bb = _school_aliases(b)
+    if not aa or not bb:
+        return False
+    return bool(aa & bb)
+
+
+def _school_mentioned(school: str, text: str) -> bool:
+    """文本中是否提及该校（含常见简称归一）。"""
+    t = re.sub(r"\s+", "", str(text or ""))
+    if not t:
+        return False
+    return any(a and a in t for a in _school_aliases(school))
+
+
 class HookEvent:
     SESSION_START = "SessionStart"
     PRE_TOOL_USE = "PreToolUse"
@@ -26,6 +71,15 @@ class HookEvent:
     BEFORE_COMPACT = "BeforeCompact"
     AFTER_COMPACT = "AfterCompact"
     SESSION_END = "SessionEnd"
+    # ── [K7-U2] RunLoop 扩展点（无注册 = 恒等，零行为变化） ──
+    #: 每轮 Agent 迭代开始前（step 递增后）；hook 可返回改写后的 messages。
+    PREPARE_NEXT_TURN = "PrepareNextTurn"
+    #: 每次 LLM 请求发出前（紧邻 _call_llm）；hook 可返回改写后的 messages。
+    PREPARE_REQUEST = "PrepareRequest"
+    #: 每轮迭代结束（LLM 响应处理完毕的任一出口）；通知型。
+    FINISH_TURN = "FinishTurn"
+    #: 整个 run 收尾（返回 final_answer 前）；通知型。
+    FINISH_RUN = "FinishRun"
 
 class HookManager:
     def __init__(self, workspace_root: Optional[Path] = None, memory_manager=None):
@@ -37,7 +91,11 @@ class HookManager:
             HookEvent.POST_TOOL_USE: [],
             HookEvent.BEFORE_COMPACT: [],
             HookEvent.AFTER_COMPACT: [],
-            HookEvent.SESSION_END: []
+            HookEvent.SESSION_END: [],
+            HookEvent.PREPARE_NEXT_TURN: [],
+            HookEvent.PREPARE_REQUEST: [],
+            HookEvent.FINISH_TURN: [],
+            HookEvent.FINISH_RUN: [],
         }
         self._register_builtin_hooks()
 
@@ -94,6 +152,67 @@ class HookManager:
                 func(messages, context)
             except Exception as e:
                 print(f"\033[93m[Hook Warning] BeforeCompact: {e}\033[0m")
+
+    def trigger_after_compact(self, messages: List[Dict[str, Any]], context: Dict[str, Any]):
+        """[K7-U5] 压缩完成后的合规校验扩展点（context_engine.compact_context 调用）。
+
+        此前 HookEvent.AFTER_COMPACT 已定义但**无任何触发方法**（死事件）；
+        现补上触发链，注册方可在压缩结果上做校验/审计。无注册 = 恒等。
+        """
+        for _, func in self.hooks[HookEvent.AFTER_COMPACT]:
+            try:
+                func(messages, context)
+            except Exception as e:
+                print(f"\033[93m[Hook Warning] AfterCompact: {e}\033[0m")
+
+    # ── [K7-U2] RunLoop 扩展点（无注册 = 恒等，零行为变化） ──
+
+    def trigger_prepare_next_turn(self, messages: List[Dict[str, Any]],
+                                  context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """每轮 Agent 迭代开始前的扩展点。
+
+        注册的 hook 可返回改写后的 messages（返回 None = 保持不变）。
+        无注册时原样返回入参（恒等）。
+        """
+        for _, func in self.hooks[HookEvent.PREPARE_NEXT_TURN]:
+            try:
+                out = func(messages, context)
+                if out is not None:
+                    messages = out
+            except Exception as e:
+                print(f"\033[93m[Hook Warning] PrepareNextTurn: {e}\033[0m")
+        return messages
+
+    def trigger_prepare_request(self, messages: List[Dict[str, Any]],
+                                context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """每次 LLM 请求发出前的扩展点（紧邻 _call_llm）。
+
+        与 PrepareNextTurn 同契约：hook 返回列表则替换 messages，None 保持不变。
+        """
+        for _, func in self.hooks[HookEvent.PREPARE_REQUEST]:
+            try:
+                out = func(messages, context)
+                if out is not None:
+                    messages = out
+            except Exception as e:
+                print(f"\033[93m[Hook Warning] PrepareRequest: {e}\033[0m")
+        return messages
+
+    def trigger_finish_turn(self, messages: List[Dict[str, Any]], context: Dict[str, Any]):
+        """每轮迭代结束（LLM 响应处理完毕的任一出口）的通知型扩展点。"""
+        for _, func in self.hooks[HookEvent.FINISH_TURN]:
+            try:
+                func(messages, context)
+            except Exception as e:
+                print(f"\033[93m[Hook Warning] FinishTurn: {e}\033[0m")
+
+    def trigger_finish_run(self, context: Dict[str, Any]):
+        """整个 run 收尾（返回 final_answer 前）的通知型扩展点。"""
+        for _, func in self.hooks[HookEvent.FINISH_RUN]:
+            try:
+                func(context)
+            except Exception as e:
+                print(f"\033[93m[Hook Warning] FinishRun: {e}\033[0m")
 
     def trigger_session_end(self, context: Dict[str, Any]):
         for _, func in self.hooks[HookEvent.SESSION_END]:
@@ -220,6 +339,39 @@ class HookManager:
 
         self.register_hook(HookEvent.PRE_TOOL_USE, syllabus_guard_hook, priority=10)
 
+        # ── 1.5 院校范围守卫 Hook (PreToolUse) ──
+        def school_scope_guard_hook(tool_name: str, tool_args: Dict[str, Any], context: Dict[str, Any]):
+            """[K6] 防止模型脱离学员目标院校，自行侦察/比对无关院校。
+
+            仅约束「院校级」工具（scout_school / diff_syllabus）：
+              - 目标校未配置（空 / 未指定）→ 完全 no-op（零行为变化）；
+              - 工具参数 school 与目标校一致（别名归一）→ 放行；
+              - 学员本轮输入中显式提及该校 → 放行（PostToolUse 追加澄清）；
+              - 其余（模型自创校名 / 换校且学员未提及）→ 阻断并引导回目标校。
+            """
+            if tool_name not in ("scout_school", "diff_syllabus", "compare_school", "compare_schools"):
+                return True, "ok", tool_args
+            target = str(context.get("target_school") or "").strip()
+            if not target or target == "未指定":
+                return True, "ok", tool_args
+            if not isinstance(tool_args, dict):
+                return True, "ok", tool_args
+            school = str(tool_args.get("school") or "").strip()
+            if not school or _same_school(school, target):
+                return True, "ok", tool_args
+            if _school_mentioned(school, context.get("user_input", "")):
+                return True, "ok", tool_args
+            return (
+                False,
+                f"【🎯 院校范围守卫】你的目标院校为「{target}」，"
+                f"本次调用侦察/比对的是「{school}」——学员本轮并未提及该校。"
+                f"请围绕目标院校「{target}」组织侦察；"
+                f"若确需扩展到「{school}」，先向学员确认。",
+                tool_args
+            )
+
+        self.register_hook(HookEvent.PRE_TOOL_USE, school_scope_guard_hook, priority=20)
+
         # ── 2. 工具结果后置自检与错题入库联动 Hook (PostToolUse) ──
         def post_audit_hook(tool_name: str, tool_args: Dict[str, Any], tool_result: str, context: Dict[str, Any]):
             # 若调用了 log_mistake 归档错题
@@ -235,6 +387,111 @@ class HookManager:
             return ""
 
         self.register_hook(HookEvent.POST_TOOL_USE, post_audit_hook, priority=50)
+
+        # ── 2.5 院校范围澄清 Hook (PostToolUse) ──
+        def school_scope_clarify_hook(tool_name: str, tool_args: Dict[str, Any], tool_result: str, context: Dict[str, Any]):
+            """[K6] 学员显式要求侦察非目标校时，在结果末尾追加范围澄清。
+
+            仅在「放行但非目标校」场景（= 学员本轮提及了该校）追加提示，
+            让模型与学员都清楚该情报属于对照参考，避免与目标校信息混淆。
+            与 PreToolUse 的 school_scope_guard 同判定、纯函数重算（无状态）。
+            """
+            if tool_name not in ("scout_school", "diff_syllabus", "compare_school", "compare_schools"):
+                return ""
+            target = str(context.get("target_school") or "").strip()
+            if not target or target == "未指定":
+                return ""
+            if not isinstance(tool_args, dict):
+                return ""
+            school = str(tool_args.get("school") or "").strip()
+            if not school or _same_school(school, target):
+                return ""
+            if _school_mentioned(school, context.get("user_input", "")):
+                return (
+                    f"注意：本次侦察/比对的院校为「{school}」，与学员的目标院校"
+                    f"「{target}」不同——以上情报仅作对照参考，请勿与目标院校信息混淆。"
+                )
+            return ""
+
+        self.register_hook(HookEvent.POST_TOOL_USE, school_scope_clarify_hook, priority=55)
+
+        # ── 2.7 拦截连续计数与引导升级 Hook (PostToolUse) ──
+        def block_streak_guard_hook(tool_name: str, tool_args: Dict[str, Any],
+                                    tool_result: str, context: Dict[str, Any]):
+            """[K7-U3] 同类拦截连续计数 → 引导升级（原 loop 内联逻辑原位抽取）。
+
+            动机（W11 实证）：安全拦截（run_command 白名单）与引擎直抓拦截
+            （fetch_url）各自计数，连续达到阈值（默认 3）后文案升级为「停止
+            试探」级警告；成功执行同类工具即重置（「连续」语义，非历史累计）。
+
+            context 契约（缺任一键 → 完全 no-op，兼容其他调用方）：
+              - ``block_streaks``：dict{"safety": int, "search": int}，就地更新；
+              - ``block_streak_decisions``：list，把 (guide, kind) 决策 append
+                进去，由 loop 在原位置（tool 消息入列之后）消费 —— hook 触发
+                早于 tool 消息入列，故**不在此处**直接改 active_messages，
+                以此保证消息顺序与事件顺序与抽取前逐字一致；
+              - ``block_escalate_threshold``：int，升级阈值（默认 3）。
+            """
+            streaks = context.get("block_streaks")
+            decisions = context.get("block_streak_decisions")
+            if not isinstance(streaks, dict) or not isinstance(decisions, list):
+                return ""
+            try:
+                threshold = int(context.get("block_escalate_threshold", 3))
+            except (TypeError, ValueError):
+                threshold = 3
+
+            result_text = str(tool_result)
+            block_kind = None
+            if tool_name == "fetch_url" and "已拦截搜索引擎直抓" in result_text:
+                block_kind = "search"
+            elif tool_name == "run_command" and (
+                    "安全拦截：" in result_text
+                    or "PermissionDenied:" in result_text):
+                block_kind = "safety"
+
+            if not block_kind:
+                # 成功执行同类工具 → 重置该类连续计数（「连续」语义）。
+                if tool_name == "fetch_url":
+                    streaks["search"] = 0
+                elif tool_name == "run_command":
+                    streaks["safety"] = 0
+                return ""
+
+            streaks[block_kind] = int(streaks.get(block_kind, 0)) + 1
+            streak = streaks[block_kind]
+            escalated = streak >= threshold
+            if block_kind == "search":
+                if escalated:
+                    guide = (f"（系统提示）你已连续 {streak} 次尝试直抓搜索"
+                             f"引擎且均被拦截。此路径在本环境已被彻底禁用"
+                             f"——更换搜索引擎、猜测站内 URL、编写脚本抓取"
+                             f"都不会成功。唯一有效的检索方式是 web_search"
+                             f" 工具，请立即调用 web_search"
+                             f"(query=\"你要搜索的关键词\")，"
+                             f"不要再用 fetch_url 打开任何搜索引擎地址。")
+                    decisions.append((guide, "search_guard_escalation"))
+                else:
+                    guide = ("（系统提示）搜索引擎直抓已被拦截。请立即调用 "
+                             "web_search 工具完成检索"
+                             "（如 web_search(query=\"你要搜索的关键词\")），"
+                             "不要再尝试其他搜索引擎，也不要猜测站内 URL 路径。")
+                    decisions.append((guide, "search_guard_nudge"))
+            elif escalated:
+                # safety 类 1-2 次不注入（拦截文案本身已含替代路径提示，
+                # 保持既有行为）；达到阈值才注入「停止试探」警告。
+                guide = (f"（系统提示）你已连续 {streak} 次触发命令安全拦截。"
+                         f"本环境的命令执行已按白名单严格限制——更换命令、"
+                         f"编写脚本、调整参数都会同样被拒，继续尝试只会"
+                         f"浪费步数并可能导致任务超时。请立即停止命令试探，"
+                         f"改用内置工具完成任务：读文件 read_file"
+                         f"（PDF 自动提取文本）、搜索 grep / search_files、"
+                         f"写产物 write_file / edit_file、真题抽题"
+                         f"read_exam_paper。")
+                decisions.append((guide, "safety_guard_escalation"))
+            return ""
+
+        self.register_hook(HookEvent.POST_TOOL_USE, block_streak_guard_hook, priority=60)
 
         # ── 3. 上下文压缩前记忆提取沉淀 Hook (BeforeCompact) ──
         def compaction_saver_hook(messages: List[Dict[str, Any]], context: Dict[str, Any]):

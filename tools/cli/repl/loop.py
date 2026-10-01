@@ -138,6 +138,27 @@ def _get_pdf_extractor():
             return None
     return pdf_extractor
 
+
+# ── [UT4 修复·CLI-2] MSYS 路径改写还原 ──
+#: Git Bash/MSYS 管道驱动会把以 ``/`` 开头的整段参数按路径规则改写（UT4 实测：
+#: ``/today`` → ``C:/Program Files/Git/today``）。该形态不匹配任何本地斜杠分支，
+#: 整条输入坠入 Agent LLM 工具链（实测多轮工具调用 115.4s 真实计费）。此处仅当
+#: **整行**以盘符路径开头、且末段恰为 /today 家族固定口令时做确定性还原；
+#: 普通提问、带空格参数与真实文件路径（有扩展名/后续内容）不受影响。
+_MANGLED_SLASH_RE = re.compile(
+    r"^[A-Za-z]:[/\\].*[/\\](today|tasks|task)\s*$", re.IGNORECASE)
+_MANGLED_SLASH_REWRITE = {"today": "/today", "tasks": "/tasks", "task": "/task"}
+
+
+def _normalize_mangled_slash_command(user_input: str) -> str:
+    """[UT4 修复·CLI-2] 把被 MSYS 改写成路径形态的固定口令还原为斜杠指令，
+    保证 /today 家族始终走本地确定性渲染，绝不落入 Agent LLM 链。"""
+    _m = _MANGLED_SLASH_RE.match(user_input or "")
+    if not _m:
+        return user_input
+    return _MANGLED_SLASH_REWRITE.get(_m.group(1).lower(), user_input)
+
+
 def _print_external_read_summary(agent_runner) -> None:
     """[B2b] 会话结束时汇总本会话读取过的「工作区外」文件（为空则静默）。
 
@@ -338,6 +359,10 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
             print("\n再见！保持节奏，一战成硕！🎓")
             break
 
+        # [UT4 修复·CLI-2] 先还原 MSYS 改写形态（/today → C:/Program Files/Git/today
+        # 等），让固定口令稳定命中本地分支，绝不坠入 Agent LLM 工具链。
+        user_input = _normalize_mangled_slash_command(user_input)
+
         if not user_input:
             continue
 
@@ -424,6 +449,19 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
             target = plan.get(f"{curr_subj}_target", "高分冲刺")
             weak = plan.get(f"{curr_subj}_weakness", "核心考点攻坚")
 
+            # [问题6 修复·报到后今日任务 0/0] 与 GUI 侧同源：报到时确保该科
+            # 「今日任务」文件已生成（缺失/过期才写，当日已有则保留）—— 此前
+            # 只有建档向导会生成，报到后下方任务清单与看板进度恒为空。
+            # 显式传 ROOT（与下方读取同一根），避免双根分裂。
+            try:
+                try:
+                    from tools.study_planner import ensure_subject_today_task
+                except ImportError:
+                    from study_planner import ensure_subject_today_task
+                ensure_subject_today_task(plan, curr_subj, workspace_root=ROOT)
+            except Exception:
+                pass
+
             print(colorize(f"\n🎓 【{subj_name} · 私教报到就绪】", C.BOLD + C.GREEN))
             print(f"• 今日规划投入: {C.CYAN}{hours} 小时{C.RESET} ｜ 战役目标: {C.YELLOW}{target}{C.RESET}")
             print(f"• 核心薄弱防线: 【{C.BOLD}{weak}{C.RESET}】")
@@ -469,7 +507,17 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
         elif raw_cmd.startswith("打卡") or raw_cmd.startswith("完成"):
             kw = raw_cmd.replace("打卡", "").replace("完成", "").strip()
             if kw:
-                ok, msg = mark_today_task_done(kw, curr_subj)
+                # [P1 修复·safe 模式裸崩] 严格只读模式下 mark_today_task_done 抛
+                # PermissionDeniedError；旧实现未捕获 → 完整 traceback 且 REPL 以
+                # 退出码 1 终止。照本文件自由问答分支（约 1191 行）既有先例：
+                # 提示"已拒绝"后 continue，防护生效且会话可继续。
+                try:
+                    ok, msg = mark_today_task_done(kw, curr_subj)
+                except Exception as _e:
+                    if _e.__class__.__name__ == "PermissionDeniedError":
+                        print(colorize(f"\n[✘ 已拒绝] {_e}", C.RED))
+                        continue
+                    raise
                 tag = C.GREEN if ok else C.YELLOW
                 print(colorize(f"\n[{msg}]\n", tag))
                 continue
@@ -482,7 +530,15 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                         sub_target = sk; break
             if exam_composer:
                 print(colorize(f"\n[📝 正在基于错题库与高频易错考点为您靶向组卷...]\n", C.CYAN))
-                res = exam_composer.compose_exam_paper(sub_target, count=3, save_file=True)
+                # [P1 修复·safe 模式裸崩] 同上：组卷落盘（save_file=True）在
+                # safe 模式被拒时优雅提示，不再裸崩终止会话。
+                try:
+                    res = exam_composer.compose_exam_paper(sub_target, count=3, save_file=True)
+                except Exception as _e:
+                    if _e.__class__.__name__ == "PermissionDeniedError":
+                        print(colorize(f"\n[✘ 已拒绝] {_e}", C.RED))
+                        continue
+                    raise
                 print(res.get("formatted_paper", ""))
                 if res.get("saved_path"):
                     print(colorize(f"[√ 试卷已归档至]: {res['saved_path']}\n", C.GREEN))
@@ -493,7 +549,7 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
             topic = raw_cmd.replace("变式", "").replace("题", "").replace("找", "").strip()
             if not topic: topic = "导数中值定理" if curr_subj == "math" else "核心高频考点"
             if variant_retriever:
-                print(colorize(f"\n[🔍 正在四科白名单题源中检索【{topic}】同类真题变式...]\n", C.CYAN))
+                print(colorize(f"\n[🔍 正在白名单题源中检索【{topic}】同类真题变式...]\n", C.CYAN))
                 res = variant_retriever.search_real_variant(subject=curr_subj, keyword=topic)
                 print(variant_retriever.format_variant_output(res))
             else:
@@ -605,7 +661,8 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
             if ky_io is not None and ky_io.is_read_only_mode():
                 _viol = detect_repl_safe_mode_violation(cmd, arg)
                 if _viol:
-                    print(colorize(f"\n[✘ 已拒绝] 严格只读模式 (--permission=safe) 下禁止执行: {_viol}\n", C.RED))
+                    print(colorize(f"\n[✘ 已拒绝] 严格只读模式 (--permission=safe) 下禁止执行: {_viol}", C.RED))
+                    print(colorize("    工作区只读；仅配置留证快照与审计日志写入系统用户目录（安全审计设计）。\n", C.YELLOW))
                     continue
 
             if cmd == "/skills":
@@ -767,7 +824,7 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                     for m in matches[:10]: print("  " + m)
                 else:
                     mats = pdf_extractor.list_materials()
-                    print(colorize("\n[📚 四科「参考资料/」文献清单]:", C.CYAN))
+                    print(colorize("\n[📚 各科「参考资料/」文献清单]:", C.CYAN))
                     for s, flist in mats.items(): print(f"  - {s}: {', '.join(flist) if flist else '暂无文件'}")
                 print()
                 continue
@@ -841,6 +898,8 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                 print(colorize(f"\n[已在默认浏览器中打开实时可视化伴侣: {target_url}]\n", C.GREEN))
                 continue
             elif cmd in ("/today", "/tasks", "/task"):
+                # [UT4 修复·CLI-2] /today 必须保持本地确定性渲染（今日任务总览），
+                # 严禁改道 Agent LLM 工具链（UT4 实测误入链路 115s 真实计费）。
                 print_today_tasks_summary()
                 continue
             elif cmd in ("/exit", "/quit", "exit", "quit"):
@@ -944,8 +1003,32 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                         for w in watched: print(f"  • {w['name']} ｜ 最近检查: {w.get('last_check', '未检查')}")
                         print()
                     elif parts[0] in ("check", "-c"):
+                        # [F1 修复·REPL 报告层接入] 此前只裸打印状态码（"测试大学: BASELINED"
+                        # 这类机器串），与 CLI/TUI 同样缺报告落盘；现与两端同口径：
+                        # 状态要点 + save_report 落盘 + 路径。
                         findings = watcher.check_updates()
-                        for f in findings: print(f"  - {f['school']}: {f.get('status')}")
+                        if not findings:
+                            print(colorize("[!] 当前没有正在监控的高校。使用 /watch <高校名> 添加监控目标。\n", C.YELLOW))
+                        else:
+                            watched_now = watcher.list_watched()
+                            for f in findings:
+                                st = f.get("status")
+                                if st == "UPDATED":
+                                    print(colorize(f"  🔥 {f['school']}: 发现 {len(f.get('alert_titles') or [])} 条新动态", C.GREEN))
+                                    for t in (f.get("alert_titles") or [])[:5]:
+                                        print(f"      - {t}")
+                                elif st == "BASELINED":
+                                    print(colorize(f"  📌 {f['school']}: 首次巡检已建立基线，待下次比对新增简章", C.CYAN))
+                                elif st == "FETCH_FAILED":
+                                    print(colorize(f"  ⚠️ {f['school']}: {f.get('msg') or '访问超时或受阻'}", C.YELLOW))
+                                else:
+                                    print(colorize(f"  ✓ {f['school']}: 站点指纹正常，暂无新增简章", C.BLUE))
+                            report_path = watcher.save_report(findings, watched_now)
+                            if report_path:
+                                print(colorize(f"[+] 巡检报告已落盘: {report_path}", C.GREEN))
+                            else:
+                                print(colorize("[!] 报告未写入磁盘（只读模式或落盘失败），以上要点即本次巡检结果。", C.YELLOW))
+                            print()
                 continue
             elif cmd in ("/compare", "/vs", "/pk", "/duibi"):
                 parts = arg.strip().split()

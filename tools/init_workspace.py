@@ -10,6 +10,11 @@ import sys
 import shutil
 import re
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from datetime import datetime
 
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
@@ -28,7 +33,7 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = resolve_workspace_root(__file__)
 
 # [缺陷修复·导入被劫持] 此前只把 `ROOT/tools` 放进 sys.path，仓库根**不在**其中。
 # 以脚本方式运行（py tools/init_workspace.py）时 sys.path[0] 是脚本目录而非仓库根，

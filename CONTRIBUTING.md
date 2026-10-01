@@ -150,7 +150,7 @@ kaoyan_chain/
     ├── ky_gui.py                        # [v2.6+] PySide6 GUI 启动入口 (ky gui)
     ├── doctor.py                        # 全系统健康诊断工具 (ky doctor)
     ├── init_workspace.py                # 跨平台工作区全能初始化向导
-    ├── ky_cli.py                        # 专有终端私教与多端 IM 网关入口（42 个子命令）
+    ├── ky_cli.py                        # 专有终端私教与多端 IM 网关入口（43 个子命令）
     ├── ky_io.py                         # 原子写 + 跨进程文件锁 + 只读模式闸门（所有落盘的唯一入口）
     ├── fsrs_scheduler.py                # FSRS 自适应复测调度器（全项目间隔计算唯一真源）
     ├── protocol_loader.py               # 顶层协议加载器（兼容源码模式与 wheel 安装模式）

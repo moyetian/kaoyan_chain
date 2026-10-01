@@ -11,6 +11,11 @@ import os
 import sys
 import subprocess
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from datetime import datetime
 
 # Windows 控制台编码重配置
@@ -21,7 +26,30 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = resolve_workspace_root(__file__)
+
+# 双导入路径兼容（脚本直跑 / pytest / 包内导入）：内容级脱敏与残留自检的
+# 引擎/规则表都在 privacy_policy（单一事实源，与 sync_publish 同源复用）。
+try:  # pragma: no cover - 取决于运行方式
+    import privacy_policy as _pp
+except ImportError:  # pragma: no cover
+    from tools import privacy_policy as _pp  # type: ignore
+
+try:  # pragma: no cover - 取决于运行方式
+    from ky_io import atomic_write_text
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text  # type: ignore
+
+#: 随 GitHub Pages 发布的产物白名单（git add/commit 与推送前脱敏共用同一份）。
+PUSH_PRODUCTS = ("docs/index.html", "docs/live.html", "docs/assets/",
+                 "docs/state_snapshot.json")
+
+#: 推送前内容级脱敏的对象：**本次构建产出的页面与快照**。
+#: 刻意不含静态 assets —— 它们不是构建产物，改写会污染工作区、并与
+#: build_svg_assets.py 等生成脚本漂移（测试钉住「配图与源脚本同源」）；
+#: 静态资产里若出现**当前身份**，由残留自检（全树）兜底阻断。
+_SANITIZE_PRODUCT_RELS = ("docs/index.html", "docs/live.html",
+                          "docs/state_snapshot.json")
 
 
 def _run_build(sanitized: bool) -> int:
@@ -43,6 +71,56 @@ def _run_build(sanitized: bool) -> int:
     return res.returncode
 
 
+def _sanitize_publish_products(root: Path) -> int:
+    """[P1-11 修复·审计 2026-09-30] 对将发布的构建产物做**内容级脱敏**。
+
+    直推链路（``--push``）此前只做「脱敏构建」（剥离私人学习记录正文），不做
+    内容级身份替换 —— 卡片正面手写的校名 / 科目组合会明文进 GitHub Pages。
+    本函数复用 privacy_policy 的引擎与 ``sync_publish.sanitize_markdown_files``
+    同一套口径（同一规则表、同一 ``*.py`` 规则边界），作用对象是
+    ``_SANITIZE_PRODUCT_RELS``（本次构建的页面与快照）。
+
+    与 sync_publish 的两点显式差异（均为场景所迫，不是口径漂移）：
+      * 作用范围收窄到构建产物 —— 静态 assets 会被推送流程原样保留（改写它们
+        会污染工作区并与生成脚本漂移）；静态资产里的当前身份由全树自检兜底；
+      * ``docs/state_snapshot.json`` 被显式纳入 —— 它是 Pages 部署的真相源、
+        会被推送（而 sync_publish 镜像时整文件排除它），实测其卡片正面与
+        科目名可残留真实身份；它不是公开数据库，不触碰「``*.json`` 不脱敏」
+        这条为 ``data/universities`` 设立的红线。
+
+    返回被改写的文件数。
+    """
+    md_rules = _pp.build_substitutions(root)
+    py_rules = _pp.build_py_substitutions(root)
+    changed = 0
+    for rel in _SANITIZE_PRODUCT_RELS:
+        f = root / rel
+        if not f.is_file():
+            continue
+        patterns, line_rules = (py_rules, False) if f.suffix == ".py" else (md_rules, True)
+        new = _pp.sanitize_file_text(f, patterns, line_rules=line_rules)
+        if new is not None:
+            atomic_write_text(f, new, encoding="utf-8")
+            changed += 1
+            print(f"[sanitize] {rel}")
+    return changed
+
+
+def _scan_publish_residuals(root: Path) -> list:
+    """[P1-11 修复] 推送前残留自检：列出 ``docs/`` 公开面里仍含真实身份字面量的文件。
+
+    与 sync_publish 导出后自检调用同一函数（``privacy_policy.scan_residual_identity``），
+    ``include_pii=True`` 亦同 —— ``docs/`` 里没有第三方源码树，通用 PII 正则不会误报。
+    扫描覆盖整个 ``docs/`` 树（git 全量跟踪 = Pages 公开面）：脱敏只处理构建产物，
+    静态资产里的当前身份靠这一步兜底拦截。返回相对 ``docs/`` 的 posix 路径列表；
+    非空时调用方必须阻断推送。
+    """
+    docs = root / "docs"
+    if not docs.is_dir():
+        return []
+    return _pp.scan_residual_identity(docs, root, include_pii=True)
+
+
 def main():
     print("=" * 65)
     print(" 考研学习链 (Kaoyan AI Study Chain) · 看板更新与同步")
@@ -52,7 +130,7 @@ def main():
                  and "-l" not in sys.argv)
 
     if not push_mode:
-        print("\n[1/3] 正在解析四科状态并生成 Web 看板（本地完整模式）...")
+        print("\n[1/3] 正在解析各科状态并生成 Web 看板（本地完整模式）...")
         if _run_build(sanitized=False) != 0:
             print("[!] 构建失败，请检查 Python 环境或语法。")
             sys.exit(1)
@@ -68,11 +146,27 @@ def main():
 
     push_ok = False
     try:
+        # [P1-11 修复·审计 2026-09-30] 推送前内容级脱敏 + 残留自检：直推链路此前
+        # 完全绕过 sync_publish 的这两道工序，卡片正面手写校名会明文进 Pages。
+        # 发现残留 → 阻断提交与推送（产物不离开本机，Pages 不受影响）。
+        sanitized_n = _sanitize_publish_products(ROOT)
+        if sanitized_n:
+            print(f"  -> 已对 {sanitized_n} 个发布产物文件执行内容级脱敏。")
+        residual = _scan_publish_residuals(ROOT)
+        if residual:
+            print("\n[!] 阻断推送：docs/ 公开面中仍含真实身份字面量，已取消提交与推送。")
+            for rel in residual[:20]:
+                print(f"    - docs/{rel}")
+            if len(residual) > 20:
+                print(f"    ... 其余 {len(residual) - 20} 项省略")
+            print("    请检查脱敏规则覆盖范围（或手工清理后重跑）；产物未推送，Pages 不受影响。")
+            sys.exit(3)
+
         # 2. Git 提交
         print("\n[2/3] 正在暂存并提交更新...")
         ts = datetime.now().strftime("%Y-%m-%d %H:%M")
         # [P0 修复] 显式白名单，杜绝隐私文件被顺带提交
-        allowed = ["docs/index.html", "docs/live.html", "docs/assets/", "docs/state_snapshot.json"]
+        allowed = list(PUSH_PRODUCTS)
         valid_allowed = [p for p in allowed if (ROOT / p).exists()]
         if not valid_allowed:
             # [G8 修复] 无白名单产物时不得构造 ["git","commit","-m",msg,"--"] 这种畸形命令

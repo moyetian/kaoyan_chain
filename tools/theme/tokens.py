@@ -18,7 +18,7 @@ Token 命名一律**语义化**（surf = 表面，而不是 gray-800），这样
 
 用户可定制入口：工作区根目录的 ``ui_theme.json``（受 .gitignore 保护，不入库）：
   L1  ``{"preset": "light"}``                      —— 切预设
-  L2  ``{"preset": "light", "overrides": {"acc": "#7c3aed", "radius": 12}}``
+  L2  ``{"preset": "light", "overrides": {"acc": "#0f766e", "radius": 12}}``
   L3  直接给完整 token 字典（``{"tokens": {...}}``）
 未提供该文件时使用内置默认预设。
 """
@@ -30,6 +30,11 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from .contrast import (
@@ -37,6 +42,7 @@ from .contrast import (
     is_dark,
     is_hex,
     mix,
+    rgba,
     validate_tokens,
 )
 
@@ -125,14 +131,17 @@ def _base(
 # 可用**的 CSS 变量，把它升格为全端标准；GUI 的旧配色（#6366f1 系）随之统一，
 # 以消除「四个端四种紫」。
 #
-# 三处刻意的无障碍修正（原设计不满足 WCAG，故在预设里改正）：
-#   1. light 的主色由 #8b5cf6 微调为 #7c3aed —— 前者配白字仅 3.5:1（不达标），
-#      加深后白字达标；色相几乎无感差异。
+# 2026-09 UI 重构（Teal 玻璃风）：dark / light 的主色由紫系切换为 Teal 蓝绿系
+# （浅色 #0f766e / 深色 #2dd4bf，对齐效果图设计语言）；eye-green / pink / hc
+# 三套预设的主色保持不变。换色时以下无障碍取值约束**逐条重新验算**过：
+#   1. light 主色取 #0f766e（teal-700）而非 #0d9488（teal-600）—— 后者配白字
+#      仅 3.74:1 不达标；#0f766e 白字 5.47:1，渐变深端 #115e59 白字 7.58:1。
 #   2. light 的 ok 由 #10b981 改为 #059669、warn 由 #f59e0b 改为 #b45309 ——
 #      原值在白底上分别只有 2.54:1 / 2.15:1，远低于状态色 3:1 的门限，
 #      而它们在看板上是「达标/预警」的文字与图标色。
-#   3. dark 的 `on-acc` 由白改为深靛 #1e1b4b —— 白字压在浅紫主色 #a78bfa 上
-#      只有 2.76:1；改为深色文字后达标。
+#   3. dark 的 `on-acc` 用深 teal #042f2e 而非白色 —— 白字压在浅 teal 主色
+#      #2dd4bf 上只有 1.9:1；深色文字后 7.77:1，渐变另一端 #38bdf8 亦按
+#      深字验算 6.75:1。
 
 PRESETS: Dict[str, Dict[str, Any]] = {
     "dark": _base(
@@ -140,12 +149,12 @@ PRESETS: Dict[str, Dict[str, Any]] = {
         mode="dark",
         bg="#090d16", surf="#111827", surf2="#1e293b", surf3="#334155",
         fg="#f8fafc", mut="#94a3b8", line="#1e293b",
-        acc="#a78bfa", acc_sub="#2e1065", on_acc="#1e1b4b",
+        acc="#2dd4bf", acc_sub="#134e4a", on_acc="#042f2e",
         ok="#34d399", warn="#fbbf24", bad="#f87171",
         **{
-            "focus-ring": "#c4b5fd",
-            "acc-grad-from": "#c4b5fd",
-            "acc-grad-to": "#a78bfa",
+            "focus-ring": "#5eead4",
+            "acc-grad-from": "#2dd4bf",
+            "acc-grad-to": "#38bdf8",
             "elev-1": "0 1px 3px rgba(0,0,0,.3)",
             "elev-2": "0 8px 24px rgba(0,0,0,.4)",
             "elev-3": "0 16px 48px rgba(0,0,0,.55)",
@@ -159,15 +168,15 @@ PRESETS: Dict[str, Dict[str, Any]] = {
         mode="light",
         bg="#f8fafc", surf="#ffffff", surf2="#f1f5f9", surf3="#e2e8f0",
         fg="#0f172a", mut="#64748b", line="#e2e8f0",
-        acc="#7c3aed", acc_sub="#ede9fe", on_acc="#ffffff",
+        acc="#0f766e", acc_sub="#ccfbf1", on_acc="#ffffff",
         ok="#059669", warn="#b45309", bad="#ef4444",
         **{
-            "focus-ring": "#6d28d9",
-            "acc-grad-from": "#a78bfa",
-            "acc-grad-to": "#7c3aed",
-            "elev-1": "0 4px 12px rgba(139, 92, 246, 0.06),0 1px 3px rgba(0,0,0,.04)",
-            "elev-2": "0 8px 24px rgba(139, 92, 246, 0.12),0 2px 6px rgba(0,0,0,.03)",
-            "elev-3": "0 16px 48px rgba(139, 92, 246, 0.18),0 4px 12px rgba(0,0,0,.05)",
+            "focus-ring": "#115e59",
+            "acc-grad-from": "#0f766e",
+            "acc-grad-to": "#115e59",
+            "elev-1": "0 4px 12px rgba(15, 118, 110, 0.06),0 1px 3px rgba(0,0,0,.04)",
+            "elev-2": "0 8px 24px rgba(15, 118, 110, 0.12),0 2px 6px rgba(0,0,0,.03)",
+            "elev-3": "0 16px 48px rgba(15, 118, 110, 0.18),0 4px 12px rgba(0,0,0,.05)",
             "chart-1": "#2563eb", "chart-2": "#059669",
             "chart-3": "#b45309", "chart-4": "#be185d",
         },
@@ -222,6 +231,11 @@ PRESETS: Dict[str, Dict[str, Any]] = {
             "elev-1": "none",
             "elev-2": "none",
             "elev-3": "none",
+            # 高对比主题不做毛玻璃：半透明表面会稀释对比度，与预设目的相悖，
+            # 故显式给出不透明值（其余预设由 derive_tokens 派生 rgba 玻璃）。
+            "glass": "#000000",
+            "glass-strong": "#141414",
+            "glass-line": "#ffffff",
             "chart-1": "#60a5fa", "chart-2": "#4ade80",
             "chart-3": "#fde047", "chart-4": "#f472b6",
         },
@@ -281,6 +295,21 @@ def derive_tokens(tokens: Mapping[str, Any]) -> Dict[str, Any]:
         acc, fg = str(t["acc"]), str(t["fg"])
         t.setdefault("acc-hover", mix(acc, fg, 0.18))
         t.setdefault("acc-press", mix(acc, fg, 0.32))
+
+    # ── 玻璃拟态（2026-09 UI 重构·Teal 玻璃风）──────────────────
+    # Qt QSS 没有 backdrop-filter，用「半透明表面 + 阴影」模拟毛玻璃观感；
+    # Web 端可在消费点自行叠加 backdrop-filter。全部由既有 token 派生
+    # （surf / surf2 / fg / ok / warn / bad），用户换主题时自动协调；
+    # hc（高对比）预设显式给出不透明值，此处 setdefault 不会覆盖。
+    if "surf" in t:
+        t.setdefault("glass", rgba(str(t["surf"]), 0.72))
+    if "surf2" in t:
+        t.setdefault("glass-strong", rgba(str(t["surf2"]), 0.85))
+    if "fg" in t:
+        t.setdefault("glass-line", rgba(str(t["fg"]), 0.10))
+    for _soft in ("ok", "warn", "bad"):
+        if _soft in t:
+            t.setdefault(f"{_soft}-soft", rgba(str(t[_soft]), 0.15))
 
     # ── 结构数值 → 可注入模板的字面量 ──────────────────────────
     # 让 density / font-scale / radius 这三个「L2 可调项」真正生效，
@@ -474,7 +503,7 @@ def load_theme(workspace_root: Optional[Path] = None,
 
 
 def _default_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
+    return resolve_workspace_root(__file__)
 
 
 def validate_all_presets() -> Dict[str, List[str]]:

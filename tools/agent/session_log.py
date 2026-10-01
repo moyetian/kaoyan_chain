@@ -72,6 +72,7 @@ import json
 import sys
 import time
 import uuid
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -119,7 +120,15 @@ _ID_RANDOM_HEX = 12
 
 #: 降级警告的仓库统一配色（黄色）。
 _YELLOW = "\033[93m"
+#: 恢复提示的仓库统一配色（绿色）。
+_GREEN = "\033[92m"
 _RESET = "\033[0m"
+
+#: 写失败后的待补写事件上限（有界队列，防降级期内存无界膨胀）。
+_PENDING_MAXLEN = 512
+
+#: 降级状态下每 N 次 append 尝试一次重放（避免每次 append 都重试 IO）。
+_FLUSH_EVERY = 20
 
 
 # ── 事件构造与校验 ──────────────────────────────────────────────────────
@@ -284,8 +293,12 @@ class SessionLog:
 
     * **懒创建**：构造时不碰磁盘，首次 :meth:`append` 才建目录 / 开文件 ——
       AgentRunner 构造与无 key 的 run 都不会产生空日志文件；
-    * **写失败降级**：磁盘满 / 权限不足 / 路径被占等任何写入异常都被捕获，
-      只打印一次警告并降级为纯内存（``append`` 仍返回事件 id），**绝不中断对话**；
+    * **写失败降级（有界内存队列 + 可恢复重放）**：磁盘满 / 权限不足 / 路径被占
+      等任何写入异常都被捕获，只打印一次警告（含已缓存条数），事件进入有界
+      队列（``maxlen=_PENDING_MAXLEN``，防无界膨胀；``append`` 仍返回事件 id），
+      **绝不中断对话**；降级期间每 :data:`_FLUSH_EVERY` 次 append 尝试重放一次
+      （重开文件、按序补写），成功即解除降级并打印恢复提示；:meth:`close`
+      时再 best-effort 重放一次；
     * ``path`` 指向 ``<workspace_root>/.memory/sessions/<session_id>.jsonl``。
     """
 
@@ -298,6 +311,10 @@ class SessionLog:
         self._fh = None
         self._degraded = False
         self._warned = False
+        #: 降级期的待补写行（有界；写满自动丢弃最旧的，防内存无界膨胀）。
+        self._pending: deque = deque(maxlen=_PENDING_MAXLEN)
+        #: 降级状态下累计的 append 次数（每 _FLUSH_EVERY 次触发一次重放）。
+        self._degraded_appends = 0
 
     @staticmethod
     def _new_session_id() -> str:
@@ -315,8 +332,25 @@ class SessionLog:
         self._write_line(evt)
         return evt["id"]
 
+    @staticmethod
+    def _serialize(evt: Dict[str, Any]) -> str:
+        """事件 → 单行 JSON。payload 混入不可序列化对象时降级为字符串存根，
+        事件本身不丢。"""
+        try:
+            return json.dumps(evt, ensure_ascii=False)
+        except (TypeError, ValueError):
+            evt = dict(evt)
+            evt["payload"] = {"_unserializable": str(evt.get("payload"))[:500]}
+            return json.dumps(evt, ensure_ascii=False)
+
     def _write_line(self, evt: Dict[str, Any]) -> None:
+        line = self._serialize(evt)
         if self._degraded:
+            # 降级期：入队（有界），每 _FLUSH_EVERY 次尝试一次恢复重放
+            self._pending.append(line)
+            self._degraded_appends += 1
+            if self._degraded_appends % _FLUSH_EVERY == 0:
+                self._try_flush_pending()
             return
         try:
             # 用内置 open（而非 Path.open）—— 测试可 monkeypatch builtins.open
@@ -324,30 +358,69 @@ class SessionLog:
             if self._fh is None:
                 self.sessions_dir.mkdir(parents=True, exist_ok=True)
                 self._fh = open(str(self.path), "a", encoding="utf-8", newline="\n")
-            try:
-                line = json.dumps(evt, ensure_ascii=False)
-            except (TypeError, ValueError):
-                # payload 里混入不可序列化对象：降级为字符串存根，事件本身不丢
-                evt = dict(evt)
-                evt["payload"] = {"_unserializable": str(evt.get("payload"))[:500]}
-                line = json.dumps(evt, ensure_ascii=False)
             self._fh.write(line + "\n")
             self._fh.flush()
         except Exception as e:
+            # 首写失败：关掉坏句柄、行入队、打一次警告（此后静默走重放，不刷屏）
+            self._close_handle()
             self._degraded = True
+            self._degraded_appends = 1
+            self._pending.append(line)
             if not self._warned:
                 self._warned = True
-                print(f"{_YELLOW}[warn] 会话日志写入失败，本会话降级为纯内存"
-                      f"（对话不受影响）: {type(e).__name__}: {e}{_RESET}", file=sys.stderr)
+                print(f"{_YELLOW}[warn] 会话日志写入失败，降级为有界内存队列"
+                      f"（已缓存 {len(self._pending)} 条，每 {_FLUSH_EVERY} 次 append "
+                      f"尝试重放；对话不受影响）: {type(e).__name__}: {e}{_RESET}",
+                      file=sys.stderr)
 
-    def close(self) -> None:
-        """关闭文件句柄（幂等）。已降级 / 从未写入时为空操作。"""
+    def _try_flush_pending(self) -> bool:
+        """尝试重放缓存事件：重开文件、按序补写。
+
+        成功 → 清空队列、解除降级、打印一次恢复提示，返回 True；
+        失败 → 保持降级与队列原样（下次再试），返回 False。**绝不抛异常**。
+        """
+        if not self._pending:
+            return True
+        try:
+            if self._fh is None:
+                self.sessions_dir.mkdir(parents=True, exist_ok=True)
+                self._fh = open(str(self.path), "a", encoding="utf-8", newline="\n")
+            # 不边写边出队：flush 成功后才清队列，中途失败不丢已入队事件
+            # （极端情况可能重复补写，读侧对重复/残行均容错）。
+            for line in self._pending:
+                self._fh.write(line + "\n")
+            self._fh.flush()
+        except Exception:
+            self._close_handle()
+            return False
+        flushed = len(self._pending)
+        self._pending.clear()
+        self._degraded = False
+        self._degraded_appends = 0
+        print(f"{_GREEN}[info] 会话日志写入已恢复，已补写 {flushed} 条缓存事件{_RESET}",
+              file=sys.stderr)
+        return True
+
+    def _close_handle(self) -> None:
+        """关闭文件句柄（幂等，绝不抛）。"""
         if self._fh is not None:
             try:
                 self._fh.close()
             except Exception:
                 pass
             self._fh = None
+
+    def close(self) -> None:
+        """关闭日志（幂等）。降级中先 best-effort 重放一次缓存事件。
+
+        重放仅当会话日志文件**已存在**（本会话曾成功落盘过）时进行 ——
+        首次写入就失败、文件从未建立的会话不在 close 时凭空创建日志文件
+        （保持「懒创建」契约）。句柄与队列的清理幂等，重复调用无副作用。
+        """
+        if self._degraded and self._pending and self.path.exists():
+            self._try_flush_pending()
+        self._pending.clear()
+        self._close_handle()
 
 
 # ── [B3b] 会话管理：列举 / 安全分叉 / 删除 / 清理 ────────────────────────

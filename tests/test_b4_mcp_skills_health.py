@@ -397,6 +397,10 @@ def test_doctor_reports_real_skills_health(monkeypatch, capsys):
     _silence_mcp_probe(monkeypatch)
 
     from tools import doctor as doctor_mod
+    # [审计 2026-09-30 P1-7] doctor 探活已收敛到 net_guard.safe_urlopen：打桩必须
+    # 同步覆盖该接缝，否则本用例会绕过"禁止真实网络"约定 —— 实测在本机真实配置
+    # 下会发起 /v1/models 与**计费**的对话探活（跑一次烧一次额度）。
+    monkeypatch.setattr(doctor_mod, "safe_urlopen", _offline_urlopen)
     summary = doctor_mod.run_doctor(return_summary=True)
     out = capsys.readouterr().out
 

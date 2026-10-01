@@ -24,7 +24,8 @@ from typing import List, Tuple
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy,
+    QVBoxLayout, QWidget,
 )
 
 #: 空状态示例提示词：(按钮文字, 实际填入输入框的口令)
@@ -100,6 +101,11 @@ class ChatView(QScrollArea):
         self.bubbles: List[ChatBubble] = []
         self.example_pills: List[QPushButton] = []
         self.empty_state = self._build_empty_state()
+        # 空状态整体垂直居中：内容上下各一个伸缩项（伸缩因子相同才会均分空间，
+        # 只给下方 addStretch 会让空状态贴顶）。首个气泡出现时收起上方伸缩
+        # （见 _hide_empty_state），让消息列表恢复顶部对齐。
+        self._layout.addStretch(1)
+        self._top_stretch = self._layout.itemAt(0).spacerItem()
         self._layout.addWidget(self.empty_state)
         self._layout.addStretch(1)
         self.setWidget(canvas)
@@ -111,6 +117,10 @@ class ChatView(QScrollArea):
         layout = QVBoxLayout(box)
         layout.setContentsMargins(4, 8, 4, 8)
         layout.setSpacing(6)
+
+        icon = QLabel("💬")
+        icon.setObjectName("ChatEmptyIcon")
+        layout.addWidget(icon)
 
         title = QLabel("考研全科专属私教已就绪")
         title.setObjectName("ChatEmptyTitle")
@@ -137,6 +147,10 @@ class ChatView(QScrollArea):
     def _hide_empty_state(self) -> None:
         if self.empty_state.isVisible():
             self.empty_state.setVisible(False)
+        # 收起上方伸缩：Fixed 策略使 min=max=0（Minimum 策略下该项仍会分走空间），
+        # 消息从顶部开始排布
+        self._top_stretch.changeSize(
+            0, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
     # ── 消息接口 ────────────────────────────────────────────
     def append(self, text: str) -> None:

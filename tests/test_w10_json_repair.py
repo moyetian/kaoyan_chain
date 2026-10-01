@@ -56,7 +56,7 @@ def _make_runner(tmp_path):
     runner = AgentRunner(config=cfg, workspace_root=tmp_path,
                          permission_mode="auto", quiet=True, max_steps=3)
     runner.tool_registry.execute_tool = (
-        lambda name, args, interactive=True: "样本工具结果")
+        lambda name, args, interactive=True, call_id="": "样本工具结果")
     return runner
 
 

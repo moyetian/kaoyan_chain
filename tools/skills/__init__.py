@@ -46,6 +46,11 @@
 # 否则"导入期计算 status"会把惰性化重新变成 eager 导入。
 
 import importlib
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Any, Optional
 
 from . import vision_solver
@@ -63,6 +68,14 @@ from . import material_ingestion
 from . import wechat_searcher
 from . import material_scanner
 from . import open_grader
+from .paper_registry import (
+    PaperRegistry,
+    find_by_content as find_paper_by_content,
+    get_paper,
+    list_papers,
+    paper_id_for_content,
+    register_paper,
+)
 
 #: 惰性加载的子模块清单（含重依赖，不适合在 ``import skills`` 时拉起）
 _LAZY_MODULES = ("pdf_extractor",)
@@ -187,7 +200,7 @@ _SKILL_META = {
     },
     "pdf_extractor": {
         "name": "📚 参考书与真题检索技能 (PDF & Document Extractor)",
-        "desc": "快速检索四科「参考资料/」教材与历年真题库内容",
+        "desc": "快速检索各科「参考资料/」教材与历年真题库内容",
         "command": "/pdf [关键词或页码]",
     },
     "exam_composer": {
@@ -367,7 +380,7 @@ def get_subject_name(subject_key: str, default: str = None) -> str:
     norm_key = alias_map.get(str(subject_key).strip().lower(), str(subject_key).strip().lower())
 
     try:
-        root = Path(__file__).resolve().parent.parent.parent
+        root = resolve_workspace_root(__file__)
         cfg_file = root / "ky_config.json"
         if cfg_file.exists():
             data = json.loads(cfg_file.read_text(encoding="utf-8"))

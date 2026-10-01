@@ -14,7 +14,7 @@ GUI 主题应用与偏好持久化
 
 QSettings 落点（Windows 为注册表 HKCU\\Software\\KaoyanStudyChain\\ky-gui）：
     ui/preset  ui/radius  ui/density  ui/font_scale
-    win/geometry  win/state  ui/last_tab
+    win/geometry  win/state  ui/last_tab  ui/rail_collapsed
 """
 
 from __future__ import annotations
@@ -45,6 +45,8 @@ KEY_FONT_SCALE = "ui/font_scale"
 KEY_GEOMETRY = "win/geometry"
 KEY_WINDOW_STATE = "win/state"
 KEY_LAST_TAB = "ui/last_tab"
+#: 左侧 rail 折叠态（阶段 D 双态折叠；views/nav_rail.build 读写）
+KEY_RAIL_COLLAPSED = "ui/rail_collapsed"
 
 
 # ── QSettings（延迟导入，便于无 Qt 环境下单测数据层） ─────────────
@@ -69,6 +71,19 @@ def read_prefs() -> Dict[str, Any]:
         if raw not in (None, ""):
             prefs[name] = raw
     return prefs
+
+
+def read_pref(key: str, default: Any = None) -> Any:
+    """读取单个偏好键（键缺失 / 空串 / 无 Qt 环境时返回 ``default``）。
+
+    ``read_prefs()`` 只覆盖固定的 L2 旋钮五键；本函数供任意单键读取
+    （如 rail 折叠态 ``ui/rail_collapsed``）。
+    """
+    try:
+        raw = _settings().value(key)
+    except Exception:                      # pragma: no cover - 无 Qt 环境
+        return default
+    return default if raw in (None, "") else raw
 
 
 def write_pref(key: str, value: Any) -> None:
@@ -181,6 +196,7 @@ __all__ = [
     "KEY_GEOMETRY",
     "KEY_LAST_TAB",
     "KEY_PRESET",
+    "KEY_RAIL_COLLAPSED",
     "KEY_RADIUS",
     "KEY_WINDOW_STATE",
     "SETTINGS_APP",
@@ -189,6 +205,7 @@ __all__ = [
     "apply_theme",
     "next_preset",
     "read_overrides",
+    "read_pref",
     "read_prefs",
     "resolve_theme",
     "restore_geometry",

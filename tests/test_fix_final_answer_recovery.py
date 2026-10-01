@@ -84,7 +84,7 @@ def _make_runner(tmp_path, max_steps, exec_result="样本工具结果"):
     runner = AgentRunner(config=cfg, workspace_root=tmp_path,
                          permission_mode="auto", quiet=True, max_steps=max_steps)
     runner.tool_registry.execute_tool = (
-        lambda name, args, interactive=True: exec_result)
+        lambda name, args, interactive=True, call_id="": exec_result)
     return runner
 
 

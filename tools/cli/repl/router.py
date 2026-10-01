@@ -14,13 +14,13 @@ try:
     from tools.cli.shared import (
         ROOT, SUBJECT_DIRS, load_config, save_config, read_text_safe,
         mark_today_task_done, detect_repl_safe_mode_violation,
-        subject_display_name
+        subject_display_name, is_math_disabled
     )
 except ImportError:
     from cli.shared import (
         ROOT, SUBJECT_DIRS, load_config, save_config, read_text_safe,
         mark_today_task_done, detect_repl_safe_mode_violation,
-        subject_display_name
+        subject_display_name, is_math_disabled
     )
 
 try:
@@ -59,13 +59,36 @@ def build_homework_menu() -> str:
     )
 
 def build_weakness_scan_report() -> str:
-    """生成「全科薄弱点雷达与到期复测清单」文本"""
+    """生成「全科薄弱点雷达与到期复测清单」文本
+
+    [P2 修复·nomath 残留与专业课雷达缺位] 旧实现两处与全仓口径脱节：
+    ① 不考数学方案下仍列出「数学专属私教: 0 道到期待复测」（报到/看板/快捷
+       口令均已按 is_math_disabled 过滤，仅此处遗漏）；
+    ② 专业课只认 `_状态/薄弱点雷达.md`（该文件对 04 科不存在），专业课段被
+       整块跳过、连「暂无已登记的薄弱项」都不打印，学情档案里的 C 级卡点
+       进不了查漏。现雷达载体与 error_logger._sync_radar_error_count 同源
+       （04 候选 学情档案.md / _状态/学情档案.md），文件全缺时明确提示。
+    """
     lines = ["=== 🔍 考研全科薄弱点雷达与到期复测清单 ==="]
+    try:
+        cfg = load_config()
+    except Exception:
+        cfg = {}
+    _math_off = is_math_disabled(cfg)
     for s_k, (d_name, label) in SUBJECT_DIRS.items():
-        radar_file = ROOT / d_name / "_状态" / "薄弱点雷达.md"
+        if s_k == "math" and _math_off:
+            continue
+        radar_candidates = [ROOT / d_name / "_状态" / "薄弱点雷达.md"]
+        if s_k == "pro":
+            radar_candidates += [ROOT / d_name / "学情档案.md",
+                                 ROOT / d_name / "_状态" / "学情档案.md"]
+        radar_file = next((p for p in radar_candidates if p.exists()), None)
         due_items = error_logger.get_due_reviews(s_k, max_count=3) if error_logger else []
         due_count = len(due_items)
         lines.append(f"  • {label}: {due_count} 道到期待复测")
+        if radar_file is None:
+            lines.append("    （尚未建立薄弱点雷达：完成首次自测后，私教将在此沉淀具体卡点）")
+            continue
         if radar_file.exists():
             r_txt = read_text_safe(radar_file)
             weakness_lines = []

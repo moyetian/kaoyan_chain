@@ -209,11 +209,14 @@ def test_derive_fills_only_missing_keys():
 # ── Web / TUI 编译器 ────────────────────────────────────────────
 
 def test_css_vars_contain_expected_blocks():
-    css = render_css_vars(build_theme("light"), build_theme("dark"))
+    light = build_theme("light")
+    css = render_css_vars(light, build_theme("dark"))
     for marker in (":root{", ":root[data-t=dark]{", ":root[data-t=light]{",
                    "@media(prefers-color-scheme:dark)"):
         assert marker in css, f"缺少 CSS 变量块: {marker}"
-    assert "--acc:#7c3aed" in css.replace(" ", ""), "亮色主色应进入 CSS 变量"
+    # 主色取当前预设真源而非硬编码字面量：预设换色（如 2026-09 Teal 重构）
+    # 时本断言不应误红，仍能钉住「亮色主色必须进入 CSS 变量」这一契约。
+    assert f"--acc:{light.get('acc')}" in css.replace(" ", ""), "亮色主色应进入 CSS 变量"
     assert "--acc-grad:" in css, "看板既有的 --acc-grad 变量必须保留"
 
 

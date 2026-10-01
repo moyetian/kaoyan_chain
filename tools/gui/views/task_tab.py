@@ -26,12 +26,16 @@ except ImportError:  # pragma: no cover
     from tools.gui import services  # type: ignore
     from tools.gui.widgets.ky_card import KYStatTile  # type: ignore
 
-#: 概览统计块的 key → (caption, 初值)
+#: 概览统计块的 key → (caption, 初值)。progress 的 caption 含 ``{n}`` 占位，
+#: 由 build() 按实际科目数动态化（不考数学时显示「三科」，199 管综显示「两科」）。
 STAT_TILES = (
-    ("progress", "今日四科平均完成度", "0%"),
+    ("progress", "今日{n}科平均完成度", "0%"),
     ("due", "FSRS 待复测错题", "0"),
     ("countdown", "距初试天数", "—"),
 )
+
+#: 科目数 → 中文数字（与 study_planner.subject_count_label 同口径的本地映射）
+_CN_NUM = {2: "两", 3: "三", 4: "四", 5: "五", 6: "六"}
 
 
 def build(win) -> QWidget:
@@ -41,11 +45,15 @@ def build(win) -> QWidget:
     layout.setContentsMargins(14, 14, 14, 14)
 
     # ── 概览统计块（大数字 + caption） ──────────────────────
+    # [P2-3 修复·四科文案残留] 科目行列表就是实际科目数（不考数学时 3 科），
+    # 用它驱动「今日N科平均完成度」的 N，不再硬编码「四科」。
+    _subjects = services.subject_labels(win.workspace_root)
+    _n_cn = _CN_NUM.get(len(_subjects), str(len(_subjects)))
     win.task_stat_tiles = {}
     stat_row = QHBoxLayout()
     stat_row.setSpacing(12)
     for key, caption, initial in STAT_TILES:
-        tile = KYStatTile(caption=caption, value=initial)
+        tile = KYStatTile(caption=caption.format(n=_n_cn), value=initial)
         win.task_stat_tiles[key] = tile
         stat_row.addWidget(tile, stretch=1)
     layout.addLayout(stat_row)
@@ -53,7 +61,7 @@ def build(win) -> QWidget:
     win.task_progress_bars = {}
     win.task_count_labels = {}
 
-    for key, _folder, label_text in services.subject_labels(win.workspace_root):
+    for key, _folder, label_text in _subjects:
         frame = QFrame()
         frame.setObjectName("TaskRow")
         h = QHBoxLayout(frame)

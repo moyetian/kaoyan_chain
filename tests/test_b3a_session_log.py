@@ -442,7 +442,7 @@ def test_tool_events_are_logged_with_parent_chain(tmp_path, monkeypatch):
         config={"api_key": "sk-test-fake", "model": "样本模型", "active_subject": "pol"},
         workspace_root=tmp_path, permission_mode="auto", quiet=True)
     monkeypatch.setattr(runner.tool_registry, "execute_tool",
-                        lambda name, args, interactive=True: "样本工具输出")
+                        lambda name, args, interactive=True, call_id="": "样本工具输出")
 
     assert runner.run("样本问题一") == "样本最终回答"
     events = load_events(runner._session_log.path)
@@ -484,7 +484,7 @@ def test_oversized_tool_result_is_truncated_in_log(tmp_path, monkeypatch):
         config={"api_key": "sk-test-fake", "model": "样本模型", "active_subject": "pol"},
         workspace_root=tmp_path, permission_mode="auto", quiet=True)
     monkeypatch.setattr(runner.tool_registry, "execute_tool",
-                        lambda name, args, interactive=True: big_output)
+                        lambda name, args, interactive=True, call_id="": big_output)
 
     runner.run("样本问题一")
     events = load_events(runner._session_log.path)

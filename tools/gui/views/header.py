@@ -19,9 +19,9 @@ except ImportError:  # pragma: no cover
 def build(win) -> QFrame:
     header = QFrame()
     header.setObjectName("HeaderBar")
-    header.setFixedHeight(75)
+    header.setFixedHeight(64)
     layout = QHBoxLayout(header)
-    layout.setContentsMargins(20, 10, 20, 10)
+    layout.setContentsMargins(16, 8, 16, 8)
     layout.setSpacing(14)
 
     # 官方品牌 Logo（精调版 C-Cat 环扣小链猫）

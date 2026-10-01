@@ -36,9 +36,21 @@ def build(win) -> QWidget:
     quick_bar = QHBoxLayout()
     quick_bar.setSpacing(8)
     for cmd in QUICK_COMMANDS:
-        plan = win.config.get("study_plan") or {}
-        if cmd == "数学报到" and (plan.get("math_key") == "none" or plan.get("math_name") == "不考数学"):
-            continue
+        if cmd == "数学报到":
+            # [缺陷修复·判定不同源] 此前只查 math_key/math_name 两个键，
+            # 漏了 mode_b / mode_c / pro2_name / pol_disabled 等模式；
+            # 现改用与 CLI 同源的 is_math_disabled 单源判定。
+            try:
+                try:
+                    from cli.shared import is_math_disabled
+                except ImportError:  # pragma: no cover
+                    from tools.cli.shared import is_math_disabled
+                if is_math_disabled(win.config):
+                    continue
+            except Exception:
+                plan = win.config.get("study_plan") or {}
+                if plan.get("math_key") == "none" or plan.get("math_name") == "不考数学":
+                    continue
         pill = QPushButton(cmd)
         pill.setObjectName("QuickPill")          # 样式全部来自主题 QSS
         pill.setCursor(Qt.PointingHandCursor)
@@ -74,6 +86,7 @@ def build(win) -> QWidget:
     input_bar.addWidget(win.input_box, stretch=1)
 
     send_btn = QPushButton("发送")
+    send_btn.setObjectName("SendBtn")        # 主色渐变 + 圆角三态样式来自主题 QSS
     send_btn.setMinimumHeight(40)
     send_btn.setFixedWidth(88)
     send_btn.setCursor(Qt.PointingHandCursor)

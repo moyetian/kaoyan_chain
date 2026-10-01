@@ -51,7 +51,9 @@ def test_literal_data_placeholder_in_notes_is_not_replaced(build_mod, monkeypatc
     html, data, _warns, _secs = build_mod.build(offline=True)
 
     assert "{{DATA}}" in html, "字面量 {{DATA}} 被吞掉了"
-    payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    # [审计 2026-09-30 P1-10] payload 重算必须复用构建同款转义（五序列
+    # str.translate），否则「同串出现次数」断言会因转义格式差异而失配。
+    payload = build_mod.json_inline_escape(json.dumps(data, ensure_ascii=False))
     # payload 只应出现在模板自身的注入点（var D = ...）一次，不得被塞进笔记正文
     assert html.count(payload) == 1, "payload 出现了多次，疑似被二次替换进正文"
     idx = html.find("{{DATA}}")

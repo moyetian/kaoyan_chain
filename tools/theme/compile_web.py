@@ -6,7 +6,7 @@ Web 编译器：Theme → CSS 自定义属性（CSS 变量）
 模板字符串里、live.html 又有另一套变量」的局面。产出为可直接内联进 ``<style>``
 的文本块：
 
-    :root { --bg:#090d16; --acc:#a78bfa; ... }      ← 亮色（默认）
+    :root { --bg:#090d16; --acc:#2dd4bf; ... }      ← 亮色（默认）
     :root[data-t=dark] { ... }                       ← 显式深色
     :media(prefers-color-scheme:dark) → :root:not([data-t=light]) { ... }
 

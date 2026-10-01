@@ -123,11 +123,17 @@ def test_header_margins_and_button_dimensions(win):
     assert win.theme_btn.height() >= 28
 
 
-def test_function_cards_breathing_room_and_no_overlap(win):
+def test_function_cards_breathing_room_and_no_overlap(win, app):
     """功能卡片区不得重叠，且必须具备充足网格呼吸间距。"""
     scroll = win.findChild(QWidget, "CardScrollArea")
     assert scroll is not None
     assert scroll.maximumHeight() >= 210
+
+    # [阶段 D 前置] rail 支持双态折叠（QSettings 记忆 ui/rail_collapsed）：
+    # 本用例断言的是**展开态**几何 —— 折叠态下工具卡隐藏、几何塌缩属预期
+    # 行为。先显式展开并让布局重算，再断言（原有断言语义全部保留）。
+    win.nav_rail.set_expanded(True)
+    app.processEvents()
 
     cards = win.feature_cards
     assert len(cards) == 10

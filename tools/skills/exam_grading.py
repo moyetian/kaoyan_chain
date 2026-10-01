@@ -4,6 +4,11 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+try:  # [P0 题库身份链] 通过 registry 找回密钥路径，兼容旧 EXAM_PAPER_ID
+    from skills.paper_registry import PaperRegistry
+except ImportError:  # pragma: no cover
+    from tools.skills.paper_registry import PaperRegistry
+
 
 def _unique_mistake_title(title, question):
     """[NEW-2 修复·错题标题撞名] 同卷占位题/同类题标题原本完全相同
@@ -22,6 +27,50 @@ def _unique_mistake_title(title, question):
 def _question_fingerprint(question):
     """题干指纹：去空白后取归一化文本的前 48 字，用于跨标题判重。"""
     return re.sub(r"\s+", "", str(question or ""))[:48]
+
+
+# ── 数值型 / 文本型标准答案判别 ──────────────────────────────────────────
+# [缺陷修复·分点编号误伤判分] 论述/简答的标准答案普遍带分点编号
+# （（1）…（2）…（3）…），旧实现只要标准答案含**任何**数字就强制走数值分支
+# （``key_nums.issubset(ans_nums)``），文本作答不可能"覆盖"这些编号 →
+# stable 判 0 分「数值不符 (标准 1/2/3 / 作答 无)」，并被自动归档错题、
+# 错因误归「概念漏洞」、排入 FSRS 队列。
+# 现先剥离分点编号与数值 token，再看剩余的中文/字母实质内容：达到阈值即
+# 判为**文本型题**（编号只是排版，不是待比对的答案），走文本比对。
+_ENUM_MARK = re.compile(
+    r"[（(【\[]?\s*(?:\d{1,2}|[一二三四五六七八九十]{1,3}|[①②③④⑤⑥⑦⑧⑨⑩])\s*"
+    r"(?:[）)】\]]|[.．、:：])")
+_NUM_TOKEN = re.compile(r"[-+]?\d+(?:\.\d+)?(?:/\d+(?:\.\d+)?)?")
+_SUBSTANTIVE_CHAR = re.compile(r"[A-Za-z\u4e00-\u9fff]")
+_TEXT_TYPE_MIN_CHARS = 8
+
+
+def _is_text_type_answer(std_ans: str) -> bool:
+    """标准答案是否属于「文本型」（其数字只是分点编号而非待比对答案）。
+
+    剥离分点编号（（1） / 1. / ① / 一、）与数值 token 后，若剩余中文/字母
+    实质内容仍达 ``_TEXT_TYPE_MIN_CHARS`` 个字符，即判为文本型；否则维持
+    数值型严格判定（保留 P0 防虚高：只写一个数字撞车不能蒙混满分）。
+    """
+    if not std_ans:
+        return False
+    body = _ENUM_MARK.sub(" ", str(std_ans))
+    body = _NUM_TOKEN.sub(" ", body)
+    return len(_SUBSTANTIVE_CHAR.findall(body)) >= _TEXT_TYPE_MIN_CHARS
+
+
+def _enum_only_numbers(std_ans: str) -> bool:
+    """标准答案里的数字是否**只是**分点编号（真正的答案写在编号后的正文里）。
+
+    成立条件：答案中确实存在分点编号，且剥离编号与数值 token 后仍有
+    ≥4 个中文/字母字符（说明编号后面真有正文）。
+    纯数值答案（``888`` / ``-1/2``）必然不成立 —— 它们必须继续走严格
+    数值判定，绝不因"乱写一通撞上一个数字"就蒙混满分（P0 防虚高）。
+    """
+    if not std_ans or not _ENUM_MARK.search(std_ans):
+        return False
+    body = _NUM_TOKEN.sub(" ", _ENUM_MARK.sub(" ", str(std_ans)))
+    return len(_SUBSTANTIVE_CHAR.findall(body)) >= 4
 
 
 def _find_existing_mistake_record(*, subject, title, question, error_logger=None):
@@ -65,6 +114,25 @@ def _find_existing_mistake_record(*, subject, title, question, error_logger=None
     return None
 
 
+def _item_full_score(card: dict) -> float:
+    """单题满分：优先 score/points/分值/full_score，缺失或非法才回落 10 分。
+
+    [P1 修复·分值不等权] 真题卷每题分值不等（2/5/15 分），一律按 10 分计
+    会把总分与通过率算错。模块级定义使一致性校验链路可在测试中替换此口径。
+    """
+    for _f in ("score", "points", "分值", "full_score"):
+        _v = card.get(_f)
+        if _v is None:
+            continue
+        try:
+            _fv = float(str(_v).strip())
+            if _fv > 0:
+                return _fv
+        except (TypeError, ValueError):
+            continue
+    return 10.0
+
+
 def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", auto_advance=True, *,
                      root, error_logger, open_keys, grade_open, extract_tokens, norm_tokens, text_hit):
     """
@@ -95,9 +163,48 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
     # 1. 尝试从 content 提取 paper_id 并查找中央密钥库
     paper_id_m = re.search(r"<!--\s*EXAM_PAPER_ID:\s*([a-zA-Z0-9_\-]+)\s*-->", content)
     p_id = paper_id_m.group(1).strip() if paper_id_m else ""
+    source_id_m = re.search(r"<!--\s*SOURCE_PAPER_ID:\s*(PAPER-[a-fA-F0-9]+)\s*-->", content)
+    source_paper_id = source_id_m.group(1).strip() if source_id_m else ""
+    registry_record = None
+    registry_key_path = None
     if p_id:
-        central_key_p = root / ".memory" / "exam_keys" / f"{p_id}.json"
-        if central_key_p.exists():
+        try:
+            matches = PaperRegistry(root).find_by_metadata("exam_paper_id", p_id)
+            registry_record = matches[-1] if matches else None
+            if registry_record and registry_record.get("key_path"):
+                candidate = Path(registry_record["key_path"])
+                registry_key_path = candidate if candidate.is_absolute() else Path(root) / candidate
+        except Exception as e:
+            key_read_errors.append(f"题库身份清单读取失败: {type(e).__name__}: {e}")
+        if p_id and registry_record is None:
+            # 旧试卷没有 registry 记录仍允许走原有三通道；把缺失变成
+            # 可诊断信息，避免用户误以为 EXAM_PAPER_ID 已完成完整登记。
+            key_read_errors.append(f"题库身份清单未登记试卷 {p_id}（兼容旧试卷继续尝试密钥文件）")
+    elif source_paper_id:
+        try:
+            registry_record = PaperRegistry(root).get_paper(source_paper_id)
+        except Exception as e:
+            key_read_errors.append(f"题库身份清单读取失败: {type(e).__name__}: {e}")
+        if registry_record:
+            key_read_errors.append(
+                f"题源 {source_paper_id} 已登记，但该入库材料没有 EXAM_PAPER_ID 或答案密钥；"
+                "请先用真实题源组卷后再提交判卷")
+    if p_id:
+        central_key_candidates = []
+        if registry_key_path:
+            central_key_candidates.append(registry_key_path)
+        central_key_candidates.append(root / ".memory" / "exam_keys" / f"{p_id}.json")
+        # 同一逻辑路径只尝试一次；registry 记录通常指向中央库，但
+        # 去重也覆盖了人工填写绝对路径的情况。
+        seen_key_paths = set()
+        for central_key_p in central_key_candidates:
+            central_key_p = Path(central_key_p)
+            if str(central_key_p).casefold() in seen_key_paths:
+                continue
+            seen_key_paths.add(str(central_key_p).casefold())
+            if not central_key_p.exists():
+                key_read_errors.append(f"中央密钥库文件不存在: {central_key_p.name}")
+                continue
             try:
                 # [P0 修复] 密钥文件为 ENC1 加密载荷，需先解封；历史明文 JSON 由 _open_keys_payload 原样透传兼容
                 raw_keys = open_keys(p_id, central_key_p.read_text(encoding="utf-8"))
@@ -119,8 +226,8 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
                             f"{type(e).__name__}: {e}{hint}")
             except Exception as e:
                 key_read_errors.append(f"中央密钥库 {central_key_p.name} 读取失败: {type(e).__name__}: {e}")
-        else:
-            key_read_errors.append(f"中央密钥库文件不存在: {central_key_p.name}")
+            if keys:
+                break
 
     # 2. 尝试从同目录伴随密钥文件读取
     if not keys and file_path:
@@ -229,26 +336,15 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
     updated_records = []
     need_review_titles = []
     total_score = 0.0
+    # [K1 修复·判卷口径一致性] 逐题得分留痕，供返回前做「sum(单题得分)==总分」校验
+    item_scores = []
     # [缺陷修复·口径不一致] 「待人工复核」的题目（无标准答案 / 开放题 / 答案未命中）
     # 在单题明细里明确写着「本次不计分」，却仍以 0 分计入总分与分母，
     # 使通过率被无谓拉低并触发"未通过"评价。现单独累计其满分，事后从分母中剔除。
     excluded_full = 0.0
     # [P1 修复·分值不等权] 此前全卷一律按「每题 10 分」计分（len(keys)*10），
     # 若题目自带 score 字段（真题卷常见 2/5/15 分不等），总分与通过率都会被算错。
-    # 现优先读取每题的 score/points/分值，缺失才回落到 10 分。
-    def _item_full_score(card: dict) -> float:
-        for _f in ("score", "points", "分值", "full_score"):
-            _v = card.get(_f)
-            if _v is None:
-                continue
-            try:
-                _fv = float(str(_v).strip())
-                if _fv > 0:
-                    return _fv
-            except (TypeError, ValueError):
-                continue
-        return 10.0
-
+    # 现优先读取每题的 score/points/分值，缺失才回落到 10 分（见模块级 _item_full_score）。
     max_score = sum(_item_full_score(k) for k in keys) if keys else 100.0
 
     from .exam_answers import parse_answers
@@ -327,12 +423,21 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
                 # 并在归一化后比较（-1/2 与 -0.5 等价）。宁可转复核，绝不虚高给分。
                 ans_tokens = extract_tokens(q_ans)
                 key_tokens = extract_tokens(std_ans)
-                if key_tokens:
+                # [缺陷修复·分点编号误伤判分] 标准答案为文本型（含（1）（2）（3）
+                # 之类分点编号）时不再走数值分支，改走文本比对；数值分支仅在
+                # 标准答案确实是"数值型答案"时生效，防虚高语义不变。
+                if key_tokens and not _is_text_type_answer(std_ans):
                     key_nums = norm_tokens(key_tokens)
                     ans_nums = norm_tokens(ans_tokens)
                     if key_nums and ans_nums and key_nums.issubset(ans_nums):
                         match_level = 2
                         judge_basis = f"数值命中 (标准 {'/'.join(key_tokens)} / 作答 {'/'.join(ans_tokens)})"
+                    elif _enum_only_numbers(std_ans) and text_hit(std_ans, q_ans):
+                        # [缺陷修复·分点编号误伤判分] 数值分支不命中时回退文本比对：
+                        # 标准答案带分点编号、但正文短到未达文本型阈值时，学员用
+                        # 正常文本作答仍应判「命中」，而不是 0 分并归档错题。
+                        match_level = 2
+                        judge_basis = "文本答案命中（标准答案含分点编号，已回退文本比对）"
                     else:
                         match_level = 0
                         judge_basis = f"数值不符 (标准 {'/'.join(key_tokens)} / 作答 {'/'.join(ans_tokens) or '无'})"
@@ -362,6 +467,7 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
             item_score = int(item_score)
         item_full_disp = int(item_full) if item_full == int(item_full) else item_full
         total_score += item_score
+        item_scores.append(item_score)
         if match_level == 1:
             need_review_titles.append(f"第 {q_id} 题 {title}")
             # 未判分题：不计入分母，也不参与复测状态回写（它不是"答错"）
@@ -438,6 +544,19 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
     # 分母只统计"真正被自动判分"的题；待复核题不计分（与单题明细口径一致）
     graded_max = max_score - excluded_full
     pass_rate = round(total_score / graded_max * 100, 1) if graded_max > 0 else 0
+
+    # [K1 修复·判卷口径一致性] 渲染前内部一致性校验。违规**不抛异常**
+    # （整卷报告绝不能因校验失败而丢失），只以告警行 + consistency_warnings 暴露。
+    consistency_warnings = []
+    if round(float(sum(item_scores)), 6) != round(float(total_score), 6):
+        consistency_warnings.append(
+            f"单题得分合计 {sum(item_scores)} ≠ 总分 {total_score}")
+    if not (0 <= pass_rate <= 100):
+        consistency_warnings.append(f"通过率越界: {pass_rate}% (应在 0~100)")
+    if not (0 <= graded_max <= max_score):
+        consistency_warnings.append(
+            f"可判分满分越界: graded_max={graded_max} 不在 [0, {max_score}]")
+
     total_disp = int(total_score) if float(total_score) == int(total_score) else total_score
     max_disp = int(graded_max) if float(graded_max) == int(graded_max) else graded_max
     report_lines.append(f"------------------------------------------------------------")
@@ -462,15 +581,23 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
         report_lines.append(
             f"   补录入口: 运行 `ky key set {p_id or '<试卷编号>'} <题号> \"<标准答案正文>\"` "
             f"补录后重新判卷即可自动采分；用 `ky key list {p_id or ''}` 查看登记情况。")
+    for _w in consistency_warnings:
+        report_lines.append(f"⚠ 内部一致性告警: {_w}")
     report_lines.append(f"============================================================\n")
 
     return {
         "success": True,
         "score": total_score,
-        "total_score": max_score,
+        # [K1 修复·判卷口径一致性] total_score 与 pass_rate 同分母（graded_max）。
+        # 此前返回 max_score（全卷满分，含待复核题），下游显示 5/10 却通过率 100%
+        # 的口径打架；全卷满分请改用显式键 max_score。
+        "total_score": graded_max,
+        "max_score": max_score,
+        "graded_max": graded_max,
         "pass_rate": pass_rate,
         "accuracy": pass_rate,
         "updated_records": updated_records,
         "need_review": need_review_titles,
+        "consistency_warnings": consistency_warnings,
         "report": "\n".join(report_lines)
     }

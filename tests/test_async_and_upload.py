@@ -180,7 +180,8 @@ def test_agentic_research_engine_timeout_and_retries():
         mock_resp
     ]
 
-    with patch("urllib.request.urlopen", mock_urlopen), patch("time.sleep"):
+    # [审计 2026-09-30 P1-7] LLM 出站收敛到模块级 safe_urlopen，打桩接缝迁移。
+    with patch("tools.intelligence.agentic_research.safe_urlopen", mock_urlopen), patch("time.sleep"):
         res = engine.execute_loop(
             prompt="测试提示词",
             api_config={"api_key": "sk-real-mock-123456", "base_url": "https://api.mock.ai/v1"}
@@ -214,7 +215,8 @@ def test_agentic_research_gzip_decompression():
     mock_resp.headers = {"Content-Encoding": "gzip"}
     mock_resp.read.return_value = compressed_payload
 
-    with patch("urllib.request.urlopen", return_value=mock_resp):
+    # [审计 2026-09-30 P1-7] LLM 出站收敛到模块级 safe_urlopen，打桩接缝迁移。
+    with patch("tools.intelligence.agentic_research.safe_urlopen", return_value=mock_resp):
         res = engine.execute_loop(
             prompt="测试压缩响应",
             api_config={"api_key": "sk-real-mock-123456", "base_url": "https://api.mock.ai/v1"}
@@ -358,12 +360,14 @@ def test_resp_without_headers_attribute_safety():
     from tools.skills import open_grader
 
     class BareResp:
+        # 契约：与真实 HTTPResponse 一致支持 read(n)（带上限读取）；
+        # 本夹具要钉的是「无 headers 属性」的兼容性，而非 read 签名。
+        def read(self, n=-1):
+            return b'{"choices": [{"message": {"content": "ok"}}]}'
         def __enter__(self):
             return self
         def __exit__(self, *args):
             return False
-        def read(self):
-            return b'{"choices": [{"message": {"content": "ok"}}]}'
 
     # vision_solver
     decompressed = vision_solver._read_and_decompress(BareResp())

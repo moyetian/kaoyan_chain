@@ -64,10 +64,11 @@ function fallbackMathUnicode(el){
       --text: #0f172a;
       --subtext: #64748b;
       --border: #e2e8f0;
-      --primary: #4f46e5;
-      --primary-hover: #4338ca;
+      --primary: #0f766e;
+      --primary-hover: #115e59;
+      --on-primary: #ffffff;
       --bubble-ai: #ffffff;
-      --bubble-user: #4f46e5;
+      --bubble-user: #0f766e;
       --bubble-user-text: #ffffff;
       --shadow: 0 4px 16px rgba(0,0,0,0.06);
     }
@@ -77,10 +78,11 @@ function fallbackMathUnicode(el){
       --text: #f8fafc;
       --subtext: #94a3b8;
       --border: #1e293b;
-      --primary: #6366f1;
-      --primary-hover: #4f46e5;
+      --primary: #2dd4bf;
+      --primary-hover: #5eead4;
+      --on-primary: #042f2e;
       --bubble-ai: #131b2e;
-      --bubble-user: #3730a3;
+      --bubble-user: #134e4a;
       --bubble-user-text: #ffffff;
       --shadow: 0 4px 20px rgba(0,0,0,0.4);
     }
@@ -238,12 +240,12 @@ function fallbackMathUnicode(el){
       overflow-x: auto;
       overflow-y: hidden;
       padding: 10px 14px;
-      background: rgba(99, 102, 241, 0.05);
+      background: rgba(45, 212, 191, 0.05);
       border-radius: 8px;
       border-left: 4px solid var(--primary);
     }
     body.dark .katex-display {
-      background: rgba(99, 102, 241, 0.12);
+      background: rgba(45, 212, 191, 0.12);
     }
     .msg-bubble table {
       width: 100%;
@@ -398,11 +400,11 @@ function fallbackMathUnicode(el){
     }
     textarea#user-input:focus {
       border-color: var(--primary);
-      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+      box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.2);
     }
     .btn-send {
       background: var(--primary);
-      color: #ffffff;
+      color: var(--on-primary);
       border: none;
       padding: 0 22px;
       height: 44px;

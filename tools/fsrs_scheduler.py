@@ -2,9 +2,9 @@
 """
 考研学习链 · FSRS 自适应记忆调度器 (Free Spaced Repetition Scheduler)
 
-提供两层能力：
+提供：
 
-1. ``compute_next_interval(stage, rating, today)`` —— **纯函数，无状态**。
+- ``compute_next_interval(stage, rating, today)`` —— **纯函数，无状态**。
    这是全项目复测间隔计算的**唯一真源**，供 ``skills.error_logger``
    依据错题卡片中已持久化的 ``stage``（已完成复测档位）推导下次复测日。
 
@@ -32,10 +32,6 @@
    ③ 同输入结果完全可复现（同 ``(stage, rating, today)`` 恒等）。
    ``again`` 与 stage 无关恒为 1 天，是实现"周期重置"语义的直接结果。
 
-2. ``FSRSScheduler`` —— 带持久化卡片状态的调度器（``.memory/fsrs_db.json``），
-   适用于后续接入「完整复习日志 + 逐卡稳定性追踪」的场景。
-   **当前生产链路未调用**（见模块末尾说明），保留为既有能力。
-
 依赖：本模块基于 py-fsrs **5.x / 6.x** 的 ``Scheduler`` API：
       ``Scheduler.review_card(card, rating, review_datetime) -> (Card, ReviewLog)``。
       ``pyproject.toml`` / ``requirements.txt`` 的约束已同步为 ``fsrs>=5.0.0``。
@@ -45,11 +41,8 @@
 
 from __future__ import annotations
 
-import json
-import logging
 import math
 from datetime import date, datetime, time, timedelta, timezone
-from pathlib import Path
 
 from fsrs import Card, Rating, Scheduler
 
@@ -57,7 +50,6 @@ __all__ = [
     "RATING_MAP",
     "make_scheduler",
     "compute_next_interval",
-    "FSRSScheduler",
 ]
 
 # 字符串评级 → FSRS 枚举。键名与错题卡片中记录的 rating 文本保持一致。
@@ -173,80 +165,3 @@ def compute_next_interval(
     new_stage = 0 if target is Rating.Again else stage + 1
     return new_stage, today + timedelta(days=interval_days), interval_days
 
-
-class FSRSScheduler:
-    """带持久化卡片状态的 FSRS 调度器（数据文件：``.memory/fsrs_db.json``）。
-
-    .. note::
-       本类当前**未被生产链路调用**：错题复测的间隔计算走
-       ``compute_next_interval``（无状态、以错题卡片的 ``stage`` 为唯一状态）。
-       保留本类是为了后续接入「逐卡稳定性追踪」时无需重写调度层；
-       若确定不再采用，可直接删除本类（不影响任何现有功能）。
-    """
-
-    def __init__(self, db_path: str = ".memory/fsrs_db.json"):
-        self.db_path = Path(db_path)
-        self.scheduler = make_scheduler()  # 与无状态路径共用同一套校准参数
-        self.cards: dict[str, Card] = {}
-        self._load()
-
-    # ── 持久化 ────────────────────────────────────────────────
-    def _load(self) -> None:
-        if not self.db_path.exists():
-            return
-        try:
-            data = json.loads(self.db_path.read_text(encoding="utf-8"))
-            for card_id, payload in data.items():
-                # 直接复用 py-fsrs 官方序列化，避免手工罗列字段导致的版本漂移
-                self.cards[card_id] = Card.from_dict(payload)
-        except Exception as e:  # 损坏的数据文件不应阻断主流程
-            logging.warning(f"Failed to load FSRS db ({self.db_path}): {e}")
-
-    def _save(self) -> None:
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            data = {cid: card.to_dict() for cid, card in self.cards.items()}
-            self.db_path.write_text(
-                json.dumps(data, indent=2, ensure_ascii=False, default=str),
-                encoding="utf-8",
-            )
-        except Exception as e:
-            logging.error(f"Failed to save FSRS db ({self.db_path}): {e}")
-
-    # ── 调度 ──────────────────────────────────────────────────
-    def get_card(self, item_id: str) -> Card:
-        """取回既有卡片；不存在则创建一张新卡（Lazy init）。"""
-        if item_id not in self.cards:
-            self.cards[item_id] = Card()
-        return self.cards[item_id]
-
-    def review_item(
-        self,
-        item_id: str,
-        rating: Rating | str,
-        now: datetime | None = None,
-    ) -> Card:
-        """对某个记忆项执行一次复习，落盘并返回更新后的卡片。"""
-        if now is None:
-            now = datetime.now(timezone.utc)
-        card = self.get_card(item_id)
-        updated_card, _log = self.scheduler.review_card(
-            card, _resolve_rating(rating), now
-        )
-        self.cards[item_id] = updated_card
-        self._save()
-        return updated_card
-
-    def get_due_items(self, now: datetime | None = None) -> list[str]:
-        """返回所有已到期（``due <= now``）的记忆项 id。"""
-        if now is None:
-            now = datetime.now(timezone.utc)
-        # 卡片 due 可能为 naive（历史数据），统一按 UTC 比较，避免 TypeError
-        due_items = []
-        for item_id, card in self.cards.items():
-            card_due = card.due
-            if card_due.tzinfo is None:
-                card_due = card_due.replace(tzinfo=timezone.utc)
-            if card_due <= now:
-                due_items.append(item_id)
-        return due_items

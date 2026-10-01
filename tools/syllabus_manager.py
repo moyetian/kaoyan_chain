@@ -5,6 +5,11 @@
 """
 
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Any, Dict, List, Optional
 
 import os
@@ -18,7 +23,7 @@ except ImportError:  # pragma: no cover
 #: ``tools/study_planner.py`` 的同名变量：独立套件在假工作区里运行、本模块却从
 #: 真实仓库导入，不覆盖就会把大纲写进真实考生工作区（P5 测试污染）。
 ROOT = Path(os.environ.get("KY_WORKSPACE_ROOT")
-            or Path(__file__).resolve().parent.parent)
+            or resolve_workspace_root(__file__))
 
 # ─────────────────────────────────────────────────────────────
 # 1. 数学大纲预设
@@ -627,6 +632,48 @@ def _pro_placeholder_example(pro_name: str) -> str:
 # 生成侧与「是否已有真实内容」的判定侧共用同一常量，避免文案一改就漏判。
 PRO_PLACEHOLDER_MARKER = "【待自填"
 
+#: 旧版占位文案（历史文件兼容，与 PRO_PLACEHOLDER_MARKER 同义判定）
+_PRO_LEGACY_PLACEHOLDER = "请根据报考院校官网大纲填入"
+
+
+def pro_syllabus_state(workspace_root, filename: str = "考试大纲.md") -> str:
+    """专业课考试大纲的真实状态：``ready`` / ``placeholder`` / ``missing``。
+
+    [问题5 修复·专业课无大纲却谎称按纲出题] 报到文案 / 白名单挂载 / Agent
+    上下文三处都需要判定「大纲是否真实可用」，此前各写各的（或干脆不判），
+    导致占位骨架被当成真实大纲、AI 向学员宣称「已按考纲出题」。现收口到
+    本函数；占位口径与 :func:`apply_syllabus_selection` 内一致（含旧版
+    「请根据报考院校官网大纲填入」文案的兼容）。
+    """
+    p = Path(workspace_root) / "04-专业课" / filename
+    try:
+        if not p.exists():
+            return "missing"
+        txt = p.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return "missing"
+    if PRO_PLACEHOLDER_MARKER in txt or _PRO_LEGACY_PLACEHOLDER in txt:
+        return "placeholder"
+    return "ready"
+
+
+def pro_books_placeholder_text(workspace_root, pro_name: str = "专业课",
+                               filename: str = "考试大纲.md") -> str:
+    """专业课白名单为空时的如实占位文案（按大纲真实状态分档）。
+
+    ``ready`` 才允许「私教严格按官方考纲出题」的表述；``placeholder`` /
+    ``missing`` 时如实标注，并给出导入指引 —— 该文案会写入 AGENTS.md 与
+    ky_config.json，是 Agent 的常驻上下文，源头不能有虚假承诺。
+    """
+    state = pro_syllabus_state(workspace_root, filename)
+    if state == "ready":
+        return f"暂未放置实体资料（私教严格按【{pro_name}】官方考纲出题，严禁虚构书目）"
+    if state == "placeholder":
+        return (f"暂未放置实体资料，且考试大纲仍为【待自填】骨架（请从目标院校研究生院"
+                f"官网下载真实大纲替换 04-专业课/{filename}；替换前不得宣称按纲出题）")
+    return (f"暂未放置实体资料，且尚未导入考试大纲（请从目标院校研究生院官网下载后"
+            f"放入 04-专业课/{filename}；导入前不得宣称按纲出题）")
+
 
 def _pro_placeholder_body(pro_real_name: str, example: str) -> str:
     """生成自命题专业课的「待自填」占位大纲正文（P12：明确标注待办而非成品）。"""
@@ -703,7 +750,16 @@ def apply_syllabus_selection(
             updated_files.append(math_agents)
 
     # 2. 处理英语大纲
-    eng_info = ENGLISH_SYLLABI.get(eng_key, ENGLISH_SYLLABI["eng2"])
+    # [问题3 同族修复·无效输入静默回退] 旧实现 ``ENGLISH_SYLLABI.get(eng_key,
+    # ENGLISH_SYLLABI["eng2"])`` 对任何无法识别的 eng_key（如 `ky subject` 菜单
+    # 里手滑输入 "2"，其有效键是 eng1/eng2）都静默换成英语二：考纲文件、02-英语
+    # /AGENTS.md 的「考试科目」与 02-英语 全部派题范围被改写，考生零感知。
+    # 回退本身保留（历史行为），但必须显式告知实际生效值与有效值集合。
+    _eng_key = str(eng_key or "").strip().lower()
+    if _eng_key and _eng_key not in ENGLISH_SYLLABI:
+        print(f"  [!] 英语科目标识 '{eng_key}' 无效，已回退使用默认 eng2"
+              f"（有效值：{'/'.join(ENGLISH_SYLLABI)}）。请核对后重跑 ky subject / ky plan。")
+    eng_info = ENGLISH_SYLLABI.get(_eng_key, ENGLISH_SYLLABI["eng2"])
     eng_outline = ws / "02-英语" / "考试大纲.md"
     if auto_write:
         atomic_write_text(eng_outline, eng_info["content"])

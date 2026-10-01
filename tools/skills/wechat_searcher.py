@@ -23,6 +23,11 @@ import urllib.error
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import List, Dict, Any
 
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
@@ -30,7 +35,19 @@ try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方
 except ImportError:  # pragma: no cover
     from tools.ky_io import atomic_write_text  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+# [审计 2026-09-30 P1-7 出站收敛] 三处直连请求此前完全不做 SSRF 校验（其中
+# ``fetch_article`` 的 URL 来自搜索结果解析，属外部可控输入）。这里统一加
+# ``assert_url_safe`` 前置校验（fail-closed：内网/回环/保留地址与解析失败即拒）。
+# 取舍说明：本模块保留 ``urllib.request.urlopen`` 调用形态 —— W11 回归测试以
+# monkeypatch ``urllib.request.urlopen`` 打桩**全部**请求（含"不得发起请求"的
+# 阴性断言），直接换 safe_urlopen 会让这批离线测试失去打桩点；故取任务给定的
+# 「至少加 assert_url_safe 前置校验」最小方案。
+try:
+    from net_guard import assert_url_safe  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.net_guard import assert_url_safe  # type: ignore  # noqa: E402
+
+ROOT = resolve_workspace_root(__file__)
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -433,6 +450,7 @@ class WeChatSearchEngine(_AccountNameResolver):
                 html_content = get_text(url, timeout=6, max_retries=1)
             except Exception as http_exc:
                 try:
+                    assert_url_safe(url)
                     req = urllib.request.Request(url, headers={
                         "User-Agent": USER_AGENT,
                         "Referer": "https://weixin.sogou.com/",
@@ -470,6 +488,7 @@ class WeChatSearchEngine(_AccountNameResolver):
         url = f"{self.BING_URL}?{urllib.parse.urlencode(params)}"
 
         try:
+            assert_url_safe(url)
             req = urllib.request.Request(url, headers={
                 "User-Agent": USER_AGENT,
                 "Accept-Language": "zh-CN,zh;q=0.9",
@@ -747,6 +766,9 @@ class WeChatArticleFetcher(_AccountNameResolver):
                 logging.getLogger(__name__).debug(
                     "URL 转义失败（沿用原始 URL）: %s -> %s", url, exc)
 
+            # [审计 2026-09-30 P1-7] item.url 来自搜索结果解析（外部可控输入），
+            # 发起前先做 SSRF 校验：恶意结果页指向内网/回环地址时 fail-closed 拒绝。
+            assert_url_safe(url)
             req = urllib.request.Request(url, headers={
                 "User-Agent": USER_AGENT,
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",

@@ -95,3 +95,61 @@ def test_explicit_null_fields_do_not_crash_build(tmp_path, monkeypatch):
     assert "未巡检" in html, html        # last_check 回退默认值
     assert "正常标题" in html, html      # 列表项中的 null 不影响其余项
     assert "None" not in html, html      # 不得把 Python 的 None 字样写进页面
+
+
+# ───────── 落盘记录形状（watcher._save 写入）的卡片渲染 ─────────
+# [问题4 同族修复·键不匹配] watcher 落盘记录字段是 name / updates /
+# recent_titles；radar.py 此前只读 school / status / alert_titles，全部回落
+# 默认值 —— 本地完整模式卡片长期显示「高校 · 指纹正常」占位。以下两例守护
+# 两种真实形态；阴性对照：把取值改回只认 school/alert_titles 即变红。
+
+def test_watcher_record_shape_renders_real_name_and_alert(tmp_path, monkeypatch):
+    """有 updates 历史：卡片名用 name，线索区用最新 alert_titles。"""
+    monkeypatch.setenv("KY_SNAPSHOT_OPT_IN", "0")
+    from web.radar import build_radar_html
+
+    (tmp_path / ".memory").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".memory" / "admission_watch.json").write_text(json.dumps({
+        "10466": {
+            "name": "示例农业大学",
+            "chsi_code": "10466",
+            "url": "https://gra.example.edu.cn",
+            "added_at": "2026-09-30 13:02",
+            "last_check": "2026-09-30 13:02",
+            "recent_titles": ["培养方案下载"],
+            "updates": [{"time": "2026-09-30 13:02",
+                         "alert_titles": ["2027年硕士研究生招生简章"]}],
+            "baseline_complete": True,
+        }
+    }, ensure_ascii=False), encoding="utf-8")
+
+    html = build_radar_html(tmp_path)
+    assert "示例农业大学" in html, html
+    assert "最新简章线索" in html, html
+    assert "2027年硕士研究生招生简章" in html, html
+    assert "培养方案下载" not in html, "有真实 alert_titles 时不应回落展示标题样本"
+
+
+def test_watcher_record_without_updates_labels_titles_as_sample(tmp_path, monkeypatch):
+    """无 updates（基线期）：recent_titles 以「标题样本」如实标注，不冒充简章线索。"""
+    monkeypatch.setenv("KY_SNAPSHOT_OPT_IN", "0")
+    from web.radar import build_radar_html
+
+    (tmp_path / ".memory").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".memory" / "admission_watch.json").write_text(json.dumps({
+        "10466": {
+            "name": "示例农业大学",
+            "chsi_code": "10466",
+            "url": "https://gra.example.edu.cn",
+            "last_check": "2026-09-30 13:02",
+            "recent_titles": ["学生工作信息", "培养方案下载"],
+            "updates": [],
+            "baseline_complete": True,
+        }
+    }, ensure_ascii=False), encoding="utf-8")
+
+    html = build_radar_html(tmp_path)
+    assert "示例农业大学" in html, html
+    assert "最近页面标题样本" in html, html
+    assert "最新简章线索" not in html, html
+    assert "学生工作信息" in html, html

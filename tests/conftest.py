@@ -42,9 +42,11 @@
 """
 
 import importlib.machinery
+import getpass
 import os
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -52,6 +54,32 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 REAL_CONFIG = ROOT / "ky_config.json"
 REAL_HISTORY = ROOT / "ky_history.json"
+
+
+def pytest_configure(config):
+    """Keep pytest's temporary fixtures usable in restricted runners.
+
+    Some managed runners deny directory enumeration under the platform temp
+    directory.  Pytest then fails during fixture setup before any test (often
+    reported by the caller as a generic hook failure).  Use a repository-local
+    scratch base only when the default temp directory is not accessible.
+    Explicit ``--basetemp`` remains untouched.
+    """
+    if getattr(config.option, "basetemp", None):
+        return
+    temp_root = Path(tempfile.gettempdir()) / f"pytest-of-{getpass.getuser()}"
+    try:
+        with os.scandir(temp_root):
+            pass
+    except FileNotFoundError:
+        # Pytest can create a new per-user root in the normal case.
+        return
+    except PermissionError:
+        # Include the process id so parallel test invocations do not clean
+        # each other's fixture directories.
+        config.option.basetemp = str(
+            ROOT / ".pytest_tmp" / f"pytest-basetemp-{os.getpid()}"
+        )
 
 #: 守卫留证目录的**测试覆盖点**。``None`` 表示用 ``config_guard.BACKUP_DIR``
 #: 解析出的仓库外位置（见 :func:`_evidence_dir`）；测试可把它指到 ``tmp_path``。
@@ -208,7 +236,13 @@ def _protect_real_ky_config(tmp_path, monkeypatch, request):
     """(a) 主动重定向 + (b) 兜底绊线。绊线为硬失败，不得改为 warning。"""
     snapshots = {}
     for path in (REAL_CONFIG, REAL_HISTORY):
-        snapshots[path] = path.read_bytes() if path.exists() else None
+        try:
+            snapshots[path] = path.read_bytes() if path.exists() else None
+        except OSError:
+            # Restricted runners may deliberately deny access to the real
+            # user config.  The redirect guard below still protects all
+            # in-process writers, so an unreadable file is not a test error.
+            continue
 
     _redirect_all(tmp_path, monkeypatch)
     _install_import_hook(tmp_path, monkeypatch)
@@ -217,7 +251,11 @@ def _protect_real_ky_config(tmp_path, monkeypatch, request):
 
     polluted = []
     for path, before in snapshots.items():
-        after = path.read_bytes() if path.exists() else None
+        try:
+            after = path.read_bytes() if path.exists() else None
+        except OSError:
+            # There was no readable baseline to compare or restore.
+            continue
         if after == before:
             continue
 
@@ -433,3 +471,83 @@ def _session_config_guard():
             f"改动了工作区根目录的 ky_config.json。"
             f" 请检查 {_evidence_dir()}/session_guard.log 与该目录下的留证快照。"
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (d) GUI rail 折叠偏好隔离（阶段 D · 双态折叠）
+#
+# rail 折叠状态持久化在 QSettings 的 ``ui/rail_collapsed``（views/nav_rail）。
+# 若不隔离会有两类污染：
+#   * 测试间互相污染：前一用例留下 true → 后一用例的 MainWindow 以**折叠态**
+#     构造（视图项文字清空、10 个工具卡隐藏），rail 文案 / 几何断言随机变红；
+#   * 污染本机真实偏好：测试写入的值会改变开发者本机 GUI 的下次启动状态
+#     （这正是「测试退出时不得留脏值」要求覆盖的场景）。
+#
+# 本 fixture 对每个测试做「快照 → 删除键（保证窗口以默认展开态构建）→
+# 恢复原值」：测试期间写入的值在收尾时一律清掉，原本不存在的键保持删除。
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: 「键原本不存在」的哨兵（区别于键存在且值为 False）
+_RAIL_PREF_MISSING = object()
+
+
+def _rail_pref_qsettings():
+    """构造与 theme_apply 同源的 QSettings；无 Qt / 导入失败返回 None。"""
+    try:
+        sys.path.insert(0, str(ROOT))
+        from PySide6.QtCore import QSettings
+        from tools.gui.theme_apply import (
+            KEY_RAIL_COLLAPSED, SETTINGS_APP, SETTINGS_ORG,
+        )
+    except Exception:
+        return None
+    try:
+        return QSettings(SETTINGS_ORG, SETTINGS_APP), KEY_RAIL_COLLAPSED
+    except Exception:
+        return None
+
+
+def _rail_pref_snapshot():
+    """读 ``ui/rail_collapsed`` 原始值；键不存在返回哨兵；无 Qt 返回 None。"""
+    pair = _rail_pref_qsettings()
+    if pair is None:
+        return None
+    settings, key = pair
+    try:
+        if settings.contains(key):
+            return settings.value(key)
+    except Exception:
+        return None
+    return _RAIL_PREF_MISSING
+
+
+def _rail_pref_clear():
+    """删除 ``ui/rail_collapsed`` 键（无 Qt 时为 no-op）。"""
+    pair = _rail_pref_qsettings()
+    if pair is None:
+        return
+    settings, key = pair
+    try:
+        settings.remove(key)
+        settings.sync()
+    except Exception:
+        pass
+
+
+@pytest.fixture(autouse=True)
+def _isolate_gui_rail_collapsed_pref():
+    """隔离 QSettings 的 rail 折叠偏好（测试后恢复原值，不留脏值）。"""
+    saved = _rail_pref_snapshot()
+    if saved is not None and saved is not _RAIL_PREF_MISSING:
+        _rail_pref_clear()          # 本机已有值：先清，保证窗口展开态构建
+    yield
+    _rail_pref_clear()              # 清掉测试可能写入的值
+    if saved is not None and saved is not _RAIL_PREF_MISSING:
+        pair = _rail_pref_qsettings()   # 恢复本机原值
+        if pair is not None:
+            settings, key = pair
+            try:
+                settings.setValue(key, saved)
+                settings.sync()
+            except Exception:
+                pass

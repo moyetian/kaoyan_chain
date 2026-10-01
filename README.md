@@ -7,7 +7,7 @@
 **基于 AI Agent 私人教师协议、外置状态机驱动与自动化自测看板的开源考研备考工程**
 
 <p align="center">
-  <a href="https://moyetian.github.io/kaoyan_chain/"><img src="https://img.shields.io/badge/🌐_在线看板体验-Live_Demo-6366f1?style=for-the-badge&logo=githubpages&logoColor=white" alt="在线看板体验" /></a>
+  <a href="https://moyetian.github.io/kaoyan_chain/"><img src="https://img.shields.io/badge/🌐_在线看板体验-Live_Demo-0f766e?style=for-the-badge&logo=githubpages&logoColor=white" alt="在线看板体验" /></a>
   <a href="https://github.com/moyetian/kaoyan_chain/releases"><img src="https://img.shields.io/badge/📦_下载开箱即用程序包-Releases-2ea44f?style=for-the-badge&logo=github&logoColor=white" alt="下载开箱即用程序包" /></a>
   <a href="#-用户本地化部署与快速上手流程-3-分钟开箱"><img src="https://img.shields.io/badge/🚀_快速上手-Quick_Start-10b981?style=for-the-badge&logo=rocket&logoColor=white" alt="快速上手" /></a>
   <a href="操作手册.md"><img src="https://img.shields.io/badge/📘_学员实操手册-Handbook-3b82f6?style=for-the-badge&logo=read-the-docs&logoColor=white" alt="学员实操手册" /></a>
@@ -16,14 +16,14 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
-  <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v3.1.1-blue?style=flat-square&logo=github&logoColor=white" alt="版本 v3.1.1" />
-  <img src="https://img.shields.io/badge/Tests-2879%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 2879 Passed" />
-  <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-6366f1?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
+  <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v3.1.2-blue?style=flat-square&logo=github&logoColor=white" alt="版本 v3.1.2" />
+  <img src="https://img.shields.io/badge/Tests-3299%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 3299 Passed" />
+  <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-0f766e?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
   <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
   <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
   <img src="https://img.shields.io/badge/KaoYan%20Intelligence-57%2B%E6%89%80%E9%AB%98%E6%A0%A1%E6%A1%A3%E6%A1%88-blueviolet?style=flat-square&logo=googleearthengine&logoColor=white" alt="KaoYan Intelligence" />
   <img src="https://img.shields.io/badge/Terminal%20TUI-%E6%9E%81%E5%AE%A2%E6%8E%A7%E5%88%B6%E5%8F%B0-3b82f6?style=flat-square&logo=gnometerminal&logoColor=white" alt="Terminal TUI" />
-  <img src="https://img.shields.io/badge/Dashboard-5%20Tabs-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
+  <img src="https://img.shields.io/badge/Dashboard-5%20Tabs-0f766e?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
   <img src="https://img.shields.io/badge/Memory-3--Tier%20Pruning-f59e0b?style=flat-square&logo=speedtest&logoColor=white" alt="Memory" />
   <img src="https://img.shields.io/badge/Privacy-Local--First-10b981?style=flat-square&logo=shield&logoColor=white" alt="Privacy" />
   <img src="https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square" alt="License" />
@@ -84,18 +84,18 @@
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 开发者        | 完整架构树、开发环境、测试与质量门禁、Agent 协议规范、PR 流程                   | **想改代码 / 提 PR 时** |
 | [CHANGELOG.md](CHANGELOG.md)       | 所有人        | 版本历史与升级方式                                             | **升级前后**          |
 
-> 快速直达：安装不上 → [SETUP 第 8 章 FAQ](SETUP.md)；不知道某条命令怎么用 → [操作手册 第 8 章「42 项子命令全景速查」](操作手册.md)；担心隐私 → 本页 [🔒 隐私优先](#-隐私优先与主流-ai-agent-接入) 与 [⚠️ 使用注意事项](#-使用注意事项) 第 7 条。
+> 快速直达：安装不上 → [SETUP 第 8 章 FAQ](SETUP.md)；不知道某条命令怎么用 → [操作手册 第 8 章「43 项子命令全景速查」](操作手册.md)；担心隐私 → 本页 [🔒 隐私优先](#-隐私优先与主流-ai-agent-接入) 与 [⚠️ 使用注意事项](#-使用注意事项) 第 7 条。
 
 ---
 
 ## 📦 开箱即用：不懂技术也能直接用（推荐）
 
-**v3.1.1 亮点**：修复**本地看板看不到今日任务正文与卡背答案**的缺陷（本地完整 / 发布脱敏双模式）；界面升级 —— Ctrl+K 命令面板四桶分组、看板收敛 5 Tab、设计 token 与图标补档；评测资产强化（C2 双指标契约 + canary 防污染）与三端实测 12 条修复。**v3.1.0 亮点**：阶段三「可证」—— 六条评测基准（C1–C6）把护城河变成**可评测资产**（考纲守卫 137 条 / 引文忠实度 109 条 / 题源溯源 ID / 判分 pilot / RAG 显式降级 `ky rag` / 学习增益 `ky gain`），外加四端 UI 设计系统统一（Lucide 图标 + 设计 token + Rich CLI）。**v3.0.1 亮点**：修复**公开副本导出冻结** —— 此前 `.github`（CI 配置）与 `rust_ext`（Rust 加速源码）被误列为「公开副本自有保留内容」，既不复制也不删除，导致副本里的旧版本被 `--force` 永久保护、后续修改永远到不了公开仓库（现两者已恢复正常同步，构建产物 `rust_ext/target` 仍被排除）。**v3.0.0 亮点**：新增**会话恢复与分叉**（`ky session`）、**外部文件读取授权**（默认拒绝 + 交互授权）、**长会话压缩不丢约束**、**沙箱脚本执行收紧**等能力（详见 [CHANGELOG.md](CHANGELOG.md)）。本项目同时提供**开箱即用的程序包** —— 你**不需要安装 Python、不需要懂命令行**，下载后跟着界面引导填几项配置就能开始用。
+**v3.1.2 亮点**：Agent 内核修复重构（K1–K9）—— 判卷口径一致化（`total_score` 与 `pass_rate` 同分母）、六套 LLM 客户端收敛为**统一实现**（结构化异常 / 重试退避 / Retry-After）、工具注册表分级与 `ky tools` 审计命令（CLI 子命令 **43 项**）、`KaoyanContext` 统一上下文与院校范围守卫、运行预算（步数/时长/工具调用/Token）与**试卷内容寻址身份链**；安全审查全量修复（P0×3 + P1×11 + 性能项：数学验算白名单解析、测试执行写入闸门、网关跨站闸门等）；Teal 玻璃风 UI 重构（GUI / Web / TUI 三端）；多角色沙箱实测消缺（UT3 / UT4）。**v3.1.1 亮点**：修复**本地看板看不到今日任务正文与卡背答案**的缺陷（本地完整 / 发布脱敏双模式）；界面升级 —— Ctrl+K 命令面板四桶分组、看板收敛 5 Tab、设计 token 与图标补档；评测资产强化（C2 双指标契约 + canary 防污染）与三端实测 12 条修复。**v3.1.0 亮点**：阶段三「可证」—— 六条评测基准（C1–C6）把护城河变成**可评测资产**（考纲守卫 137 条 / 引文忠实度 109 条 / 题源溯源 ID / 判分 pilot / RAG 显式降级 `ky rag` / 学习增益 `ky gain`），外加四端 UI 设计系统统一（Lucide 图标 + 设计 token + Rich CLI）。**v3.0.1 亮点**：修复**公开副本导出冻结** —— 此前 `.github`（CI 配置）与 `rust_ext`（Rust 加速源码）被误列为「公开副本自有保留内容」，既不复制也不删除，导致副本里的旧版本被 `--force` 永久保护、后续修改永远到不了公开仓库（现两者已恢复正常同步，构建产物 `rust_ext/target` 仍被排除）。**v3.0.0 亮点**：新增**会话恢复与分叉**（`ky session`）、**外部文件读取授权**（默认拒绝 + 交互授权）、**长会话压缩不丢约束**、**沙箱脚本执行收紧**等能力（详见 [CHANGELOG.md](CHANGELOG.md)）。本项目同时提供**开箱即用的程序包** —— 你**不需要安装 Python、不需要懂命令行**，下载后跟着界面引导填几项配置就能开始用。
 
 ### 三步开始使用
 
 1. **下载**：到 [Releases 页面](https://github.com/moyetian/kaoyan_chain/releases) 下载最新版程序包。
-   提供两种形式：**`KaoyanStudyChain-v3.1.1.zip`**（解压即用的免装目录，压缩包约 380 MB，解压后约 1 GB）
+   提供两种形式：**`KaoyanStudyChain-v3.1.1.zip`**（解压即用的免装目录，压缩包约 415 MB，解压后约 1 GB）
    与 **`KaoyanStudyChain_Setup_v3.1.1.exe`**（图形安装向导，含桌面快捷方式与卸载）。
 2. **启动**：zip 版解压到任意文件夹（**不要放在需要管理员权限的目录**，如 `C:\Program Files`）
    后运行 `KaoyanStudyChain.exe`（或双击 `调试启动.bat`，带控制台方便排错）；安装版装完后从开始菜单或桌面图标启动。
@@ -264,7 +264,7 @@ ky
 
 ## 💬 常用私教交互与指令速查
 
-系统提供 42 个工业级 CLI 子命令与对话交互口令，完整参数说明请参阅 [📘 学员实操手册](操作手册.md)：
+系统提供 43 个工业级 CLI 子命令与对话交互口令，完整参数说明请参阅 [📘 学员实操手册](操作手册.md)：
 
 | 交互场景      | 推荐口令 / 子命令                         | 行为说明                                      |
 | --------- | ---------------------------------- | ----------------------------------------- |
@@ -297,7 +297,7 @@ ky
 ├── GEMINI.md                    # Gemini / Antigravity 适配入口
 ├── .cursorrules / .clinerules   # Cursor / Roo·Cline 编辑器适配规则（与 AGENTS.md 同源）
 ├── LICENSE                      # MIT 开源许可证
-├── pyproject.toml               # 打包元数据（Python ≥3.10，当前版本 3.1.1）
+├── pyproject.toml               # 打包元数据（Python ≥3.10，当前版本 3.1.2）
 ├── requirements.txt             # 依赖清单（核心 rich + 可选增强）
 ├── installer.iss                # Inno Setup 安装包脚本（由构建生成）
 ├── KaoyanStudyChain.spec        # 路径无关的 PyInstaller 打包配置
@@ -343,7 +343,7 @@ ky
 ├── build/ dist/                 # 构建产物（PyInstaller / 打包输出，可安全删除）
 ├── rust_ext/                    # Rust (PyO3) 原生加速扩展源码（可选构建）
 └── tools/                       # 全部 Python 源码
-    ├── ky_cli.py                # 主命令行入口，42 个子命令（表驱动分发）
+    ├── ky_cli.py                # 主命令行入口，43 个子命令（表驱动分发）
     ├── tui_navigator.py         # 终端全景智能中枢 (TUI)
     ├── ky_gui.py / gui/         # PySide6 桌面可视化操作端
     ├── agent/                   # Agent 内核：沙箱 / 权限 / 记忆 / 生命周期钩子
@@ -506,20 +506,21 @@ python tools/test_ky_suite.py
 # 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、开放题判分等，共 131 项断言)
 python tools/test_new_features.py
 
-# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 2444 项）
+# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 2865 项）
 python -m pytest -q
 ```
 
 > [!NOTE]
-> **测试计数已做成环境无关，但前提仍要写清**（下列数字为 2026-09-29 实测）：
+> **测试计数已做成环境无关，但前提仍要写清**（下列数字为 2026-10-01 实测）：
 >
 > - `test_ky_suite.py`：26 组共 **307 项断言**。Git 工作区内为 307 通过 / 0 跳过；
 > 干净检出（`git archive` 导出、无 `.git`）为 **302 通过 + 5 跳过 = 307** ——
 > 「测试组 7 Git 隐私隔离」的 5 条断言需 `.git`，无 `.git` 时逐条记为跳过，故**两种环境总数恒为 307**。
 > - `test_new_features.py`：**131 项断言**（0 跳过），与是否 Git 工作区无关。
-> - `pytest tests/`：共 **2444 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
-> **含** `dist/` 构建产物，实测 2441 通过 + 3 跳过）。跳过项为联网测试未设
-> `KY_LIVE_TEST=1`（2 条）与一条需特定 registry 探测串的守卫（1 条）。
+> - `pytest tests/`：共 **2865 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
+> **含** `dist/` 构建产物，实测 2861 通过 + 4 跳过）。跳过项为联网测试未设
+> `KY_LIVE_TEST=1`（2 条）、一条需特定 registry 探测串的守卫（1 条）与一条 POSIX
+> 权限位断言（Windows 不适用，1 条）。
 > 在**无** `dist/` 的副本里跑，6 条打包断言会转为跳过 —— 收集总数不变，通过数下降。
 > 在**无 `cat` 的 Windows 裸机**（Git usr\bin 未加入 PATH）上，2 条沙箱阴性对照会转为
 > 跳过 —— 收集总数不变，通过数下降（该路径由 CI 的 Linux/macOS 作业与 Git 自带 coreutils 覆盖）。
@@ -532,7 +533,7 @@ python -m pytest -q
 >
 > 改文档里的计数时，请**把对应环境一并写上**，否则下一个人会误判为「数字漂移」。
 
-- **测试保障**：主套件 26 组测试集 **307 项断言** + 新功能专项 **131 项断言** + pytest 单元/进程层 **2441 项**（合计 **2879 项通过**，另有 3 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
+- **测试保障**：主套件 26 组测试集 **307 项断言** + 新功能专项 **131 项断言** + pytest 单元/进程层 **2861 项**（合计 **3299 项通过**，另有 4 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
 - **门禁脚本**：`python tools/lint_check.py`（零依赖静态检查，只卡 ERROR 级问题）、`python tools/check_dashboard.py`（看板产物守卫）已接入 CI；
 - **CI 流水线**：内置 GitHub Actions 多平台 (Linux/Windows) 与多 Python 版本自动化测试保障；
 - **开发者文档**：如需参与贡献或了解完整项目架构树，请参阅 [🛠️ 开发者与贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。

@@ -25,6 +25,13 @@ from ..models import SearchResult
 from . import register
 from .base import ProviderError, SearchProvider
 
+# [审计 2026-09-30 P1-7 出站收敛] 统一走 net_guard.safe_urlopen（SSRF 校验 +
+# 逐跳复核 + 连接 IP pin），不再用裸 urlopen。
+try:
+    from net_guard import safe_urlopen
+except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
+    from tools.net_guard import safe_urlopen  # type: ignore
+
 _LOG = logging.getLogger(__name__)
 
 _ENDPOINT = "https://api.tavily.com/search"
@@ -70,7 +77,7 @@ class TavilyProvider(SearchProvider):
                      "User-Agent": "Kaoyan-Study-Chain/1.0"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with safe_urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode("utf-8", errors="ignore"))
         except urllib.error.HTTPError as exc:
             raise ProviderError(f"Tavily 返回 HTTP {exc.code}（检查 API Key 或额度）") from exc

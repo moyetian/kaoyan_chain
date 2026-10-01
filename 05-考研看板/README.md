@@ -5,14 +5,14 @@
 </p>
 
 <p align="center">
-  <a href="https://moyetian.github.io/kaoyan_chain/"><img src="https://img.shields.io/badge/🌐_在线看板体验-Live_Demo-6366f1?style=for-the-badge&logo=githubpages&logoColor=white" alt="Live Demo" /></a>
+  <a href="https://moyetian.github.io/kaoyan_chain/"><img src="https://img.shields.io/badge/🌐_在线看板体验-Live_Demo-0f766e?style=for-the-badge&logo=githubpages&logoColor=white" alt="Live Demo" /></a>
   <a href="#-用户本地化部署与快速上手流程-3-分钟开箱"><img src="https://img.shields.io/badge/🚀_快速上手-Quick_Start-10b981?style=for-the-badge&logo=rocket&logoColor=white" alt="Quick Start" /></a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Status-Sprint%207%20Delivered%20%C2%B7%20%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE%E5%B0%B1%E7%BB%AA-success.svg?style=flat-square" alt="Status" />
   <img src="https://img.shields.io/badge/Tests-CLI%20smoke%20%2B%20regression-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests" />
-  <img src="https://img.shields.io/badge/Dashboard-5%20Tabs%20(%E6%96%B0%E5%A2%9E%20%F0%9F%93%A1%20%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE)-6366f1?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
+  <img src="https://img.shields.io/badge/Dashboard-5%20Tabs%20(%E6%96%B0%E5%A2%9E%20%F0%9F%93%A1%20%E8%80%83%E6%83%85%E9%9B%B7%E8%BE%BE)-0f766e?style=flat-square&logo=speedtest&logoColor=white" alt="Dashboard" />
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/Math-KaTeX%20LaTeX-00d084?style=flat-square&logo=latex&logoColor=white" alt="KaTeX" />
   <img src="https://img.shields.io/badge/Mobile-Responsive%20PWA-f59e0b?style=flat-square&logo=pwa&logoColor=white" alt="Mobile" />

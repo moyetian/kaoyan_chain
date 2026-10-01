@@ -10,9 +10,7 @@ import re
 import sys
 import threading
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -20,6 +18,25 @@ try:  # [B1 同类] LLM 请求经安全通道发送（双导入路径兼容）
     from net_guard import safe_urlopen
 except ImportError:  # pragma: no cover
     from tools.net_guard import safe_urlopen  # type: ignore
+
+try:  # [K4] 统一 LLM 出口（双导入路径兼容）
+    from llm_client import (
+        ChatRequest,
+        LLMEmptyStreamError,
+        LLMError,
+        chat_completion,
+        normalize_openai_url,
+        request_chat,
+    )
+except ImportError:  # pragma: no cover
+    from tools.llm_client import (  # type: ignore
+        ChatRequest,
+        LLMEmptyStreamError,
+        LLMError,
+        chat_completion,
+        normalize_openai_url,
+        request_chat,
+    )
 
 try:
     from tools.cli.shared import ROOT, SUBJECT_DIRS, load_config, read_text_safe
@@ -97,7 +114,13 @@ def _warn_if_mistake_not_archived(user_input: str, reply: str, subject: str, bef
         "    原因通常是批改由对话模型完成、未调用归档工具（非交互或权限受限时尤甚）。\n"
         "    补救路径：① 组卷走确定性判分链路（会强制归档）："
         f"`ky exam {subject} --count 3 --save` 然后 `ky exam-submit <试卷> <作答>`；\n"
-        "              ② 或在交互终端用 `ky --permission=auto` 重发「交作业」。\n", C.YELLOW))
+        "              ② 或在交互终端重跑「交作业」（ask 模式可弹审批），"
+        "信任本机工作区时可用 `ky --permission=auto`；\n"
+        # [UT4 修复·CLI-3] 补第三条不依赖工具链的手动兜底：UT4 实测 ask 非交互
+        # 管道下写操作全被拦截、推荐路径（exam→exam-submit）又因切片缺陷不可用，
+        # 补救链断裂且旧文案未提示 --permission=auto。三条路至少一条可达。
+        "              ③ 或手动将错题录入本科「错题本/」目录，并在「学情档案.md」"
+        "补记错因与处方。\n", C.YELLOW))
 
 def infer_subject_from_text(text: str, fallback: str = "math") -> str:
     """[W11] 从用户输入推断科目代码（无明确关键词时回落 fallback）。
@@ -279,45 +302,23 @@ def build_demo_syllabus_text(base_text: str, year_label: str) -> str:
     new_text += f"\n\n### {year_label}新增考纲知识点（演示样例·非官方）\n{added}\n"
     return new_text
 
-def normalize_openai_url(base_url: str, endpoint: str = "chat/completions") -> str:
-    """规范化 OpenAI 兼容接口地址 (自动补齐 /v1 容错，并兼容 /v1, /v2, /v3, /v4 等多版本端点与反代)"""
-    import re
-    b = (base_url or "https://api.deepseek.com/v1").strip().rstrip("/")
-    ep = (endpoint or "chat/completions").strip().lstrip("/")
-    if b.endswith("/" + ep) or b.endswith("/chat/completions"):
-        return b
-    if re.search(r"/v\d+(?:/.*)?$", b):
-        return f"{b}/{ep}"
-    return f"{b}/v1/{ep}"
+# [K4] ``normalize_openai_url`` 已收敛为 ``llm_client`` 单一实现，此处 re-export
+# 保住既有导入路径（``ky_cli`` / ``cli.agent.__init__`` / ``study_planner`` 等）。
 
 def stream_chat(messages: List[Dict[str, Any]], config: Dict[str, Any]) -> str:
-    """向 OpenAI 兼容 API 发起流式请求并打字机式打印"""
+    """向 OpenAI 兼容 API 发起流式请求并打字机式打印
+
+    [K4] 内联 SSE 解析已删除，改由 ``llm_client.request_chat(stream=True,
+    on_chunk=...)`` 统一承担；本函数只保留 spinner 观感、
+    ``_MAX_ATTEMPTS=2`` 空回复重试与「失败/无内容返回 ""」契约。
+    """
     raw_base_url = config.get("base_url", "https://api.deepseek.com/v1")
-    url = normalize_openai_url(raw_base_url, "chat/completions")
     api_key = config.get("api_key", "").strip()
     model = config.get("model", "deepseek-chat")
 
     if not api_key:
         print(colorize("\n[!] 错误: 未配置 API Key！请先运行 /config 设置您的模型密钥。\n", C.RED))
         return ""
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Kaoyan-Study-Chain/1.0",
-        "Accept": "application/json, text/event-stream",
-        "Connection": "close"
-    }
-
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": config.get("temperature", 0.3),
-        "stream": True
-    }
-
-    data_bytes = json.dumps(payload).encode("utf-8")
-    stop_spinner = threading.Event()
 
     def spinner_task():
         if not sys.stdout.isatty():
@@ -335,56 +336,72 @@ def stream_chat(messages: List[Dict[str, Any]], config: Dict[str, Any]) -> str:
         sys.stdout.write("\r" + " " * 48 + "\r")
         sys.stdout.flush()
 
+    req = ChatRequest(
+        messages=messages,
+        model=model,
+        temperature=config.get("temperature", 0.3),
+        stream=True,
+        timeout=120.0,
+        api_key=api_key,
+        base_url=raw_base_url,
+        headers_extra={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Kaoyan-Study-Chain/1.0",
+            "Accept": "application/json, text/event-stream",
+            "Accept-Encoding": "identity",
+        },
+    )
+
     _MAX_ATTEMPTS = 2
+    _retry_hint = f"\n[!] 上游未返回任何内容（连接可能被中断），正在重试 (1/{_MAX_ATTEMPTS - 1})...\n"
+    _empty_hint = "\n[!] 上游未返回任何内容（连接被中断或模型无输出）。本次未拿到结果，请稍后重试。\n"
     for _attempt in range(1, _MAX_ATTEMPTS + 1):
-        req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
         stop_spinner = threading.Event()
         spinner_thread = threading.Thread(target=spinner_task, daemon=True)
         spinner_thread.start()
-
-        full_reply = []
         first_token = True
+
+        def _on_chunk(chunk: str) -> None:
+            """首个内容块到达时停掉 spinner，并逐块打字机输出。"""
+            nonlocal first_token
+            if first_token:
+                stop_spinner.set()
+                spinner_thread.join(timeout=0.2)
+                first_token = False
+            sys.stdout.write(chunk)
+            sys.stdout.flush()
+
         try:
             # [B1 同类·跳转泄漏 Bearer] 安全通道：SSRF 逐跳复核 + 跨域剥离鉴权头。
-            with safe_urlopen(req, timeout=120) as resp:
-                for raw_line in resp:
-                    line = raw_line.decode("utf-8", errors="ignore").strip()
-                    if not line or not line.startswith("data:"):
-                        continue
-                    data_str = line[len("data:"):].strip()
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data_str)
-                        choices = chunk.get("choices", [])
-                        if choices:
-                            delta = choices[0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                if first_token:
-                                    stop_spinner.set()
-                                    spinner_thread.join(timeout=0.2)
-                                    first_token = False
-                                sys.stdout.write(content)
-                                sys.stdout.flush()
-                                full_reply.append(content)
-                    except Exception:
-                        continue
+            data = request_chat(req, max_retries=0, on_chunk=_on_chunk,
+                                sleep_fn=time.sleep, urlopen_fn=safe_urlopen)
             stop_spinner.set()
             print()
-            if full_reply:
-                return "".join(full_reply)
+            choices = data.get("choices") or [{}]
+            message = (choices[0] or {}).get("message") or {}
+            content = message.get("content") or ""
+            if content:
+                return content
             if _attempt < _MAX_ATTEMPTS:
-                print(colorize(
-                    f"\n[!] 上游未返回任何内容（连接可能被中断），正在重试 (1/{_MAX_ATTEMPTS - 1})...\n", C.YELLOW))
+                print(colorize(_retry_hint, C.YELLOW))
                 continue
-            print(colorize(
-                "\n[!] 上游未返回任何内容（连接被中断或模型无输出）。本次未拿到结果，请稍后重试。\n", C.YELLOW))
+            print(colorize(_empty_hint, C.YELLOW))
             return ""
-        except urllib.error.HTTPError as e:
+        except LLMEmptyStreamError:
+            # [K4] 空流在统一客户端里是确定性坏包（不伪造空回复）；此处按旧
+            # 「上游未返回任何内容」语义处理 → 仍走 _MAX_ATTEMPTS 重试。
             stop_spinner.set()
-            err_msg = e.read().decode("utf-8", errors="ignore")
-            print(colorize(f"\n[API 错误 {e.code}]: {err_msg}\n", C.RED))
+            print()
+            if _attempt < _MAX_ATTEMPTS:
+                print(colorize(_retry_hint, C.YELLOW))
+                continue
+            print(colorize(_empty_hint, C.YELLOW))
+            return ""
+        except LLMError as e:
+            stop_spinner.set()
+            if e.status is not None:
+                print(colorize(f"\n[API 错误 {e.status}]: {e.body or str(e)}\n", C.RED))
+            else:
+                print(colorize(f"\n[网络连接异常]: {e}\n", C.RED))
             return ""
         except Exception as e:
             stop_spinner.set()
@@ -440,43 +457,27 @@ def query_llm_reply(user_msg: str, cfg: Optional[Dict[str, Any]] = None) -> str:
     if not api_key or api_key == "YOUR_API_KEY_HERE" or "example.com" in raw_base_url:
         return f"🎓【考研私教】收到提问: \"{user_msg}\"\n⚠️ 尚未配置大模型 API Key，请在电脑端终端运行 `ky config` 设置密钥后即可畅享网页端与群聊对话讲题！"
 
-    url = normalize_openai_url(raw_base_url, "chat/completions")
-    model = cfg.get("model", "deepseek-chat")
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Kaoyan-Study-Chain/1.0",
-        "Accept": "application/json"
-    }
-
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": cfg.get("temperature", 0.3),
-        "stream": False
-    }
-
     try:
-        data_bytes = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
         _inner_timeout = 55.0
         try:
             _inner_timeout = float(os.environ.get("KY_LLM_TIMEOUT", "55"))
         except (TypeError, ValueError):
             _inner_timeout = 55.0
-        # [B1 同类] 同上：安全通道发送（异常由下方通用 except 收口为可读文本）。
-        with safe_urlopen(req, timeout=_inner_timeout) as resp:
-            res_json = json.loads(resp.read().decode("utf-8"))
-            return res_json["choices"][0]["message"]["content"]
-    except urllib.error.HTTPError as e:
-        err_body = e.read().decode("utf-8", errors="ignore")
-        detail = ""
-        try:
-            err_json = json.loads(err_body)
-            detail = err_json.get("error", {}).get("message") or err_json.get("message") or ""
-        except Exception:
-            detail = err_body[:200]
-        return f"🎓【考研私教解答异常】：模型服务请求失败 (HTTP {e.code}: {e.reason})。\n错误详情: {detail or '服务商拒绝访问，请检查 API Key 余额或权限'}\n建议：请在终端输入 /config 检查模型与密钥配置。"
+        # [K9] 网关/网页对话也必须经过统一客户端：SSRF、重定向鉴权剥离、
+        # 响应体上限、结构化错误和退避不能只在 AgentRunner 路径生效。
+        answer = chat_completion(
+            messages,
+            config=cfg,
+            workspace_root=ROOT,
+            temperature=float(cfg.get("temperature", 0.3)),
+            timeout=_inner_timeout,
+            urlopen_fn=safe_urlopen,
+        )
+        if answer:
+            return answer
+        return (
+            "🎓【考研私教解答异常】：模型服务未返回有效内容。\n"
+            "建议：请在终端输入 `ky doctor` 检查 API 连通性与密钥配置。"
+        )
     except Exception as e:
         return f"🎓【考研私教网络连接异常】: {e}"

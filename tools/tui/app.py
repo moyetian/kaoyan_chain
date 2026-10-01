@@ -34,6 +34,11 @@ import contextlib
 import io
 import sys
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Optional
 
 from textual import work
@@ -45,7 +50,7 @@ from textual.widgets import Footer, Header, Label, ListItem, ListView, RichLog, 
 
 from rich.markup import escape as _rich_escape
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -62,8 +67,8 @@ DIGIT_PREFIX_TIMEOUT = 0.35
 
 #: token 缺失时的兜底（取自 tools/theme 的 dark 预设，保证任何情况下 CSS 可解析）
 _FALLBACK = {
-    "acc": "#a78bfa", "acc-hover": "#c4b5fd", "acc-press": "#8b5cf6",
-    "acc-sub": "#2e1065", "on-acc": "#1e1b4b",
+    "acc": "#2dd4bf", "acc-hover": "#52dbca", "acc-press": "#6ee0d3",
+    "acc-sub": "#134e4a", "on-acc": "#042f2e",
     "fg": "#f8fafc", "mut": "#94a3b8", "line": "#1e293b",
     "bg": "#090d16", "surf": "#111827", "surf2": "#1e293b", "surf3": "#334155",
     "ok": "#34d399", "warn": "#fbbf24", "bad": "#f87171",

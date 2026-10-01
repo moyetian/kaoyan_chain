@@ -32,9 +32,14 @@
 import sys
 import uuid
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Any, Callable, Dict, Optional, Tuple
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 for _p in (str(ROOT), str(ROOT / "tools")):
     if _p not in sys.path:
         sys.path.insert(0, _p)

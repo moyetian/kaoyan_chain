@@ -54,6 +54,19 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = ROOT / "data" / "universities"
 SOURCES_DIR = DATA_DIR / "_sources"
 
+# [审计 2026-09-30 P1-7 出站收敛] 抓取统一走 net_guard.safe_urlopen（SSRF 校验 +
+# 逐跳复核 + 连接 IP pin）。本脚本支持 `py tools/intelligence/xxx.py` 直接运行，
+# 此时 sys.path[0] 是脚本目录，两种导入路径都不在 path 上，故先补 path 引导
+# （与 tools/init_workspace.py 的既有做法一致）。
+_TOOLS_DIR = Path(__file__).resolve().parent.parent          # tools/
+for _p in (str(_TOOLS_DIR), str(ROOT)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+try:
+    from net_guard import safe_urlopen  # noqa: E402
+except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
+    from tools.net_guard import safe_urlopen  # type: ignore  # noqa: E402
+
 CHSI_BASE = "https://yz.chsi.com.cn"
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -86,7 +99,8 @@ def fetch(url: str, *, data: Optional[Dict[str, Any]] = None, retries: int = 3,
     for attempt in range(retries):
         try:
             req = urllib.request.Request(url, data=body, headers=headers)
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            # [审计 2026-09-30 P1-7] 出站收敛：经 safe_urlopen 发送（原为裸 urlopen）。
+            with safe_urlopen(req, timeout=timeout) as resp:
                 raw = resp.read()
             for enc in ("utf-8", "gb18030"):
                 try:

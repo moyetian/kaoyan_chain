@@ -234,6 +234,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(colorize(
                 "    只读模式仅允许查询类命令（status/today/map/key list/memory status/"
                 "fatigue/doctor 等）。\n"
+                "    工作区之外仅保留配置留证快照与审计日志（%LOCALAPPDATA%/kaoyan-study-chain/），"
+                "用于写前留档，属安全审计设计。\n"
                 "    如需执行写操作，请去掉 --permission=safe 或改用 --permission=auto。", C.YELLOW))
             sys.exit(3)
 

@@ -16,6 +16,11 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Any, Dict, List, Optional
 
 from .fetcher import HTTPFetcher
@@ -28,11 +33,11 @@ except ImportError:  # pragma: no cover - 兼容 tools.accel 包式导入
     from tools import accel as _accel
 
 try:  # 双导入路径兼容
-    from tools.ky_io import guard_write
+    from tools.ky_io import guard_write, atomic_write_text, PermissionDeniedError
 except ImportError:  # pragma: no cover
-    from ky_io import guard_write
+    from ky_io import guard_write, atomic_write_text, PermissionDeniedError
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 WATCH_FILE = ROOT / ".memory" / "admission_watch.json"
 
 try:
@@ -139,32 +144,114 @@ def compute_content_fingerprint(html_text: str, algorithm: str = "sha256") -> st
     return _accel.sha256_hash(normalized)
 
 
+#: 标题候选中的 JS/HTML 代码片段特征：内联脚本的字符串拼接、jQuery 模板、
+#: 未剥离的标签残片与 href 属性等。命中任一即判定为非标题噪声。
+#: [修复·JS 噪声] 实测研招网院校页把公告列表交给内联 JS 动态渲染
+#: （``$('<li>...<a href="/sswbgg/...">'+item.bt+'</a>...')``），其中
+#: ``'+item.bt+'`` 曾被当作页面标题写入监控快照，并渲染到考生看板的标题样本。
+_CODE_NOISE_MARKERS = (
+    "'+", '+"', "+'", '"+',           # JS 字符串拼接
+    "$('", '$("',                      # jQuery 选择器
+    "appendTo", ".append(", ".html(", "innerHTML", "outerHTML",
+    "function(", "document.", "window.",
+    "<li>", "</a>", "<div", "</div>", "<script", "</script>",
+    "href=",
+)
+
+
+def _is_code_noise_title(text: str) -> bool:
+    """候选标题是否为内联 JS/HTML 代码片段（而非真实页面标题文本）。
+
+    两道防线共用：``_extract_recent_titles`` 的候选过滤（写入侧），
+    以及 ``AdmissionWatcher._load`` 对历史 ``recent_titles`` /
+    ``updates[].alert_titles`` 的惰性清洗（存量侧）。
+    """
+    if not text:
+        return False
+    return any(marker in text for marker in _CODE_NOISE_MARKERS)
+
+
 class AdmissionWatcher:
     """高校招考动态监控器"""
 
-    def __init__(self, fetcher: Optional[HTTPFetcher] = None):
+    def __init__(self, fetcher: Optional[HTTPFetcher] = None, workspace_root=None):
+        """:param workspace_root: 显式指定工作区根（监控文件落位
+        ``<ws>/.memory/admission_watch.json``）。None 时用模块级 ROOT。
+
+        [问题3 补修·监控写入未随工作区隔离] ``sync_workspace_from_plan`` /
+        ``run_study_plan_wizard`` 等链路接受 workspace_root 参数，但此前本类
+        只认模块级 WATCH_FILE —— 测试传 tmp 工作区时，AGENTS.md / 大纲 / 今日
+        任务都写进 tmp，**监控条目却落进真实仓库**（实测：全量 pytest 把
+        「测试大学/示例农业大学/虚构测试大学」等夹具校名写进真实
+        ``.memory/admission_watch.json``）。显式参数化后，凡持工作区上下文的
+        调用方都必须把 ws 传下来。
+        """
         self.fetcher = fetcher or HTTPFetcher(timeout=5)
         self.registry = get_registry()
+        self.watch_file = (Path(workspace_root) / ".memory" / "admission_watch.json"
+                           if workspace_root is not None else WATCH_FILE)
         self.watch_data: Dict[str, Any] = {}
         self._load()
 
     def _load(self) -> None:
         """加载监控配置文件"""
-        if WATCH_FILE.exists():
+        if self.watch_file.exists():
             try:
-                with open(WATCH_FILE, "r", encoding="utf-8") as f:
+                with open(self.watch_file, "r", encoding="utf-8") as f:
                     self.watch_data = json.load(f)
             except Exception as e:
                 import shutil
-                bak_path = WATCH_FILE.with_suffix(".json.bak")
+                bak_path = self.watch_file.with_suffix(".json.bak")
                 try:
-                    shutil.copy2(WATCH_FILE, bak_path)
+                    shutil.copy2(self.watch_file, bak_path)
                 except Exception:
                     pass
                 print(f"[!] 读取监控配置文件失败 ({e})，已备份原文件至 {bak_path}")
                 self.watch_data = {}
         else:
             self.watch_data = {}
+
+        # [修复·JS 噪声惰性清洗] 旧版本曾把内联 JS 拼接片段（实测 `'+item.bt+'`）
+        # 当作标题写入 recent_titles / updates[].alert_titles，并渲染到看板雷达
+        # 卡片的「最近页面标题样本」。加载时做一次内存清洗；发现脏数据则尝试
+        # 写回（只读模式等写盘受限场景静默跳过，不阻塞加载，也不强制重抓页面）。
+        if self._sanitize_loaded_titles():
+            try:
+                self._save()
+            except Exception:
+                pass
+
+    def _sanitize_loaded_titles(self) -> bool:
+        """清洗已加载历史数据中的 JS/代码片段标题（惰性，不重抓页面）。
+
+        返回是否发生清洗；调用方在发生清洗时尝试写回。
+        """
+        if not isinstance(self.watch_data, dict):
+            return False
+        changed = False
+        for item in self.watch_data.values():
+            if not isinstance(item, dict):
+                continue
+            titles = item.get("recent_titles")
+            if isinstance(titles, list):
+                cleaned = [t for t in titles
+                           if isinstance(t, str) and not _is_code_noise_title(t)]
+                if cleaned != titles:
+                    item["recent_titles"] = cleaned
+                    changed = True
+            updates = item.get("updates")
+            if isinstance(updates, list):
+                for upd in updates:
+                    if not isinstance(upd, dict):
+                        continue
+                    alerts = upd.get("alert_titles")
+                    if isinstance(alerts, list):
+                        cleaned = [t for t in alerts
+                                   if isinstance(t, str) and not _is_code_noise_title(t)]
+                        if cleaned != alerts:
+                            upd["alert_titles"] = cleaned
+                            changed = True
+        return changed
 
     def _save(self) -> None:
         """保存监控配置（原子写入，防止进程意外退出导致文件截断损坏）
@@ -175,12 +262,12 @@ class AdmissionWatcher:
         ``.memory/admission_watch.json``。现先过 ``guard_write``，只读模式下
         抛 ``PermissionDeniedError``，不再静默写盘。
         """
-        guard_write("更新招生监控指纹库", WATCH_FILE)
-        WATCH_FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp_file = WATCH_FILE.with_suffix(".json.tmp")
+        guard_write("更新招生监控指纹库", self.watch_file)
+        self.watch_file.parent.mkdir(parents=True, exist_ok=True)
+        tmp_file = self.watch_file.with_suffix(".json.tmp")
         with open(tmp_file, "w", encoding="utf-8") as f:
             json.dump(self.watch_data, f, ensure_ascii=False, indent=2)
-        tmp_file.replace(WATCH_FILE)
+        tmp_file.replace(self.watch_file)
 
     def add_watch(self, school_query: str) -> Dict[str, Any]:
         """添加或更新监控目标"""
@@ -271,13 +358,19 @@ class AdmissionWatcher:
             url = item.get("url")
             old_hash = item.get("last_hash", "")
             old_titles = set(item.get("recent_titles", []))
+            prev_check = item.get("last_check", "")
 
             fetch_res = self.fetcher.fetch(url)
             if not fetch_res.is_valid:
                 findings.append({
                     "school": item.get("name"),
+                    "chsi_code": item.get("chsi_code", ""),
                     "status": "FETCH_FAILED",
-                    "msg": f"访问超时或受阻 ({fetch_res.access_status})"
+                    "msg": f"访问超时或受阻 ({fetch_res.access_status})",
+                    "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "prev_check": prev_check,
+                    "url": url,
+                    "source_note": item.get("source_note", ""),
                 })
                 continue
 
@@ -313,10 +406,13 @@ class AdmissionWatcher:
             if has_change:
                 finding_item = {
                     "school": item.get("name"),
+                    "chsi_code": item.get("chsi_code", ""),
                     "status": "UPDATED",
                     "alert_titles": alert_titles[:10],
                     "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "url": url
+                    "prev_check": prev_check,
+                    "url": url,
+                    "source_note": item.get("source_note", ""),
                 }
                 findings.append(finding_item)
 
@@ -328,10 +424,14 @@ class AdmissionWatcher:
             else:
                 findings.append({
                     "school": item.get("name"),
+                    "chsi_code": item.get("chsi_code", ""),
                     "status": ("BASELINED" if (not baseline_ready or needs_rebaseline)
                                else "UNCHANGED"),
                     "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "url": url
+                    "prev_check": prev_check,
+                    "url": url,
+                    "source_note": item.get("source_note", ""),
+                    "recent_titles": new_titles,
                 })
 
             # 更新当前记录
@@ -343,6 +443,126 @@ class AdmissionWatcher:
 
         self._save()
         return findings
+
+    # ------------------------------------------------------------------
+    # 巡检报告层：把 findings 变成「人直接能读、能判断」的 Markdown
+    # ------------------------------------------------------------------
+
+    _STATUS_LABEL = {
+        "UPDATED": "🔔 发现新动态",
+        "UNCHANGED": "✅ 暂无变动",
+        "BASELINED": "📌 基线已建立（下次巡检起可识别新增）",
+        "FETCH_FAILED": "⚠️ 访问失败",
+    }
+
+    def render_report(self, findings: List[Dict[str, Any]],
+                      watched: Optional[List[Dict[str, Any]]] = None) -> str:
+        """把巡检结果渲染为带要点的 Markdown 报告。
+
+        设计目标（对应实测反馈「报告几乎没有意义、必须自己去文件夹翻」）：
+        - 每所学校直接给出：监控页面 URL、上次/本次巡检时间、状态、新增要点；
+        - 无变动时附上该页面当前标题样本，供考生核对「监控的是不是正确页面」；
+        - 访问失败给出原因与建议，而不是一句「访问超时」。
+        """
+        if watched is None:
+            watched = self.list_watched()
+        by_name = {w.get("name"): w for w in watched}
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        updated = [f for f in findings if f.get("status") == "UPDATED"]
+        failed = [f for f in findings if f.get("status") == "FETCH_FAILED"]
+
+        lines: List[str] = []
+        lines.append("# 📡 招生动态监控巡检报告")
+        lines.append("")
+        lines.append(f"- 巡检时间：{now_str}")
+        lines.append(f"- 监控目标：{len(findings)} 所高校"
+                     + (f"（共 {len(updated)} 所发现新动态）" if updated else "（本次均无新动态）"))
+        if failed:
+            lines.append(f"- ⚠️ {len(failed)} 所高校本次访问失败，见下文建议")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+        if not findings:
+            lines.append("> 尚未配置监控目标。可在终端中枢执行 `ky tui --action 8` "
+                         "或研招情报页点击「动态简章监控巡检」自动纳入目标院校。")
+            lines.append("")
+            return "\n".join(lines)
+
+        for f in findings:
+            name = f.get("school") or "未知高校"
+            code = f.get("chsi_code") or ""
+            title = f"{name}（{code}）" if code and code != "待查" else name
+            status = f.get("status", "")
+            lines.append(f"## {title}")
+            lines.append("")
+            lines.append(f"- **状态**：{self._STATUS_LABEL.get(status, status)}")
+            if f.get("url"):
+                lines.append(f"- **监控页面**：{f['url']}")
+            if f.get("source_note"):
+                lines.append(f"- **来源说明**：{f['source_note']}")
+            prev = f.get("prev_check") or ""
+            cur = f.get("checked_at") or now_str
+            if prev:
+                lines.append(f"- **巡检时间**：{prev} → {cur}")
+            else:
+                lines.append(f"- **巡检时间**：{cur}")
+
+            if status == "UPDATED":
+                titles = f.get("alert_titles") or []
+                lines.append("")
+                lines.append(f"### 🔔 新增要点（{len(titles)} 条）")
+                lines.append("")
+                for i, t in enumerate(titles, 1):
+                    lines.append(f"{i}. {t}")
+                lines.append("")
+                lines.append("> 建议：优先核对含「招生简章 / 专业目录 / 大纲」字样的条目，"
+                             "确认是否影响你的报考科目与参考书目。")
+            elif status == "FETCH_FAILED":
+                lines.append("")
+                lines.append(f"### ⚠️ 访问失败原因")
+                lines.append("")
+                lines.append(f"- {f.get('msg', '访问超时或受阻')}")
+                lines.append("")
+                lines.append("> 建议：部分高校官网仅校园网可访问或临时维护。"
+                             "可稍后重试；若持续失败，请在设置中核对目标院校官网域名。")
+            else:
+                sample = f.get("recent_titles") or (by_name.get(name, {}) or {}).get("recent_titles") or []
+                lines.append("")
+                lines.append(f"### 📄 页面当前标题样本（最近 {min(len(sample), 8)} 条，供核对监控页面）")
+                lines.append("")
+                if sample:
+                    for i, t in enumerate(sample[:8], 1):
+                        lines.append(f"{i}. {t}")
+                else:
+                    lines.append("（该页面未提取到通知标题，可能为动态加载或非列表页）")
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+
+        lines.append(f"> 本报告由招生动态监控引擎生成于 {now_str}，"
+                     "原始指纹数据位于 `.memory/admission_watch.json`。")
+        lines.append("")
+        return "\n".join(lines)
+
+    def save_report(self, findings: List[Dict[str, Any]],
+                    watched: Optional[List[Dict[str, Any]]] = None) -> Optional[Path]:
+        """把巡检报告落盘到 04-专业课/ 目录（与其它研报同目录约定）。
+
+        只读（safe）模式下不落盘、返回 None，由调用方仅展示终端文本。
+        """
+        report = self.render_report(findings, watched)
+        out_dir = ROOT / "04-专业课"
+        out_file = out_dir / f"简章监控报告_{datetime.now().strftime('%Y-%m-%d_%H%M')}.md"
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            atomic_write_text(out_file, report)
+            return out_file
+        except PermissionDeniedError:
+            return None
+        except Exception:
+            return None
 
     def _compute_sha256(self, content: str) -> str:
         """计算标准化归一化文本指纹 (SHA256)。"""
@@ -357,6 +577,18 @@ class AdmissionWatcher:
         if not html_text:
             return []
 
+        # [修复·JS 噪声] 先剥离内联脚本/样式块：研招网院校页的公告列表由内联
+        # JS 模板动态渲染（`$('<li>...<a href="/sswbgg/...">'+item.bt+'</a>...')`），
+        # 其字符串拼接片段会被下方 `<a>` 正则当成锚点文本捞进来，写入标题样本
+        # 并渲染到考生看板。剥离后这些模板不再参与匹配；候选级
+        # `_is_code_noise_title` 作为第二道防线兜住 script 外的代码残片。
+        scan_text = re.sub(
+            r"<(script|style|noscript|iframe)[^>]*>.*?</\1>",
+            " ",
+            str(html_text),
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+
         noise_skips = [
             "版权所有", "网站地图", "关于我们", "联系我们", "常用下载",
             "旧版网站", "友情链接", "English", "办事大厅", "博士", "系统登录",
@@ -364,6 +596,10 @@ class AdmissionWatcher:
             "返回首页", "设为首页", "加入收藏", "下一页", "上一页", "尾页",
             "首页", "更多", "more", "index", "login", "sitemap"
         ]
+        # [P2-8 修复·大小写漏滤] 此前 `skip in candidate` 大小写敏感，页面导航
+        # 词「ENGLISH」（全大写）漏过黑名单，被当通知标题渲染到情报页监控条目。
+        # 统一 casefold 比较：中文不受影响，英文导航词任意大小写全覆盖。
+        noise_skips_cf = [s.casefold() for s in noise_skips]
 
         def _clean_date_affixes(s: str) -> str:
             if not s:
@@ -377,8 +613,8 @@ class AdmissionWatcher:
             return s.strip()
 
         clean_titles: List[str] = []
-        # 统一匹配所有 <a ...>...</a> 结构
-        a_tags = re.findall(r'<a([^>]*?)>(.*?)</a>', str(html_text), re.DOTALL | re.IGNORECASE)
+        # 统一匹配所有 <a ...>...</a> 结构（在剥离 script/style 后的文本上）
+        a_tags = re.findall(r'<a([^>]*?)>(.*?)</a>', scan_text, re.DOTALL | re.IGNORECASE)
         for attrs, inner in a_tags:
             # 1. 优先嗅探 title 属性 (支持单双引号或无引号，处理二次实体转义)
             attr_title = ""
@@ -409,10 +645,13 @@ class AdmissionWatcher:
             candidate = _clean_date_affixes(candidate)
 
             # 4. 长度与黑名单检查 (放宽上限至 120 字符，严密拦截导航噪音词与纯符号)
-            if 6 <= len(candidate) <= 120 and not any(skip in candidate for skip in noise_skips):
+            if 6 <= len(candidate) <= 120 and not any(skip in candidate.casefold() for skip in noise_skips_cf):
                 if not re.match(r'^[\d\-./: ]+$', candidate):
-                    if candidate not in clean_titles:
-                        clean_titles.append(candidate)
+                    # [修复·JS 噪声] 第二道防线：内联 JS 拼接片段（如
+                    # `'+item.bt+'`）不是页面标题文本，直接丢弃。
+                    if not _is_code_noise_title(candidate):
+                        if candidate not in clean_titles:
+                            clean_titles.append(candidate)
 
         return clean_titles
 

@@ -23,6 +23,13 @@ try:
 except ImportError:  # pragma: no cover
     from tools import exam_calendar  # type: ignore  # noqa: E402
 
+# [P1 修复·决策记忆硬编码] 数学考纲红线文案的单一真源（description 含各档
+# 不考范围），禁止再在种子文案里手写「数学二严禁…」这类固定表述。
+try:
+    import syllabus_manager  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools import syllabus_manager  # type: ignore  # noqa: E402
+
 # 兜底初试日与"考研/入学年份"同源：入学年 N 的初试在 N-1 年 12 月
 _FALLBACK_EXAM_DATE = exam_calendar.resolve_exam_date({})[0].isoformat()
 
@@ -129,24 +136,61 @@ class MemoryManager:
             self.write_memory(MemoryScope.PROJECT, "\n".join(lines))
 
         # 2. Global Memory
+        # [P1 修复·风格硬编码] 「辅导风格偏好」此前写死"严格把关·保姆提分型"，
+        # 与考生实际选择（如"深度原理·学霸溯源型"）冲突且被注入常驻上下文。
+        # 现按 study_plan.style_name（或顶层 coaching_style）生成。
         if not self._files[MemoryScope.GLOBAL].exists() or not self.read_memory(MemoryScope.GLOBAL):
+            _style = str(plan.get("style_name") or cfg.get("coaching_style") or "").strip()
+            if not _style:
+                _style = "严格把关·保姆提分型 (Strict & Disciplined)"
             user_lines = [
                 "# 全局学员习惯偏好 (Global Memory)",
                 "- 默认语言: 简体中文 (优先使用规范考研阅卷学术术语)",
-                "- 辅导风格偏好: 严格把关·保姆提分型 (每步给分，严查错因)",
+                f"- 辅导风格偏好: {_style}",
                 "- 解题习惯: 习惯在草稿纸上手写推导后拍照或逐步输入",
                 "- 交互准则: 拒绝直接给出答案，先提示考点与第一步思路"
             ]
             self.write_memory(MemoryScope.GLOBAL, "\n".join(user_lines))
 
         # 3. Decisions Memory
+        # [P1 修复·硬编码决策误导] 旧实现写死「数学二严禁复习三重积分…/英语二真题…」
+        # ——对不考数学（如数学专业双自命题）、数学一/三/396、英语一考生均为错误
+        # 指令（实测：数学分析考生被注入「严禁复习无穷级数」，恰与其专业课核心
+        # 级数/重积分冲突）。现按 study_plan 生成：数学红线取自 syllabus_manager
+        # 的单一真源 description；不考数学不写数学红线；英语策略按 eng_key 分档。
         if not self._files[MemoryScope.DECISIONS].exists() or not self.read_memory(MemoryScope.DECISIONS):
-            dec_lines = [
-                "# 关键复习决策与避坑指南 (Decisions Memory)",
-                "- [考纲红线]: 数学二严禁复习三重积分、曲面积分与无穷级数，严防超纲耗时",
-                "- [方法取舍]: 导数中值定理证明题一律优先构造辅助函数，规避柯西中值定理复杂展开",
-                "- [真题范围]: 英语二真题以 2010 年之后的规范真题为主，不盲目刷英语一超纲长难句"
-            ]
+            dec_lines = ["# 关键复习决策与避坑指南 (Decisions Memory)"]
+            _math_key = str(plan.get("math_key") or "").strip().lower()
+            _math_disabled = (
+                _math_key in {"none", "no", "不考数学"}
+                or plan.get("math_name") == "不考数学"
+            )
+            if _math_disabled:
+                dec_lines.append(
+                    "- [方案定位]: 本方案不考数学，AI 私教不安排任何数学复习内容；"
+                    "专业课为核心得分盘，按考纲与真题组织攻坚"
+                )
+            else:
+                _m_info = syllabus_manager.MATH_SYLLABI.get(_math_key) or {}
+                _m_name = _m_info.get("name") or plan.get("math_name") or "数学"
+                _m_desc = str(_m_info.get("description") or _m_info.get("scope") or "").strip()
+                _redline = f"{_m_name}：{_m_desc}" if _m_desc else f"{_m_name}严格按官方大纲复习"
+                dec_lines.append(f"- [考纲红线]: {_redline}，严防超纲耗时")
+                dec_lines.append(
+                    "- [方法取舍]: 导数中值定理证明题一律优先构造辅助函数，"
+                    "规避柯西中值定理复杂展开"
+                )
+            _eng_key = str(plan.get("eng_key") or "").strip().lower()
+            if _eng_key == "eng1":
+                dec_lines.append(
+                    "- [真题范围]: 英语一真题以近 10 年规范真题为主，"
+                    "阅读注重长难句主干拆解与干扰项逻辑"
+                )
+            else:
+                dec_lines.append(
+                    "- [真题范围]: 英语二真题以 2010 年之后的规范真题为主，"
+                    "不盲目刷英语一超纲长难句"
+                )
             self.write_memory(MemoryScope.DECISIONS, "\n".join(dec_lines))
 
     def load_all_memory(self) -> str:

@@ -15,6 +15,11 @@ import json
 import logging
 import urllib.parse
 from pathlib import Path
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
@@ -34,7 +39,7 @@ try:
 except ImportError:  # pragma: no cover
     from tools.ky_io import atomic_write_text, PermissionDeniedError  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = resolve_workspace_root(__file__)
 
 
 class KaoYanIntelligenceEngine:
@@ -264,12 +269,32 @@ class KaoYanIntelligenceEngine:
         ]
 
         # 官方站点有向图
+        # [P2 修复·空锚点死链] 此前 domains 缺失时回落 `'#'`，渲染出
+        # `[安徽财经大学 本科/学校官网](#)` 这类点了没反应的死链（econ 沙箱实测：
+        # 该校未收录 official/admission 域名，前两条链接全部落 `#`）。
+        # 处置：① 研究生院条目按 招生办→研究生院 回退（有真实 URL 就用真实 URL）；
+        # ② 研招网专页缺失时按校名现拼官方检索 URL（研招网 sch/search 入口）；
+        # ③ 确实没有任何 URL 的条目降级为纯文本并注明未收录，不再输出可点击的 '#'。
+        _domains = site_graph.get("domains") or {}
+        _chsi_portals = site_graph.get("chsi_portals") or {}
+        _official_url = _domains.get("official")
+        _grad_url = _domains.get("admission_office") or _domains.get("graduate_school")
+        _chsi_school_url = _chsi_portals.get("school_info") or (
+            "https://yz.chsi.com.cn/sch/search.do?ssdm=&yjsy=&xxmc="
+            + urllib.parse.quote(school_name))
+        _chsi_zsml_url = _chsi_portals.get("zsml_catalog") or "https://yz.chsi.com.cn/zsml/queryAction.do"
+
+        def _site_entry(idx: str, label: str, url: Optional[str]) -> str:
+            if url:
+                return f"{idx}. **[{label}]({url})**"
+            return f"{idx}. **{label}**（本地院校库暂未收录该域名，可经下方研招网入口检索）"
+
         lines.extend([
             "## 🏛️ 2. 官方权威站点有向图谱 (Evidence Tree)",
-            f"1. **[{school_name} 本科/学校官网]({site_graph['domains'].get('official') or '#'})**",
-            f"2. **[{school_name} 研究生院 / 招生办公室]({site_graph['domains'].get('admission_office') or site_graph['domains'].get('graduate_school') or '#'})**",
-            f"3. **[【教育部直达】研招网 {school_name} 信息专页]({site_graph['chsi_portals'].get('school_info') or '#'})**",
-            f"4. **[【目录检索】研招网硕士专业目录查询系统]({site_graph['chsi_portals'].get('zsml_catalog') or '#'})**"
+            _site_entry("1", f"{school_name} 本科/学校官网", _official_url),
+            _site_entry("2", f"{school_name} 研究生院 / 招生办公室", _grad_url),
+            _site_entry("3", f"【教育部直达】研招网 {school_name} 信息专页", _chsi_school_url),
+            _site_entry("4", "【目录检索】研招网硕士专业目录查询系统", _chsi_zsml_url),
         ])
         if site_graph["domains"].get("college"):
             col_name = site_graph["domains"].get("college_name", "二级学院官网")
@@ -382,11 +407,38 @@ class KaoYanIntelligenceEngine:
         if not math_disabled:
             targets.insert(0, f"{math_name} `{math_target}`")
 
+        # [P2 修复·宣称与占位现实矛盾] 此前无条件宣称「围绕…已核验的考试大纲与
+        # 题源安排复习」——与项目红线「替换前不得宣称按纲出题」冲突（matmech
+        # 沙箱实测：专业课大纲仍为【待自填】占位、无任何题源时，admission 报告
+        # 已宣称「已核验的考试大纲与题源」）。现按大纲真实状态与白名单实况分档。
+        _pro_books_raw = str(plan.get("pro_books") or cfg.get("pro_books") or "").strip()
+        _pro_books_ready = bool(_pro_books_raw) and not _pro_books_raw.startswith(
+            "暂未放置实体资料") and "待自填" not in _pro_books_raw
+        _syllabus_state = "missing"
+        try:
+            try:
+                from syllabus_manager import pro_syllabus_state
+            except ImportError:
+                from tools.syllabus_manager import pro_syllabus_state
+            _syllabus_state = pro_syllabus_state(ROOT)
+        except Exception:
+            _syllabus_state = "missing"
+
+        if _syllabus_state == "ready" and _pro_books_ready:
+            _pro_prep = f"围绕「{pro_name}」已核验的考试大纲与题源安排复习。"
+        elif _syllabus_state == "ready":
+            _pro_prep = (f"「{pro_name}」考试大纲已就绪；题源白名单尚未导入，"
+                         "可先用 `ky mount` 盘点本地资料、`ky ingest` 切片入库，再安排刷题。")
+        else:
+            _state_word = "仍为【待自填】占位骨架" if _syllabus_state == "placeholder" else "尚未导入"
+            _pro_prep = (f"「{pro_name}」考试大纲{_state_word}（未核验），**替换前不得宣称按纲出题**；"
+                         "请先从目标院校研究生院官网下载真实大纲替换 `04-专业课/考试大纲.md`，再安排按纲复习。")
+
         lines.extend([
             f"- **个人目标**：总分 `{total_target}` ｜ " + " ｜ ".join(targets),
             "- **录取风险**：个人目标分不代表院校门槛或录取保证。需核验同年度、同专业方向、"
             "同学习方式的招生计划、复试线、单科线和录取规则后再评估。",
-            f"- **专业课准备**：围绕「{pro_name}」已核验的考试大纲与题源安排复习。",
+            f"- **专业课准备**：{_pro_prep}",
             "- **复试准备**：以目标学院当年复试细则为准，确认笔试、面试和实践考核内容。",
             "- **一志愿规则**：以官方复试录取办法和录取名单为依据，不根据院校层次推断保护政策。",
         ])

@@ -15,12 +15,22 @@ import json
 from datetime import datetime, date
 from pathlib import Path
 
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
+
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
     from ky_io import atomic_write_text  # noqa: E402
 except ImportError:  # pragma: no cover
     from tools.ky_io import atomic_write_text  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+try:  # [P0 题库身份链] 保留 EXAM_PAPER_ID，同时登记内容寻址身份
+    from skills.paper_registry import PaperRegistry
+except ImportError:  # pragma: no cover
+    from tools.skills.paper_registry import PaperRegistry
+
+ROOT = resolve_workspace_root(__file__)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -337,6 +347,64 @@ def _score_card_against_weakness(card: dict, weakness_grams: set) -> int:
     return len(hay & weakness_grams)
 
 
+# ─────────────────────────────────────────────────────────────
+# [UT4 修复·INGEST-7] 组卷纵深防御：题卡题干段的答案区块剥离。
+# 背景（UT4 西医沙箱实测）：切片器缺陷曾把「#### 2. 标准答案」区块留在题卡
+# 题干段内，组卷把题卡原样排版进卷面 —— 卷尾却声明「试卷内不含答案」，
+# 盲盒承诺失实。即使上游切片修复，历史切片文件仍在，组卷侧必须自防。
+# 防线三层：① 题卡装载时剥离 + 提取标准答案进密钥（判卷可用）；
+#          ② 渲染循环对每题题面二次剥离（覆盖错题卡等其它题源）；
+#          ③ 组卷完成后全文终检告警。
+# 注意：防篡改校验的 checksum 基线**必须**继续用 extract_card_stem 的
+# 原始提取结果（与渲染侧 backfill 同口径），剥离只作用于卷面展示与密钥。
+# ─────────────────────────────────────────────────────────────
+#: 题卡题干段内的编号子小节标题（「#### 2. 标准答案」等）—— 出现即视为
+#: 题干结束，其后内容不得进卷面。
+_STEM_ANSWER_SUBSEC_RE = re.compile(
+    r"^[ \t]*#{2,4}\s*\d*\s*[.、]?\s*(?:标准答案|参考答案|答案(?:与解析|解析|要点)?"
+    r"|步骤级采分点标注?|命题人逻辑)[^\n]*$",
+    re.MULTILINE,
+)
+
+#: 其中**答案类**小节（采分点表 / 命题人解析只截断、不作为标准答案提取）
+_STEM_ANS_ONLY_RE = re.compile(
+    r"#{2,4}\s*\d*\s*[.、]?\s*(?:标准答案|参考答案|答案(?:与解析|解析|要点)?)"
+)
+
+
+def _split_answer_from_stem(stem_text: str):
+    """从题卡题干段文本中剥离答案/采分子小节。
+
+    Returns:
+        ``(clean_stem, standard_answer)``。截断标记为**答案类**小节时，
+        ``standard_answer`` 取其正文（剥 ``>`` 引用与「答案：」前缀，其后还有
+        别的子小节时截断）；标记为采分点表 / 命题人解析等非答案小节、或无
+        标记时返回空串。
+    """
+    text = str(stem_text or "")
+    m = _STEM_ANSWER_SUBSEC_RE.search(text)
+    if not m:
+        return text.strip(), ""
+    clean = text[:m.start()].rstrip()
+    if not _STEM_ANS_ONLY_RE.search(m.group(0)):
+        return clean, ""
+    tail = text[m.end():]
+    m_next = re.search(r"\n[ \t]*#{2,4}\s*\d+\s*[.、]", tail)
+    ans_span = tail[:m_next.start()] if m_next else tail
+    ans_lines = [re.sub(r"^>\s?", "", ln).strip() for ln in ans_span.strip().splitlines()]
+    ans_text = "\n".join(ln for ln in ans_lines if ln).strip()
+    ans_text = re.sub(
+        r"^(?:【答案】|【参考答案】|标准答案[：:]|参考答案[：:]|答案[：:])\s*",
+        "", ans_text).strip()
+    return clean, ans_text
+
+
+def _strip_answer_sections(text: str) -> str:
+    """渲染防线：从题面文本中剥离答案/采分子小节（无标记原样返回）。"""
+    m = _STEM_ANSWER_SUBSEC_RE.search(str(text or ""))
+    return text[:m.start()].rstrip() if m else text
+
+
 def _load_whitelist_cards(subject, need=1, boost_text: str = ""):
     """从各科「参考资料/题库切片_*.md」抽取已入库的白名单真题卡片。
 
@@ -373,13 +441,23 @@ def _load_whitelist_cards(subject, need=1, boost_text: str = ""):
         for blk in split_card_blocks(txt)[1:]:
             m_src = re.search(r"【题源出处】\*\*[：:]\s*`([^`]+)`", blk)
             source = m_src.group(1).strip() if m_src else slice_file.stem
-            m_type = re.search(r"】\s*(.+?)（满分[:：]\s*([0-9.]+)\s*分", blk.splitlines()[0] if blk.splitlines() else "")
+            # [审计 2026-09-30 · 中影响] 同一 splitlines() 原先被求值两次，改存变量。
+            _lines = blk.splitlines()
+            m_type = re.search(r"】\s*(.+?)（满分[:：]\s*([0-9.]+)\s*分", _lines[0] if _lines else "")
             q_type = m_type.group(1).strip() if m_type else "真题"
             score = m_type.group(2).strip() if m_type else ""
             # [C3 单一事实源] 题干提取与 question_source.extract_card_stem 同源
             # （此前这里是逐字复制的内联正则，两处漂移会让渲染侧算出的 checksum
             # 在解析侧校验失败）。
-            question = extract_card_stem(blk)
+            # [UT4 修复·INGEST-7] checksum 基线保持原始提取口径（与渲染侧 backfill
+            # 同一函数、同一结果）；卷面展示与标准答案走剥离版 —— 题干段里混入的
+            # 「#### 2. 标准答案 / 步骤级采分点」子小节绝不进卷面（UT4 实测答案
+            # 区块随题卡印上试卷，卷尾「试卷内不含答案」声明失实）。
+            question_raw = extract_card_stem(blk)
+            question, std_answer = _split_answer_from_stem(question_raw)
+            if question_raw and question != question_raw.rstrip():
+                print(f"[⚠️ 组卷防线] 题卡题干段混入答案/采分子小节，已在卷面剥离"
+                      f"（题源: {source}）。建议重新运行 `ky ingest` 修复切片。")
             if len(question) < 8:
                 continue
             stem_preview = question.replace('\n', ' ')[:12]
@@ -391,7 +469,9 @@ def _load_whitelist_cards(subject, need=1, boost_text: str = ""):
             #   · 完全无身份字段的存量卡片 → 现场构建（惰性 backfill，不落盘）——
             #     不能因缺字段把存量真题整批拒之门外。
             declared = has_declared_identity(blk)
-            src = source_from_card(blk, origin=ORIGIN_WHITELIST, fallback_stem=question)
+            # [UT4 修复·INGEST-7] checksum 基线用原始提取（question_raw），与
+            # 渲染侧 backfill 口径逐字节一致 —— 剥离只作用于展示/密钥
+            src = source_from_card(blk, origin=ORIGIN_WHITELIST, fallback_stem=question_raw)
             tampered = declared and not src.verify(question)
             cards.append({
                 "subject": subject,
@@ -402,8 +482,9 @@ def _load_whitelist_cards(subject, need=1, boost_text: str = ""):
                 "date": "",
                 "question": question,
                 "detail": f"题源出处: {source}",
-                # 切片题卡不含答案 (答案归档于 .memory/exam_keys)，判卷端按「转人工复核」契约处理
-                "standard_answer": "",
+                # [UT4 修复·INGEST-7] 切片题卡若带「标准答案」小节则提取进密钥
+                # （判卷自动采分可用）；缺失时仍按「转人工复核」契约处理
+                "standard_answer": std_answer,
                 "stage": 0,
                 # [P1 修复·分值不等权] 把切片里解析到的「满分 X 分」带入题卡，
                 # 供阅卷端按题计分（此前一律按 10 分算，真题卷分值会被算错）
@@ -946,6 +1027,12 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
         t_title = item.get("title", f"第 {i} 题")
         err_type = item.get("error_type", "综合考点")
         q_text = item.get("question") or item.get("title") or "【题干设问缺失】"
+        # [UT4 修复·INGEST-7] 渲染防线（第二层）：所有题源的题面统一过一遍
+        # 答案子小节剥离 —— 覆盖错题卡 / 大模型变式题等非白名单来源
+        _q_stripped = _strip_answer_sections(str(q_text))
+        if _q_stripped != str(q_text).rstrip():
+            print(f"[⚠️ 组卷防线] 第 {i} 题题面混入答案区块，已在卷面剥离。")
+        q_text = _q_stripped or q_text
         stage = item.get("stage", 0)
 
         lines.append(f"### 📝 第 {i} 题：{t_title}")
@@ -999,6 +1086,15 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
     lines.append(f"<!-- 参考答案与采分点已加密归档至 .memory/exam_keys/{paper_id}.json (ENC1)，试卷内不含答案 -->\n")
 
     full_content = "\n".join(lines)
+
+    # [UT4 修复·INGEST-7] 终检防线（第三层）：组卷完成后全卷扫描残留的
+    # 内联答案标记（【答案】/【参考答案】形态，前两层小节剥离未覆盖的），
+    # 剥离并告警 —— 兑现「试卷内不含答案」的盲盒承诺。
+    _leaks = re.findall(r"【(?:参考|标准)?答案】[^\n]*", full_content)
+    if _leaks:
+        print(f"[⚠️ 组卷防线] 终检检出卷面残留 {len(_leaks)} 处答案标记，已剥离。")
+        full_content = re.sub(r"【(?:参考|标准)?答案】[^\n]*", "（答案已剥离）", full_content)
+
     saved_path = None
 
     # 保存中央加密答案库
@@ -1020,6 +1116,15 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
         companion_file = target_dir / f".{file_name}.keys.json"
         atomic_write_text(companion_file, sealed_keys)
 
+    registry_record = PaperRegistry(ROOT).register_paper(
+        full_content,
+        subject=subject,
+        source_name=f"自测卷_{paper_id}",
+        card_path=saved_path or "",
+        key_path=key_dir / f"{paper_id}.json",
+        metadata={"exam_paper_id": paper_id},
+    )
+
     return {
         "success": True,
         "refused": False,
@@ -1033,7 +1138,9 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
         "items": selected_items,
         "content": full_content,
         "formatted_paper": full_content,
-        "saved_path": saved_path
+        "saved_path": saved_path,
+        "registry_paper_id": registry_record["paper_id"],
+        "paper_record": registry_record,
     }
 
 
@@ -1068,6 +1175,10 @@ def _grade_open_by_llm(key_item: dict, student_answer: str, subject: str):
             reference_answer=str(key_item.get("standard_answer", "") or ""),
             key_points=key_item.get("key_points"),
         )
+        # [K1 设计取舍·故意保守] open_grader 给出 0~10 的部分分（og.score），但本
+        # 链路只按 match_level(2/1/0) 二值化采分：仅 2 判满分计入总分；1（含 0~10
+        # 部分分）一律转人工复核、不落总分。即部分分不折算进总分，宁转人工复核也
+        # 不虚增通过率——这是有意为之，不是遗漏。
         if og.match_level == 2:
             return 2, f"多模型复核通过：{og.reason}"
         if og.match_level == 0:
