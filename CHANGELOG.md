@@ -110,8 +110,8 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
   字节锁定的 `tests/benchmarks/core50/**`（`BYTE_LOCKED_DATASET_DIRS`，
   单一事实源在 `privacy_policy`）—— 修复前 `benchmark/fixtures/README.md`
   （3240B、纯 LF）的虚构邮箱命中通用 PII 规则，被文本回写后隐式
-  LF→CRLF（3240B→3271B），导出副本必带 1 个 core50 差异、推送后
-  CI 哈希门禁红；
+  LF→CRLF（3240B→3271B），导出副本必带 1 个 core50 差异（`--check`
+  只校验 manifest 清单、抓不到该文件，属静默漂移）；
 - **修复与体验**：复制版真题 `**第1题（4分）**：` 格式正确分题（不再把下一题
   污染进上一题答案）；双校对标显式专业优先于工作区配置；组卷校验改用原始题干
   （消除 ingest 合法卡片被误判篡改）；`lim(x→0)` 自然书写归一化；SymPy 惰性加载

@@ -1287,8 +1287,10 @@ PY_UNSANITIZED_FILES: frozenset = frozenset({
 #:
 #: [R2 实测] 修复前 ``benchmark/fixtures/README.md``（3240B、纯 LF）的虚构邮箱
 #: ``admissions@northplain.edu.example`` 命中通用 PII 规则，被
-#: ``sanitize_markdown_files`` 回写后隐式 LF→CRLF（3240B→3271B），导出副本
-#: 必带 1 个 core50 差异 → 推送后 CI 门禁红。故整棵子树：
+#: ``sanitize_markdown_files`` 回写后隐式 LF→CRLF（3240B→3271B）—— 导出副本
+#: 必带 1 个 core50 差异，且属**静默漂移**：``core50_runner --check`` 只校验
+#: manifest 声明的文件，本文件不在其中（实测污染态推送后 gate 仍 success）。
+#: 故整棵子树：
 #:   * ``sync_publish`` 导出时跳过内容脱敏（仍正常镜像复制）；
 #:   * ``scan_residual_identity`` 跳过残留扫描 —— 否则虚构邮箱会被通用 PII
 #:     正则报成「残留身份」噪音（与脱敏跳过的口径一致）。
