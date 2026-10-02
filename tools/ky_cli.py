@@ -21,9 +21,8 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
         pass
 
 # 保证 tools 目录与项目根目录加入 sys.path
-_HERE = Path(__file__).resolve().parent
 _ROOT = resolve_workspace_root(__file__)
-for _p in (str(_ROOT), str(_HERE)):
+for _p in (str(_ROOT),):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 

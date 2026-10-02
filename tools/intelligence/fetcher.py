@@ -13,6 +13,7 @@ HTTP 原结果并把原因写进 ``FetchResult.escalation``（方案 v2 §5 阶�
 """
 
 import logging
+import ipaddress
 import os
 import ssl
 import urllib.request
@@ -81,6 +82,7 @@ class FetchResult:
     raw_bytes_len: int = 0
     api_captured: Optional[List[str]] = None # Playwright 嗅探到的 API 列表
     ssl_verified: bool = True         # 本次抓取是否**未发生** TLS 降级（默认 True；仅显式 opt-in 降级后为 False）
+    evidence_eligible: bool = True    # 未验证 TLS 的正文不得作为官方证据入库
     truncated: bool = False           # 正文是否因体积上限被截断（内容尾部已带 TRUNCATION_MARKER）
     resolved_links: Optional[Dict[str, Optional[str]]] = None
     #: [P0 跳转还原] ``{页面内提取的原链接: 会话内跟随后的最终链接}``；
@@ -115,20 +117,29 @@ class HTTPFetcher:
             高校站点使用自签名/过期证书且必须抓取）时，才会在证书错误后以未验证
             连接重试一次，并把 ``ssl_verified=False`` 写进结果且打 WARNING 日志。
         """
-        # [P1 修复] SSRF 防护：先解析真实 IP 再判定，并禁止重定向到内网/回环。
-        # 旧实现完全没有这一层，且 urlopen 默认跟随 3xx（公网 URL 302 到
-        # 127.0.0.1 / 169.254.169.254 即可打到本机与云元数据）。
+        # SSRF 防护由 ``safe_urlopen`` 统一执行（含 DNS pin 与逐跳重定向复检）。
+        # 对 IP 字面量/localhost 先做一次无网络的明确拒绝，避免安全 opener 被
+        # 测试桩或第三方适配器替换后出现直接访问内网的旁路；普通域名不在这里
+        # 重复 DNS 解析，避免企业 DNS 兼容场景被误判，最终校验仍由 safe_urlopen
+        # 完成。
+        host = (urllib.parse.urlparse(url).hostname or "").strip().lower()
+        literal_host = False
         try:
-            assert_url_safe(url)
-        except UnsafeURLError:
-            return FetchResult(
-                url=url,
-                status_code=0,
-                content="",
-                is_valid=False,
-                access_status="BLOCKED",
-                headers={},
-            )
+            ipaddress.ip_address(host.strip("[]"))
+            literal_host = True
+        except ValueError:
+            # urllib/getaddrinfo also accepts decimal/hex IPv4 integer forms
+            # (e.g. 2130706433 -> 127.0.0.1), which ipaddress does not parse
+            # from a bare string. Keep those on the preflight path as well.
+            literal_host = (host == "localhost" or host.endswith(".localhost")
+                            or host.isdigit() or host.lower().startswith("0x"))
+        if literal_host:
+            try:
+                assert_url_safe(url)
+            except UnsafeURLError:
+                return FetchResult(
+                    url=url, status_code=0, content="", is_valid=False,
+                    access_status="BLOCKED", headers={}, evidence_eligible=False)
 
         headers = {
             "User-Agent": USER_AGENT,
@@ -196,9 +207,14 @@ class HTTPFetcher:
                         headers=resp_headers,
                         raw_bytes_len=len(raw_data),
                         ssl_verified=not is_fallback_ssl,
+                        evidence_eligible=not is_fallback_ssl,
                         truncated=truncated,
                     )
 
+            except UnsafeURLError:
+                return FetchResult(
+                    url=url, status_code=0, content="", is_valid=False,
+                    access_status="BLOCKED", headers={}, evidence_eligible=False)
             except urllib.error.HTTPError as e:
                 status = "HTTP_403" if e.code == 403 else f"HTTP_{e.code}"
                 return FetchResult(

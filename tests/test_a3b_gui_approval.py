@@ -329,11 +329,11 @@ def test_end_to_end_gui_channel_unblocks_dangerous_tool(tmp_path, monkeypatch):
 
 
 def test_agent_worker_source_pins_channel_injection():
-    """静态钉住：GUI worker 必须注入通道，且模式仍是规范化后的 auto。"""
+    """静态钉住：GUI worker 注入通道并默认采用最小权限 ask。"""
     src = GUI_WORKER.read_text(encoding="utf-8")
     assert "approval_channel=self._approval_channel" in src, "GUI worker 未把审批通道注入 AgentRunner"
     assert "def _build_approval_channel" in src
-    assert 'permission_mode="auto"' in src
+    assert 'permission_mode="ask"' in src
 
 
 def test_agent_worker_injects_gui_channel_behaviorally(qt_app, monkeypatch):
@@ -368,7 +368,7 @@ def test_agent_worker_injects_gui_channel_behaviorally(qt_app, monkeypatch):
     assert isinstance(captured.get("approval_channel"), GuiApproval), (
         f"AgentWorker 未注入 GUI 审批通道：{captured.get('approval_channel')!r}"
     )
-    assert captured.get("permission_mode") == "auto"
+    assert captured.get("permission_mode") == "ask"
 
 
 def test_agent_worker_degrades_gracefully_when_channel_build_fails(qt_app, monkeypatch):

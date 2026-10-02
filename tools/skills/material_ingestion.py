@@ -632,7 +632,13 @@ class MaterialIngestionPipeline:
         q_pattern = re.compile(
             r'(?:^|\n)[ \t]*(?:(?P<num>\d+)[\.、][ \t]*'
             r'|(?P<num_range>\d+\s*[-–—~]\s*\d+)\s*[\.、][ \t]*'
-            r'|[【\[](?:第|题|Q)?(?P<num2>\d+)[】\]题][ \t]*)',
+            r'|[【\[](?:第|题|Q)?(?P<num2>\d+)[】\]题][ \t]*'
+            # 网上复制的真题常用 ``**第1题（4分）**：``；旧正则只认
+            # ``1.``/``[1]``，会把整份材料压成一张题卡并把下一题污染进
+            # 上一题答案。把题号标签本身消费掉，题干从冒号后开始。
+            r'|\*{0,2}第\s*(?P<num3>\d+)\s*题'
+            r'(?:[（(][^\)\n]{0,20}[）)])?\s*\*{0,2}\s*'
+            r'(?:[：:.、)]\s*)?)',
             re.MULTILINE
         )
         matches = list(q_pattern.finditer(text))
@@ -705,7 +711,8 @@ class MaterialIngestionPipeline:
                 for s in sections:
                     if s.start() <= start_pos:
                         sec_hint = s.group("sec_title")
-                num_val = int(qm.group("num") or qm.group("num2") or (i + 1))
+                num_val = int(qm.group("num") or qm.group("num2") or
+                              qm.group("num3") or (i + 1))
 
             # [UT4 修复·INGEST-4] B 型题「6-10. 备选答案：」题组头：解析共享备选项
             # 后跳过（不生成题卡），并挂到同分段后续无自身选项的题目上。

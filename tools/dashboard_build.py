@@ -56,10 +56,16 @@ def _run_inprocess(build_script: Path, extra_args: list,
         else:
             os.environ[key] = value
 
+    local_web_root = build_script.parent / "web"
     saved_web = {n: m for n, m in list(sys.modules.items())
                  if n == "web" or n.startswith("web.")}
-    for n in saved_web:
-        del sys.modules[n]
+    # 只清理可能遮蔽目标看板的模块：保留宿主进程加载的其它 web
+    # 命名空间，减少 frozen GUI 每次构建的无谓重载。
+    for n, module in saved_web.items():
+        module_file = getattr(module, "__file__", None)
+        if n == "web" or (module_file and
+                           Path(module_file).resolve().is_relative_to(local_web_root.resolve())):
+            del sys.modules[n]
 
     sys.argv = [str(build_script), *extra_args]
     try:
@@ -89,8 +95,11 @@ def _run_inprocess(build_script: Path, extra_args: list,
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
-        for n in [n for n in list(sys.modules) if n == "web" or n.startswith("web.")]:
-            del sys.modules[n]
+        for n, module in list(sys.modules.items()):
+            if n == "web" or (n.startswith("web.") and
+                               getattr(module, "__file__", None) and
+                               Path(module.__file__).resolve().is_relative_to(local_web_root.resolve())):
+                del sys.modules[n]
         sys.modules.update(saved_web)
 
 
@@ -113,11 +122,20 @@ def run_dashboard_build(extra_args: Iterable[str] = (), workspace_root: Optional
     env_overrides = {}
     if snapshot_opt_in is not None:
         env_overrides["KY_SNAPSHOT_OPT_IN"] = "1" if snapshot_opt_in else "0"
+        if not snapshot_opt_in:
+            # 完整模式含私人学情，所有统一构建入口都落到未跟踪的本地目录。
+            # 发布模式（True）继续写入 Pages 的 docs/ 真源。
+            env_overrides["KY_DASHBOARD_OUTPUT_DIR"] = "docs/.local"
+        else:
+            env_overrides["KY_DASHBOARD_OUTPUT_DIR"] = None
 
     if getattr(sys, "frozen", False):
         return _run_inprocess(build_script, list(extra_args), env_overrides, capture_output)
 
-    env = {**os.environ, **env_overrides}
+    env = {**os.environ, **{k: v for k, v in env_overrides.items() if v is not None}}
+    for key, value in env_overrides.items():
+        if value is None:
+            env.pop(key, None)
     result = subprocess.run([sys.executable, str(build_script), *extra_args],
                             cwd=str(build_script.parent), env=env,
                             capture_output=capture_output)

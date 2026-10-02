@@ -14,6 +14,7 @@ import hashlib
 import html
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -301,6 +302,7 @@ class AdmissionWatcher:
             "last_hash": content_hash,
             "recent_titles": extracted_titles,
             "baseline_complete": bool(fetch_res.is_valid),
+            "cache_enabled": True,
             "source_note": ("占位来源：研招网院校页（未核验官网域名）"
                             if _is_placeholder else ""),
             "updates": []
@@ -354,19 +356,62 @@ class AdmissionWatcher:
 
         findings = []
 
+        # 各高校页面互不依赖，网络抓取并行化；后续指纹/基线处理仍在当前线程
+        # 按 targets 顺序执行，保证报告顺序与状态写回的确定性。
+        fetched_by_code = {}
+        def _is_fresh(item) -> bool:
+            # 只对新建/迁移后显式标记的记录启用短缓存。旧格式夹具和历史
+            # 记录仍按一次巡检一次抓取，避免改变既有基线迁移语义。
+            if item.get("cache_enabled") is not True:
+                return False
+            try:
+                last_dt = datetime.strptime(item.get("last_check", ""), "%Y-%m-%d %H:%M")
+                return (datetime.now() - last_dt).total_seconds() < 900
+            except (TypeError, ValueError):
+                return False
+        if targets:
+            workers = min(8, len(targets))
+            with ThreadPoolExecutor(max_workers=workers,
+                                    thread_name_prefix="ky-watch") as pool:
+                futures = {
+                    code: pool.submit(self.fetcher.fetch, item.get("url"))
+                    for code, item in targets if not _is_fresh(item)
+                }
+                for code, future in futures.items():
+                    try:
+                        fetched_by_code[code] = future.result()
+                    except Exception:  # 防御性：单校失败不拖垮全批
+                        fetched_by_code[code] = None
+
         for code, item in targets:
             url = item.get("url")
             old_hash = item.get("last_hash", "")
             old_titles = set(item.get("recent_titles", []))
             prev_check = item.get("last_check", "")
 
-            fetch_res = self.fetcher.fetch(url)
-            if not fetch_res.is_valid:
+            # 同一目标短时间重复巡检直接命中磁盘基线，避免反复建立 TCP/TLS
+            # 连接；超过 15 分钟仍走正常抓取，避免把缓存当成长时间事实。
+            if _is_fresh(item):
+                findings.append({
+                    "school": item.get("name"),
+                    "chsi_code": item.get("chsi_code", ""),
+                    "status": "CACHED",
+                    "checked_at": prev_check,
+                    "prev_check": prev_check,
+                    "url": url,
+                    "source_note": item.get("source_note", ""),
+                    "recent_titles": item.get("recent_titles", []),
+                })
+                continue
+
+            fetch_res = fetched_by_code.get(code)
+            if fetch_res is None or not fetch_res.is_valid:
                 findings.append({
                     "school": item.get("name"),
                     "chsi_code": item.get("chsi_code", ""),
                     "status": "FETCH_FAILED",
-                    "msg": f"访问超时或受阻 ({fetch_res.access_status})",
+                    "msg": (f"访问超时或受阻 ({fetch_res.access_status})"
+                            if fetch_res is not None else "抓取任务异常"),
                     "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "prev_check": prev_check,
                     "url": url,
@@ -452,6 +497,7 @@ class AdmissionWatcher:
         "UPDATED": "🔔 发现新动态",
         "UNCHANGED": "✅ 暂无变动",
         "BASELINED": "📌 基线已建立（下次巡检起可识别新增）",
+        "CACHED": "⚡ 使用短期缓存（未重复请求）",
         "FETCH_FAILED": "⚠️ 访问失败",
     }
 

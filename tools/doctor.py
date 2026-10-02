@@ -21,9 +21,9 @@ from pathlib import Path
 # 劫持的上游用一次 302 即可把 API Key 转发到任意目标。safe_urlopen 对初始 URL
 # 与每一跳做 SSRF 校验，且跨主机跳转时剥离 Authorization。
 try:
-    from net_guard import safe_urlopen  # noqa: E402
+    from net_guard import MAX_HTTP_RESPONSE_BYTES, safe_urlopen  # noqa: E402
 except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
-    from tools.net_guard import safe_urlopen  # type: ignore  # noqa: E402
+    from tools.net_guard import MAX_HTTP_RESPONSE_BYTES, safe_urlopen  # type: ignore  # noqa: E402
 
 # Windows UTF-8 控制台兼容
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
@@ -56,7 +56,7 @@ def _read_upstream_error(err) -> str:
     直接吞掉，用户只能看到笼统的「参数/路由不兼容」，排查方向被带偏。
     """
     try:
-        raw = err.read().decode("utf-8", errors="ignore")
+        raw = err.read(MAX_HTTP_RESPONSE_BYTES).decode("utf-8", errors="ignore")
     except Exception:
         return ""
     msg = ""
@@ -580,7 +580,8 @@ def run_doctor(return_summary=False, check_persistence=False):
                 # [审计 2026-09-30 P1-7] 出站收敛：经 safe_urlopen 发送（SSRF 校验 +
                 # 逐跳复核 + 跨主机跳转剥离 Authorization），不再用裸 urlopen。
                 with safe_urlopen(req, timeout=4) as resp:
-                    data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                    data = json.loads(resp.read(MAX_HTTP_RESPONSE_BYTES).decode(
+                        "utf-8", errors="ignore"))
                 ids = {str(m.get("id", "")) for m in (data.get("data") or [])}
                 model_found = model_name in ids
                 probe_reachable = True
@@ -619,7 +620,7 @@ def run_doctor(return_summary=False, check_persistence=False):
                     # [审计 2026-09-30 P1-7] 出站收敛：同样经 safe_urlopen（该请求也带
                     # `Authorization: Bearer <key>`，是 302 转发 Key 的第二处风险点）。
                     with safe_urlopen(creq, timeout=60) as resp:
-                        _ = resp.read()
+                        _ = resp.read(MAX_HTTP_RESPONSE_BYTES)
                     chat_ok = True
                     chat_status = "ok"
                 except urllib.error.HTTPError as e:

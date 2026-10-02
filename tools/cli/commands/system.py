@@ -143,7 +143,8 @@ def _cmd_build(args: List[str]) -> None:
         # sync_publish 负责（见 tools/sync_publish.py）。
         result = subprocess.run([sys.executable, str(build_py)] + list(args[1:]),
                                 cwd=str(ROOT / "05-考研看板"),
-                                env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0"})
+                                env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0",
+                                     "KY_DASHBOARD_OUTPUT_DIR": "docs/.local"})
         if result.returncode != 0:
             print(colorize("[!] 看板构建失败", C.RED))
             sys.exit(result.returncode or 1)

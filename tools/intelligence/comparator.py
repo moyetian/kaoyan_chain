@@ -451,10 +451,13 @@ class SchoolComparator:
             _pro_name_cfg = ((_cfg.get("study_plan") or {}).get("pro_name") or "").strip()
         except Exception:
             _pro_name_cfg = ""
-        if "408" in _pro_name_cfg:
+        # 显式传入的专业是本次对比的事实边界，不能被工作区配置中的另一位
+        # 考生画像覆盖；只有调用方未传专业时才回退到 ky_config.json。
+        pro_name = str(major or "").strip() or _pro_name_cfg
+        if "408" in pro_name:
             _exam_tip = "若求备战通用性与规避自命题风险，可优先参考两校统考 408 对应方向"
         else:
-            _exam_tip = f"学员专业课为「{_pro_name_cfg or '院校自命题'}」，请分别核验两校该科目大纲与参考书差异"
+            _exam_tip = f"学员专业课为「{pro_name or '院校自命题'}」，请分别核验两校该科目大纲与参考书差异"
         # 一志愿保护机制若未核验，不得写成"可结合两校保护机制做取舍"（等于暗示已有结论）
         _prot_verified = all("未核验" not in str(info.get("protect", "")) for info in (info1, info2))
         if _prot_verified:

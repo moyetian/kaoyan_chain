@@ -408,9 +408,9 @@ class AgentWorker(QThread):
                 # [A3a/G13 修复] 此前传 "acceptEdits"：PermissionManager 不认识
                 # 这个 Claude Code 系命名，静默回退成 `ask`，再叠加 GUI 的
                 # `interactive=False` → Level 1+ 写操作**全部被拒**（桌面端
-                # 完全写不了文件）。现传规范化后的 `auto`：Level 0-3 自动执行，
-                # Level 4-5 交由审批通道。
-                permission_mode="auto",
+                # 完全写不了文件）。GUI 默认与 CLI 一致使用最小权限 `ask`；
+                # 用户可在设置中显式切换更宽松模式，Level 1+ 默认进入审批通道。
+                permission_mode="ask",
                 # [A3b 修复] Level 4-5 走 GUI 弹窗（批准 / 本会话信任 / 拒绝），
                 # 而不是 headless 默认的静默拒绝。
                 approval_channel=self._approval_channel,

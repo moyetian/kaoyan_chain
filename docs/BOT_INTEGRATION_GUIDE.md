@@ -14,10 +14,9 @@
 >   2. 临时覆盖：设置环境变量 `KY_WEBHOOK_TOKEN=<你的回调密钥>`（重启终端即失效，适合临时排障）。
 > - **优先级**：命令行显式参数 > 环境变量 `KY_WEBHOOK_TOKEN` > `ky_config.json` 的 `webhook_token`。
 >   命令行形态：`ky serve --webhook-token=<你的回调密钥>`（与 `--gateway-token=` 同一约定，可同时指定端口与 `--host=`）。
-> - **设置后必须同步改回调地址**，把密钥作为查询参数带上：
->   ```text
->   http://<你的地址或穿透域名>/webhook?token=<你的回调密钥>
->   ```
+> - **优先使用请求头传递密钥**：`X-KY-Webhook-Token: <你的回调密钥>`。
+>   仅当平台不支持自定义 Header 时，才使用兼容地址：
+>   `http://<你的地址或穿透域名>/webhook?token=<你的回调密钥>`。
 > - **未设置该密钥时**：`/webhook` 仅接受**本机回环**（`127.0.0.1`）回调，即本地 NapCat 直连可用；
 >   局域网 / 公网来源会被 401 拒绝（不会「裸奔」）。
 > - 该密钥**只**对 `/webhook` 生效，不会放行 `/api/live`、`/v1/chat/completions` 等数据端点；
@@ -64,7 +63,7 @@ ky wechat
 
 **方式 B（直接调用腾讯官方脚手架）：**
 ```bash
-npx -y @tencent-weixin/openclaw-weixin-cli@latest install
+npx -y @tencent-weixin/openclaw-weixin-cli@2.1.4 install
 ```
 
 #### 第 3 步：手机扫码授权
@@ -212,5 +211,5 @@ cloudflared tunnel --url http://localhost:8088
 | **测试所有配置的推送通道** | `ky config` ➔ `[6]` | 一键向所有平台发送测试报文 |
 | **启动独立网关后台服务** | `ky serve 8088` | 监听 8088 端口与接收回调 |
 | **设置/修改群机器人回调密钥** | `ky config` ➔ `[3]` ➔ `[8]` | 写入 `ky_config.json` 的 `webhook_token`；也可用环境变量 `KY_WEBHOOK_TOKEN` 临时覆盖 |
-| **群机器人回调 401 / 群里没反应** | 检查回调地址是否为 `/webhook?token=<回调密钥>` | 配了密钥就必须携带；未配密钥时仅本机回环放行 |
+| **群机器人回调 401 / 群里没反应** | 检查 `X-KY-Webhook-Token` 请求头，旧平台再检查 `/webhook?token=<回调密钥>` | 配了密钥就必须携带；未配密钥时仅本机回环放行 |
 | **打开 Web LaTeX 排版伴侣** | `ky view` | 打开浏览器KaTeX实时同步窗 |

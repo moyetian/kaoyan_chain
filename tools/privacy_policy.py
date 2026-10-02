@@ -814,6 +814,10 @@ def _personal_text_rules(plan: dict, root: Union[str, Path]) -> List[Tuple[str, 
             return
         rules.append((re.escape(v), repl))
 
+    # 向导/外部配置若提供真实姓名，也必须作为身份字段脱敏；缺省为空时不产规则。
+    _emit(plan.get("real_name") or plan.get("student_name"), "学员姓名", frozenset())
+    _emit(plan.get("qq_target_id"), "QQ号", frozenset())
+
     for prefix in _SUBJECT_FIELD_PREFIXES:
         _emit(plan.get(f"{prefix}_weakness"), "待诊断薄弱点", GENERIC_WEAKNESS_VALUES)
         _emit(plan.get(f"{prefix}_baseline"), "摸底水平", GENERIC_BASELINE_VALUES)
@@ -1007,7 +1011,7 @@ def identity_name_tokens(root: Union[str, Path]) -> List[str]:
     """
     plan = load_study_plan(root)
     tokens: List[str] = []
-    for key in ("school", "major", "pro_name"):
+    for key in ("school", "major", "pro_name", "real_name", "student_name"):
         value = str(plan.get(key) or "").strip()
         # 占位值不是身份：不加闸门的话，副本内自检会把中性占位名（「目标院校情报_
         # 目标院校_目标专业.md」这类由 RENAME_NAME_PATTERNS 产出的合法名）误报成泄漏。
@@ -1147,14 +1151,13 @@ STATIC_IDENTITY_SUBSTITUTIONS: List[Tuple[str, str]] = [
 ]
 
 #: **通用 PII 形态**（与「报考身份」无关的个人隐私）：手机号 / 身份证号 /
-#: 带显式标签的准考证号。此前规则表里**一条都没有** —— 实测 ``sanitize_text``
-#: 对含手机号与身份证号的样本文本原样返回，等于公开副本会原样带着它们出门。
+#: 邮箱 / 带标签的准考证号、QQ 号和学号。
 #:
 #: 设计原则：**宁少勿滥**。数字类规则极易误伤仓库里大量合法的既有数字
 #: （专业代码 ``030500``、初试日期 ``2026-12-19``、自命题科目码 ``618``/``823``、
 #: 倒计时天数、页码…），所以：
 #:   * 手机号 / 身份证：靠**长度 + 结构 + 数字边界**锁定，不需要语境；
-#:   * 准考证号：**必须**紧邻显式标签（准考证号/考生编号/报名号），裸数字一律不动。
+#:   * 准考证号、QQ、学号：**必须**紧邻显式标签，裸数字一律不动。
 PII_SUBSTITUTIONS: List[Tuple[str, str]] = [
     # 手机号：11 位、1 开头、第二位 3-9；数字边界保证不截断更长的数字串。
     (r"(?<!\d)1[3-9]\d{9}(?!\d)", "[手机号]"),
@@ -1166,6 +1169,14 @@ PII_SUBSTITUTIONS: List[Tuple[str, str]] = [
     # 9~16 位数字。无标签的裸数字绝不替换 —— 否则 030500 / 618 / 2026-12-19
     # 这些既有数字会被成片改坏（比漏脱敏更隐蔽的缺陷）。
     (r"((?:准考证号|考生编号|报名号)\s*[:：=]?\s*)\d{9,16}(?!\d)", r"\1[准考证号]"),
+    # 邮箱：不跨空白，支持常见别名/子域；边界避免吞掉 Markdown 标点。
+    # 邮箱：域名必须包含字母且以字母 TLD 结尾，避免把版本串
+    # ``katex@0.16.9`` / ``cli@2.1.4`` 误判为邮箱。
+    (r"(?i)(?<![\w.+-])[\w.+-]+@(?=[A-Za-z0-9-]*[A-Za-z][A-Za-z0-9-]*\.)"
+     r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?![\w.-])", "[邮箱]"),
+    # QQ / 学号只在显式标签后替换，避免误伤公开院校代码、页码与年份。
+    (r"((?:QQ(?:号|号码)?|qq(?:号|号码)?)\s*[:：=]?\s*)\d{5,12}(?!\d)", r"\1[QQ号]"),
+    (r"((?:学号|学生编号)\s*[:：=]?\s*)\d{6,20}(?!\d)", r"\1[学号]"),
 ]
 
 #: PII 的**残留自检**用正则（与 PII_SUBSTITUTIONS 同源）。

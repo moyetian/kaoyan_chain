@@ -29,6 +29,17 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 _LOG = logging.getLogger(__name__)
 
+
+_ERROR_SECRET_RE = re.compile(
+    r"(?i)(bearer\s+|(?:authorization|api[_-]?key|access[_-]?token|token|secret|password)"
+    r"\s*[\"']?\s*[:=]\s*[\"']?\s*)"
+    r"[A-Za-z0-9._~+/=-]{8,}")
+
+
+def _redact_error_text(text: str) -> str:
+    """错误体进入异常/日志前去掉常见凭证值，保留字段名便于诊断。"""
+    return _ERROR_SECRET_RE.sub(lambda m: f"{m.group(1)}[REDACTED]", str(text or ""))
+
 ROOT = resolve_workspace_root(__file__)
 
 try:  # 解压体积上限与安全网络访问（双导入路径兼容）
@@ -647,10 +658,7 @@ def _read_http_error_body(e: urllib.error.HTTPError) -> str:
     try:
         raw = e.read(MAX_HTTP_RESPONSE_BYTES)
     except Exception:
-        try:
-            raw = e.read()
-        except Exception:
-            return ""
+        return ""
     try:
         return _decompress_response_bytes(raw, getattr(e, "headers", None))
     except Exception:
@@ -775,9 +783,10 @@ def request_chat(req: ChatRequest, *, max_retries: int = 2,
                 retryable, kind = classify_http_error(status, body)
                 retry_after = parse_retry_after(getattr(e, "headers", None))
                 err_cls = LLMRetryableError if retryable else LLMDeterministicError
-                err = err_cls(f"HTTP {status}: {body[:200]}" if body else f"HTTP {status}",
+                safe_body = _redact_error_text(body)
+                err = err_cls(f"HTTP {status}: {safe_body[:200]}" if safe_body else f"HTTP {status}",
                               status=status, kind=kind, retry_after=retry_after,
-                              body=body, last_error=e)
+                              body=safe_body, last_error=e)
                 if payload_adjuster is not None and not adjust_round_used:
                     adjusted = payload_adjuster(payload, err)
                     if isinstance(adjusted, dict):

@@ -13,6 +13,8 @@
   6. **导入时副作用**              —— 模块顶层直接执行 IO/子进程（本项目曾因此
                                      在 import 时改写仓库资源、跑 15 条 CLI）
   7. 非 UTF-8 编码文件
+  8. 出站与响应体积安全口径：生产代码不得绕过 ``net_guard.safe_urlopen``，
+     也不得裸读 ``HTTPResponse.read()``（兼容性兜底集中在 search/_http.py）。
 
 用法：``python tools/lint_check.py [--path tools] [--quiet]``
 退出码：0 = 无问题；1 = 存在问题（供 CI 卡门禁）。
@@ -132,6 +134,25 @@ def check_file(path: Path, base: Path) -> List[Tuple[str, int, str]]:
                     continue
                 if not re.search(rf"\b{re.escape(name)}\b", body_src):
                     issues.append(("WARN", lineno, f"未使用导入: {name}"))
+
+    # 5b. 网络安全边界：把已经修好的安全口径固化为门禁，避免新的调用点
+    # 重新落回裸 opener / 无上限响应读取。集成探活脚本是刻意直连本地
+    # 网关的测试工具，保留兼容例外；其余生产模块必须走 net_guard。
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        call_name = _call_name(node)
+        if call_name == "urllib.request.urlopen" and path.name not in {
+                "net_guard.py", "test_ky_suite.py"}:
+            issues.append(("ERROR", node.lineno,
+                           "禁止直接调用 urllib.request.urlopen，请使用 net_guard.safe_urlopen"))
+        if (isinstance(node.func, ast.Attribute) and node.func.attr == "read"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in {"resp", "response", "err", "error_resp"}
+                and not node.args and not node.keywords
+                and path.name not in {"_http.py", "test_ky_suite.py"}):
+            issues.append(("ERROR", node.lineno,
+                           "禁止裸读 response.read()，必须传入 MAX_HTTP_RESPONSE_BYTES"))
 
     # 6. 导入时副作用：模块顶层直接执行 IO / 子进程
     #    判定范围有意收窄，避免噪音：只看顶层的 Try 块与顶层裸调用表达式，

@@ -14,18 +14,61 @@
 
 import re
 import ast
+import importlib.util
 from fractions import Fraction
 
-# 检测是否已安装 SymPy
-try:
-    import sympy as sp
-    from sympy import (
-        symbols, limit, diff, integrate, Matrix, series, oo,
-        sin, cos, tan, exp, log, sqrt, simplify, latex, Function, Eq, dsolve, solve, summation
-    )
-    HAS_SYMPY = True
-except ImportError:
-    HAS_SYMPY = False
+# 只探测，不在模块导入阶段加载 SymPy；首次真正执行数学查询时再绑定符号。
+HAS_SYMPY = importlib.util.find_spec("sympy") is not None
+_SYMPY_LOADED = False
+_SAFE_SYMPY_GLOBAL_DICT = {}
+
+
+def _load_sympy() -> bool:
+    global HAS_SYMPY, _SYMPY_LOADED, _SAFE_SYMPY_GLOBAL_DICT
+    if _SYMPY_LOADED:
+        return HAS_SYMPY
+    if not HAS_SYMPY:
+        return False
+    try:
+        import sympy as sp_mod
+        from sympy import (symbols as symbols_mod, limit as limit_mod,
+                           diff as diff_mod, integrate as integrate_mod,
+                           Matrix as Matrix_mod, series as series_mod,
+                           oo as oo_mod, sin as sin_mod, cos as cos_mod,
+                           tan as tan_mod, exp as exp_mod, log as log_mod,
+                           sqrt as sqrt_mod, simplify as simplify_mod,
+                           latex as latex_mod, Function as Function_mod,
+                           Eq as Eq_mod, dsolve as dsolve_mod,
+                           solve as solve_mod, summation as summation_mod)
+        globals().update({
+            "sp": sp_mod, "symbols": symbols_mod, "limit": limit_mod,
+            "diff": diff_mod, "integrate": integrate_mod, "Matrix": Matrix_mod,
+            "series": series_mod, "oo": oo_mod, "sin": sin_mod, "cos": cos_mod,
+            "tan": tan_mod, "exp": exp_mod, "log": log_mod, "sqrt": sqrt_mod,
+            "simplify": simplify_mod, "latex": latex_mod,
+            "Function": Function_mod, "Eq": Eq_mod, "dsolve": dsolve_mod,
+            "solve": solve_mod, "summation": summation_mod,
+        })
+        _SAFE_SYMPY_GLOBAL_DICT = {
+            "__builtins__": {}, "Symbol": sp_mod.Symbol, "Integer": sp_mod.Integer,
+            "Rational": sp_mod.Rational, "Float": sp_mod.Float,
+            "pi": sp_mod.pi, "E": sp_mod.E, "oo": oo_mod, "I": sp_mod.I,
+            "sin": sin_mod, "cos": cos_mod, "tan": tan_mod,
+            "cot": sp_mod.cot, "sec": sp_mod.sec, "csc": sp_mod.csc,
+            "asin": sp_mod.asin, "acos": sp_mod.acos, "atan": sp_mod.atan,
+            "sinh": sp_mod.sinh, "cosh": sp_mod.cosh, "tanh": sp_mod.tanh,
+            "exp": exp_mod, "log": log_mod, "sqrt": sqrt_mod, "Abs": sp_mod.Abs,
+            "factorial": sp_mod.factorial, "binomial": sp_mod.binomial,
+            "diff": diff_mod, "integrate": integrate_mod, "limit": limit_mod,
+            "series": series_mod, "Derivative": sp_mod.Derivative,
+            "Integral": sp_mod.Integral, "Limit": sp_mod.Limit, "Eq": Eq_mod,
+            "dsolve": dsolve_mod, "solve": solve_mod, "summation": summation_mod,
+            "Matrix": Matrix_mod, "simplify": simplify_mod, "Function": Function_mod,
+        }
+        _SYMPY_LOADED = True
+    except ImportError:
+        HAS_SYMPY = False
+    return HAS_SYMPY
 
 def get_status():
     """获取数学引擎当前就绪状态（人类可读单行文案，保留向后兼容）"""
@@ -81,28 +124,7 @@ def health_check() -> dict:
 # 解析失败抛出的异常与 sympify 时期一致，由 run_math_query 的统一 except 兜底。
 # ════════════════════════════════════════════════════════════════════════
 
-#: 安全解析白名单：仅数学符号与函数（禁止任何可执行/自省入口）。
-_SAFE_SYMPY_GLOBAL_DICT = {
-    "__builtins__": {},
-    "Symbol": sp.Symbol,
-    "Integer": sp.Integer,
-    "Rational": sp.Rational,
-    "Float": sp.Float,
-    "pi": sp.pi,
-    "E": sp.E,
-    "oo": oo,
-    "I": sp.I,
-    "sin": sin, "cos": cos, "tan": tan,
-    "cot": sp.cot, "sec": sp.sec, "csc": sp.csc,
-    "asin": sp.asin, "acos": sp.acos, "atan": sp.atan,
-    "sinh": sp.sinh, "cosh": sp.cosh, "tanh": sp.tanh,
-    "exp": exp, "log": log, "sqrt": sqrt, "Abs": sp.Abs,
-    "factorial": sp.factorial, "binomial": sp.binomial,
-    "diff": diff, "integrate": integrate, "limit": limit, "series": series,
-    "Derivative": sp.Derivative, "Integral": sp.Integral, "Limit": sp.Limit,
-    "Eq": Eq, "dsolve": dsolve, "solve": solve, "summation": summation,
-    "Matrix": Matrix, "simplify": simplify, "Function": Function,
-}
+#: 安全解析白名单：首次使用时由 ``_load_sympy`` 填充。
 
 
 #: 显式拒绝的名字（内省/执行类入口；正常数学表达式不会出现）。
@@ -122,7 +144,7 @@ def _safe_sympify(s, local_dict=None):
     输入含 ``__`` 或危险内省/执行名直接拒绝；解析命名空间被限制在
     :data:`_SAFE_SYMPY_GLOBAL_DICT`，且 ``__builtins__`` 为空。
     """
-    if not HAS_SYMPY:
+    if not _load_sympy():
         raise ValueError("sympy 不可用")
     text = str(s or "")
     if "__" in text:
@@ -282,6 +304,22 @@ def _fallback_polynomial(query_str: str):
     )
 
 
+def _normalize_natural_math(query_str: str) -> str:
+    """把考研常见的 ``lim(x→0) f(x)`` 归一化为内部 limit 模板。"""
+    text = str(query_str or "").strip()
+    match = re.match(
+        r"^\s*lim\s*\(\s*([A-Za-z]\w*)\s*(?:→|->)\s*([^\)]+)\)\s*(.+?)\s*$",
+        text, flags=re.IGNORECASE,
+    )
+    if not match:
+        return text
+    var, dest, expr = match.groups()
+    # 只处理明显的数字/字母相邻乘法，不改写函数名或下划线标识符。
+    expr = re.sub(r"(?<=\d)(?=[A-Za-z])", "*", expr)
+    expr = re.sub(r"(?<=[\)])(?=[A-Za-z])", "*", expr)
+    return f"limit {expr} as {var}->{dest.strip()}"
+
+
 def run_math_query(query_str):
     """
     智能解析并执行数学命令
@@ -297,6 +335,8 @@ def run_math_query(query_str):
       - solve x^2 - 5*x + 6 = 0 或 solve [x^2 + y^2 - 1, x - y]
       - sum 1/n^2 from 1 to oo
     """
+    if HAS_SYMPY:
+        _load_sympy()
     if not HAS_SYMPY:
         # [G-1 修复] 先尝试纯 Python 降级引擎；确实覆盖不到才回落到安装提示，
         # 避免"无论问什么都只回一段提示"让用户误判工具失效。
@@ -309,6 +349,7 @@ def run_math_query(query_str):
             f"收到待验算式: {query_str}"
         )
 
+    query_str = _normalize_natural_math(query_str)
     q = query_str.strip().lower()
     x, y, z, t, u, v = symbols('x y z t u v')
     n, k = symbols('n k', integer=True)

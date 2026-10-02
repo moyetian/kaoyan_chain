@@ -27,9 +27,11 @@ from typing import Any, Dict, List, Optional, Tuple
 # 此前裸 urlopen 默认跟随 3xx —— 恶意 base_url 回 302 即可收割 Key。统一走
 # net_guard.safe_urlopen（SSRF 校验 + 逐跳复核 + 跨主机剥离 Authorization）。
 try:
-    from net_guard import safe_urlopen
+    from net_guard import (MAX_HTTP_RESPONSE_BYTES, decompress_limited,
+                           read_response_limited, safe_urlopen)
 except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
-    from tools.net_guard import safe_urlopen  # type: ignore
+    from tools.net_guard import (MAX_HTTP_RESPONSE_BYTES, decompress_limited,
+                                 read_response_limited, safe_urlopen)  # type: ignore
 
 ROOT = resolve_workspace_root(__file__)
 _LOG = logging.getLogger(__name__)
@@ -542,8 +544,6 @@ class AgenticResearchEngine:
 
         import urllib.request
         import urllib.error
-        import gzip
-        import zlib
         import time
         import socket
         import http.client
@@ -584,22 +584,10 @@ class AgenticResearchEngine:
                 try:
                     # [审计 2026-09-30 P1-7] 出站收敛：经 safe_urlopen 发送（原为裸 urlopen）。
                     with safe_urlopen(req, timeout=req_timeout) as resp:
-                        raw_bytes = resp.read()
+                        raw_bytes = read_response_limited(resp)
                         headers_obj = getattr(resp, "headers", None)
                         enc = headers_obj.get("Content-Encoding", "").lower() if headers_obj and hasattr(headers_obj, "get") else ""
-                        if enc == "gzip":
-                            try:
-                                raw_bytes = gzip.decompress(raw_bytes)
-                            except Exception:
-                                pass
-                        elif enc == "deflate":
-                            try:
-                                raw_bytes = zlib.decompress(raw_bytes)
-                            except Exception:
-                                try:
-                                    raw_bytes = zlib.decompress(raw_bytes, -zlib.MAX_WBITS)
-                                except Exception:
-                                    pass
+                        raw_bytes, _ = decompress_limited(raw_bytes, enc)
                         resp_data = json.loads(raw_bytes.decode("utf-8", errors="ignore"))
                         break
                 except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionResetError, http.client.RemoteDisconnected) as e:

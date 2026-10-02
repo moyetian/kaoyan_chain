@@ -70,6 +70,40 @@ MAX_POST_BODY_BYTES = 16 * 1024 * 1024
 #: [审计 2026-09-30 P1-8] 群聊机器人后台回复任务的并发闸（上限 8）。
 _WEBHOOK_BG_SEM = threading.BoundedSemaphore(8)
 
+# 回调入口是公网暴露面时，签名校验仍可能被重放/洪泛绕过业务层。这里做
+# 进程级短窗口限流；真正的多实例部署应在反向代理继续配置限流。
+_WEBHOOK_RATE_LOCK = threading.Lock()
+_WEBHOOK_RATE_BUCKETS: Dict[str, List[float]] = {}
+_WEBHOOK_RATE_WINDOW = 60.0
+_WEBHOOK_RATE_LIMIT = 30
+_WEBHOOK_REQUEST_IDS: Dict[tuple, float] = {}
+_WEBHOOK_REQUEST_ID_TTL = 300.0
+
+
+def _webhook_admit(client_ip: str, request_id: str = "") -> tuple[bool, str]:
+    """执行短窗口限流与可选请求 ID 去重，返回 ``(允许, 原因)``。"""
+    now = time.monotonic()
+    key = str(client_ip or "unknown")
+    with _WEBHOOK_RATE_LOCK:
+        bucket = [ts for ts in _WEBHOOK_RATE_BUCKETS.get(key, [])
+                  if now - ts < _WEBHOOK_RATE_WINDOW]
+        if len(bucket) >= _WEBHOOK_RATE_LIMIT:
+            _WEBHOOK_RATE_BUCKETS[key] = bucket
+            return False, "rate_limited"
+        bucket.append(now)
+        _WEBHOOK_RATE_BUCKETS[key] = bucket
+        # 只对调用方显式提供的 request id 做重放拒绝，避免同一条合法题目
+        # 在没有平台 ID 的旧协议中被误判为重复。
+        if request_id:
+            for cache_key, expires in list(_WEBHOOK_REQUEST_IDS.items()):
+                if expires <= now:
+                    _WEBHOOK_REQUEST_IDS.pop(cache_key, None)
+            id_key = (key, str(request_id)[:256])
+            if id_key in _WEBHOOK_REQUEST_IDS:
+                return False, "replay"
+            _WEBHOOK_REQUEST_IDS[id_key] = now + _WEBHOOK_REQUEST_ID_TTL
+    return True, "ok"
+
 
 def _run_webhook_bg(fn, *args) -> None:
     """[审计 2026-09-30 P1-8] 群聊后台任务并发闸：超限时退化为同步执行（不丢消息）。"""
@@ -192,13 +226,13 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
         timeout = 30
 
         def _token_ok(self, parsed, expected: str = "") -> bool:
-            """校验请求是否携带正确 token：X-KY-Token 头 / Bearer 头 / ?token= 查询参数。"""
+            """校验请求 token，优先使用 Header，查询参数仅为兼容旧平台。"""
             want = (expected or effective_token).strip()
             if not want:
                 return False
-            x_tok = self.headers.get("X-KY-Token", "")
-            if _token_matches(x_tok, want):
-                return True
+            for header_name in ("X-KY-Webhook-Token", "X-KY-Token"):
+                if _token_matches(self.headers.get(header_name, ""), want):
+                    return True
             auth_h = self.headers.get("Authorization", "")
             if auth_h.startswith("Bearer ") and _token_matches(auth_h[7:].strip(), want):
                 return True
@@ -395,6 +429,31 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                     ensure_ascii=False
                 ).encode("utf-8"))
                 return
+            if parsed.path == "/webhook":
+                request_id = ""
+                for name in ("X-Request-Id", "X-Webhook-Id", "X-Lark-Request-Nonce",
+                             "X-DingTalk-Request-Id"):
+                    request_id = (self.headers.get(name) or "").strip()
+                    if request_id:
+                        break
+                admitted, reason = _webhook_admit(
+                    self.client_address[0] if self.client_address else "unknown",
+                    request_id,
+                )
+                if not admitted:
+                    self.close_connection = True
+                    code = 409 if reason == "replay" else 429
+                    self.send_response(code)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    if code == 429:
+                        self.send_header("Retry-After", str(int(_WEBHOOK_RATE_WINDOW)))
+                    self.end_headers()
+                    self.wfile.write(json.dumps(
+                        {"error": "Duplicate webhook request" if reason == "replay"
+                         else "Webhook rate limit exceeded"},
+                        ensure_ascii=False,
+                    ).encode("utf-8"))
+                    return
             post_data = self.rfile.read(content_length).decode("utf-8", errors="ignore")
 
             if parsed.path == "/api/clear":
@@ -698,6 +757,12 @@ def start_background_live_server(start_port: int = 8088, host: str = "127.0.0.1"
     """
     effective_token = (token or "").strip() or os.environ.get("KY_GATEWAY_TOKEN", "").strip()
     effective_webhook_token = resolve_webhook_secret(webhook_token or "")
+    if host not in ("127.0.0.1", "localhost", "::1") and not effective_token:
+        print(colorize(
+            f"\n[!] 拒绝在非回环地址 {host} 上启动无鉴权网关。"
+            "请设置 KY_GATEWAY_TOKEN / --gateway-token，或改用回环地址。\n",
+            C.RED))
+        return None
     handler_class = create_gateway_handler(token=effective_token,
                                            webhook_token=effective_webhook_token)
     bind_host = host
@@ -715,12 +780,6 @@ def start_background_live_server(start_port: int = 8088, host: str = "127.0.0.1"
                         f"    手机访问：http://{_detect_lan_ip()}:{p}/?token=<你的访问令牌>\n"
                         f"    （你设置的令牌形如 {_mask_secret(effective_token)}）\n",
                         C.CYAN))
-                else:
-                    print(colorize(
-                        f"\n[!] 网关监听于 {bind_host}:{p}（非本机回环）。"
-                        f"强烈建议设置环境变量 KY_GATEWAY_TOKEN 启用鉴权，"
-                        f"否则 LAN 内任何人都可调用 /v1/chat/completions 或读取会话！\n",
-                        C.RED))
             return p
         except OSError:
             continue
@@ -746,8 +805,9 @@ def show_bridge_guide() -> None:
     请另设回调密钥（推荐在 {C.GREEN}ky config{C.RESET} ➔ {C.GREEN}[3] 机器人配置{C.RESET} ➔
     {C.GREEN}[8] 回调密钥{C.RESET} 写入 ky_config.json，也可临时用环境变量
     {C.GREEN}KY_WEBHOOK_TOKEN=你的回调密钥{C.RESET}，或启动网关时加
-    {C.GREEN}--webhook-token=你的回调密钥{C.RESET}），并把回调地址写成
-    {C.GREEN}http://<地址>/webhook?token=你的回调密钥{C.RESET}；
+    {C.GREEN}--webhook-token=你的回调密钥{C.RESET}）。优先让平台在请求头发送
+    {C.GREEN}X-KY-Webhook-Token: 你的回调密钥{C.RESET}；不支持自定义 Header 的旧平台
+    才使用兼容地址 {C.GREEN}http://<地址>/webhook?token=你的回调密钥{C.RESET}；
     未设该密钥时仅本机回环（本地 QQ NapCat）可直接回调。
 
 ────────────────────────────────────────────────────────────────────────
@@ -800,6 +860,16 @@ def run_server(port: int = 8088, host: str = "127.0.0.1", gateway_token: Optiona
     effective_webhook_token = resolve_webhook_secret(webhook_token or "", cfg)
 
     if host not in ("127.0.0.1", "localhost", "::1"):
+        if not effective_token:
+            if not effective_webhook_token:
+                print(colorize(
+                    "  [!] 未配置群机器人回调密钥：/webhook 也只接受本机回环回调。",
+                    C.YELLOW))
+            print(colorize(
+                f"  [!] 拒绝在非回环地址 {host} 上启动无鉴权网关。"
+                "请设置 KY_GATEWAY_TOKEN / --gateway-token，或改用回环地址。",
+                C.RED))
+            return
         if effective_token:
             print(colorize(f"  [√] 已启用 Token 鉴权保护。", C.GREEN))
             # [G1 修复] 同 start_background_live_server：token 不明文进 stdout，只给占位 + 打码确认。

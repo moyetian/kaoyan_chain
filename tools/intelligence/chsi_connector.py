@@ -23,9 +23,9 @@ from .evidence_engine import build_evidence
 # [审计 2026-09-30 P1-7 出站收敛] 研招网抓取统一走 net_guard.safe_urlopen
 # （SSRF 校验 + 逐跳复核 + 连接 IP pin），不再用裸 urlopen。
 try:
-    from net_guard import safe_urlopen
+    from net_guard import MAX_HTTP_RESPONSE_BYTES, safe_urlopen
 except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
-    from tools.net_guard import safe_urlopen  # type: ignore
+    from tools.net_guard import MAX_HTTP_RESPONSE_BYTES, safe_urlopen  # type: ignore
 
 CHSI_ZSML_URL = "https://yz.chsi.com.cn/zsml/queryAction.do"
 CHSI_SCH_URL = "https://yz.chsi.com.cn/sch/search.do"
@@ -214,7 +214,7 @@ class CHSIConnector:
             # [审计 2026-09-30 P1-7] 出站收敛：经 safe_urlopen 发送（原为裸 urlopen）。
             with safe_urlopen(req, timeout=self.timeout) as resp:
                 if resp.status == 200:
-                    raw = resp.read()
+                    raw = resp.read(MAX_HTTP_RESPONSE_BYTES)
                     return raw.decode("utf-8", errors="replace")
         except Exception:
             return None

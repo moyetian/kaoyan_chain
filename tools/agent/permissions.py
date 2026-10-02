@@ -490,10 +490,9 @@ class PermissionManager:
                 return True, "只读安全操作，自动放行"
             return False, f"当前处于严格安全模式 (--permission=safe)，已拒绝执行非只读操作 [{tool_name}]"
 
-        # 2. 如果工具已在本会话中被永久信任 (且非 Level 5 高危)
-        # [B4] 用 glob 匹配而非 ``in set``：信任集里可以是 ``mcp_*`` 这样的类别键
-        # （用户批准一个 MCP 工具时收口写入，见 approval.session_remember_key）。
-        # 普通工具名仍按精确匹配，既有行为不变。
+        # 2. 如果工具已在本会话中被永久信任 (且非 Level 5 高危)。信任集仍
+        # 支持既有 glob 配置，但新 MCP 审批只写完整工具名，避免一次“本会话
+        # 记住”把全部外部 server 工具永久放行。
         if tool_name_matches(tool_name, self.session_allowed_tools) and level < PermissionLevel.DANGEROUS:
             return True, "会话已永久信任此工具"
 

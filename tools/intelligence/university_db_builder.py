@@ -63,9 +63,9 @@ for _p in (str(_TOOLS_DIR), str(ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 try:
-    from net_guard import safe_urlopen  # noqa: E402
+    from net_guard import MAX_HTTP_RESPONSE_BYTES, safe_urlopen  # noqa: E402
 except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
-    from tools.net_guard import safe_urlopen  # type: ignore  # noqa: E402
+    from tools.net_guard import MAX_HTTP_RESPONSE_BYTES, safe_urlopen  # type: ignore  # noqa: E402
 
 CHSI_BASE = "https://yz.chsi.com.cn"
 UA = (
@@ -101,7 +101,7 @@ def fetch(url: str, *, data: Optional[Dict[str, Any]] = None, retries: int = 3,
             req = urllib.request.Request(url, data=body, headers=headers)
             # [审计 2026-09-30 P1-7] 出站收敛：经 safe_urlopen 发送（原为裸 urlopen）。
             with safe_urlopen(req, timeout=timeout) as resp:
-                raw = resp.read()
+                raw = resp.read(MAX_HTTP_RESPONSE_BYTES)
             for enc in ("utf-8", "gb18030"):
                 try:
                     return raw.decode(enc)

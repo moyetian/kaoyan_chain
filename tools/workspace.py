@@ -41,6 +41,13 @@ def resolve_workspace_root(start: Optional[Union[str, Path]] = None) -> Path:
         here = Path(start) if start is not None else Path(__file__)
     if here.is_file():
         here = here.parent
+    # Prefer the nearest self-contained workspace when a test, packaged
+    # fixture, or nested checkout lives below another repository. The old
+    # pyproject-first search picked the outer checkout and mixed its config,
+    # syllabus and generated artifacts into the inner workspace.
+    for cand in (here, *here.parents):
+        if (cand / "tools").is_dir() and (cand / "ky_config.json").is_file():
+            return cand
     for cand in (here, *here.parents):
         if (cand / "pyproject.toml").exists():
             return cand

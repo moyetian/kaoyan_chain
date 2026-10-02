@@ -46,6 +46,7 @@
 # 否则"导入期计算 status"会把惰性化重新变成 eager 导入。
 
 import importlib
+import sys
 
 try:  # 双导入路径兼容（源码脚本式 / tools 包式）
     from workspace import resolve_workspace_root
@@ -54,7 +55,6 @@ except ImportError:  # pragma: no cover
 from typing import Any, Optional
 
 from . import vision_solver
-from . import math_verifier
 from . import english_dissector
 from . import socratic_tutor
 from . import error_logger
@@ -78,7 +78,7 @@ from .paper_registry import (
 )
 
 #: 惰性加载的子模块清单（含重依赖，不适合在 ``import skills`` 时拉起）
-_LAZY_MODULES = ("pdf_extractor",)
+_LAZY_MODULES = ("pdf_extractor", "math_verifier")
 
 
 def __getattr__(name: str) -> Any:
@@ -164,6 +164,23 @@ def _probe_pdf_extractor_health() -> dict:
         return {"status": HEALTH_READY, "reason": "pypdf 可用，可直接解析 PDF 真题与教材"}
     return {"status": HEALTH_UNAVAILABLE,
             "reason": "未安装 pypdf，无法解析二进制 PDF；pip install pypdf 解锁"}
+
+
+def _probe_math_verifier_health() -> dict:
+    """只探测 SymPy 是否可发现，不在 ``import skills`` 时加载它。
+
+    若调用方已经显式加载了 ``math_verifier``（例如运行时测试/诊断打桩），
+    则转发到模块自身的 health_check，保留既有可观测性契约。
+    """
+    module = (sys.modules.get(f"{__name__}.math_verifier") or
+              sys.modules.get("math_verifier"))
+    if module is not None:
+        return module.health_check()
+    if _find_spec_available("sympy"):
+        return {"status": HEALTH_READY,
+                "reason": "SymPy 可用，数学符号验算技能可按需加载"}
+    return {"status": HEALTH_DEGRADED,
+            "reason": "未安装 sympy，数学技能将使用纯 Python 降级引擎"}
 
 
 #: 技能展示元信息（name/desc/command）—— 文案唯一真源，与 _HEALTH_PROVIDERS 一一对应
@@ -263,7 +280,7 @@ def _provider(module, func_name: str = "health_check"):
 #: pdf_extractor 例外（惰性模块），走免导入探测。与 _SKILL_META **必须一一对应**。
 _HEALTH_PROVIDERS = {
     "vision_solver": _provider(vision_solver),
-    "math_verifier": _provider(math_verifier),
+    "math_verifier": _probe_math_verifier_health,
     "socratic_tutor": _provider(socratic_tutor),
     "error_logger": _provider(error_logger),
     "latex_beautifier": _provider(latex_beautifier),

@@ -472,7 +472,10 @@ def _load_whitelist_cards(subject, need=1, boost_text: str = ""):
             # [UT4 修复·INGEST-7] checksum 基线用原始提取（question_raw），与
             # 渲染侧 backfill 口径逐字节一致 —— 剥离只作用于展示/密钥
             src = source_from_card(blk, origin=ORIGIN_WHITELIST, fallback_stem=question_raw)
-            tampered = declared and not src.verify(question)
+            # 校验必须使用与卡片生成/回填一致的原始题干口径。卷面展示会剥离
+            # 标准答案与 Rubric，但这些内容不是题源身份的一部分；拿剥离后的
+            # question 校验会把 ingest 自己生成的合法卡片误判为篡改。
+            tampered = declared and not src.verify(question_raw)
             cards.append({
                 "subject": subject,
                 "subject_name": subj_name,
@@ -818,17 +821,20 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
     selected_items = []
     selected_keys = set()
 
+    def item_identity(item):
+        return (
+            str(item.get("file_name", "")).strip(),
+            str(item.get("title", "")).strip(),
+            str(item.get("question") or item.get("title") or "").strip(),
+        )
+
     def add_unique(item, origin=None):
         """按题源、标题和题干去重，避免同一错题重复占位；同时补齐 origin 标签。"""
         if not isinstance(item, dict):
             return False
         if not str(item.get("question") or "").strip():
             return False
-        identity = (
-            str(item.get("file_name", "")).strip(),
-            str(item.get("title", "")).strip(),
-            str(item.get("question") or item.get("title") or "").strip(),
-        )
+        identity = item_identity(item)
         if identity in selected_keys:
             return False
         if origin and not item.get("origin"):
@@ -873,7 +879,8 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
                 break
             if err.get("source_tampered"):
                 continue  # 已在上方计数
-            if "已掌握" not in err.get("status", "") and err not in selected_items:
+            if ("已掌握" not in err.get("status", "")
+                    and item_identity(err) not in selected_keys):
                 add_unique(err, ORIGIN_MISTAKE)
     mistake_count = len(selected_items)
 

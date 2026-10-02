@@ -328,25 +328,27 @@ def test_mcp_wildcard_in_headless_allow_list():
     assert ch2.request("write_file_extra", 1, {})[0] is False, "精确匹配语义不得放宽"
 
 
-def test_mcp_session_trust_collapses_to_wildcard():
-    """会话信任收口：批准一个 MCP 工具 = 信任 ``mcp_*``，不再逐个弹卡。"""
+def test_mcp_session_trust_is_scoped_to_one_tool():
+    """会话信任按完整 scoped name 收口，禁止一次批准放行全部 MCP 工具。"""
     from tools.agent.approval import session_remember_key
     from tools.agent.permissions import PermissionManager
 
-    assert session_remember_key("mcp_sample_srv_a_study_calc") == "mcp_*"
+    assert session_remember_key("mcp_sample_srv_a_study_calc") == "mcp_sample_srv_a_study_calc"
     assert session_remember_key("write_file") == "write_file"
 
     pm = PermissionManager(mode="ask", workspace_root=REPO_ROOT)
-    pm.session_allowed_tools.add("mcp_*")
+    pm.session_allowed_tools.add("mcp_sample_srv_a_study_calc")
     allowed, reason = pm.check_permission(
-        "mcp_sample_srv_b_other_tool", 3, {}, interactive=False)
+        "mcp_sample_srv_a_study_calc", 3, {}, interactive=False)
     assert allowed is True and "永久信任" in reason, (allowed, reason)
+    assert pm.check_permission(
+        "mcp_sample_srv_b_other_tool", 3, {}, interactive=False)[0] is False
     # 普通工具不受 MCP 通配影响
     assert pm.check_permission("write_file", 1, {}, interactive=False)[0] is False
 
 
-def test_tty_and_gateway_approvals_remember_mcp_as_wildcard(monkeypatch):
-    """TTY 与网关通道的"本会话记住"对 MCP 工具写入 ``mcp_*`` 信任键。"""
+def test_tty_and_gateway_approvals_remember_mcp_by_tool(monkeypatch):
+    """TTY 与网关通道的“本会话记住”按完整 MCP 工具名写入信任集。"""
     from tools.agent.approval import GatewayApproval, TtyApproval
 
     shared_tty = set()
@@ -354,7 +356,7 @@ def test_tty_and_gateway_approvals_remember_mcp_as_wildcard(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda *a, **k: "a")
     ok, _ = tty.request("mcp_sample_srv_a_study_calc", 3, {})
     assert ok is True
-    assert shared_tty == {"mcp_*"}, shared_tty
+    assert shared_tty == {"mcp_sample_srv_a_study_calc"}, shared_tty
 
     shared_gw = set()
     gw_holder = {}
@@ -366,7 +368,7 @@ def test_tty_and_gateway_approvals_remember_mcp_as_wildcard(monkeypatch):
     gw_holder["ch"] = gw
     ok, _ = gw.request("mcp_sample_srv_b_other_tool", 3, {})
     assert ok is True
-    assert shared_gw == {"mcp_*"}, shared_gw
+    assert shared_gw == {"mcp_sample_srv_b_other_tool"}, shared_gw
 
 
 # ══════════════════════════════════════════════════════════════════════════

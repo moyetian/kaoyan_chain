@@ -9,11 +9,12 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 
 ---
 
-## [3.1.2] — 2026-10-01（未发布）
+## [3.1.2] — 2026-10-01 ~ 10-02（未发布）
 
 > 自 v3.1.1 以来的累积更新：Agent 内核修复重构（K1–K9）、2026-09-30 安全审查
-> 全量修复（P0×3 / P1×11 / 性能项）、Teal 玻璃风 UI 重构（GUI / Web / TUI）与
-> 多角色沙箱实测消缺（UT3 / UT4）。版本号真源 `pyproject.toml`。
+> 全量修复（P0×3 / P1×11 / 性能项）、Teal 玻璃风 UI 重构（GUI / Web / TUI）、
+> 多角色沙箱实测消缺（UT3 / UT4）与 2026-10-02 第二轮审查加固。版本号真源
+> `pyproject.toml`。
 
 ### 🤖 Agent 内核修复重构（K1–K9）
 
@@ -80,13 +81,45 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
   （含 REPL 斜杠指令被 MSYS 管道改写的真因修复）；
 - 5 角色实测 13 项缺陷修复（随 UI 重构批次）。
 
+### 🔐 2026-10-02 第二轮审查加固（安全 / 稳健性 / 体验）
+
+- **出站收敛补全**：QQ OneBot 从裸 `urlopen` 例外改为 `safe_urlopen(allow_loopback=True)`
+  窄通道（仍拒绝私网 / 链路本地 / 云元数据）；企业 DNS 劫持兼容改为显式开关
+  `KY_ALLOW_BENCHMARK_DNS`（默认关闭，防 SSRF 绕过）；微信检索 / 研究引擎 / 研招抓取 /
+  模型探活等全部响应读取补上体积上限；`lint_check` 新增两条 AST 门禁（禁止裸
+  `urlopen` 与裸 `response.read()`）；
+- **MCP 收紧**：`npx` / `uvx` 默认拒绝（需 `allow_remote_packages=true` 显式放行）；
+  拦截运行时注入环境变量（`PYTHONPATH` / `NODE_OPTIONS` / `LD_PRELOAD` 等）；
+  「本会话记住」按完整工具名收口（不再 `mcp_*` 全局放行）；
+- **沙箱与提示注入防线**：新增符号链接组件 TOCTOU 检查（写前逐组件 `lstat`）；
+  `AGENTS.md` 与 `.memory` 禁止 Agent 写入（切断「写提示词 → 下轮进系统提示」链）；
+  工具结果统一加「不可信数据」围栏；`run_command` 含路径可执行文件必须解析到
+  PATH 受信程序（或当前解释器）；
+- **网关**：`/webhook` 短窗口限流（30 次 / 60s）+ 请求 ID 去重（防重放）；回调密钥
+  优先 `X-KY-Webhook-Token` 请求头（查询参数仅兼容旧平台）；非回环地址无鉴权拒绝启动；
+- **隐私**：会话日志与 LLM 错误体敏感值脱敏（token / 邮箱 / 手机号）；会话日志
+  保留策略（30 天 / 最多 100 文件）；公开快照不再把自命题科目全称写回（防绕过泛化
+  防线）；诊断元数据只保留稳定键；`real_name` / `qq_target_id` 纳入身份脱敏；
+- **GUI**：默认权限模式改回最小权限 `ask`（与 CLI 一致，写操作走审批通道）；
+- **看板**：本地完整模式产物隔离至未跟踪 `docs/.local/`
+  （`KY_DASHBOARD_OUTPUT_DIR`），`docs/` 保持脱敏示例快照；
+- **修复与体验**：复制版真题 `**第1题（4分）**：` 格式正确分题（不再把下一题
+  污染进上一题答案）；双校对标显式专业优先于工作区配置；组卷校验改用原始题干
+  （消除 ingest 合法卡片被误判篡改）；`lim(x→0)` 自然书写归一化；SymPy 惰性加载
+  （`import skills` 不再拉起重依赖）；新增 312 心理学预设与北师大心理学部档案；
+  招生雷达并行抓取 + 15 分钟短缓存（`CACHED` 状态）；robots.txt
+  `Disallow` / `Crawl-Delay` 支持；`ky_io` 锁路径缓存与写前体积短路。
+
 ### 📄 文档
 
 - README 程序包体积数字回填 380→415 MB（v3.1.1 实际打包 413.9 MB）；
-- 命令矩阵与速查同步 **43 项**子命令。
+- 命令矩阵与速查同步 **43 项**子命令；
+- README 下载文件名同步 v3.1.2、微信检索口径、招考情报引擎说明与看板双模式
+  （`docs/.local/`）说明更新；BOT_INTEGRATION_GUIDE 回调密钥改为请求头优先。
 
-**测试**：全量 pytest **2861 通过 + 4 跳过**（收集 2865）；
+**测试**：全量 pytest **2870 通过 + 4 跳过**（收集 2874）；
 `test_ky_suite.py` **307 项**（Git 口径 307+0）；`test_new_features.py` **131 通过**。
+新增 `tests/test_round2_audit_fixes.py`（第二轮审查窄回归）。
 
 ## [3.1.1] — 2026-09-29（当前发布版本）
 

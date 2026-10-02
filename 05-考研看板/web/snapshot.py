@@ -46,9 +46,8 @@ def sanitize_public_data(data: dict) -> dict:
     # 科目全称（如「601 数学分析 801 高等代数」），
     # 会随 Pages 公开发布。发布前一律泛化为通用短名（与看板卡片所用名一致）。
     generic_names = dict(_GENERIC_SUBJECT_NAMES)
-    for s in data.get("subjects", []):
-        if s.get("key") and s.get("name"):
-            generic_names[s["key"]] = s["name"]
+    # 公开快照永远使用通用短名；不能把 ky_config/考纲里的自命题科目全称
+    # 重新写回白名单，否则「subjects[].name」会绕过 maps 的泛化防线。
     # [G-3 体积治理] maps.<subj>.modules 是 chapters 的**纯投影**
     # （见 skills/knowledge_map.py: {c["title"]: c["points"] for c in chapters}），
     # 而前端只读 chapters（HTML 模板中的 m.chapters），从不读 modules。
@@ -101,6 +100,18 @@ def write_state_snapshot(data: dict, snapshot_path: "Path", parse_warnings=None,
     else:
         safe_data = sanitize_public_data(data)
         meta["sanitized"] = True
+        # 诊断元数据同样属于公开面：只保留稳定键，不携带源文件路径、
+        # 自定义科目名或自由文本错误消息。
+        meta["parse_warnings"] = [
+            {k: item.get(k) for k in ("severity", "subject", "kw", "status")
+             if k in item}
+            for item in (parse_warnings or []) if isinstance(item, dict)
+        ]
+        meta["sections_status"] = [
+            {k: item.get(k) for k in ("subject", "kw", "status", "tab")
+             if k in item}
+            for item in (sections_status or []) if isinstance(item, dict)
+        ]
         snapshot_payload = {"meta": meta, "data": safe_data}
         print("[OK] 已生成脱敏快照（默认安全模式），可安全提交至公开仓库。")
 

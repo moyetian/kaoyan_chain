@@ -69,6 +69,7 @@ history 模型（先定死）
 """
 
 import json
+import re
 import sys
 import time
 import uuid
@@ -129,6 +130,46 @@ _PENDING_MAXLEN = 512
 
 #: 降级状态下每 N 次 append 尝试一次重放（避免每次 append 都重试 IO）。
 _FLUSH_EVERY = 20
+SESSION_RETENTION_DAYS = 30
+SESSION_MAX_FILES = 100
+
+_SESSION_SECRET_RE = re.compile(
+    r"(?i)(bearer\s+|(?:api[_-]?key|access[_-]?token|token|secret|password)"
+    r"\s*[\"']?\s*[:=]\s*[\"']?\s*)[A-Za-z0-9._~+/=-]{8,}")
+_SESSION_EMAIL_RE = re.compile(
+    r"(?i)(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+(?![\w.-])")
+_SESSION_PHONE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
+
+
+def _redact_session_text(value: str) -> str:
+    value = _SESSION_SECRET_RE.sub(lambda m: f"{m.group(1)}[REDACTED]", value)
+    value = _SESSION_EMAIL_RE.sub("[邮箱]", value)
+    return _SESSION_PHONE_RE.sub("[手机号]", value)
+
+
+def _sanitize_session_payload(value):
+    if isinstance(value, str):
+        return _redact_session_text(value[:TOOL_RESULT_MAX_CHARS])
+    if isinstance(value, dict):
+        return {k: _sanitize_session_payload(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_session_payload(v) for v in value]
+    return value
+
+
+def _prune_session_files(directory: Path) -> None:
+    """按保留期和数量清理旧日志，失败不影响当前会话。"""
+    try:
+        files = sorted(directory.glob("*.jsonl"), key=lambda p: p.stat().st_mtime,
+                       reverse=True)
+        cutoff = time.time() - SESSION_RETENTION_DAYS * 86400
+        for path in files[SESSION_MAX_FILES:]:
+            path.unlink(missing_ok=True)
+        for path in files[:SESSION_MAX_FILES]:
+            if path.stat().st_mtime < cutoff:
+                path.unlink(missing_ok=True)
+    except (OSError, ValueError):
+        pass
 
 
 # ── 事件构造与校验 ──────────────────────────────────────────────────────
@@ -315,6 +356,7 @@ class SessionLog:
         self._pending: deque = deque(maxlen=_PENDING_MAXLEN)
         #: 降级状态下累计的 append 次数（每 _FLUSH_EVERY 次触发一次重放）。
         self._degraded_appends = 0
+        self._pruned = False
 
     @staticmethod
     def _new_session_id() -> str:
@@ -328,7 +370,7 @@ class SessionLog:
     def append(self, event_type: str, payload: Optional[Dict[str, Any]] = None,
                parent: Optional[str] = None) -> str:
         """追加一条事件，返回事件 id（即使写盘失败也返回 —— 调用方不必分支）。"""
-        evt = new_event(event_type, payload, parent=parent)
+        evt = new_event(event_type, _sanitize_session_payload(payload), parent=parent)
         self._write_line(evt)
         return evt["id"]
 
@@ -357,6 +399,9 @@ class SessionLog:
             # 模拟磁盘满/权限失败；newline="\n" 保证跨平台写出稳定的 LF 字节。
             if self._fh is None:
                 self.sessions_dir.mkdir(parents=True, exist_ok=True)
+                if not self._pruned:
+                    _prune_session_files(self.sessions_dir)
+                    self._pruned = True
                 self._fh = open(str(self.path), "a", encoding="utf-8", newline="\n")
             self._fh.write(line + "\n")
             self._fh.flush()

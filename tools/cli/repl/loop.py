@@ -498,7 +498,8 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                 import subprocess
                 # [W13 收口·本地入口分模式] 显式完整模式（与 更新看板.bat / ky build 一致）
                 subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"),
-                               env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0"})
+                                env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0",
+                                     "KY_DASHBOARD_OUTPUT_DIR": "docs/.local"})
             print()
             continue
         elif raw_cmd in ("交作业", "对答案"):
@@ -888,7 +889,8 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                     import subprocess
                     # [W13 收口·本地入口分模式] 显式完整模式（与 更新看板.bat / ky build 一致）
                     subprocess.run([sys.executable, str(build_py)], cwd=str(ROOT / "05-考研看板"),
-                                   env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0"})
+                                    env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0",
+                                         "KY_DASHBOARD_OUTPUT_DIR": "docs/.local"})
                 print()
                 continue
             elif cmd in ("/view", "/live"):

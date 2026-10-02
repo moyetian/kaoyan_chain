@@ -1,0 +1,15 @@
+# Direct runtime/optional dependency lock for the tested Python 3.12 environment.
+# Keep requirements.txt as the compatibility spec; CI/deployments that require
+# reproducibility should install this file first and then run the project checks.
+PyYAML==6.0.3
+rich==15.0.0
+fsrs==6.3.2
+filelock==3.32.0
+sympy==1.14.0
+pypdf==6.14.2
+cryptography==50.0.1
+Pillow==12.3.0
+rapidocr-onnxruntime==1.4.4
+PySide6==6.11.2
+textual==8.2.8
+tiktoken==0.14.0

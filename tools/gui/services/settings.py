@@ -29,9 +29,11 @@ except ImportError:
     from tools.llm_client import fetch_upstream_models, normalize_openai_url
 
 try:  # [B1 同类] 探活请求经安全通道发送（双导入路径兼容）
-    from net_guard import safe_urlopen
+    from net_guard import (MAX_HTTP_RESPONSE_BYTES, decompress_limited,
+                           read_response_limited, safe_urlopen)
 except ImportError:  # pragma: no cover
-    from tools.net_guard import safe_urlopen  # type: ignore
+    from tools.net_guard import (MAX_HTTP_RESPONSE_BYTES, decompress_limited,
+                                 read_response_limited, safe_urlopen)  # type: ignore
 
 try:  # [D8] 矩阵合计行摸底汇总与 study_planner 同源，避免两处实现漂移
     from study_planner import baseline_total_label
@@ -491,15 +493,10 @@ def test_api_connectivity(
             req = urllib.request.Request(chat_url, data=body, headers=headers, method="POST")
             # [B1 同类·跳转泄漏 Bearer] 安全通道发送。
             with safe_urlopen(req, timeout=timeout) as resp:
-                raw_bytes = resp.read()
+                raw_bytes = read_response_limited(resp)
                 resp_headers = getattr(resp, "headers", None)
                 enc = (getattr(resp_headers, "get", lambda *_: "")("Content-Encoding") or "").lower() if resp_headers else ""
-                if enc == "gzip" or raw_bytes.startswith(b"\x1f\x8b"):
-                    import gzip
-                    try:
-                        raw_bytes = gzip.decompress(raw_bytes)
-                    except Exception:
-                        pass
+                raw_bytes, _ = decompress_limited(raw_bytes, enc)
                 latency = max(1, int((time.perf_counter() - t0) * 1000))
                 code = getattr(resp, "status", 200)
                 res["llm_ok"] = True
@@ -511,15 +508,10 @@ def test_api_connectivity(
             res["llm_latency_ms"] = latency
             err_body = ""
             try:
-                raw_err = e.read()
+                raw_err = read_response_limited(e)
                 e_headers = getattr(e, "headers", None)
                 enc = (getattr(e_headers, "get", lambda *_: "")("Content-Encoding") or "").lower() if e_headers else ""
-                if enc == "gzip" or raw_err.startswith(b"\x1f\x8b"):
-                    import gzip
-                    try:
-                        raw_err = gzip.decompress(raw_err)
-                    except Exception:
-                        pass
+                raw_err, _ = decompress_limited(raw_err, enc)
                 err_body = raw_err.decode("utf-8", errors="ignore")
             except Exception:
                 pass

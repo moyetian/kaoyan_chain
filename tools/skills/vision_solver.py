@@ -22,9 +22,12 @@ except ImportError:  # pragma: no cover
     from tools.workspace import resolve_workspace_root
 
 try:  # [B1 同类] LLM 请求经安全通道发送（双导入路径兼容）
-    from net_guard import safe_urlopen
+    from net_guard import (MAX_HTTP_RESPONSE_BYTES, MAX_DECOMPRESSED_BYTES,
+                           TRUNCATION_MARKER, decompress_limited, safe_urlopen)
 except ImportError:  # pragma: no cover
-    from tools.net_guard import safe_urlopen  # type: ignore
+    from tools.net_guard import (MAX_HTTP_RESPONSE_BYTES, MAX_DECOMPRESSED_BYTES,
+                                 TRUNCATION_MARKER, decompress_limited,
+                                 safe_urlopen)  # type: ignore
 
 try:  # [K4] 统一 LLM 出口（双导入路径兼容）
     from llm_client import ChatRequest, LLMError, request_chat
@@ -138,25 +141,15 @@ def extract_text_with_local_ocr(image_path):
     return None
 
 def _read_and_decompress(resp) -> str:
-    raw = resp.read()
+    raw = resp.read(MAX_HTTP_RESPONSE_BYTES)
     headers = getattr(resp, "headers", None)
     enc = headers.get("Content-Encoding", "").lower() if headers and hasattr(headers, "get") else ""
-    if enc == "gzip":
-        try:
-            import gzip
-            raw = gzip.decompress(raw)
-        except Exception:
-            pass
-    elif enc == "deflate":
-        try:
-            import zlib
-            raw = zlib.decompress(raw)
-        except Exception:
-            try:
-                raw = zlib.decompress(raw, -zlib.MAX_WBITS)
-            except Exception:
-                pass
-    return raw.decode("utf-8", errors="ignore").strip()
+    raw, truncated = decompress_limited(
+        raw, encoding=enc, max_bytes=MAX_DECOMPRESSED_BYTES)
+    text = raw.decode("utf-8", errors="ignore")
+    if truncated:
+        text += TRUNCATION_MARKER
+    return text.strip()
 
 def _get_normalized_chat_url(base_url: str) -> str:
     try:

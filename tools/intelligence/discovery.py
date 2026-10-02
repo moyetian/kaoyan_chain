@@ -10,6 +10,7 @@ KaoYan Intelligence · 官方站点发现器 (Official Discovery & Sitemap / Sea
 
 import re
 import base64
+import time
 import urllib.parse
 from typing import List, Optional
 from .fetcher import HTTPFetcher
@@ -27,6 +28,7 @@ class OfficialDiscovery:
 
     def __init__(self, fetcher: Optional[HTTPFetcher] = None):
         self.fetcher = fetcher or HTTPFetcher(timeout=5)
+        self._robots_rules = {}
 
     def discover_from_sitemap(self, base_domain: str) -> List[str]:
         """
@@ -43,6 +45,22 @@ class OfficialDiscovery:
         if not res.is_valid:
             return []
 
+        disallow = []
+        crawl_delay = 0.0
+        for line in res.content.splitlines():
+            key, _, value = line.partition(":")
+            key = key.strip().lower()
+            value = value.strip()
+            if key == "disallow" and value:
+                disallow.append(value)
+            elif key == "crawl-delay":
+                try:
+                    crawl_delay = max(crawl_delay, float(value))
+                except ValueError:
+                    pass
+        self._robots_rules[root_url] = (disallow, crawl_delay)
+        if crawl_delay:
+            time.sleep(min(crawl_delay, 5.0))
         sitemap_urls = re.findall(r"^Sitemap:\s*(https?://\S+)", res.content, re.MULTILINE | re.IGNORECASE)
         candidate_urls: List[str] = []
 
@@ -52,6 +70,9 @@ class OfficialDiscovery:
                 # 从 sitemap xml 中提取 <loc>
                 locs = re.findall(r"<loc>(https?://[^<]+)</loc>", sm_res.content, re.IGNORECASE)
                 for loc in locs:
+                    path = urllib.parse.urlparse(loc).path or "/"
+                    if any(path.startswith(rule) for rule in disallow if rule != "/"):
+                        continue
                     loc_lower = loc.lower()
                     if any(kw in loc_lower for kw in ["yjs", "zs", "master", "grad", "admission", "2026", "2027"]):
                         candidate_urls.append(loc)

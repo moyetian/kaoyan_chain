@@ -17,7 +17,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v3.1.2-blue?style=flat-square&logo=github&logoColor=white" alt="版本 v3.1.2" />
-  <img src="https://img.shields.io/badge/Tests-3299%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 3299 Passed" />
+  <img src="https://img.shields.io/badge/Tests-3308%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 3308 Passed" />
   <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-0f766e?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
   <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
   <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
@@ -90,13 +90,13 @@
 
 ## 📦 开箱即用：不懂技术也能直接用（推荐）
 
-**v3.1.2 亮点**：Agent 内核修复重构（K1–K9）—— 判卷口径一致化（`total_score` 与 `pass_rate` 同分母）、六套 LLM 客户端收敛为**统一实现**（结构化异常 / 重试退避 / Retry-After）、工具注册表分级与 `ky tools` 审计命令（CLI 子命令 **43 项**）、`KaoyanContext` 统一上下文与院校范围守卫、运行预算（步数/时长/工具调用/Token）与**试卷内容寻址身份链**；安全审查全量修复（P0×3 + P1×11 + 性能项：数学验算白名单解析、测试执行写入闸门、网关跨站闸门等）；Teal 玻璃风 UI 重构（GUI / Web / TUI 三端）；多角色沙箱实测消缺（UT3 / UT4）。**v3.1.1 亮点**：修复**本地看板看不到今日任务正文与卡背答案**的缺陷（本地完整 / 发布脱敏双模式）；界面升级 —— Ctrl+K 命令面板四桶分组、看板收敛 5 Tab、设计 token 与图标补档；评测资产强化（C2 双指标契约 + canary 防污染）与三端实测 12 条修复。**v3.1.0 亮点**：阶段三「可证」—— 六条评测基准（C1–C6）把护城河变成**可评测资产**（考纲守卫 137 条 / 引文忠实度 109 条 / 题源溯源 ID / 判分 pilot / RAG 显式降级 `ky rag` / 学习增益 `ky gain`），外加四端 UI 设计系统统一（Lucide 图标 + 设计 token + Rich CLI）。**v3.0.1 亮点**：修复**公开副本导出冻结** —— 此前 `.github`（CI 配置）与 `rust_ext`（Rust 加速源码）被误列为「公开副本自有保留内容」，既不复制也不删除，导致副本里的旧版本被 `--force` 永久保护、后续修改永远到不了公开仓库（现两者已恢复正常同步，构建产物 `rust_ext/target` 仍被排除）。**v3.0.0 亮点**：新增**会话恢复与分叉**（`ky session`）、**外部文件读取授权**（默认拒绝 + 交互授权）、**长会话压缩不丢约束**、**沙箱脚本执行收紧**等能力（详见 [CHANGELOG.md](CHANGELOG.md)）。本项目同时提供**开箱即用的程序包** —— 你**不需要安装 Python、不需要懂命令行**，下载后跟着界面引导填几项配置就能开始用。
+**v3.1.2 亮点**：Agent 内核修复重构（K1–K9）—— 判卷口径一致化（`total_score` 与 `pass_rate` 同分母）、六套 LLM 客户端收敛为**统一实现**（结构化异常 / 重试退避 / Retry-After）、工具注册表分级与 `ky tools` 审计命令（CLI 子命令 **43 项**）、`KaoyanContext` 统一上下文与院校范围守卫、运行预算（步数/时长/工具调用/Token）与**试卷内容寻址身份链**；安全审查全量修复（P0×3 + P1×11 + 性能项：数学验算白名单解析、测试执行写入闸门、网关跨站闸门等）；Teal 玻璃风 UI 重构（GUI / Web / TUI 三端）；多角色沙箱实测消缺（UT3 / UT4）；第二轮安全审查加固（出站收敛补全、MCP 远程包与环境变量注入拦截、提示注入围栏、网关限流防重放、隐私脱敏扩展）。**v3.1.1 亮点**：修复**本地看板看不到今日任务正文与卡背答案**的缺陷（本地完整 / 发布脱敏双模式）；界面升级 —— Ctrl+K 命令面板四桶分组、看板收敛 5 Tab、设计 token 与图标补档；评测资产强化（C2 双指标契约 + canary 防污染）与三端实测 12 条修复。**v3.1.0 亮点**：阶段三「可证」—— 六条评测基准（C1–C6）把护城河变成**可评测资产**（考纲守卫 137 条 / 引文忠实度 109 条 / 题源溯源 ID / 判分 pilot / RAG 显式降级 `ky rag` / 学习增益 `ky gain`），外加四端 UI 设计系统统一（Lucide 图标 + 设计 token + Rich CLI）。**v3.0.1 亮点**：修复**公开副本导出冻结** —— 此前 `.github`（CI 配置）与 `rust_ext`（Rust 加速源码）被误列为「公开副本自有保留内容」，既不复制也不删除，导致副本里的旧版本被 `--force` 永久保护、后续修改永远到不了公开仓库（现两者已恢复正常同步，构建产物 `rust_ext/target` 仍被排除）。**v3.0.0 亮点**：新增**会话恢复与分叉**（`ky session`）、**外部文件读取授权**（默认拒绝 + 交互授权）、**长会话压缩不丢约束**、**沙箱脚本执行收紧**等能力（详见 [CHANGELOG.md](CHANGELOG.md)）。本项目同时提供**开箱即用的程序包** —— 你**不需要安装 Python、不需要懂命令行**，下载后跟着界面引导填几项配置就能开始用。
 
 ### 三步开始使用
 
 1. **下载**：到 [Releases 页面](https://github.com/moyetian/kaoyan_chain/releases) 下载最新版程序包。
-   提供两种形式：**`KaoyanStudyChain-v3.1.1.zip`**（解压即用的免装目录，压缩包约 415 MB，解压后约 1 GB）
-   与 **`KaoyanStudyChain_Setup_v3.1.1.exe`**（图形安装向导，含桌面快捷方式与卸载）。
+   提供两种形式：**`KaoyanStudyChain-v3.1.2.zip`**（解压即用的免装目录，压缩包约 415 MB，解压后约 1 GB）
+   与 **`KaoyanStudyChain_Setup_v3.1.2.exe`**（图形安装向导，含桌面快捷方式与卸载）。
 2. **启动**：zip 版解压到任意文件夹（**不要放在需要管理员权限的目录**，如 `C:\Program Files`）
    后运行 `KaoyanStudyChain.exe`（或双击 `调试启动.bat`，带控制台方便排错）；安装版装完后从开始菜单或桌面图标启动。
 3. **启动并跟随引导配置**：运行 `KaoyanStudyChain`（或双击 `调试启动.bat`），
@@ -222,7 +222,7 @@ ky
 ### 2. 📱 微信公众号考研经验检索与爬虫 (`ky wechat` / `ky wx`)
 
 - **多源智能检索**：搜狗微信搜索 (主源) ➔ Bing 微信定向搜索 (备用源) ➔ 本地经验库 (离线兜底)；
-- **HTML ➔ Markdown 强力清洗管道**：剥离广告、样式与追踪脚本，提取公众号名、发布时间与正文内容；
+- **HTML ➔ Markdown 清洗管道**：源站允许访问正文时剥离广告、样式与追踪脚本；遇到搜狗/Bing 反爬则如实降级为标题、摘要与来源信息；
 - **本地沉淀与口碑档案联动**：通过 `--save` 自动落地至 `.memory/experiences/` (本地隐私目录，不入库)，并无缝追加进目标高校社媒口碑研报。
 
 ### 3. ⚡ Rust (PyO3) 原生性能加速与透明零依赖降级 (`ky_rust_ext`)
@@ -247,7 +247,7 @@ ky
 
 ### 6. 🏛️ KaoYan Intelligence 招考全景情报与证据链引擎
 
-- **全国 57 所详细档案 + 1,841 所基础名录**：收录教育部代码、官方站点拓扑树（官网 ➔ 研究生院 ➔ 招生网 ➔ 二级学院）；
+- **全国 57 所重点方向档案 + 1,841 所基础名录**：重点档案以已核验的计算机及部分方向为主，其他专业统一标注待核验；
 - **S 级研招网直连与证据链** (`ky admission`)：输出带有信源级别、置信度与时间戳的权威招考指标，锁定考研年份；
 - **双校深度横向对标** (`ky compare`)：一键 PK 两校办学层次、初试科目差异（408 vs 自命题）、复试线与一志愿保护度；
 - **招生简章动态指纹雷达** (`ky watch`)：SHA256 毫秒级比对目标院校主页，每年 8\~10 月第一时间捕获新简章；
@@ -440,7 +440,7 @@ ASCII 字母 18 / 空白 6 / 其余 95，单位 1/100 token，最大实测误差
 运行 `python tools/test_ky_suite.py` 与 `python tools/test_new_features.py`，确认无失败后再提交。注意 `test_ky_suite.py` 会改写工作区用户数据，**默认拒绝在真实考生工作区运行**（exit 2）—— 请在干净副本里跑，或设 `KY_TEST_ALLOW_REAL_WORKSPACE=1` 显式放行（先备份 `ky_config.json`）。
 更多排查思路见 [SETUP.md](SETUP.md) 与 [操作手册.md](操作手册.md) 第 7 章「常见突发场景速查」。
 13. **看板默认离线，公式断网也能渲染**
-`docs/index.html` 与 `docs/state_snapshot.json` 是**脱敏后的示例快照**（院校、专业等字段为占位符），仅用于展示看板效果；你在本地执行 `ky build` 生成的是**完整模式**看板（含今日任务正文与卡背答案），仅供本机查看——发布链路（`tools/sync_publish.py` / `update_dashboard.py --push`）会在镜像/提交前自动以脱敏模式重建产物，公开副本不含任何个人学情。
+`docs/index.html` 与 `docs/state_snapshot.json` 是**脱敏后的示例快照**（院校、专业等字段为占位符），仅用于展示看板效果；你在本地执行 `ky build` 或 `update_dashboard.py --local` 生成的完整模式看板（含今日任务正文与卡背答案）位于未跟踪的 `docs/.local/`，仅供本机查看。发布链路（`tools/sync_publish.py` / `update_dashboard.py --push`）会在镜像/提交前自动以脱敏模式重建 `docs/` 产物，公开副本不含任何个人学情。
 `ky build` 默认把 KaTeX 公式渲染资源内联为本地副本（`docs/assets/vendor/`，随仓库分发），
 因此**地铁、图书馆破网、自习室断网**等场景下公式不会退化成 LaTeX 源码串。
 需要改回境外 CDN 时：`ky build --cdn`，或设 `KY_VENDOR_MODE=cdn`。
@@ -506,19 +506,19 @@ python tools/test_ky_suite.py
 # 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、开放题判分等，共 131 项断言)
 python tools/test_new_features.py
 
-# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 2865 项）
+# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 2874 项）
 python -m pytest -q
 ```
 
 > [!NOTE]
-> **测试计数已做成环境无关，但前提仍要写清**（下列数字为 2026-10-01 实测）：
+> **测试计数已做成环境无关，但前提仍要写清**（下列数字为 2026-10-02 实测）：
 >
 > - `test_ky_suite.py`：26 组共 **307 项断言**。Git 工作区内为 307 通过 / 0 跳过；
 > 干净检出（`git archive` 导出、无 `.git`）为 **302 通过 + 5 跳过 = 307** ——
 > 「测试组 7 Git 隐私隔离」的 5 条断言需 `.git`，无 `.git` 时逐条记为跳过，故**两种环境总数恒为 307**。
 > - `test_new_features.py`：**131 项断言**（0 跳过），与是否 Git 工作区无关。
-> - `pytest tests/`：共 **2865 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
-> **含** `dist/` 构建产物，实测 2861 通过 + 4 跳过）。跳过项为联网测试未设
+> - `pytest tests/`：共 **2874 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
+> **含** `dist/` 构建产物，实测 2870 通过 + 4 跳过）。跳过项为联网测试未设
 > `KY_LIVE_TEST=1`（2 条）、一条需特定 registry 探测串的守卫（1 条）与一条 POSIX
 > 权限位断言（Windows 不适用，1 条）。
 > 在**无** `dist/` 的副本里跑，6 条打包断言会转为跳过 —— 收集总数不变，通过数下降。
@@ -533,7 +533,7 @@ python -m pytest -q
 >
 > 改文档里的计数时，请**把对应环境一并写上**，否则下一个人会误判为「数字漂移」。
 
-- **测试保障**：主套件 26 组测试集 **307 项断言** + 新功能专项 **131 项断言** + pytest 单元/进程层 **2861 项**（合计 **3299 项通过**，另有 4 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
+- **测试保障**：主套件 26 组测试集 **307 项断言** + 新功能专项 **131 项断言** + pytest 单元/进程层 **2870 项**（合计 **3308 项通过**，另有 4 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
 - **门禁脚本**：`python tools/lint_check.py`（零依赖静态检查，只卡 ERROR 级问题）、`python tools/check_dashboard.py`（看板产物守卫）已接入 CI；
 - **CI 流水线**：内置 GitHub Actions 多平台 (Linux/Windows) 与多 Python 版本自动化测试保障；
 - **开发者文档**：如需参与贡献或了解完整项目架构树，请参阅 [🛠️ 开发者与贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。
@@ -564,7 +564,7 @@ python tools/build_package.py --build --keep-identity    # 保留个人报考方
 - 🔧 **参与共建**：欢迎阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 后提交 Pull Request
 - 📘 **详细实操通关指南**：请阅读 [操作手册.md](操作手册.md)
 - 🐧 **QQ 号**：`296528868`
-- 📮 **电子邮箱**：`moyetian@foxmail.com`
+- 📮 **电子邮箱**：`[邮箱]`
 
 > 愿每一位披星戴月的考研人都能稳住节奏、拒绝内耗，一战成硕，顺利上岸！🌟
 

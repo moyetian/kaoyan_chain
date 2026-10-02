@@ -20,3 +20,9 @@ departments:
     default_majors:
     - 081200
     - 085404
+  心理学:
+    college_name: 心理学部
+    college_domain: https://psych.bnu.edu.cn
+    default_majors:
+    - 040200
+    - 045400

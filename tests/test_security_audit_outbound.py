@@ -159,7 +159,7 @@ def test_get_text_rejects_loopback_literal_without_request(monkeypatch):
 # ═════════════════ ③ P1-7：notify webhook 出站收敛 ═════════════════
 
 class _NotifyResp:
-    def read(self):  # noqa: D102
+    def read(self, _limit=-1):  # noqa: D102
         return b'{"errcode": 0, "errmsg": "ok"}'
 
     def __enter__(self):  # noqa: D102

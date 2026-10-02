@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import http.client
 import ipaddress
+import os
 import socket
 import sys
 import urllib.error
@@ -56,6 +57,13 @@ class UnsafeURLError(ValueError):
 #: 因此：**域名**解析到该网段时放行；**IP 字面量**（``http://198.18.0.1/``）
 #: 仍照常拦截 —— 那正是本机网卡地址，属于必须挡住的 SSRF 目标。
 _BENCHMARK_NETS = (ipaddress.ip_network("198.18.0.0/15"),)
+
+
+def _benchmark_dns_allowed() -> bool:
+    """企业 DNS 劫持兼容开关；默认关闭，避免 SSRF 绕过。"""
+    return os.environ.get("KY_ALLOW_BENCHMARK_DNS", "0").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
 
 
 def _host_is_ip_literal(host: str) -> bool:
@@ -105,7 +113,8 @@ def resolve_host_ips(hostname: str) -> list:
     return ips
 
 
-def assert_url_safe(url: str, pin: Optional["PinRegistry"] = None) -> str:
+def assert_url_safe(url: str, pin: Optional["PinRegistry"] = None, *,
+                    allow_loopback: bool = False) -> str:
     """校验 URL 是否可安全访问。
 
     不通过时抛 :class:`UnsafeURLError`；通过时返回原 URL。
@@ -120,14 +129,19 @@ def assert_url_safe(url: str, pin: Optional["PinRegistry"] = None) -> str:
     host = (parsed.hostname or "").lower()
     if not host:
         raise UnsafeURLError(f"URL 缺少主机名: {raw}")
-    if host == "localhost" or host.endswith(".localhost"):
+    if (host == "localhost" or host.endswith(".localhost")) and not allow_loopback:
         raise UnsafeURLError(f"安全拦截 - 禁止访问本地地址 [{host}]")
     literal = _host_is_ip_literal(host)
     ips = resolve_host_ips(host)
     for ip_obj in ips:
         if not _ip_is_blocked(ip_obj):
             continue
-        if not literal and any(ip_obj in net for net in _BENCHMARK_NETS):
+        # 本地 webhook 仅允许回环地址；私网、链路本地、保留和未指定地址
+        # 仍然拒绝，避免把例外扩大成任意内网访问。
+        if allow_loopback and ip_obj.is_loopback:
+            continue
+        if (not literal and _benchmark_dns_allowed()
+                and any(ip_obj in net for net in _BENCHMARK_NETS)):
             continue      # DNS 重定向到基准网段：放行（见 _BENCHMARK_NETS 说明）
         raise UnsafeURLError(f"安全拦截 - 禁止访问内网/回环/保留地址 [{host} -> {ip_obj}]")
     if pin is not None:
@@ -242,12 +256,15 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     传入 ``pin`` 时，跳转目标的校验结果同样被记录，供建连时复用。
     """
 
-    def __init__(self, pin: Optional[PinRegistry] = None):
+    def __init__(self, pin: Optional[PinRegistry] = None, *,
+                 allow_loopback: bool = False):
         super().__init__()
         self._pin = pin
+        self._allow_loopback = allow_loopback
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D102
-        assert_url_safe(newurl, pin=self._pin)
+        assert_url_safe(newurl, pin=self._pin,
+                        allow_loopback=self._allow_loopback)
         new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
         if new_req is not None:
             # [B1 修复·跳转泄漏 Bearer] CPython 的 redirect_request 只剥离
@@ -268,17 +285,19 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 
 def build_safe_opener(context=None,
-                      pin: Optional[PinRegistry] = None) -> urllib.request.OpenerDirector:
+                      pin: Optional[PinRegistry] = None, *,
+                      allow_loopback: bool = False) -> urllib.request.OpenerDirector:
     """构造带「安全重定向 + 连接 IP pin」的 opener（可选自定义 SSL context）。"""
     pin = pin if pin is not None else PinRegistry()
     return urllib.request.build_opener(
         _PinnedHTTPHandler(pin),
         _PinnedHTTPSHandler(pin, context=context),
-        SafeRedirectHandler(pin=pin),
+        SafeRedirectHandler(pin=pin, allow_loopback=allow_loopback),
     )
 
 
-def safe_urlopen(req, timeout: float = 12, context=None):
+def safe_urlopen(req, timeout: float = 12, context=None, *,
+                 allow_loopback: bool = False):
     """带 SSRF 校验、安全重定向与连接 IP pin 的 ``urlopen``。
 
     与原 ``urllib.request.urlopen`` 一样：4xx/5xx 抛 ``HTTPError``，
@@ -286,8 +305,9 @@ def safe_urlopen(req, timeout: float = 12, context=None):
     """
     url = getattr(req, "full_url", None) or str(req)
     pin = PinRegistry()
-    assert_url_safe(url, pin=pin)
-    opener = build_safe_opener(context=context, pin=pin)
+    assert_url_safe(url, pin=pin, allow_loopback=allow_loopback)
+    opener = build_safe_opener(context=context, pin=pin,
+                               allow_loopback=allow_loopback)
     return opener.open(req, timeout=timeout)
 
 
@@ -380,6 +400,19 @@ def decompress_limited(data: bytes, encoding: str = "", max_bytes: int = MAX_DEC
     return data, False
 
 
+def read_response_limited(response, max_bytes: int = MAX_HTTP_RESPONSE_BYTES) -> bytes:
+    """读取标准 HTTP 响应并兼容只实现 ``read()`` 的轻量测试替身。
+
+    真实 ``HTTPResponse`` 一定支持 ``read(n)``，因此生产网络路径始终受上限
+    保护；无参回退只服务于少数鸭子类型响应对象，并由调用方随后经过解压上限。
+    """
+    reader = getattr(response, "read")
+    try:
+        return reader(max_bytes)
+    except TypeError:
+        return reader()
+
+
 __all__ = [
     "MAX_DECOMPRESSED_BYTES",
     "MAX_HTTP_RESPONSE_BYTES",
@@ -390,6 +423,7 @@ __all__ = [
     "assert_url_safe",
     "build_safe_opener",
     "decompress_limited",
+    "read_response_limited",
     "resolve_host_ips",
     "safe_urlopen",
     "zlib_limited",

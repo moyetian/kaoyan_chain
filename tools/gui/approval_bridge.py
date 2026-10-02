@@ -203,7 +203,7 @@ class GuiApproval(QObject):
         reason = relay.reason or ("用户批准单次执行" if allowed else "用户拒绝执行该操作")
         # 防御纵深：即便对话框实现无视协议回传了 remember，Level 5 也绝不记入信任集
         if allowed and relay.remember and level < PermissionLevel.DANGEROUS:
-            # [B4] 与 TTY/网关通道同一收口：MCP 工具按 ``mcp_*`` 信任键记住
+            # MCP 工具按完整 scoped name 记住，避免全局 ``mcp_*`` 扩权。
             self.session_allowed_tools.add(session_remember_key(tool_name))
             reason = "用户批准本会话永久信任此工具"
         return allowed, reason

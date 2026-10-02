@@ -30,7 +30,7 @@ from typing import Dict, Any, List, Optional
 class MCPProcessClient:
     """管理单个外部 MCP Server 的子进程通信 (stdio JSON-RPC 2.0)"""
     def __init__(self, name: str, command: str, args: List[str], env: Optional[Dict[str, str]] = None, cwd: Optional[Path] = None,
-                 workspace_root: Optional[Path] = None):
+                 workspace_root: Optional[Path] = None, allow_remote_packages: bool = False):
         self.name = name
         self.command = command
         self.args = args
@@ -42,6 +42,7 @@ class MCPProcessClient:
         #: 让下次启动 Popen 任意代码。None = 无工作区上下文（直接构造的调用方），
         #: 该场景下无法做精确的归属判定，仅保留原有行为。
         self.workspace_root = Path(workspace_root) if workspace_root else None
+        self.allow_remote_packages = bool(allow_remote_packages)
         self.process: Optional[subprocess.Popen] = None
         self.msg_id = 0
         self.is_initialized = False
@@ -163,6 +164,21 @@ class MCPProcessClient:
             "（如 C:/Program Files/... 下的可执行文件），或 npx/python 等 PATH 裸命令名。"
         )
 
+    def _remote_package_command_error(self) -> str:
+        """阻止 npx/uvx 在未显式允许时联网拉包并执行。"""
+        if self.allow_remote_packages:
+            return ""
+        command = Path(str(self.command or "")).name.lower()
+        if command.endswith((".cmd", ".exe", ".bat")):
+            command = Path(command).stem
+        if command not in {"npx", "uvx"}:
+            return ""
+        return (
+            f"安全拦截：MCP 命令 [{self.command}] 可能从远端拉取并执行包。"
+            "如确认依赖来源可信，请在该 server 配置中显式设置 "
+            "allow_remote_packages=true；否则改用已安装的绝对路径可执行文件。"
+        )
+
     def start(self, timeout: int = 15) -> bool:
         """启动 MCP Server 子进程并执行 initialize 握手。
 
@@ -189,6 +205,21 @@ class MCPProcessClient:
         if _blocked:
             self.last_error = _blocked
             return False
+        _remote_blocked = self._remote_package_command_error()
+        if _remote_blocked:
+            self.last_error = _remote_blocked
+            return False
+        blocked_env = {"PYTHONPATH", "PYTHONHOME", "PYTHONINSPECT", "NODE_OPTIONS",
+                       "NODE_PATH", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES",
+                       "RUBYOPT", "PERL5OPT"}
+        if isinstance(self.env, dict):
+            bad_env = sorted(str(k) for k in self.env if str(k).upper() in blocked_env)
+            if bad_env:
+                self.last_error = (
+                    "安全拦截：MCP 配置试图覆盖运行时注入环境变量 "
+                    f"{', '.join(bad_env)}，请移除后重试"
+                )
+                return False
         cmd_list = [self.command] + self.args
         try:
             merged_env = os.environ.copy()
@@ -465,6 +496,7 @@ class MCPClientManager:
                 cwd=self.workspace_root,
                 # [审计 2026-09-30 P1-3] 传入工作区根，启动前拒绝工作区内的 command
                 workspace_root=self.workspace_root,
+                allow_remote_packages=bool(s_conf.get("allow_remote_packages", False)),
             )
             if client.start(timeout=start_timeout):
                 self.clients[s_name] = client

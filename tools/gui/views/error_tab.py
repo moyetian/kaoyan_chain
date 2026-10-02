@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QPushButton, QScrollArea, QTextEdit, QVBoxLayout, QWidget,
@@ -48,6 +50,12 @@ def render_error_cards(win) -> list:
     _clear_layout(layout)
 
     records = services.error_queue_cards(win.workspace_root)
+    fingerprint = hashlib.sha256(
+        json.dumps(records, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+    if getattr(win, "_error_cards_fingerprint", None) == fingerprint:
+        return list(getattr(win, "error_cards", []) or [])
+    win._error_cards_fingerprint = fingerprint
     cards = []
     for rec in records:
         card = KYCard()

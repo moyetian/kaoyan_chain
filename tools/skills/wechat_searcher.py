@@ -17,6 +17,7 @@ import html
 import inspect
 import time
 import random
+import threading
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -35,19 +36,31 @@ try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方
 except ImportError:  # pragma: no cover
     from tools.ky_io import atomic_write_text  # noqa: E402
 
-# [审计 2026-09-30 P1-7 出站收敛] 三处直连请求此前完全不做 SSRF 校验（其中
-# ``fetch_article`` 的 URL 来自搜索结果解析，属外部可控输入）。这里统一加
-# ``assert_url_safe`` 前置校验（fail-closed：内网/回环/保留地址与解析失败即拒）。
-# 取舍说明：本模块保留 ``urllib.request.urlopen`` 调用形态 —— W11 回归测试以
-# monkeypatch ``urllib.request.urlopen`` 打桩**全部**请求（含"不得发起请求"的
-# 阴性断言），直接换 safe_urlopen 会让这批离线测试失去打桩点；故取任务给定的
-# 「至少加 assert_url_safe 前置校验」最小方案。
+# [审计 2026-10-02 P0-1] 所有外部搜索结果与正文抓取都必须经过安全通道。
+# 仅做一次 assert_url_safe 再调用裸 urlopen 会在 302 后失去逐跳复检和 DNS pin，
+# 因此这里不保留旧的裸 opener 旁路。
 try:
-    from net_guard import assert_url_safe  # noqa: E402
+    from net_guard import MAX_HTTP_RESPONSE_BYTES, safe_urlopen  # noqa: E402
 except ImportError:  # pragma: no cover
-    from tools.net_guard import assert_url_safe  # type: ignore  # noqa: E402
+    from tools.net_guard import MAX_HTTP_RESPONSE_BYTES, safe_urlopen  # type: ignore
 
 ROOT = resolve_workspace_root(__file__)
+
+_RATE_LOCK = threading.Lock()
+_RATE_LAST: Dict[str, float] = {}
+
+
+def _respect_host_rate_limit(url: str, minimum_interval: float = 0.8) -> None:
+    """按主机做最小请求间隔，避免多页/多目标巡检轰击源站。"""
+    host = urllib.parse.urlparse(str(url or "")).netloc.lower()
+    if not host:
+        return
+    with _RATE_LOCK:
+        now = time.monotonic()
+        wait = minimum_interval - (now - _RATE_LAST.get(host, 0.0))
+        if wait > 0:
+            time.sleep(wait)
+        _RATE_LAST[host] = time.monotonic()
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -438,6 +451,7 @@ class WeChatSearchEngine(_AccountNameResolver):
                 "page": str(p),
             }
             url = f"{self.SOGOU_WX_URL}?{urllib.parse.urlencode(params)}"
+            _respect_host_rate_limit(url)
 
             html_content = ""
             try:
@@ -450,14 +464,14 @@ class WeChatSearchEngine(_AccountNameResolver):
                 html_content = get_text(url, timeout=6, max_retries=1)
             except Exception as http_exc:
                 try:
-                    assert_url_safe(url)
                     req = urllib.request.Request(url, headers={
                         "User-Agent": USER_AGENT,
                         "Referer": "https://weixin.sogou.com/",
                         "Accept-Language": "zh-CN,zh;q=0.9",
                     })
-                    with urllib.request.urlopen(req, timeout=6) as resp:
-                        html_content = resp.read().decode("utf-8", errors="replace")
+                    with safe_urlopen(req, timeout=6) as resp:
+                        html_content = resp.read(MAX_HTTP_RESPONSE_BYTES).decode(
+                            "utf-8", errors="replace")
                 except Exception as e:
                     self._note_source_error("搜狗微信", e)
                     _wx_health.mark_blocked("sogou-weixin", f"{type(e).__name__}: {e}")
@@ -486,17 +500,18 @@ class WeChatSearchEngine(_AccountNameResolver):
 
         params = {"q": query, "count": str(max(max_results * 2, 10))}
         url = f"{self.BING_URL}?{urllib.parse.urlencode(params)}"
+        _respect_host_rate_limit(url)
 
         try:
-            assert_url_safe(url)
             req = urllib.request.Request(url, headers={
                 "User-Agent": USER_AGENT,
                 "Accept-Language": "zh-CN,zh;q=0.9",
             })
             # [W11 快速失败] timeout 10→6（Bing 为微信链路兜底源，单次请求，
             # 不接冷却表——过度冷却会让链路完全无结果）。
-            with urllib.request.urlopen(req, timeout=6) as resp:
-                html_content = resp.read().decode("utf-8", errors="replace")
+            with safe_urlopen(req, timeout=6) as resp:
+                html_content = resp.read(MAX_HTTP_RESPONSE_BYTES).decode(
+                    "utf-8", errors="replace")
 
             items = self._parse_bing_results(html_content)[:max_results]
             if not items:
@@ -754,10 +769,8 @@ class WeChatArticleFetcher(_AccountNameResolver):
             return item
 
         try:
-            # 随机轻微延迟，避免高频请求触发流控
-            time.sleep(random.uniform(0.3, 0.8))
-
             url = item.url.strip()
+            _respect_host_rate_limit(url, minimum_interval=random.uniform(0.5, 1.0))
             try:
                 url = urllib.parse.quote(url, safe=":/?#[]@!$&'()*+,;=-_.~%=")
             except Exception as exc:
@@ -768,15 +781,15 @@ class WeChatArticleFetcher(_AccountNameResolver):
 
             # [审计 2026-09-30 P1-7] item.url 来自搜索结果解析（外部可控输入），
             # 发起前先做 SSRF 校验：恶意结果页指向内网/回环地址时 fail-closed 拒绝。
-            assert_url_safe(url)
             req = urllib.request.Request(url, headers={
                 "User-Agent": USER_AGENT,
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "zh-CN,zh;q=0.9",
                 "Referer": "https://mp.weixin.qq.com/",
             })
-            with urllib.request.urlopen(req, timeout=12) as resp:
-                raw_html = resp.read().decode("utf-8", errors="replace")
+            with safe_urlopen(req, timeout=12) as resp:
+                raw_html = resp.read(MAX_HTTP_RESPONSE_BYTES).decode(
+                    "utf-8", errors="replace")
 
             item.content_html = raw_html
             self._extract_metadata(raw_html, item)

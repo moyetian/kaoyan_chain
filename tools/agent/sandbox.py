@@ -177,6 +177,29 @@ class Sandbox:
             for d in _SESSION_AUTHORIZED_READ_DIRS
         )
 
+    def assert_no_symlink_components(self, resolved_path) -> None:
+        """在实际文件操作前拒绝工作区路径中的符号链接组件。
+
+        ``resolve()`` 只保证检查时刻的路径归属；若父目录随后被替换为 symlink，
+        直接 ``open/unlink`` 仍可能越界。逐组件 ``lstat`` 是 Windows/POSIX 都能
+        使用的低成本 TOCTOU 防线，写入前由各文件工具再次调用。
+        """
+        target = Path(resolved_path)
+        try:
+            rel = target.relative_to(self.workspace_root)
+        except ValueError:
+            return
+        current = self.workspace_root
+        for part in rel.parts:
+            current = current / part
+            try:
+                if os.path.islink(current):
+                    raise SecurityException(
+                        f"沙箱拦截：路径包含符号链接，拒绝执行文件操作 [{current}]")
+            except OSError as exc:
+                raise SecurityException(
+                    f"沙箱拦截：无法验证路径安全性 [{current}] ({exc})") from exc
+
     def classify_external_read(self, raw_path) -> Optional[Path]:
         """[B2b] 判定「这是一次可授权的工作区外只读读取」还是「应当直接拒绝」。
 
@@ -237,6 +260,21 @@ class Sandbox:
             resolved = p.resolve()
 
         resolved_str = str(resolved).lower()
+
+        # Agent 上下文会在下一轮自动读取 ``AGENTS.md`` 与 ``.memory``。
+        # 允许模型用 write_file/edit_file 修改它们，会形成“写提示词 → 下一轮
+        # 进入 system prompt”的持久化注入链。它们仍可被人工维护，但工具层
+        # 默认拒绝写入；只读读取保持原有行为。
+        if not read_only:
+            try:
+                rel_parts = tuple(p.lower() for p in resolved.relative_to(self.workspace_root).parts)
+            except ValueError:
+                rel_parts = ()
+            if resolved.name.lower() == "agents.md" or ".memory" in rel_parts:
+                raise SecurityException(
+                    "沙箱拦截：AGENTS.md 与 .memory 属于受保护的提示/记忆来源，"
+                    "禁止由 Agent 写入"
+                )
 
         # 1. 检查是否触碰敏感凭据目录分量 (.ssh, .aws, .gnupg)
         parts_lower = set(part.lower() for part in resolved.parts)

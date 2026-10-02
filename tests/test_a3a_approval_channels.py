@@ -286,9 +286,9 @@ def _gui_permission_mode() -> str:
 def test_gui_worker_passes_a_recognized_mode():
     """GUI 传的模式名必须是规范化后有效的（旧值 acceptEdits 曾静默降级）。"""
     mode = _gui_permission_mode()
-    assert normalize_mode(mode) == "auto", (
-        f"GUI 传的 permission_mode={mode!r} 规范化后不是 auto；"
-        "桌面端需要 Level 0-3 自动执行（Level 4-5 交由 headless 策略）"
+    assert normalize_mode(mode) == "ask", (
+        f"GUI 传的 permission_mode={mode!r} 规范化后不是 ask；"
+        "桌面端默认必须与 CLI 一致走最小权限审批"
     )
 
 
@@ -301,12 +301,12 @@ def test_gui_worker_mode_is_canonical_not_alias():
     assert _gui_permission_mode() in VALID_MODES
 
 
-def test_g13_gui_write_is_no_longer_denied(tmp_path):
-    """G13 现场复现：GUI 的 (模式, interactive=False) 组合下写操作必须放行。"""
+def test_gui_default_write_requires_approval(tmp_path):
+    """GUI 默认 ask 模式下 headless 写操作必须 fail-closed。"""
     pm = PermissionManager(mode=_gui_permission_mode(), workspace_root=tmp_path)
     ok, reason = pm.check_permission(
         "write_file", 1, {"path": "01-数学/_状态/今日任务.md"}, interactive=False)
-    assert ok is True, f"GUI 写操作仍被拒（G13 回归）: {reason}"
+    assert ok is False, f"GUI 默认模式意外放行写操作: {reason}"
 
 
 def test_g13_alias_alone_also_works(tmp_path):
@@ -344,10 +344,9 @@ def test_gui_worker_agent_runner_wires_config_into_permissions(tmp_path, headles
         permission_mode=_gui_permission_mode(),
         quiet=True,
     )
-    assert runner.permissions.mode == "auto"
+    assert runner.permissions.mode == "ask"
     assert runner.permissions.headless_policy == "auto_within_workspace"
-    # auto 模式下 Level 1 在策略层就自动放行了（走不到通道），故用同一份 config
-    # 另建一个 ask 模式的 manager，验证配置确实能一路驱动通道决策。
+    # ask 模式通过显式 headless 策略放行工作区内安全编辑。
     pm_ask = PermissionManager(mode="ask", workspace_root=tmp_path,
                                config={"agent": {"headless_write_policy": "auto_within_workspace"}})
     ok, reason = pm_ask.check_permission("write_file", 1, {"path": "_状态/x.md"},

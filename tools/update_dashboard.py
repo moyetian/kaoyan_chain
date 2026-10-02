@@ -66,6 +66,11 @@ def _run_build(sanitized: bool) -> int:
         print("[-] 错误: 未找到 05-考研看板/build.py")
         sys.exit(1)
     env = {**os.environ, "KY_SNAPSHOT_OPT_IN": "1" if sanitized else "0"}
+    if sanitized:
+        env.pop("KY_DASHBOARD_OUTPUT_DIR", None)
+    else:
+        # 完整快照含私人学情，普通本地构建固定写入未跟踪目录，避免被误发布。
+        env["KY_DASHBOARD_OUTPUT_DIR"] = "docs/.local"
     res = subprocess.run([sys.executable, str(build_script)],
                          cwd=str(ROOT / "05-考研看板"), env=env)
     return res.returncode
@@ -121,6 +126,19 @@ def _scan_publish_residuals(root: Path) -> list:
     return _pp.scan_residual_identity(docs, root, include_pii=True)
 
 
+def _assert_identity_rules_effective(root: Path) -> None:
+    """发布前阻断动态身份脱敏静默失效。"""
+    if not (root / "ky_config.json").exists():
+        # 公开副本/CI 没有考生身份时，动态规则为空是正常的 no-op。
+        return
+    ok, reason = _pp.identity_rules_effective(root)
+    if not ok:
+        raise RuntimeError(
+            "[隐私闸门] ky_config.json 存在，但动态身份脱敏规则无效："
+            f"{reason}。请先修复 study_plan（school / major / pro_name）后再发布。"
+        )
+
+
 def main():
     print("=" * 65)
     print(" 考研学习链 (Kaoyan AI Study Chain) · 看板更新与同步")
@@ -134,11 +152,17 @@ def main():
         if _run_build(sanitized=False) != 0:
             print("[!] 构建失败，请检查 Python 环境或语法。")
             sys.exit(1)
-        print("\n[OK] 本地构建完成（已跳过 Git 提交与推送）。")
+        print("\n[OK] 本地构建完成（输出位于 docs/.local，已跳过 Git 提交与推送）。")
         return
 
     # [W13 验收修复·发布链路] --push 必须先以脱敏模式构建发布产物（私人学习
     # 记录不得随 Pages 公开），提交/推送完成后在 finally 里恢复本地完整模式。
+    try:
+        _assert_identity_rules_effective(ROOT)
+    except RuntimeError as exc:
+        print(f"\n[!] {exc}")
+        sys.exit(3)
+
     print("\n[1/3] 正在以脱敏模式构建发布用 Web 看板...")
     if _run_build(sanitized=True) != 0:
         print("[!] 构建失败，请检查 Python 环境或语法。")

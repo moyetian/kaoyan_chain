@@ -144,7 +144,13 @@ def _guard_before_config_write() -> None:
     """
     try:
         target = Path(CONFIG_FILE).resolve()
-        root = resolve_workspace_root(__file__)
+        # Prefer the path relationship of this module when it contains a
+        # sibling ky_config.json. This keeps the guard testable for isolated
+        # workspaces and prevents an ancestor repository's pyproject.toml from
+        # swallowing a deliberately redirected config path.
+        module_root = Path(__file__).resolve().parents[2]
+        root = (module_root if (module_root / "ky_config.json").resolve() == target
+                else resolve_workspace_root(__file__))
         if target != (root / "ky_config.json").resolve():
             return  # 测试重定向或非真实路径，无需守卫
 
@@ -153,15 +159,25 @@ def _guard_before_config_write() -> None:
         # 的模块级结果，也正是 ``auto_backup()`` 实际写入的目录 —— 这里不另拼
         # 一套路径。此前写死的「仓库根下配置备份子目录」会在**每次真实保存配置**
         # 时把仓库内目录重新创建出来（导出遍历的排除名单只是第二层防御）。
-        from tools.config_guard import BACKUP_DIR, auto_backup  # noqa: WPS433
+        from tools import config_guard  # noqa: WPS433
+        backup_dir = Path(config_guard._active_backup_dir())
+        auto_backup = config_guard.auto_backup
         auto_backup()
 
         import time
         import traceback
-        backup_dir = Path(BACKUP_DIR)
         backup_dir.mkdir(parents=True, exist_ok=True)
         stack = "".join(traceback.format_stack()[-6:-1])
-        with (backup_dir / "write_audit.log").open("a", encoding="utf-8") as fh:
+        audit = backup_dir / "write_audit.log"
+        # 审计日志不应无限增长；保留 3 个 5 MiB 轮转副本。
+        max_bytes = 5 * 1024 * 1024
+        if audit.exists() and audit.stat().st_size >= max_bytes:
+            for idx in range(3, 0, -1):
+                src = backup_dir / ("write_audit.log" if idx == 1 else f"write_audit.log.{idx - 1}")
+                dst = backup_dir / f"write_audit.log.{idx}"
+                if src.exists():
+                    src.replace(dst)
+        with audit.open("a", encoding="utf-8") as fh:
             fh.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] save_config -> {target}\n{stack}")
     except Exception:
         # 守卫是尽力而为：任何异常都不得影响正常写盘

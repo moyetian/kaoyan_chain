@@ -21,6 +21,7 @@ import re
 import sys
 import json
 import fnmatch
+import shutil
 import subprocess
 import urllib.request
 from urllib.parse import urlparse, parse_qs
@@ -547,6 +548,7 @@ class ToolRegistry:
                       interactive: bool = True) -> str:
             # [B2b] 工作区外文件先过外部读取授权闸门（批准后同目录免再问）
             p = self._resolve_read_path(path, interactive)
+            self.sandbox.assert_no_symlink_components(p)
             if not p.exists():
                 return f"Error: 文件不存在 [{p}]"
 
@@ -605,6 +607,7 @@ class ToolRegistry:
         )
         def write_file(path: str, content: str, overwrite: bool = False) -> str:
             p = self.sandbox.resolve_safe_path(path, allow_create=True, read_only=False)
+            self.sandbox.assert_no_symlink_components(p)
             if p.exists() and not overwrite:
                 return f"Error: 文件已存在且 overwrite=False [{p}]"
             # [P2 修复] 学员标注 locked: true 的笔记此前可被 write_file 静默覆盖
@@ -635,6 +638,7 @@ class ToolRegistry:
         )
         def edit_file(path: str, target_content: str, replacement: str) -> str:
             p = self.sandbox.resolve_safe_path(path, read_only=False)
+            self.sandbox.assert_no_symlink_components(p)
             if not p.exists():
                 return f"Error: 文件不存在 [{p}]"
             # [P2 修复] 同上：锁定的笔记不得被 edit_file 改写。
@@ -666,6 +670,7 @@ class ToolRegistry:
         )
         def delete_file(path: str) -> str:
             p = self.sandbox.resolve_safe_path(path, read_only=False)
+            self.sandbox.assert_no_symlink_components(p)
             if not p.exists():
                 return f"Error: 文件不存在 [{p}]"
             p.unlink()
@@ -838,7 +843,8 @@ class ToolRegistry:
             if not argv:
                 return "Error: 空命令"
 
-            prog = os.path.basename(argv[0]).lower()
+            prog_raw = argv[0]
+            prog = os.path.basename(prog_raw).lower()
             if prog.endswith(".exe"):
                 prog = prog[:-4]
 
@@ -851,6 +857,35 @@ class ToolRegistry:
                     f"【替代路径】读取/查看文件内容请直接用 read_file 工具"
                     f"（PDF 会自动提取文本），无需切换目录或执行外部命令。"
                 )
+
+            # basename 命中白名单不等于「执行的是受信程序」：
+            # ``C:\\tmp\\evil\\python.exe`` 也会得到 basename=python。含路径的
+            # 可执行文件必须解析到 PATH 中同名程序（或当前解释器），否则拒绝。
+            if os.path.dirname(prog_raw):
+                candidate = Path(prog_raw)
+                if not candidate.is_absolute():
+                    candidate = self.sandbox.workspace_root / candidate
+                try:
+                    candidate = candidate.resolve(strict=True)
+                except (OSError, RuntimeError):
+                    return "安全拦截：拒绝执行不存在或无法解析的可执行文件路径"
+                trusted = []
+                # 只解析去掉路径后的裸命令名；绝不能把 ``which(prog_raw)``
+                # 的任意命中当成“受信”，否则恶意绝对路径会把自己加入信任集。
+                path_prog = shutil.which(prog)
+                if path_prog:
+                    try:
+                        trusted.append(Path(path_prog).resolve(strict=True))
+                    except (OSError, RuntimeError):
+                        pass
+                try:
+                    trusted.append(Path(sys.executable).resolve(strict=True))
+                except (OSError, RuntimeError):
+                    pass
+                if not any(os.path.normcase(str(candidate)) == os.path.normcase(str(p))
+                           for p in trusted):
+                    return "安全拦截：拒绝执行非受信路径的可执行文件"
+                argv[0] = str(candidate)
 
             # [审计 2026-09-30 P0-2] B2a 两道闸门（受控目录白名单 + 会话写入审批）
             # 抽为闭包，按「最终被执行的脚本文件」判定 —— 此前它们只写在
@@ -1155,7 +1190,9 @@ class ToolRegistry:
             level=PermissionLevel.READ_ONLY
         )
         def git_status() -> str:
-            res = subprocess.run("git status --short", shell=True, cwd=str(self.sandbox.workspace_root), capture_output=True, text=True, errors="replace")
+            res = subprocess.run(["git", "status", "--short"], shell=False,
+                                 cwd=str(self.sandbox.workspace_root),
+                                 capture_output=True, text=True, errors="replace")
             return res.stdout.strip() or "工作区干净，无未提交更改"
 
         @self.register(
@@ -1257,6 +1294,10 @@ class ToolRegistry:
                 if reason == "BROWSER_DISABLED":
                     detail += "（如需浏览器渲染，请设置环境变量 KY_BROWSER_ACQUISITION=on 并安装 playwright）"
                 return detail
+
+            if getattr(res, "evidence_eligible", True) is False or getattr(res, "ssl_verified", True) is False:
+                return ("Error 访问网页失败：TLS 证书未验证，正文仅可人工查看，"
+                        "不得作为官方证据入库")
 
             text = res.content or ""
             # 深度过滤 script, style, nav, footer 噪点

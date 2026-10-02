@@ -219,6 +219,8 @@ simulation_report.md
 .sync_publish_marker
 # 个人本地备份（脱敏前的真实配置，仅本机保留）
 *.local.md
+# 本地完整看板（含私人学情），仅供本机预览
+docs/.local/
 # 内部审查/调研文档（含本机路径，不随仓库公开）
 FSRS重构审查与修正报告.md
 kaoyan_chain_github_调研.md

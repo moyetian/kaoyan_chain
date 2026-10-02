@@ -81,6 +81,7 @@ def test_sogou_provider_block_page_single_attempt(monkeypatch):
 
 def test_searcher_skips_cooling_source(monkeypatch):
     """冷却中的源直接跳过：不发起任何请求 + last_errors 留痕。"""
+    from tools.skills import wechat_searcher
     from tools.skills.wechat_searcher import WeChatSearchEngine
     from tools.search.providers import _http
 
@@ -88,7 +89,7 @@ def test_searcher_skips_cooling_source(monkeypatch):
     monkeypatch.setattr(_http, "get_text",
                         lambda url, **kw: calls.append(url) or "<html></html>")
     # 同时兜底 urlopen 也不应被调用
-    monkeypatch.setattr(urllib.request, "urlopen",
+    monkeypatch.setattr(wechat_searcher, "safe_urlopen",
                         lambda *a, **k: (_ for _ in ()).throw(
                             AssertionError("冷却源不得发起请求")))
 
@@ -106,6 +107,7 @@ def test_searcher_skips_cooling_source(monkeypatch):
 
 def test_searcher_marks_blocked_on_network_failure(monkeypatch):
     """get_text 与 urlopen 双双失败 → 源进入冷却 + 留痕。"""
+    from tools.skills import wechat_searcher
     from tools.skills.wechat_searcher import WeChatSearchEngine
     from tools.search.providers import _http
 
@@ -116,7 +118,7 @@ def test_searcher_marks_blocked_on_network_failure(monkeypatch):
     def boom(*a, **k):
         raise ConnectionError("模拟兜底失败")
 
-    monkeypatch.setattr(urllib.request, "urlopen", boom)
+    monkeypatch.setattr(wechat_searcher, "safe_urlopen", boom)
 
     engine = WeChatSearchEngine()
     out = engine._search_sogou("测试", 5, "year")
@@ -128,6 +130,7 @@ def test_searcher_marks_blocked_on_network_failure(monkeypatch):
 
 def test_searcher_second_call_skips_after_failure(monkeypatch):
     """首次失败已标记冷却 → 第二次调用不再发请求（双页/多校场景省时）。"""
+    from tools.skills import wechat_searcher
     from tools.skills.wechat_searcher import WeChatSearchEngine
     from tools.search.providers import _http
 
@@ -138,7 +141,7 @@ def test_searcher_second_call_skips_after_failure(monkeypatch):
         raise ConnectionError("模拟网络失败")
 
     monkeypatch.setattr(_http, "get_text", fake_get_text)
-    monkeypatch.setattr(urllib.request, "urlopen",
+    monkeypatch.setattr(wechat_searcher, "safe_urlopen",
                         lambda *a, **k: (_ for _ in ()).throw(
                             ConnectionError("模拟兜底失败")))
 
@@ -153,6 +156,7 @@ def test_searcher_second_call_skips_after_failure(monkeypatch):
 
 def test_searcher_marks_blocked_on_block_page(monkeypatch):
     """HTTP 200 但页面是反爬验证页（解析 0 条）→ 标记冷却。"""
+    from tools.skills import wechat_searcher
     from tools.skills.wechat_searcher import WeChatSearchEngine
     from tools.search.providers import _http
 
@@ -189,12 +193,13 @@ def test_searcher_fast_params(monkeypatch):
 
 
 def test_searcher_bing_timeout_fast(monkeypatch):
+    from tools.skills import wechat_searcher
     from tools.skills.wechat_searcher import WeChatSearchEngine
 
     seen = {}
 
     class _Resp:
-        def read(self):
+        def read(self, _limit=-1):
             return b"<html></html>"
 
         def __enter__(self):
@@ -207,7 +212,7 @@ def test_searcher_bing_timeout_fast(monkeypatch):
         seen["timeout"] = timeout
         return _Resp()
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(wechat_searcher, "safe_urlopen", fake_urlopen)
 
     engine = WeChatSearchEngine()
     engine._search_bing("测试", 5, "year")

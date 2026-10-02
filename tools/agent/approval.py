@@ -40,12 +40,10 @@ _PATH_ARG_KEYS = ("path", "file_name", "target_file")
 #: 权限侧按前缀识别这一"工具类别"，避免每个外部工具名都单独弹卡/单独配置。
 MCP_TOOL_PREFIX = "mcp_"
 
-#: [B4] "本会话记住"对 MCP 工具收口的信任键：一次批准 = 信任本会话的全部 MCP 工具。
-#: 为什么不按 server 粒度（``mcp_{server}_*``）：server 名自身可能含下划线
-#: （``mcp_my_server_toolA``），字符串解析会歧义地把别的 server 也放进来；
-#: ``mcp_*`` 无歧义，且 MCP 工具都由用户自己配置的 server 提供，语义上正是
-#: "我信任这一类工具"。
-MCP_SESSION_TRUST_KEY = "mcp_*"
+#: 保留旧常量供旧配置读取，但新审批不再使用全局 ``mcp_*`` 通配符。
+#: MCP server 名可含下划线，单纯从拼接后的工具名反解析 server 不可靠；
+#: 因此“本会话记住”按完整 scoped tool name 收口，避免一次批准放行所有外部工具。
+MCP_SESSION_TRUST_KEY = "mcp_*"  # deprecated compatibility constant
 
 
 def tool_name_matches(tool_name: str, patterns: Iterable[str]) -> bool:
@@ -71,12 +69,10 @@ def tool_name_matches(tool_name: str, patterns: Iterable[str]) -> bool:
 def session_remember_key(tool_name: str) -> str:
     """计算"本会话永久信任"写入信任集的键。
 
-    普通工具按原名记住（保持既有语义）；``mcp_*`` 前缀的外部工具统一收口为
-    :data:`MCP_SESSION_TRUST_KEY`，避免同一 server 的多个工具逐个弹卡。
+    普通工具与 MCP 工具都按完整工具名记住。MCP 工具名已经包含 server scope，
+    逐工具信任是无歧义且最小权限的边界；旧的 ``mcp_*`` 配置不会由新批准写入。
     """
     name = str(tool_name or "")
-    if name.startswith(MCP_TOOL_PREFIX):
-        return MCP_SESSION_TRUST_KEY
     return name
 
 
@@ -456,7 +452,7 @@ class GatewayApproval:
             return False, ("用户拒绝 Plan 模式该项执行计划" if is_plan
                            else "用户拒绝执行该操作")
         if remember and level < PermissionLevel.DANGEROUS:
-            # [B4] MCP 工具收口为 ``mcp_*`` 信任键（一次批准不再逐工具弹卡）
+            # MCP 工具按完整 scoped name 记住，禁止全局 ``mcp_*`` 扩权。
             self.session_allowed_tools.add(session_remember_key(tool_name))
             return True, "用户批准本会话永久信任此工具"
         return True, ("用户批准 Plan 模式执行变更" if is_plan else "用户批准单次执行")

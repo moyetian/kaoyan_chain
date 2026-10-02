@@ -481,7 +481,8 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
         print("    [3] 院校自命题专业课")
         # [P2-12 修复·护理考生无预设] 308 护理综合：载入模块骨架（含【待自填】告警）
         print("    [4] 全国统考/自命题 308 护理综合 (载入模块骨架，须按目标院校官网核验)")
-        p_sel = input("  请选择专业课类型 (1/2/3/4) [默认: 1]: ").strip() or "1"
+        print("    [5] 全国统考 312 心理学专业基础综合 (须按目标院校官网核验)")
+        p_sel = input("  请选择专业课类型 (1/2/3/4/5) [默认: 1]: ").strip() or "1"
         if p_sel == "1":
             pro_type = "408"
             pro_name = "408 计算机学科专业基础"
@@ -491,6 +492,9 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
         elif p_sel == "4":
             pro_type = "308"
             pro_name = "308 护理综合"
+        elif p_sel == "5":
+            pro_type = "312"
+            pro_name = "312 心理学专业基础综合"
         else:
             pro_type = "custom"
             pro_name = input("  请输入自命题专业课科目名称与代码 [如 801 信号与系统]: ").strip() or "专业课"

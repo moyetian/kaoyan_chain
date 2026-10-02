@@ -33,6 +33,7 @@ import sys
 import tempfile
 import threading
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -150,6 +151,7 @@ _LOCKS_GUARD = threading.Lock()
 _LOCK_DIR = Path(tempfile.gettempdir()) / "kaoyan-study-chain" / "locks"
 
 
+@lru_cache(maxsize=4096)
 def _lock_path_for(target: PathLike) -> Path:
     """返回目标文件的稳定集中式锁路径。
 
@@ -159,7 +161,8 @@ def _lock_path_for(target: PathLike) -> Path:
     resolved = str(Path(target).resolve(strict=False))
     identity = resolved.casefold() if os.name == "nt" else resolved
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
-    _LOCK_DIR.mkdir(parents=True, exist_ok=True)
+    if not _LOCK_DIR.exists():
+        _LOCK_DIR.mkdir(parents=True, exist_ok=True)
     return _LOCK_DIR / f"{digest}.lock"
 
 
@@ -362,7 +365,13 @@ def atomic_write_text(path: PathLike, text: str, *, encoding: str = "utf-8",
     with lock:
         # 写前比对，避免无意义的 mtime 抖动
         try:
-            if target.exists() and target.read_text(encoding=encoding) == text:
+            same_size = False
+            if target.exists() and newline is None:
+                try:
+                    same_size = target.stat().st_size == len(text.encode(encoding))
+                except (OSError, UnicodeError):
+                    same_size = False
+            if same_size and target.read_text(encoding=encoding) == text:
                 # [缺陷修复] 内容未变也要补一次权限对齐再短路返回。
                 # 否则：旧版本以 umask 0644 创建的 ky_config.json，若本次写入
                 # 内容与磁盘完全一致，就会在 _align_to_umask 之前 return，

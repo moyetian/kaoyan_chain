@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 import pathlib
 import re
 from pathlib import Path
@@ -83,8 +84,18 @@ PLAN_START, PLAN_START_ESTIMATED = _resolve_plan_start(_CONFIG, EXAM_DAY1)
 # [拆分修正] 本模块下沉到 web/ 后，不能再靠 __file__ 反推包目录，
 # 否则 OUT 会落到 05-考研看板/web/docs/（曾实测发生）。
 ROOT = _PKG_ROOT                       # 05-考研看板/
-OUT = ROOT / "docs" / "index.html"     # 内层产物目录
-ROOT_DOCS = _REPO_ROOT / "docs" / "index.html"   # Pages 发布的唯一真源
+# 本地完整模式可通过环境变量把含私人学情的产物隔离到未跟踪目录。
+# 直接运行 build.py 未设置该变量时保持原有输出位置；发布模式也不设置它。
+_output_override = os.environ.get("KY_DASHBOARD_OUTPUT_DIR", "").strip()
+if _output_override:
+    _output_dir = Path(_output_override)
+    if not _output_dir.is_absolute():
+        _output_dir = _REPO_ROOT / _output_dir
+    OUT = _output_dir.resolve() / "index.html"
+    ROOT_DOCS = OUT
+else:
+    OUT = ROOT / "docs" / "index.html"     # 内层产物目录
+    ROOT_DOCS = _REPO_ROOT / "docs" / "index.html"   # Pages 发布的唯一真源
 
 def resolve_dir(rel_name, default_path):
     candidates = [

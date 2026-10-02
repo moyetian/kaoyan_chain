@@ -185,14 +185,18 @@ def choose_exam_subjects_and_syllabi(interactive=True):
     # [P2-12 修复·护理考生无预设] 308 护理综合：写入模块骨架（含【待自填】告警，
     # 命题范围各校有差异，须按目标院校官网核验）
     print("    [4] 全国统考/自命题 308 护理综合 (载入模块骨架，须按目标院校官网核验)")
-    p_c = input("  请选择专业课类别 (1~4) [默认 1]: ").strip() or "1"
-    pro_type = "408" if p_c == "2" else ("199" if p_c == "3" else ("308" if p_c == "4" else "custom"))
+    print("    [5] 全国统考 312 心理学专业基础综合 (载入模块索引，须按当年大纲核验)")
+    p_c = input("  请选择专业课类别 (1~5) [默认 1]: ").strip() or "1"
+    pro_type = ("408" if p_c == "2" else ("199" if p_c == "3" else
+                ("308" if p_c == "4" else ("312" if p_c == "5" else "custom"))))
     if pro_type == "408":
         pro_name = "408 计算机学科专业基础"
     elif pro_type == "199":
         pro_name = "199 管理类综合能力"
     elif pro_type == "308":
         pro_name = "308 护理综合"
+    elif pro_type == "312":
+        pro_name = "312 心理学专业基础综合"
     else:
         pro_name = input("  请输入您的专业课代码与名称 [如 801 信号与系统]: ").strip() or "专业课"
 
@@ -337,9 +341,10 @@ def build_dashboard():
         # 新用户首屏就看不到今日任务正文，误以为功能缺失。
         res = subprocess.run([sys.executable, str(build_script)], cwd=str(ROOT / "05-考研看板"),
                              capture_output=True, text=True, encoding="utf-8",
-                             env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0"})
+                             env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0",
+                                  "KY_DASHBOARD_OUTPUT_DIR": "docs/.local"})
         if res.returncode == 0:
-            print(f"  [√] 看板编译成功！输出路径: {ROOT / 'docs' / 'index.html'}")
+            print(f"  [√] 看板编译成功！输出路径: {ROOT / 'docs' / '.local' / 'index.html'}")
         else:
             print(f"  [!] 看板生成提示:\n{res.stderr or res.stdout}")
     else:
@@ -477,7 +482,7 @@ def main():
     print(" 2. 放入学习资料: 将参考教材/真题放入对应科目的「参考资料/」文件夹")
     # [P14 修复] 按所选数学科目生成口令，不考数学时改为「英语报到」
     print(f" 3. 启动私教学习: 在终端运行 ky 或在所选 Agent 中发送「{_start_command_for(math_key)}」")
-    print(" 4. 预览自测看板: 双击打开 docs/index.html (支持手机添加到主屏幕)")
+    print(" 4. 预览自测看板: 双击打开 docs/.local/index.html (完整本地学情，不进入公开 docs/)")
     print("=" * 68 + "\n")
 
 if __name__ == "__main__":
