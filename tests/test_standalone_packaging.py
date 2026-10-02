@@ -154,23 +154,48 @@ def test_inno_setup_scripts_specification():
         assert 'Filename: "{app}\\{#MyAppExeName}"; Description: "{cm:LaunchProgram}"' in content
 
 
-def test_frozen_runtime_path_resolution(monkeypatch):
-    """验证在 sys.frozen 模式下 compile_qt 与 registry 的路径自适应能力"""
+def test_frozen_runtime_path_resolution(monkeypatch, tmp_path):
+    """验证在 sys.frozen 模式下 compile_qt 与 registry 的路径自适应能力。
+
+    [CI 修复·本地绿 clone 红] 此前把模拟冻结目录指向真实 ``dist/KaoyanStudyChain``
+    （``py tools/build_package.py`` 的构建产物、被 .gitignore 锚定）：本机恰好构建过
+    dist 时断言通过，干净检出（CI / 未构建的 clone）上该目录不存在，而 frozen 模式下
+    registry 的兜底解析必然指向 exe 旁的 data/ —— 实测 CI 三平台 9 个作业全红。现改为
+    在 ``tmp_path`` 里**合成**冻结布局（exe 相邻的 data/ 与 tools/ 资源），既能在任何
+    干净检出上真跑，也真正验证「优先解析 exe 相邻资源」的候选顺序，而不是靠本机恰好
+    有 dist。
+    """
     from tools.theme import compile_qt
     from tools.intelligence import registry
 
-    # 模拟冻结模式指向发布目录
-    fake_exe = str(EXE_PATH)
+    frozen_dir = tmp_path / "KaoyanStudyChain"
+    reg = frozen_dir / "data" / "universities" / "registry.json"
+    reg.parent.mkdir(parents=True)
+    reg.write_text('{"universities": []}', encoding="utf-8")
+    tpl = frozen_dir / "tools" / "theme" / "templates" / compile_qt._TEMPLATE_NAME
+    tpl.parent.mkdir(parents=True)
+    tpl.write_text("/* frozen-mode fixture */", encoding="utf-8")
+
     monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setattr(sys, "executable", fake_exe)
+    monkeypatch.setattr(sys, "executable", str(frozen_dir / "KaoyanStudyChain.exe"))
 
-    # 验证 compile_qt 寻找模板
-    tmpl_path = compile_qt.default_template_path()
-    assert tmpl_path.exists(), f"compile_qt 无法在模拟冻结环境下解析模板: {tmpl_path}"
+    # 验证 compile_qt 优先解析 exe 相邻模板
+    resolved_tpl = compile_qt.default_template_path()
+    assert resolved_tpl == tpl.resolve(), f"compile_qt 未解析到 exe 相邻模板: {resolved_tpl}"
+    assert resolved_tpl.exists()
 
-    # 验证 registry 寻找数据
-    reg_resolved = registry._resolve_data_path("universities/registry.json")
-    assert reg_resolved.exists(), f"registry 无法在模拟冻结环境下解析数据: {reg_resolved}"
+    # 验证 registry 优先解析 exe 相邻数据
+    resolved_reg = registry._resolve_data_path("universities/registry.json")
+    assert resolved_reg == reg.resolve(), f"registry 未解析到 exe 相邻数据: {resolved_reg}"
+    assert resolved_reg.exists()
+
+    # PyInstaller 6.x onedir 默认把资源收进 _internal/：候选顺序第二支也必须命中
+    internal_reg = frozen_dir / "_internal" / "data" / "universities" / "registry.json"
+    internal_reg.parent.mkdir(parents=True)
+    reg.replace(internal_reg)
+    resolved_internal = registry._resolve_data_path("universities/registry.json")
+    assert resolved_internal == internal_reg.resolve(), (
+        f"registry 未解析到 _internal 布局数据: {resolved_internal}")
 
 
 def _read_bat(path: Path) -> str:

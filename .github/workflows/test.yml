@@ -214,9 +214,12 @@ jobs:
       # 任何残留改动即判失败（tools/test_ky_suite.py 内部本就有快照/还原机制，
       # 正是为了满足这条不变式；此步把该不变式变成硬门禁）。
       #
-      # 取舍：只排除**真正的构建产物** —— ``check_dashboard.py`` 每次都会重写
-      # ``docs/index.html`` 与 ``docs/state_snapshot.json``（本地 `git status`
-      # 亦长期显示为 M），属预期变化，故显式排除这两个文件；
+      # 取舍：只排除**真正的构建产物** —— ky_suite 的脱敏重建会改写
+      # ``docs/index.html`` 与 ``docs/state_snapshot.json``（套件内置快照/还原
+      # 通常已回滚；排除项作纵深防御，防进程被强杀留下中间态）。
+      # 本地入口的完整产物自 R2 起统一写入未跟踪的 ``docs/.local/``
+      # （.gitignore 覆盖，不会进入本检查）；``check_dashboard.py`` 亦改写入
+      # 该目录，不再重写根产物。
       # ``.config_backup/``（配置守卫快照）已**移出仓库根**（新写入去
       # ``%LOCALAPPDATA%/kaoyan-study-chain/config_backup``，见
       # ``tools/config_guard.default_backup_dir``），正常不会再出现在工作区；

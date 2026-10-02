@@ -245,8 +245,12 @@ def _prepare_mount_ws(tmp_path):
         json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
     pro = tmp_path / "04-专业课"
     (pro / "参考资料").mkdir(parents=True)
+    # [CI 修复·平台相关假绿] 内容必须 ≥ scan_subject_materials 的 min_size=50 字节：
+    # 此前 48 字节的夹具只在 Windows 上通过（write_text 的 \n→\r\n 转换使其变 51
+    # 字节），Linux/macOS 上 48 字节被当空占位过滤 → 白名单为空 → CI 必红。
     (pro / "参考资料" / "真题回忆_2024.md").write_text(
-        "# 812 真题回忆\n\n1. 求系统输出响应。\n", encoding="utf-8")
+        "# 812 真题回忆\n\n1. 求系统输出响应。\n2. 求冲激响应 h(t)。\n",
+        encoding="utf-8")
     # 大纲就绪（无占位标记）→ mount 后「待导入」替换条件成立
     (pro / "考试大纲.md").write_text(
         "# 812 信号与系统 · 考试大纲\n\n## 一、信号与系统基本概念\n"

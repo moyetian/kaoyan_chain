@@ -352,6 +352,15 @@ def test_error_tab_renders_cards_and_keeps_text_contract(win):
     else:  # pragma: no cover - 取决于工作区数据
         assert win.findChild(QLabel, "EmptyHint") is not None, "无错题时应给出空态提示"
 
+    # [CI 修复·阴性对照] 数据未变的二次渲染不得把已渲染内容从布局里摘掉：旧实现
+    # 先 _clear_layout 再按指纹提前返回 —— 命中短路时卡片/空态提示全部被摘除且
+    # 不重建，视图变空白（CI 三平台实测红；有数据的真机二次刷新同样整页空白）。
+    win._refresh_error_tab()
+    if records:
+        assert win.error_cards[0].parent() is not None, "二次渲染后错题卡被摘出视图"
+    else:
+        assert win.findChild(QLabel, "EmptyHint") is not None, "二次渲染后空态提示被摘掉"
+
     # 契约：error_info 仍是 QTextEdit，toPlainText 含「错题」；卡片为主、原文默认折叠
     assert "错题" in win.error_info.toPlainText()
     assert win.error_info.isHidden(), "原始档案默认折叠（卡片视图为主）"

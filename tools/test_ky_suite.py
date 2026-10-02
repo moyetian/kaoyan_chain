@@ -108,6 +108,11 @@ def run_tests():
         ".memory/exam_keys/*.json",
         "docs/index.html",
         "docs/state_snapshot.json",
+        # [R2 输出隔离] 本地完整产物现落在未跟踪的 docs/.local/：套件里的
+        # ky build 会重写它，纳入快照/还原，跑完套件恢复运行前内容
+        # （CI 全新检出场景下若无前序产物，则作为测试残留被清理）。
+        "docs/.local/index.html",
+        "docs/.local/state_snapshot.json",
         "05-考研看板/docs/index.html",
         "05-考研看板/docs/state_snapshot.json",
         "04-专业课/双校考情对比_*.md",
@@ -2093,15 +2098,25 @@ D. 无度为2的结点
             runner.assert_true(missing_ingest.returncode != 0 and "找不到文件" in missing_ingest.stdout, "CLI smoke：ingest 不存在文件返回失败")
 
             update_res = run_cli("build", timeout=60)
-            runner.assert_true(update_res.returncode == 0 and (ROOT / "docs" / "index.html").stat().st_size > 10000, "CLI smoke：build 真实重编译看板")
+            # [R2 输出隔离] ky build 现为本地完整模式且固定写入未跟踪的
+            # docs/.local/（见 _cmd_build）；根 docs/ 是已提交的脱敏快照，
+            # 不再由 ky build 重写 —— 「真实重编译」必须校验 .local 新产物，
+            # 校验根 docs/ 只能证明旧文件存在（假绿）。
+            runner.assert_true(update_res.returncode == 0 and (ROOT / "docs" / ".local" / "index.html").stat().st_size > 10000, "CLI smoke：build 真实重编译看板")
 
             # [W13 双模式·语义更新] ky build 现为**本地完整模式**（env=0，与
             # 更新看板.bat 一致）：完整快照 meta 无 sanitized 键、opt_in=False。
+            # [CI 修复·产物落位] 完整快照含私人学情，ky build 固定写入未跟踪的
+            # `docs/.local/`（KY_DASHBOARD_OUTPUT_DIR，见 _cmd_build），根 docs/
+            # 只保留可发布的脱敏快照 —— 故此处必须读 `.local` 产物断言完整模式；
+            # 旧实现读根 docs/，仅当前序步骤（check_dashboard）恰好以完整模式
+            # 改写过根产物时才假绿，本机「根 docs/ 为脱敏快照」时必红。
             # 发布安全改由「显式脱敏重建」验证：发布链路（sync_publish /
             # update_dashboard --push / deploy-pages 三道闸）强制脱敏，此处以
             # env=1 直接重建一次并断言产物为可发布态；docs/ 两产物在套件快照/
             # 还原范围内（_GUARDED_PATTERNS），运行结束自动恢复运行前内容。
-            snapshot = json.loads((ROOT / "docs" / "state_snapshot.json").read_text(encoding="utf-8"))
+            _local_snap = ROOT / "docs" / ".local" / "state_snapshot.json"
+            snapshot = json.loads(_local_snap.read_text(encoding="utf-8"))
             runner.assert_true(snapshot.get("meta", {}).get("opt_in") is False, "CLI smoke：ky build 产出本地完整模式快照（发布脱敏由发布链路负责）")
 
             _san_res = subprocess.run(

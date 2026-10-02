@@ -145,17 +145,31 @@ def test_init_workspace_build_dashboard_full_mode(tmp_path, monkeypatch):
 
 BAT_ROOT = ROOT / "更新看板.bat"
 BAT_INNER = ROOT / "05-考研看板" / "更新看板.bat"
+BAT_AUTO = ROOT / "05-考研看板" / "auto-update.bat"
 
 
-@pytest.mark.parametrize("bat_path", [BAT_ROOT, BAT_INNER], ids=["root", "inner"])
+@pytest.mark.parametrize("bat_path", [BAT_ROOT, BAT_INNER, BAT_AUTO],
+                         ids=["root", "inner", "auto-update"])
 def test_bat_sets_full_mode_env_before_build(bat_path):
-    """bat 必须在调用 build.py 之前设置 KY_SNAPSHOT_OPT_IN=0。"""
+    """bat 必须在调用 build.py 之前设置完整模式 + 未跟踪输出目录。
+
+    [R2 输出隔离补全] 除 ``KY_SNAPSHOT_OPT_IN=0`` 外，还须设
+    ``KY_DASHBOARD_OUTPUT_DIR=docs/.local``：否则完整产物落进**被跟踪的**
+    根 docs/，把已提交的脱敏快照覆盖成含私人学情的版本（误发布风险）。
+    auto-update.bat 此前两项都缺（走缺省=脱敏 + 写根 docs/），一并补上。
+    """
     data = bat_path.read_bytes()
     marker = b"set KY_SNAPSHOT_OPT_IN=0"
+    out_marker = b"set KY_DASHBOARD_OUTPUT_DIR=docs/.local"
     assert marker in data, f"{bat_path.name} 未设置 KY_SNAPSHOT_OPT_IN=0"
+    assert out_marker in data, \
+        f"{bat_path.name} 未设置 KY_DASHBOARD_OUTPUT_DIR=docs/.local（完整产物不得写被跟踪的根 docs/）"
     assert b"build.py" in data, f"{bat_path.name} 未调用 build.py（结构变了？）"
-    assert data.index(marker) < data.index(b"build.py"), \
+    build_at = data.index(b"build.py")
+    assert data.index(marker) < build_at, \
         "env 设置必须出现在 build.py 调用之前"
+    assert data.index(out_marker) < build_at, \
+        "输出目录设置必须出现在 build.py 调用之前"
 
 
 def test_root_bat_stays_gbk_encoded():
@@ -172,7 +186,7 @@ def test_root_bat_stays_gbk_encoded():
 # （实测：check_dashboard 一次运行即把完整产物覆盖为 data-sanitized 版）。
 
 def test_check_dashboard_build_forces_full_mode(tmp_path, monkeypatch):
-    """看板守卫的默认重建必须显式完整模式（env=0）。"""
+    """看板守卫的默认重建必须显式完整模式（env=0）且输出到未跟踪的 .local。"""
     from tools import check_dashboard as cd  # noqa: PLC0415
 
     stub = tmp_path / "build.py"
@@ -192,6 +206,44 @@ def test_check_dashboard_build_forces_full_mode(tmp_path, monkeypatch):
     assert len(calls) == 1, f"build_dashboard 应只构建一次: {calls}"
     assert (calls[0]["env"] or {}).get("KY_SNAPSHOT_OPT_IN") == "0", \
         "check_dashboard 重建必须显式完整模式，否则覆盖本地完整产物"
+    assert (calls[0]["env"] or {}).get("KY_DASHBOARD_OUTPUT_DIR") == "docs/.local", \
+        "check_dashboard 重建必须输出到未跟踪的 docs/.local，不得覆盖根 docs/ 的脱敏快照"
+
+
+def test_run_dashboard_build_isolates_full_mode_output(tmp_path, monkeypatch):
+    """统一执行器（TUI/study_planner 等唯一通道）的模式与输出目录契约。
+
+    完整模式（snapshot_opt_in=False）必须设 ``docs/.local``；发布模式
+    （True）必须**清除**该覆盖，产物回到根 docs/ 真源（否则发布链路会把
+    脱敏快照写进未跟踪目录，Pages 部署拿到旧文件）。
+    """
+    from tools import dashboard_build as db  # noqa: PLC0415
+
+    monkeypatch.delenv("KY_DASHBOARD_OUTPUT_DIR", raising=False)
+    (tmp_path / "05-考研看板").mkdir(parents=True)
+    (tmp_path / "05-考研看板" / "build.py").write_text("# stub\n", encoding="utf-8")
+
+    calls = []
+
+    def fake_run(cmd, *args, **kwargs):
+        calls.append({"cmd": [str(c) for c in cmd], "env": kwargs.get("env")})
+        return _FakeCompleted(0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert db.run_dashboard_build(workspace_root=tmp_path, snapshot_opt_in=False) == 0
+    assert len(calls) == 1, f"应只构建一次: {calls}"
+    env = calls[0]["env"] or {}
+    assert env.get("KY_SNAPSHOT_OPT_IN") == "0"
+    assert env.get("KY_DASHBOARD_OUTPUT_DIR") == "docs/.local", \
+        "完整模式的统一构建未隔离输出目录（应设 docs/.local）"
+
+    calls.clear()
+    assert db.run_dashboard_build(workspace_root=tmp_path, snapshot_opt_in=True) == 0
+    env = calls[0]["env"] or {}
+    assert env.get("KY_SNAPSHOT_OPT_IN") == "1"
+    assert "KY_DASHBOARD_OUTPUT_DIR" not in env, \
+        "发布模式的统一构建必须清除 docs/.local 覆盖，产物回根 docs/ 真源"
 
 
 #: (相对路径, 期望的 subprocess.run 调用数)——这些文件里的 subprocess.run 均为
@@ -268,6 +320,8 @@ def test_all_local_rebuild_points_pass_full_mode_env(rel, n_expected):
     for env_src in env_sources:
         assert env_src is not None and "KY_SNAPSHOT_OPT_IN" in env_src, \
             f"{rel} 存在未显式完整模式的 build 调用: {env_src!r}"
+        assert "KY_DASHBOARD_OUTPUT_DIR" in env_src, \
+            f"{rel} 的完整模式 build 调用未隔离输出目录（应设 docs/.local）: {env_src!r}"
 
 
 @pytest.mark.parametrize("rel,n_expected", _MIGRATED_REBUILD_SOURCES,

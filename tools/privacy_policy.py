@@ -71,6 +71,7 @@ __all__ = [
     "PY_STATIC_EXCLUDED_PATTERNS",
     "SANITIZED_SUFFIXES",
     "PY_UNSANITIZED_FILES",
+    "BYTE_LOCKED_DATASET_DIRS",
     "LOCAL_WHITELIST_RE",
     "GENERIC_WEAKNESS_VALUES",
     "GENERIC_BASELINE_VALUES",
@@ -1276,6 +1277,25 @@ PY_UNSANITIZED_FILES: frozenset = frozenset({
     "tools/privacy_policy.py",
 })
 
+#: 按 sha256 **逐字节锁定**的上游镜像数据集目录（仓库相对路径，**单一事实源**）。
+#:
+#: 其内容为上游公开的虚构 fixture（core50 的 fixtures/README.md 声明 D-04
+#: 「全虚构」，域名一律 ``.example`` 保留域），不含学员身份，无需内容脱敏；
+#: 而任何文本改写 —— 包括 Windows 下 read→write 的 LF→CRLF **隐式**转换 ——
+#: 都会破坏 CI「core50 Benchmark Gate」的哈希比对（.gitattributes 亦声明
+#: ``tests/benchmarks/core50/** -text`` 禁换行符转换）。
+#:
+#: [R2 实测] 修复前 ``benchmark/fixtures/README.md``（3240B、纯 LF）的虚构邮箱
+#: ``admissions@northplain.edu.example`` 命中通用 PII 规则，被
+#: ``sanitize_markdown_files`` 回写后隐式 LF→CRLF（3240B→3271B），导出副本
+#: 必带 1 个 core50 差异 → 推送后 CI 门禁红。故整棵子树：
+#:   * ``sync_publish`` 导出时跳过内容脱敏（仍正常镜像复制）；
+#:   * ``scan_residual_identity`` 跳过残留扫描 —— 否则虚构邮箱会被通用 PII
+#:     正则报成「残留身份」噪音（与脱敏跳过的口径一致）。
+#: 风险边界：该子树被视为「外部数据、原样镜像」；若其中真的混入学员身份，
+#: 处理方式是在**源仓库**里修正数据，而不是在导出管线里改写（那会破坏字节锁）。
+BYTE_LOCKED_DATASET_DIRS: Tuple[str, ...] = ("tests/benchmarks/core50",)
+
 #: 行级敏感规则（只对 md/html 生效：.py 里命中会破坏代码行结构）。
 LOCAL_WHITELIST_RE = re.compile(r"\[本地资料库已就绪\]:.*")
 LOCAL_WHITELIST_REPL = "[本地资料库已就绪]: 请放入本地参考资料后填写白名单书目"
@@ -1563,7 +1583,11 @@ def scan_residual_identity(dst: Union[str, Path], src_root: Union[str, Path], *,
 
     豁免范围（与既有隐私边界一致，避免误报）：
       * ``data/**``：1800+ 所高校的公开数据库，校名是功能数据；
-      * ``PY_UNSANITIZED_FILES``：公开高校映射表（如 registry.py）。
+      * ``PY_UNSANITIZED_FILES``：公开高校映射表（如 registry.py）；
+      * ``BYTE_LOCKED_DATASET_DIRS``：按 sha256 逐字节锁定的上游镜像数据集
+        （core50）。其虚构内容（如 ``.example`` 保留域邮箱）会被通用 PII
+        正则命中，但既非学员身份、又因字节锁不可被任何方式改写 ——
+        与导出时「整棵跳过内容脱敏」的口径保持一致。
 
     扫描口径 = ``identity_name_tokens()``（中文校名 / 「代码 + 名称」组合）
     **并集** ``identity_domain_tokens()``（院校 pinyin 注册域名）。后者是
@@ -1614,6 +1638,9 @@ def scan_residual_identity(dst: Union[str, Path], src_root: Union[str, Path], *,
         if logical.split("/", 1)[0] == "data":
             continue
         if logical in PY_UNSANITIZED_FILES:
+            continue
+        if any(logical == d or logical.startswith(d + "/")
+               for d in BYTE_LOCKED_DATASET_DIRS):
             continue
         matchers = py_matchers if f.suffix == ".py" else md_matchers
         if _file_has_residual(f, matchers, include_pii, overlap):

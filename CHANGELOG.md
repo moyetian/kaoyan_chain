@@ -102,13 +102,25 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
   防线）；诊断元数据只保留稳定键；`real_name` / `qq_target_id` 纳入身份脱敏；
 - **GUI**：默认权限模式改回最小权限 `ask`（与 CLI 一致，写操作走审批通道）；
 - **看板**：本地完整模式产物隔离至未跟踪 `docs/.local/`
-  （`KY_DASHBOARD_OUTPUT_DIR`），`docs/` 保持脱敏示例快照；
+  （`KY_DASHBOARD_OUTPUT_DIR`），`docs/` 保持脱敏示例快照；输出隔离补全至
+  全部本地入口（`check_dashboard` 守卫、根/内层 `更新看板.bat`、
+  `auto-update.bat` —— 后者并补上此前缺失的完整模式 env，原走缺省=脱敏），
+  `ky_suite` 重编译断言与产物快照同步改指 `.local`；
+- **发布导出**：`sync_publish` 的内容脱敏与残留自检整棵跳过按 sha256
+  字节锁定的 `tests/benchmarks/core50/**`（`BYTE_LOCKED_DATASET_DIRS`，
+  单一事实源在 `privacy_policy`）—— 修复前 `benchmark/fixtures/README.md`
+  （3240B、纯 LF）的虚构邮箱命中通用 PII 规则，被文本回写后隐式
+  LF→CRLF（3240B→3271B），导出副本必带 1 个 core50 差异、推送后
+  CI 哈希门禁红；
 - **修复与体验**：复制版真题 `**第1题（4分）**：` 格式正确分题（不再把下一题
   污染进上一题答案）；双校对标显式专业优先于工作区配置；组卷校验改用原始题干
   （消除 ingest 合法卡片被误判篡改）；`lim(x→0)` 自然书写归一化；SymPy 惰性加载
   （`import skills` 不再拉起重依赖）；新增 312 心理学预设与北师大心理学部档案；
   招生雷达并行抓取 + 15 分钟短缓存（`CACHED` 状态）；robots.txt
-  `Disallow` / `Crawl-Delay` 支持；`ky_io` 锁路径缓存与写前体积短路。
+  `Disallow` / `Crawl-Delay` 支持；`ky_io` 锁路径缓存与写前体积短路；
+- **错题本二次刷新空白**：`render_error_cards` 的指纹短路移到 `_clear_layout`
+  之前 —— 旧顺序在数据未变时先把卡片/空态提示摘出布局再提前返回，视图变空白
+  （无数据检出的空态提示与有数据真机的卡片列表均命中）。
 
 ### 📄 文档
 
@@ -117,9 +129,18 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 - README 下载文件名同步 v3.1.2、微信检索口径、招考情报引擎说明与看板双模式
   （`docs/.local/`）说明更新；BOT_INTEGRATION_GUIDE 回调密钥改为请求头优先。
 
-**测试**：全量 pytest **2870 通过 + 4 跳过**（收集 2874）；
+**测试**：全量 pytest **2875 通过 + 4 跳过**（收集 2879）；
 `test_ky_suite.py` **307 项**（Git 口径 307+0）；`test_new_features.py` **131 通过**。
-新增 `tests/test_round2_audit_fixes.py`（第二轮审查窄回归）。
+新增 `tests/test_round2_audit_fixes.py`（第二轮审查窄回归）；
+`test_fix_publish_privacy.py` 增补 core50 字节锁定守卫 3 项（真实管线字节不变 +
+反证/对照 + 残留自检豁免精确子树）；
+`test_w13fix_entry_modes.py` 增补 `.local` 输出隔离钉住（三个 bat 字节级断言 +
+`check_dashboard` env + 统一执行器双模式契约）。CI 三平台修复四例
+平台/落位相关缺陷：冻结路径解析不再依赖本机 `dist/`（改为 tmp 内合成冻结布局，
+干净检出可跑）、mount 夹具补足 `min_size=50` 扫描下限（此前 48 字节仅靠 Windows
+CRLF 转换假绿，Linux/macOS 上资料被当空占位过滤）、错题本指纹短路顺序回归、
+`ky_suite` 的 `ky build` 完整快照断言改读实际落位 `docs/.local/`（根 `docs/`
+只保留脱敏快照）。
 
 ## [3.1.1] — 2026-09-29（当前发布版本）
 

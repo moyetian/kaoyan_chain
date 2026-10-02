@@ -14,6 +14,8 @@ echo.
 
 rem [W13] Local entry must build in full mode (KY_SNAPSHOT_OPT_IN=0)
 set KY_SNAPSHOT_OPT_IN=0
+rem [R2] Full-mode output goes to the untracked docs/.local
+set KY_DASHBOARD_OUTPUT_DIR=docs/.local
 echo [1/3] 正在解析四科状态并生成 Web 看板...
 "%PY%" "05-考研看板\build.py"
 if errorlevel 1 (

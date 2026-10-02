@@ -2,8 +2,9 @@
 """
 考研学习链 · 看板产物回归守卫 (Dashboard Artifact Check)
 
-背景：看板（``docs/index.html``）是学员手机主屏上的核心交付物，但其前端代码
-由 ``05-考研看板/build.py`` 以字符串模板拼装，**没有任何编译期保护**。
+背景：看板（本地 ``docs/.local/index.html`` / 发布 ``docs/index.html``）是学员
+手机主屏上的核心交付物，但其前端代码由 ``05-考研看板/build.py`` 以字符串模板
+拼装，**没有任何编译期保护**。
 历史上曾因模板里一段单引号字符串内嵌单引号属性，产生 ``SyntaxError``，
 导致整页 ``<script>`` 失效 —— 页面照常打开、样式正常，但所有交互（页签/遮罩/
 闪卡/图表/主题）全部无响应，且**能顺利通过当时的 CI**。
@@ -55,7 +56,11 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD_SCRIPT = ROOT / "05-考研看板" / "build.py"
-ARTIFACTS = [ROOT / "05-考研看板" / "docs" / "index.html", ROOT / "docs" / "index.html"]
+#: 静态检查的产物：**新构建产物**（本地完整模式，未跟踪的 ``docs/.local/``）
+#: 在前，已提交的**发布快照**（根 ``docs/``）在后。旧实现检查内层
+#: ``05-考研看板/docs/`` 与根 ``docs/`` —— 前者只由发布模式构建写入，检查它
+#: 等于检查过期文件（本地入口的完整产物现统一落在 ``.local``，见 AGENTS.md）。
+ARTIFACTS = [ROOT / "docs" / ".local" / "index.html", ROOT / "docs" / "index.html"]
 
 #: 看板必须包含的前端契约（缺失即视为功能被破坏）
 REQUIRED_MARKERS = [
@@ -87,10 +92,14 @@ def build_dashboard() -> bool:
     # [W13 收口·本地入口分模式] 显式完整模式：此前不传 env，走 snapshot_opt_in()
     # 缺省（=1 脱敏），本地跑一次守卫就把考生的完整看板产物覆盖成脱敏版
     # （今日任务正文/卡背答案消失）。与更新看板.bat / ky build 保持一致。
+    # [R2 输出隔离补全] 完整产物含私人学情，须落在未跟踪的 docs/.local/
+    # （与 ky build / update_dashboard / 各 .bat 一致）；否则守卫每次运行都会
+    # 把根 docs/ 的**已提交脱敏快照**覆盖成完整版 —— 正是「误发布」风险源。
     proc = subprocess.run([sys.executable, str(BUILD_SCRIPT)],
                           cwd=str(BUILD_SCRIPT.parent), capture_output=True, text=True,
                           encoding="utf-8", errors="replace",
-                          env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0"})
+                          env={**os.environ, "KY_SNAPSHOT_OPT_IN": "0",
+                               "KY_DASHBOARD_OUTPUT_DIR": "docs/.local"})
     ok = proc.returncode == 0
     print(f"  {'✅' if ok else '❌'} 构建看板 (exit={proc.returncode})")
     if not ok:
@@ -456,7 +465,11 @@ def main() -> int:
         print("\n── 运行时校验：已按要求跳过 ──")
     else:
         print("\n── 真浏览器运行时校验 ──")
-        ok, msg = check_runtime(ARTIFACTS[-1])
+        # [R2] 探针打在**新构建产物**上（ARTIFACTS[0] = docs/.local）：模板级
+        # 运行时回归（如历史「图标被转义成裸文本」事故）只体现在新产物里；
+        # 已提交的发布快照是旧构建的产物，用它探测会掩盖回归。CI 无
+        # playwright-cli 时自动跳过（不判失败）。
+        ok, msg = check_runtime(ARTIFACTS[0])
         if ok is True:
             print(f"  ✅ 运行时: {msg}")
         elif ok is False:

@@ -10,6 +10,10 @@ cd /d "%~dp0"
 set PY=py
 where py >nul 2>nul || set PY=python
 
+rem [R2] Silent local update: full mode + untracked output dir (docs/.local)
+set KY_SNAPSHOT_OPT_IN=0
+set KY_DASHBOARD_OUTPUT_DIR=docs/.local
+
 "%PY%" build.py
 if errorlevel 1 (
   echo [X] build failed

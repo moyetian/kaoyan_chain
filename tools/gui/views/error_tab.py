@@ -43,11 +43,17 @@ def _clear_layout(layout) -> None:
 
 
 def render_error_cards(win) -> list:
-    """按最新数据重建错题卡片列表；返回卡片控件列表（供测试与自检）。"""
+    """按最新数据重建错题卡片列表；返回卡片控件列表（供测试与自检）。
+
+    [CI 修复·清空后短路] 数据未变时按指纹提前返回，**不得**先清空布局：旧实现
+    先 ``_clear_layout`` 再比对指纹，命中短路时卡片/空态提示已从布局摘除且不再
+    重建 —— 视图变空白（实测 CI 三平台 ``test_error_tab_...`` 红；有数据的真机
+    上每次二次刷新也会整页空白）。现改为：先算数据指纹，命中即原样返回当前
+    视图；仅在数据确实变化时才清空重建。
+    """
     layout = win.error_cards_layout
     if layout is None:
         return []
-    _clear_layout(layout)
 
     records = services.error_queue_cards(win.workspace_root)
     fingerprint = hashlib.sha256(
@@ -56,6 +62,8 @@ def render_error_cards(win) -> list:
     if getattr(win, "_error_cards_fingerprint", None) == fingerprint:
         return list(getattr(win, "error_cards", []) or [])
     win._error_cards_fingerprint = fingerprint
+
+    _clear_layout(layout)
     cards = []
     for rec in records:
         card = KYCard()
