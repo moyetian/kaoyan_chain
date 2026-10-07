@@ -138,7 +138,7 @@ def test_nav_rail_replaces_tiled_cards_and_visible_tabs(win):
 
 
 def test_nav_rail_has_two_groups_with_expected_items(win):
-    """rail 分「视图」「工具」两组，条目与原 4 页签 / 10 卡一一对应。"""
+    """rail 分「视图」「工具」两组，条目与原 4 页签 / 功能卡清单一一对应。"""
     rail = win.nav_rail
     # [阶段 D 前置] 折叠态下视图项文字被清空（原文在 tooltip 里）——本用例
     # 断言展开态文案，先显式展开（断言语义不变）。
@@ -150,12 +150,13 @@ def test_nav_rail_has_two_groups_with_expected_items(win):
     assert [item.text() for item in rail.view_items] == list(TAB_TITLES)
     assert len(rail.view_items) == 4
 
-    # 工具组 = 原 10 张功能卡的动作，别名与清单完全一致（行为不变）
-    assert len(rail.tool_items) == 10
+    # 工具组 = 功能卡清单的动作，别名与清单完全一致（行为不变）
+    # [2026-10-06] 10 → 12：新增 rag（本地检索）/ index（建索引）两个 GUI 入口。
+    assert len(rail.tool_items) == len(CARD_ITEMS) == 12
     assert [item.alias for item in rail.tool_items] == [alias for *_x, alias in CARD_ITEMS]
 
-    # 契约：_feature_buttons / feature_cards 仍指向 10 个可读图标的工具项
-    assert len(win._feature_buttons) == 10
+    # 契约：_feature_buttons / feature_cards 仍指向全部可读图标的工具项
+    assert len(win._feature_buttons) == len(CARD_ITEMS)
     for i, item in enumerate(rail.tool_items):
         assert win._feature_buttons[i] is item
         assert win.feature_cards[i] is item
@@ -490,10 +491,10 @@ def _palette_header_rows(palette) -> list:
 
 
 def test_palette_entries_grouped_into_four_buckets():
-    """W13-7：14 条面板条目按 日常/自测/情报/系统 四桶分桶，且同桶连续。"""
+    """W13-7：面板条目按 日常/自测/情报/系统 四桶分桶，且同桶连续。"""
     entries = nav_rail_view.PALETTE_ENTRIES
-    assert len(entries) == len(TAB_TITLES) + len(CARD_ITEMS) == 14, \
-        "面板条目数必须与「4 视图 + 10 工具」契约一致"
+    assert len(entries) == len(TAB_TITLES) + len(CARD_ITEMS) == 16, \
+        "面板条目数必须与「4 视图 + 12 工具」契约一致"
 
     groups = [entry.group for entry in entries]
     assert set(groups) == set(nav_rail_view.PALETTE_GROUP_ORDER) == {"日常", "自测", "情报", "系统"}
@@ -502,9 +503,11 @@ def test_palette_entries_grouped_into_four_buckets():
     for bucket in nav_rail_view.PALETTE_GROUP_ORDER:
         assert groups.count(bucket) >= 2, f"分组桶 {bucket} 覆盖不足"
 
-    # 工具条目的分桶表覆盖全部 10 个别名（漏一个会 KeyError，这里给出显式断言）
+    # 工具条目的分桶表覆盖全部 12 个别名（漏一个会 KeyError，这里给出显式断言）
     tool_aliases = {alias for *_x, alias in CARD_ITEMS}
     assert tool_aliases == set(nav_rail_view.TOOL_GROUPS)
+    assert set(nav_rail_view.TOOL_KEYWORDS) == tool_aliases, \
+        "口语词表必须覆盖全部工具别名（含 2026-10-06 新增的 rag/index）"
     assert {entry.key for entry in entries} == (
         {f"view:{i}" for i in range(len(TAB_TITLES))}
         | {f"tool:{alias}" for alias in tool_aliases})
@@ -587,28 +590,44 @@ def test_palette_keyboard_skips_group_headers(win, app):
 def test_w13_palette_command_coverage_boundary_audit():
     """W13-7 · CLI 主命令覆盖边界审计：面板可执行别名 ⊆ MENU_OPTIONS；差集与 CLI 对账。
 
-    本批**不承诺**全部 CLI 主命令 GUI 可达——可达 10 / 不可达 33 是显式
-    声明（``GUI_REACHABLE_COMMANDS`` / ``GUI_UNREACHABLE_COMMANDS``），此处与
+    本批**不承诺**全部 CLI 主命令 GUI 可达——可达 / 不可达是显式声明
+    （``GUI_REACHABLE_COMMANDS`` / ``GUI_UNREACHABLE_COMMANDS``），此处与
     ``ky`` CLI 注册表逐一对账，防未来新增命令时静默漏声明。
     """
     from tools import tui_navigator
     from tools.cli import dispatch
 
-    # ① 面板可执行别名 ⊆ TUI 可执行别名（10 ⊆ 11，不含 exit）
+    # ① 面板可执行别名 = TUI 分发集 ∪ 服务层直调集（两者都必须 ⊆ GUI 别名）
     menu_aliases = {alias for _key, _name, _desc, alias in tui_navigator.MENU_OPTIONS}
     gui_aliases = set(nav_rail_view.GUI_ACTION_ALIASES)
     assert gui_aliases == {alias for *_x, alias in CARD_ITEMS}
-    assert gui_aliases <= menu_aliases, (
-        f"面板可执行别名必须全部落在 MENU_OPTIONS：{sorted(gui_aliases - menu_aliases)}")
+    # [2026-10-06] rag / index 走 gui.services 而非 TUI execute_action（需 GUI
+    # 侧先收检索词 / 换执行器），故不再要求全部别名落在 MENU_OPTIONS，改为
+    # 「除显式登记的服务层直调集外，都必须能被 TUI 分发」——比原来的 ⊆ 更严：
+    # 多登记一个别名、或把能走 TUI 的别名错登记成服务层直调，都会红。
+    svc_only = set(nav_rail_view.GUI_SERVICE_ONLY_ALIASES)
+    assert svc_only and svc_only <= gui_aliases, \
+        "GUI_SERVICE_ONLY_ALIASES 必须是 GUI 别名的真子集"
+    assert gui_aliases - svc_only <= menu_aliases, (
+        f"TUI 分发别名必须全部落在 MENU_OPTIONS："
+        f"{sorted((gui_aliases - svc_only) - menu_aliases)}")
 
     # ② CLI 主命令全集：可达 / 不可达声明与 CLI 注册表逐一对账
     dispatch._init_all_commands()
     registered = {cmd.name for cmd in dispatch.list_commands()}
-    assert len(registered) == nav_rail_view.CLI_MAIN_COMMAND_COUNT == 43
+    # [2026-10-05 同步] 新增 ``ky index`` 后 44 → 45（不可达 34 → 35）
+    # [2026-10-06 同步] 新增 ``ky grade-regress`` 后 45 → 46（不可达 35 → 36）
+    # [2026-10-06 补 GUI 入口] rag / index 由不可达移入可达：不可达 36 → 34
+    # [2026-10-06 新增 ky budget] 46 → 47（不可达 34 → 35）
+    assert len(registered) == nav_rail_view.CLI_MAIN_COMMAND_COUNT == 47
     assert nav_rail_view.GUI_REACHABLE_COMMANDS.isdisjoint(nav_rail_view.GUI_UNREACHABLE_COMMANDS)
     assert nav_rail_view.GUI_REACHABLE_COMMANDS | nav_rail_view.GUI_UNREACHABLE_COMMANDS == registered, (
         "覆盖边界声明与 CLI 注册表漂移：请同步 nav_rail.GUI_REACHABLE/UNREACHABLE_COMMANDS")
-    assert len(nav_rail_view.GUI_UNREACHABLE_COMMANDS) == 33
+    assert len(nav_rail_view.GUI_REACHABLE_COMMANDS) == 12
+    assert len(nav_rail_view.GUI_UNREACHABLE_COMMANDS) == 35
+    assert {"rag", "index"} <= nav_rail_view.GUI_REACHABLE_COMMANDS, (
+        "rag / index 必须已从不可达移入可达（2026-10-06 补 GUI 入口）")
+    assert not ({"rag", "index"} & nav_rail_view.GUI_UNREACHABLE_COMMANDS)
 
     # ③ 每个 GUI 动作别名都映射到一个真实注册的主命令
     assert set(nav_rail_view.GUI_ACTION_TO_COMMAND) == gui_aliases
@@ -684,10 +703,10 @@ def test_palette_empty_result_shows_hint_row(palette):
 
 
 def test_palette_hint_absent_for_empty_and_matching_queries(palette):
-    """R3-1 边界：空查询（14 条全量契约）与有匹配查询都**不**出现提示行。"""
+    """R3-1 边界：空查询（全量契约）与有匹配查询都**不**出现提示行。"""
     palette.refresh("")
-    assert len(palette.visible_keys()) == len(TAB_TITLES) + len(CARD_ITEMS) == 14, \
-        "空查询仍是全量 14 条（W13-7 契约）"
+    assert len(palette.visible_keys()) == len(TAB_TITLES) + len(CARD_ITEMS) == 16, \
+        "空查询仍是全量 16 条（W13-7 契约；2026-10-06 起 4 视图 + 12 工具）"
     assert _palette_hint_label(palette) is None, "空查询是合法空态（全量列表），不得显示提示行"
 
     palette.refresh("看板")
@@ -710,11 +729,11 @@ def test_palette_oral_keywords_hit_entries(palette, query):
     assert _palette_hint_label(palette) is None, "有命中时不得显示空结果提示"
 
 
-def test_palette_tool_keyword_hits_all_ten_tools(palette):
-    """R3-2：「工具」统一命中全部 10 条工具条目（视图条目不含该词）。"""
+def test_palette_tool_keyword_hits_all_tools(palette):
+    """R3-2：「工具」统一命中全部工具条目（视图条目不含该词）。"""
     palette.refresh("工具")
     keys = palette.visible_keys()
-    assert len(keys) == len(CARD_ITEMS) == 10, f"「工具」应命中全部 10 条工具，实际 {keys}"
+    assert len(keys) == len(CARD_ITEMS) == 12, f"「工具」应命中全部 12 条工具，实际 {keys}"
     assert set(keys) == {f"tool:{alias}" for *_x, alias in CARD_ITEMS}
 
 

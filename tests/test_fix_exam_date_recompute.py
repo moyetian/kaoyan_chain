@@ -125,7 +125,10 @@ def test_countdown_is_clamped_to_zero_on_or_after_exam_date(monkeypatch, tmp_pat
                         interactive=False)
     line = _exam_date_line(agents)
     assert "倒计时约 0 天" in line, line
-    assert "-3" not in line, line
+    # [审查修复·日期敏感断言] 旧写法 `"-3" not in line` 会被**日期串**误伤：
+    # 当 (today-3) 恰为 30/31 号时（如 2026-09-30），line 里的日期本身含
+    # 「-3」子串，断言在每月那几天周期性变红。改为精确锚定倒计时字段。
+    assert "倒计时约 -" not in line, line
 
     # 考试当天同样为 0（而非 0 天以外的负值/异常）
     today = date.today().isoformat()
@@ -143,4 +146,4 @@ def test_stored_negative_days_left_is_clamped(monkeypatch, tmp_path):
                         interactive=False)
     line = _exam_date_line(agents)
     assert "倒计时约 0 天" in line, line
-    assert "-5" not in line, line
+    assert "倒计时约 -" not in line, line

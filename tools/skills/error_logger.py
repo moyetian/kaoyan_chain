@@ -132,10 +132,12 @@ except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
 # 在进组卷/复测队列前必须校验题干与身份是否一致（与白名单卡同一防篡改闸门）。
 try:
     from question_source import ORIGIN_MISTAKE as _ORIGIN_MISTAKE
-    from question_source import has_declared_identity, source_from_card
+    from question_source import (extract_mistake_stem, fence_for_text,
+                                 has_declared_identity, source_from_card)
 except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
     from tools.skills.question_source import ORIGIN_MISTAKE as _ORIGIN_MISTAKE
-    from tools.skills.question_source import has_declared_identity, source_from_card
+    from tools.skills.question_source import (extract_mistake_stem, fence_for_text,
+                                              has_declared_identity, source_from_card)
 
 
 # ── 终端框线宽度工具 ──────────────────────────────────────────────
@@ -285,7 +287,12 @@ def log_error_record(subject="math", title="错题记录", error_type="计算失
     next_due_str = next_due_d.strftime("%Y-%m-%d")
     record_file = mistake_dir / f"错题记录_{today_str}.md"
 
-    q_block = f"\n- **题干设问**：\n```text\n{question.strip()}\n```\n" if question else ""
+    # [数据正确性修复·围栏提前闭合] 题干含 ``` 时固定 3 反引号围栏会在内容里的
+    # ``` 处提前闭合（卡片结构损坏、指纹失配、重复归档）。围栏长度自适应，
+    # 与解析侧（question_source._MISTAKE_STEM_RE 反向引用）共用同一口径。
+    _fence = fence_for_text(question)
+    q_block = (f"\n- **题干设问**：\n{_fence}text\n{question.strip()}\n{_fence}\n"
+               if question else "")
 
     record_md = f"""
 ## 📌 [{today_str}] {title}
@@ -315,7 +322,18 @@ def log_error_record(subject="math", title="错题记录", error_type="计算失
 
 
 def _sync_radar_error_count(subject: str, error_type: str, title: str):
-    """联动更新对应科目薄弱点雷达/学情档案中的错因统计次数"""
+    """联动更新对应科目薄弱点雷达/学情档案中的错因统计次数。
+
+    [数据正确性修复·错格/膨胀] 旧实现对**每行**含 error_type 的表格行
+    从右往左找「最后一个纯数字格」+1（无表头定位、命中即逐行更新）：
+      * 模块行在「核心卡点与错因」列写了错因词、且行内含纯数字列
+        （如预估分值 `10`）时，分值被误 +1（实测 `10 → 11`，错格）；
+      * 同一错因在多行出现时多个数字被 +1（膨胀），真正该更新的
+        「次数」列反而可能没动。
+    现按表头定位「次数」/「累计次数」列：只更新**含该列表格**内首个命中行；
+    无次数列的表（模块表、能力评估表等）一律不写。每文件最多更新一次，
+    杜绝同一次错题归档把统计加两遍。
+    """
     folder_name = SUBJECT_DIRS.get(subject, "01-数学")
     candidates = [
         ROOT / folder_name / "_状态" / "薄弱点雷达.md",
@@ -330,17 +348,26 @@ def _sync_radar_error_count(subject: str, error_type: str, title: str):
             lines = content.splitlines()
             new_lines = []
             updated = False
+            count_col = None  # 当前表格「次数」列索引（None = 该表无此列）
             for line in lines:
-                if error_type and error_type in line and line.strip().startswith("|") and line.strip().endswith("|"):
-                    parts = [p.strip() for p in line.strip().split("|")[1:-1]]
-                    if parts:
-                        for idx in reversed(range(len(parts))):
-                            if parts[idx].isdigit():
-                                cur_val = int(parts[idx])
-                                parts[idx] = str(cur_val + 1)
-                                line = "| " + " | ".join(parts) + " |"
-                                updated = True
-                                break
+                stripped = line.strip()
+                if not (stripped.startswith("|") and stripped.endswith("|")):
+                    count_col = None  # 离开表格：下一张表重新定位表头
+                    new_lines.append(line)
+                    continue
+                parts = [p.strip() for p in stripped.split("|")[1:-1]]
+                idx = next((i for i, c in enumerate(parts)
+                            if c in ("次数", "累计次数")), None)
+                if idx is not None:
+                    # 表头行：锁定「次数」列（数据行该格是数字，不会命中）
+                    count_col = idx
+                elif (not updated and count_col is not None and error_type
+                        and error_type in line and len(parts) > count_col
+                        and parts[count_col].isdigit()):
+                    cur_val = int(parts[count_col])
+                    parts[count_col] = str(cur_val + 1)
+                    line = "| " + " | ".join(parts) + " |"
+                    updated = True
                 new_lines.append(line)
             if updated:
                 atomic_write_text(r_file, "\n".join(new_lines))
@@ -399,10 +426,10 @@ def scan_error_records(subject=None):
                     err_type = err_m.group(1).strip().strip("`")
 
                 # 提取题干设问
-                q_text = ""
-                q_m = re.search(r"-\s+\*\*题干设问\*\*[：:]\s*```text\s*(.*?)\s*```", sec, re.DOTALL)
-                if q_m:
-                    q_text = q_m.group(1).strip()
+                # [数据正确性修复] 改用 question_source.extract_mistake_stem
+                # （单一事实源）：围栏长度自适应 + 反向引用闭合，内容含 ```
+                # 的卡片不再被提前截断。旧格式（3 反引号）结果逐字节不变。
+                q_text = extract_mistake_stem(sec)
 
                 # 提取错题现场与解析
                 detail_text = ""

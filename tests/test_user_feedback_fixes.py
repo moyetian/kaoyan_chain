@@ -87,11 +87,16 @@ def test_main_window_quick_command_slot():
         win._on_send_message.assert_called_once()
 
 
-def test_agent_worker_checkin_with_llm_prompt():
+def test_agent_worker_checkin_with_llm_prompt(tmp_path):
     from tools.gui.workers.agent_worker import AgentWorker
 
+    # [2026-10-07 跨环境修复·真实工作区污染] 报到分支会把「今日任务.md」写进
+    # workspace_root（未传时回落模块级 ROOT = 真实仓库根；fresh clone / CI /
+    # 发布副本上凭空创建四科文件 → conftest tripwire 硬失败）。
+    # 与 test_fix_agent_worker_config 同款隔离：显式传沙箱 tmp_path。
     # 1. 未配置 API Key 时：给出大纲播报与明确设置引导
-    worker_no_key = AgentWorker(config={"api_key": ""}, user_input="英语报到")
+    worker_no_key = AgentWorker(config={"api_key": ""}, user_input="英语报到",
+                                workspace_root=tmp_path)
     replies = []
     worker_no_key.finished_signal.connect(replies.append)
     worker_no_key.run()
@@ -102,7 +107,8 @@ def test_agent_worker_checkin_with_llm_prompt():
 
     # 2. 已配置 API Key 时：构造导学 prompt 并联动 AgentRunner
     cfg = {"api_key": "sk-test-fake", "model": "deepseek-chat"}
-    worker_with_key = AgentWorker(config=cfg, user_input="政治报到")
+    worker_with_key = AgentWorker(config=cfg, user_input="政治报到",
+                                  workspace_root=tmp_path)
 
     with patch("agent.AgentRunner.run", return_value="【私教带背】今日政治核心考点如下...") as mock_run:
         replies_llm = []

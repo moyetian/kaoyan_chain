@@ -28,6 +28,20 @@ MATH_SYM_MAP = {
     r"\quad": "  ", r"\qquad": "    ", r"\,": " ", r"\;": " ", r"\!": ""
 }
 
+#: [修复·\left 前缀吞噬] 未映射高频命令补键。
+#: 背景：``\le`` 是映射键而 ``\left`` 不是 —— ``\left(`` 曾被啃成 ``≤ft(``
+#: （GUI 接入美化后考生直接可见）。命令边界保护（见 :func:`_replace_commands`）
+#: 已阻止任何吞噬；此处再补常用排版命令与函数名，让 ``\left( x \right)``
+#: 这类结构真正还原为可读文本。
+LATEX_EXTRA_MAP = {
+    r"\left": "", r"\right": "",
+    r"\leftarrow": "←", r"\leftrightarrow": "↔",
+    r"\uparrow": "↑", r"\downarrow": "↓",
+    r"\ldots": "…", r"\cdots": "…", r"\dots": "…",
+    r"\ln": "ln", r"\log": "log", r"\sin": "sin", r"\cos": "cos",
+    r"\tan": "tan", r"\exp": "exp", r"\max": "max", r"\min": "min",
+}
+
 SUP_MAP = {
     "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
     "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
@@ -62,6 +76,28 @@ def replace_sub_sup(text):
     text = re.sub(r"_(?:\{([^}]+)\}|([0-9aeiounkxt+-]))", sub_repl, text)
     return text
 
+def _replace_commands(expr, mapping):
+    r"""按 key 长度倒序替换命令；字母结尾的键加命令边界（后随字母则不命中）。
+
+    [缺陷修复·两代前缀吞噬] 共享映射表的替换必须防两类吞噬：
+      1) 「映射键 × 映射键」：``\ge`` 会吞 ``\geq`` 的尾巴（``≥q``）——
+         按 key 长度倒序替换解决；
+      2) 「映射键 × 未映射长命令」：``\le`` 会啃 ``\left`` 的前缀
+         （``≤ft(``）——倒序无解，必须加负向前瞻 ``(?![a-zA-Z])``
+         保证只命中完整命令。
+
+    非字母结尾的键（``\,`` ``\;`` ``\!``）直接字面替换。替换值经 lambda
+    返回，避免 re.sub 把值里的反斜杠当组引用（当前表内无 ``\``，防御未来）。
+    """
+    for k, v in sorted(mapping.items(), key=lambda kv: len(kv[0]), reverse=True):
+        if k[-1].isalpha():
+            expr = re.sub(re.escape(k) + r"(?![a-zA-Z])",
+                          lambda _m, _v=v: _v, expr)
+        else:
+            expr = expr.replace(k, v)
+    return expr
+
+
 def format_math_expr(expr):
     """美化单个数学公式内部的 LaTeX 语法"""
     def int_repl(m):
@@ -82,10 +118,12 @@ def format_math_expr(expr):
     expr = re.sub(r"\\sqrt\{([^}]+)\}", r"√(\1)", expr)
     expr = re.sub(r"\\sum_\{([^}]+)\}\^\{([^}]+)\}", r"∑[\1 → \2]", expr)
 
-    for k, v in MATH_SYM_MAP.items():
-        expr = expr.replace(k, v)
-    for k, v in GREEK_MAP.items():
-        expr = expr.replace(k, v)
+    # 倒序 + 命令边界保护（见 _replace_commands）：两代吞噬缺陷一并修复 ——
+    # 长键不被前缀键吞尾（\geq→≥q），未映射长命令不被短键啃前缀（\left→≤ft(）。
+    # 三端（CLI/TUI/GUI）共享本函数，同源受益。
+    expr = _replace_commands(expr, MATH_SYM_MAP)
+    expr = _replace_commands(expr, GREEK_MAP)
+    expr = _replace_commands(expr, LATEX_EXTRA_MAP)
 
     expr = replace_sub_sup(expr)
     expr = re.sub(r"\\text\{([^}]+)\}", r"\1", expr)

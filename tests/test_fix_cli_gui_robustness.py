@@ -130,6 +130,11 @@ def _run_repl_once(monkeypatch, tmp_path, inputs, read_only):
     # 把配置落盘目标重定向到 tmp，任何（意外的）写入都不会碰到真实数据
     sandbox_cfg = tmp_path / "ky_config.json"
     monkeypatch.setattr(cli_shared, "CONFIG_FILE", sandbox_cfg)
+    # [2026-10-07 跨环境修复·真实工作区污染] 报到分支（loop.py）会以
+    # ``ensure_subject_today_task(..., workspace_root=ROOT)`` 生成「今日任务.md」，
+    # 且读任务清单也用同一 ROOT —— 不重定向就会写/读真实工作区（副本/CI 上
+    # 凭空创建四科文件）。与 CONFIG_FILE 同层隔离到沙箱。
+    monkeypatch.setattr(repl_loop, "ROOT", tmp_path)
 
     cfg = {
         "api_key": "",

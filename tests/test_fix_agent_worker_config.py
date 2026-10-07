@@ -100,7 +100,13 @@ def _run_checkin(tmp_cfg_file, monkeypatch, worker_config, user_input="政治报
                         raising=True)
 
     from tools.gui.workers.agent_worker import AgentWorker  # noqa: PLC0415
-    worker = AgentWorker(config=worker_config, user_input=user_input)
+    # [2026-10-07 跨环境修复·真实工作区污染] 必须显式传 workspace_root：
+    # AgentWorker 未收到时回落模块级 ROOT（真实仓库根），报到分支会把
+    # 「今日任务.md」写进真实工作区（副本/CI 上还会凭空创建四科文件，
+    # 致看板占位符测试时序性变红）。tmp_cfg_file 即 tmp_path 下的配置，
+    # 其 parent 就是本用例的沙箱根。
+    worker = AgentWorker(config=worker_config, user_input=user_input,
+                         workspace_root=tmp_cfg_file.parent)
     replies = []
     worker.finished_signal.connect(replies.append)
     worker.run()

@@ -65,6 +65,12 @@ def _chunk(cid: str, text: str, source: str = "04-专业课/马原.md") -> Chunk
 
 def _patch_store(monkeypatch, store):
     monkeypatch.setattr(ks_mod, "get_knowledge_store", lambda: store)
+    # [2026-10-07 跨环境修复] hybrid 的只读守卫（DEFAULT_DB_PATH 不存在 →
+    # 直接返回「本地知识库尚未建立」）在 mock store 之前拦截。主仓库恰好存在
+    # data/knowledge/embeddings.db（未跟踪）故本地全绿；fresh clone / CI /
+    # 发布副本无此库 → 10 个用例集体变红。mock 了 store 的用例本就不应依赖
+    # 磁盘真实库 —— patch 到存在的哨兵文件（本测试文件自身）即可放行守卫。
+    monkeypatch.setattr(ks_mod, "DEFAULT_DB_PATH", Path(__file__), raising=False)
 
 
 CHUNKS = {
@@ -133,11 +139,14 @@ def test_lexical_branch_falls_back_to_lexical_search_only(monkeypatch):
 
 # ─────────────────── 2. 原因如实（不误报） ───────────────────
 
-def test_explicit_disable_reason_does_not_blame_extension():
+def test_explicit_disable_reason_does_not_blame_extension(monkeypatch):
     """调用方显式关闭向量分支时，不得谎称『扩展未加载』。
 
     阴性对照：若把原因写死成扩展缺失，本用例会失败。
     """
+    # [2026-10-07 跨环境修复] 同 _patch_store：本用例直接驱动 _run_hybrid，
+    # 同样会被只读守卫先行拦截（副本/CI 无真实库）→ 放行哨兵。
+    monkeypatch.setattr(ks_mod, "DEFAULT_DB_PATH", Path(__file__), raising=False)
     outcome = hybrid._run_hybrid(
         query="剩余价值", top_k=5, enable_vector=False,
         forced_reason="",
@@ -310,9 +319,10 @@ def test_rag_without_db_refuses_and_does_not_create_it(tmp_path, monkeypatch):
 
     out = buf.getvalue()
     assert code == 2
-    # 提示必须给出**真实可用**的两步：ky ingest 只归档题卡，建索引是 indexer
+    # 提示必须给出**真实可用**的两步：ky ingest 只归档题卡，建索引是 ky index
+    # [2026-10-05] 建索引已补上 CLI 子命令，提示从手敲 indexer.py 升级为 ky index。
     assert "ky ingest" in out
-    assert "indexer.py" in out, "不得只写『ky ingest 即可检索』（那样知识库仍是空的）"
+    assert "ky index" in out, "不得只写『ky ingest 即可检索』（那样知识库仍是空的）"
     assert not missing.exists(), "只读检索不得代建空库"
 
 

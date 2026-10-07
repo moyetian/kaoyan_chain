@@ -292,9 +292,9 @@ def test_build_reads_each_source_once_and_memo_is_per_build(monkeypatch):
     reads = []
     real_read = build_mod.read
 
-    def counting_read(path):
+    def counting_read(path, **kwargs):
         reads.append(str(path))
-        return real_read(path)
+        return real_read(path, **kwargs)
 
     monkeypatch.setattr(build_mod, "read", counting_read)
 

@@ -72,6 +72,12 @@ DEFAULT_TTL_FALLBACK = 6 * 3600
 #: 缓存条目上限（超出后淘汰最旧的）
 MAX_ENTRIES = 500
 
+#: [serve-stale] 过期条目最多还能当 fallback serve 多久（秒）。
+#: 超过这个时长的条目宁可不返（结果已可能误导），直接当未命中。
+#: 取 7 天与 ``RESOURCE_TTL`` 同量级：真题/经验贴这类内容 7 天内不会变质，
+#: 而招生简章这类 6 小时就过期的，7 天前的那份对考生是负资产。
+STALE_MAX_AGE = 7 * 24 * 3600
+
 
 @dataclass
 class CacheEntry:
@@ -107,6 +113,23 @@ class CacheEntry:
         )
 
 
+def _mark_stale(result: SearchResult, age_seconds: int) -> SearchResult:
+    """给 serve-stale 的结果打上「陈旧」标注（不新增顶层字段，只写 ``extra``）。
+
+    只写 ``extra`` 而不改 dataclass 字段，是为了不破坏 ``SearchResult`` 的
+    frozen 契约与既有构造调用方（providers / CLI / GUI 都在直接构造它）。
+    """
+    extra = dict(result.extra)
+    extra["stale"] = True
+    extra["stale_age_seconds"] = int(age_seconds)
+    return SearchResult(
+        title=result.title, url=result.url, snippet=result.snippet,
+        engine=result.engine, domain=result.domain,
+        source_type=result.source_type, published_at=result.published_at,
+        authority=result.authority, score=result.score, extra=extra,
+    )
+
+
 class SearchCache:
     """检索结果缓存（内存 + 可选落盘）。"""
 
@@ -120,6 +143,9 @@ class SearchCache:
         self._entries: Dict[str, CacheEntry] = {}
         self.hits = 0
         self.misses = 0
+        #: [serve-stale] 命中「过期但仍在兜底窗口内」的次数（诊断用：冷却期
+        #: 到底有多依赖陈旧数据 —— 这个数字高说明该源的 TTL 该调长了）。
+        self.stale_serves = 0
         if self.enabled:
             self._load()
 
@@ -133,17 +159,42 @@ class SearchCache:
     # ── 读写 ────────────────────────────────────────────────
 
     def get(self, provider: str, query: str, limit: int,
-            time_range: Optional[str] = None) -> Optional[List[SearchResult]]:
+            time_range: Optional[str] = None, *,
+            allow_stale: bool = False) -> Optional[List[SearchResult]]:
+        """读缓存。
+
+        :param allow_stale: 允许返回**已过期**条目（serve-stale）。默认 ``False``
+            保持严格 TTL 语义（过期即未命中）；服务层在「源被反爬冷却」时才置
+            ``True`` ——此时「拿一份旧结果并标注陈旧度」远好过「告诉用户没结果」。
+
+        [为什么需要 serve-stale] R3 全矩阵仿真实测：全源冷却时检索能力直接归零，
+        模型只看到「未找到结果」并在死路上烧步数。而招生简章/复试线这类信息在
+        冷却的 10 分钟内**并不会变化** —— 过期 1 小时的缓存远比空结果有用。
+        返回的每条结果都带 ``extra["stale"]=True`` 与 ``extra["stale_age_seconds]``，
+        由调用方如实告知考生「这是陈旧数据」。
+        """
         if not self.enabled:
             return None
-        entry = self._entries.get(self.make_key(provider, query, limit, time_range))
+        key = self.make_key(provider, query, limit, time_range)
+        entry = self._entries.get(key)
         if entry is None:
             self.misses += 1
             return None
         if entry.expired:
-            self._entries.pop(entry.key, None)
-            self.misses += 1
-            return None
+            age = int(entry.age)
+            if not allow_stale or age > STALE_MAX_AGE:
+                # 陈旧到超出兜底窗口（或调用方不要陈旧）→ 真miss，并清掉条目。
+                # [为什么过期仍保留条目] serve-stale 需要它；这里只在「确定不再用」
+                # 时才pop，避免"第一次 miss 就把冷却期的救命数据删掉"。
+                if age > STALE_MAX_AGE:
+                    self._entries.pop(key, None)
+                self.misses += 1
+                return None
+            self.hits += 1
+            self.stale_serves += 1
+            return [_mark_stale(SearchResult.from_raw(item, engine=entry.provider),
+                                age)
+                    for item in entry.results]
         self.hits += 1
         return [SearchResult.from_raw(item, engine=entry.provider) for item in entry.results]
 
@@ -192,6 +243,7 @@ class SearchCache:
             "entries": len(self._entries),
             "hits": self.hits,
             "misses": self.misses,
+            "stale_serves": self.stale_serves,
             "path": str(self.path),
         }
 
@@ -211,8 +263,12 @@ class SearchCache:
             data = json.loads(self.path.read_text(encoding="utf-8"))
             for item in (data.get("entries") or []):
                 entry = CacheEntry.from_json(item)
-                if not entry.expired:
-                    self._entries[entry.key] = entry
+                # [serve-stale] 原实现「加载时即丢弃过期条目」—— 那会让冷却期的
+                # 兜底数据在**重启后全部消失**，serve-stale 形同虚设（R3 实测的
+                # 「换个端点就忘了」同源缺陷）。现只丢弃超出兜底窗口的。
+                if entry.age > STALE_MAX_AGE:
+                    continue
+                self._entries[entry.key] = entry
         except Exception as exc:                   # pragma: no cover - 缓存损坏不该影响检索
             _LOG.debug("检索缓存加载失败（按空缓存继续）: %s", exc)
 
@@ -236,5 +292,6 @@ __all__ = [
     "DEFAULT_TTL",
     "MAX_ENTRIES",
     "RESOURCE_TTL",
+    "STALE_MAX_AGE",
     "SearchCache",
 ]

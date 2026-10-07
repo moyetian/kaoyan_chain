@@ -59,7 +59,7 @@
 
 > 💡 **在线直达**：点击体验 👉 **[考研全科移动端自测看板 (Live Demo)](https://moyetian.github.io/kaoyan_chain/)**
 > 
-> *(本地使用：双击工作区中的 [`../docs/index.html`](../docs/index.html) 即可单文件直接运行，纯原生 HTML5/CSS3/JS 构建，零第三方依赖)*
+> *(本地使用：双击工作区中的 [`../docs/.local/index.html`](../docs/.local/index.html) 即可单文件直接运行，纯原生 HTML5/CSS3/JS 构建，零第三方依赖；`../docs/index.html` 是随 Pages 发布的公开脱敏快照，仅用于分享展示，今日任务无正文、卡背答案被清空)*
 
 <p align="center">
   <img src="../docs/assets/dashboard_showcase.jpg" alt="移动端自测看板与遮罩默写功能演示" style="max-width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);" />
@@ -302,7 +302,7 @@ python tools/init_workspace.py
 > 1. 一键将四科 `_状态/` 目录中的 `*.template.md` 实例化为本地受保护的 `*.md` 工作文件；
 > 2. 为各科目建立私密的 `参考资料/` 目录与 `考试大纲.md` 考纲清单；
 > 3. 运行 **7 大维度个性化方案向导**，锁定您的初试倒计时、考纲、真实资料、摸底分与薄弱防线；
-> 4. 自动编译生成您的第一版专属移动端自测看板 `docs/index.html`。
+> 4. 自动编译生成您的第一版专属移动端自测看板 `docs/.local/index.html`（本地完整版）。
 
 ---
 
@@ -322,14 +322,16 @@ python tools/init_workspace.py
 ### 第四步：移动端自测看板查看与多端同步
 
 #### 1. 本地直接预览
-双击工作区中的 [`../docs/index.html`](../docs/index.html)，即可直接在任何现代浏览器中打开自测看板！
+双击工作区中的 [`../docs/.local/index.html`](../docs/.local/index.html)，即可直接在任何现代浏览器中打开自测看板！
+（若尚未生成，请先运行 `更新看板.bat` 或 `ky build`。根目录 `../docs/index.html` 是公开脱敏快照，仅供分享展示，日常复习请用 `.local` 完整版。）
 
 #### 2. 同局域网手机浏览 (无需云端)
 在项目根目录下启动轻量级本地服务：
 ```bash
 python -m http.server 8080 --directory docs
 ```
-查看电脑的局域网 IP（如 `192.168.1.5`），在手机浏览器访问 `http://192.168.1.5:8080` 即可在手机上刷卡背诵！
+查看电脑的局域网 IP（如 `192.168.1.5`），在手机浏览器访问 **`http://192.168.1.5:8080/.local/`**
+（末尾的 `/.local/` 不可省略 —— 直接访问根路径看到的是公开脱敏快照，今日任务没有正文），即可在手机上刷卡背诵！
 
 #### 3. 部署到免费的 GitHub Pages (随时随地在线访问)
 1. 在 GitHub 创建您的个人专属私有或公开仓库；
@@ -438,7 +440,7 @@ kaoyan_chain/
 │
 ├── 05-考研看板/                         # 看板构建工程
 │   ├── build.py                         # 双模自适应构建引擎（纯 Python 标准库）
-│   ├── docs/index.html                  # 编译生成的单文件移动端看板
+│   ├── docs/index.html                  # 公开脱敏快照（发布用；本地完整版输出到仓库根 docs/.local/）
 │   └── README.md                        # 看板二次开发指引（本文档）
 │
 ├── docs/                                # GitHub Pages 发布源镜像与高清矢量图谱

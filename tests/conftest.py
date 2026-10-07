@@ -95,6 +95,19 @@ _PROTECTED_NAMES = {
     "HISTORY_FILE": REAL_HISTORY,
 }
 
+#: 受保护的**工作区数据文件**（不是模块属性，无法靠重定向拦截，只能快照兜底）：
+#: 四科「今日任务.md」。它们是考生真实数据，但 2026-10-07 前不在任何守卫范围：
+#: 报到路径（REPL/GUI 报到分支）在调用方未传 ``workspace_root`` 时回落模块级
+#: ROOT（真实仓库根），把「今日任务.md」写进真实工作区；在 fresh clone / CI /
+#: 发布副本上则是**凭空创建**四科文件（连带看板占位符用例时序性变红、
+#: CI 工作区被污染）。此处纳入 per-test 绊线：写入即还原并硬失败。
+_PROTECTED_WORKSPACE_FILES = (
+    ROOT / "01-数学" / "_状态" / "今日任务.md",
+    ROOT / "02-英语" / "_状态" / "今日任务.md",
+    ROOT / "03-思想政治理论" / "_状态" / "今日任务.md",
+    ROOT / "04-专业课" / "_状态" / "今日任务.md",
+)
+
 #: 受保护的全局名 -> 重定向后的文件名（放在 per-test tmp_path 下）
 _TMP_FILENAMES = {
     "CONFIG_FILE": "ky_config.json",
@@ -235,7 +248,7 @@ def _install_import_hook(tmp_path: Path, monkeypatch) -> None:
 def _protect_real_ky_config(tmp_path, monkeypatch, request):
     """(a) 主动重定向 + (b) 兜底绊线。绊线为硬失败，不得改为 warning。"""
     snapshots = {}
-    for path in (REAL_CONFIG, REAL_HISTORY):
+    for path in (REAL_CONFIG, REAL_HISTORY, *_PROTECTED_WORKSPACE_FILES):
         try:
             snapshots[path] = path.read_bytes() if path.exists() else None
         except OSError:
@@ -278,12 +291,34 @@ def _protect_real_ky_config(tmp_path, monkeypatch, request):
         details = "；".join(f"{p.name}: {note}" for p, note in polluted)
         pytest.fail(
             f"[tripwire] 测试 {request.node.nodeid} 污染了真实 {details}。"
-            f" 必须把 CONFIG_FILE/HISTORY_FILE 重定向到 tmp_path"
-            f"（本文件已扫描 sys.modules 全量模块并挂钩 import，若仍被写说明"
-            f"写入者绕开了模块全局或使用了硬编码路径）。"
+            f" 修复：CONFIG_FILE/HISTORY_FILE 走 conftest 重定向（本文件已扫描"
+            f" sys.modules 全量模块并挂钩 import，若仍被写说明写入者绕开了模块"
+            f"全局或使用了硬编码路径）；「今日任务.md」等由调用方显式传"
+            f" workspace_root=tmp_path（报到/建档路径未传时会回落模块级 ROOT）。"
             f" 仍指向真实路径的模块：{_blame_modules()}",
             pytrace=False,
         )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_approval_audit(tmp_path, monkeypatch):
+    """审批审计隔离：PermissionManager 默认把审计写到**工作区父目录**；
+    测试里不传 workspace_root 时（cwd = 真实仓库）会落到真实桌面。
+    统一经 ``KY_APPROVAL_AUDIT_ROOT`` 指向 per-test 临时目录。
+    需要验证默认落点解析逻辑的测试可自行 ``delenv`` 后显式断言。"""
+    monkeypatch.setenv("KY_APPROVAL_AUDIT_ROOT",
+                       str(tmp_path / ".kaoyan_chain_audit"))
+
+
+@pytest.fixture(autouse=True)
+def _isolate_grading_traces(monkeypatch):
+    """判卷留痕隔离：真实判分路径（mock LLM）会把 traces 写进
+    ``<workspace>/data/grading/traces/<日期>.jsonl``；未设 ``KY_WORKSPACE_ROOT``
+    时即**真实工作区**（2026-10-06 实测：test_c4 回放每次运行向真实工作区写
+    约 119 条合成 trace）。统一经 ``KY_GRADING_TRACE=0`` 关闭留痕。
+    留痕功能自身的测试（tests/test_grading_trace.py）自行 ``delenv`` 解除，
+    并走 ``KY_WORKSPACE_ROOT`` 指向的 tmp 工作区。"""
+    monkeypatch.setenv("KY_GRADING_TRACE", "0")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

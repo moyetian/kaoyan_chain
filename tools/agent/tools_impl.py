@@ -1183,6 +1183,12 @@ class ToolRegistry:
         # 4. Git 工具
         # ─────────────────────────────────────────────────────────────
 
+        # [修复 2026-10-05·git 工具无超时] 与 run_command 的 [1, 300] clamp
+        # 同口径（不超过 300s 上限）：git status/diff 正常亚秒级返回，但出现
+        # 锁等待 / 凭据提示 / 巨型 diff 等异常时会无限挂起，卡死整个 agent loop。
+        # 这里取 60s（比 run_command 上限更保守），超时返回可读错误。
+        _GIT_QUERY_TIMEOUT_SECONDS = 60
+
         @self.register(
             name="git_status",
             desc="查看当前工作区 Git 版本控制状态与未暂存修改。",
@@ -1190,9 +1196,14 @@ class ToolRegistry:
             level=PermissionLevel.READ_ONLY
         )
         def git_status() -> str:
-            res = subprocess.run(["git", "status", "--short"], shell=False,
-                                 cwd=str(self.sandbox.workspace_root),
-                                 capture_output=True, text=True, errors="replace")
+            try:
+                res = subprocess.run(["git", "status", "--short"], shell=False,
+                                     cwd=str(self.sandbox.workspace_root),
+                                     capture_output=True, text=True, errors="replace",
+                                     timeout=_GIT_QUERY_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                return (f"Error: git status 执行超时 "
+                        f"({_GIT_QUERY_TIMEOUT_SECONDS}秒)，已中止（工作区可能被锁或 git 异常挂起）")
             return res.stdout.strip() or "工作区干净，无未提交更改"
 
         @self.register(
@@ -1218,7 +1229,13 @@ class ToolRegistry:
                     cmd.extend(["--", str(safe_p)])
                 except Exception as e:
                     return f"Error 路径校验失败: {e}"
-            res = subprocess.run(cmd, shell=False, cwd=str(self.sandbox.workspace_root), capture_output=True, text=True, errors="replace")
+            try:
+                res = subprocess.run(cmd, shell=False, cwd=str(self.sandbox.workspace_root),
+                                     capture_output=True, text=True, errors="replace",
+                                     timeout=_GIT_QUERY_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                return (f"Error: git diff 执行超时 "
+                        f"({_GIT_QUERY_TIMEOUT_SECONDS}秒)，已中止（工作区可能被锁或 git 异常挂起）")
             return res.stdout[:TOOL_OUTPUT_LIMITS["git_diff_chars"]].strip() or "无 Diff 差异"
 
         # ─────────────────────────────────────────────────────────────

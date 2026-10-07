@@ -41,13 +41,13 @@ try:
     from tools.cli.shared import (
         ROOT, SUBJECT_DIRS, COACHING_STYLES, load_config, read_text_safe,
         get_today_tasks_data, is_math_disabled, recommended_checkin_command,
-        interpreter_hint,
+        resolve_active_subject,
     )
 except ImportError:
     from cli.shared import (
         ROOT, SUBJECT_DIRS, COACHING_STYLES, load_config, read_text_safe,
         get_today_tasks_data, is_math_disabled, recommended_checkin_command,
-        interpreter_hint,
+        resolve_active_subject,
     )
 
 try:
@@ -434,14 +434,21 @@ _BANNER = r"""
 _WELCOME_STEPS = (
     ("装载考研全科中枢总控协议 (AGENTS.md)...", 0.04),
     ("唤醒 {skills}考研专有技能 ({preview})...", 0.04),
-    ("启动 Web 实时可视化伴侣 (:{port}/live)...", 0.04),
+    ("启动 Web 实时可视化伴侣 ({port})...", 0.04),
 )
 
 
-def print_welcome(live_port: int = 8088, animate: bool = True) -> None:
-    """启动横幅欢迎大屏与技能唤醒动画（Rich 版：单色品牌横幅 + 键值面板）。"""
+def print_welcome(live_port: Optional[int] = 8088, animate: bool = True) -> None:
+    """启动横幅欢迎大屏与技能唤醒动画（Rich 版：单色品牌横幅 + 键值面板）。
+
+    [F10 修复·伴侣未启动] ``live_port`` 允许为 ``None``（网关启动失败）：
+    此时地址一律显示「未启动」，不再渲染 ``:None/live`` 这类无效地址
+    （loop.py 已不再把失败兜底成 8088 后宣称「已就绪」）。
+    """
     console = _console()
     st = _styles()
+    #: 伴侣地址文案（None = 未启动，纯展示，不影响对话）
+    _port_text = f":{live_port}/live" if live_port else "未启动"
     try:
         _skills_map = list_skills() or {}
     except Exception:
@@ -467,7 +474,7 @@ def print_welcome(live_port: int = 8088, animate: bool = True) -> None:
     if animate:
         for step, delay in _WELCOME_STEPS:
             text = step.format(skills=skill_count_text, preview=skill_preview,
-                               port=live_port)
+                               port=_port_text)
             sys.stdout.write(f"  ⠋ {text}")
             sys.stdout.flush()
             time.sleep(delay)
@@ -482,7 +489,8 @@ def print_welcome(live_port: int = 8088, animate: bool = True) -> None:
     days_left = (exam_date - today).days
 
     cfg = load_config()
-    curr_subj = cfg.get("active_subject", "math")
+    # [F8 修复·不考数学默认激活数学] 统一解析（见 shared.resolve_active_subject）
+    curr_subj = resolve_active_subject(cfg)
     subj_name = SUBJECT_DIRS.get(curr_subj, ("01-数学", "数学"))[1]
     provider = cfg.get("api_provider", "deepseek")
     model_name = cfg.get("model", "deepseek-chat")
@@ -515,7 +523,7 @@ def print_welcome(live_port: int = 8088, animate: bool = True) -> None:
     info.add_row(Text("模型", style=st["muted"]),
                  Text(f"{provider}/{model_name}", style=st["value"]))
     info.add_row(Text("网页伴侣", style=st["muted"]),
-                 Text(f":{live_port}/live", style=st["value"]))
+                 Text(_port_text, style=st["value"]))
     info.add_row(Text("技能", style=st["muted"]), Text(skill_status_text, style=st["ok"]))
 
     shortcuts = Text("快捷指令速查（随时输入 / 展开完整指令大盘）：", style=st["muted"])
@@ -591,6 +599,8 @@ def _palette_sections(math_off: bool) -> List[Tuple[str, List[Tuple[str, str]]]]
             ("/review", "FSRS 错题盲盒重测（隐去原答案，独立重做，通过后出库）"),
             ("/hint", "苏格拉底微步骤启发（拒绝全解剧透，分级引导突破口）"),
             ("/done <词>", "快速将今日任务标记为完成并同步回写文件"),
+            ("/save", "一键将上一题的批改结论与错因记入错题本（同快捷键 [2]）"),
+            ("/submit", "交作业入口：三种提交方式指引（同中文口令「交作业」）"),
             ("/batch", "客观题答题卡批量对题（快速比对选项，统计正确率与错题归因）"),
             ("/img <路径>", "上传草稿纸或截图，逐行批改、采分点打分与 LaTeX 题干提取"),
             # [W13 R2-4c 修复·大盘缺项] 「交作业」菜单第 1 步推荐 /paste，但指令
@@ -603,6 +613,13 @@ def _palette_sections(math_off: bool) -> List[Tuple[str, List[Tuple[str, str]]]]
         ]),
         ("🌐 前端联动与外设协同", [
             ("/view", "打开实时可视化网页伴侣（印刷级 KaTeX 排版与双端同步）"),
+            # [F11 修复·大盘缺项] 以下指令在 loop.py 中均真实存在，此前未列出：
+            # 用户在大盘里找不到 /menu、/gui、/wechat、/bridge、/clawbot 等入口。
+            ("/menu", "进入 TUI 终端全景导航中枢（退出后重新输入 ky 回到对话）"),
+            ("/gui", "启动图形界面操作端（PySide6 可视化看板）"),
+            ("/wechat", "微信搜一搜检索目标院校与专业的最新资讯"),
+            ("/bridge", "查看钉钉/飞书/QQ/微信「双向对话讲题」接入指南"),
+            ("/clawbot", "启动微信个人号 ClawBot 扫码连接器"),
             ("/notify", "一键向微信、钉钉、飞书、QQ 群广播今日考研晨报与自测卡片"),
             ("/build", "重新编译并刷新本地与手机自测看板（或直接输入「更新看板」）"),
         ]),
@@ -616,6 +633,7 @@ def _palette_sections(math_off: bool) -> List[Tuple[str, List[Tuple[str, str]]]]
             ("/gain", "学习增益代理指标周趋势报告（复测通过率/错因复发/计划完成率，本地落盘）"),
             ("/rollback", "快照回滚：默认回最近一次；`/rollback --list` 查看快照，--file/--checkpoint 精确回滚"),
             ("/plan", "个人专属定制化必考方案向导（时间/考纲/白名单/学情摸底/作息）"),
+            ("/subject", "查看与管理各科考试大纲挂载与科目设置"),
             ("/status", "查看考研总战役大盘态势、倒计时与目标矩阵"),
             ("/config", "分类多选管理菜单：配置大模型 API 与机器人 Webhook"),
             ("/clear", "清空当前会话上下文"),
@@ -815,6 +833,19 @@ def print_status_summary() -> None:
 
 def print_today_tasks_summary(as_json: bool = False, show_flash: bool = True) -> None:
     """读取并打印四科今日真实任务清单，支持终端全彩或结构化 JSON"""
+    # [审查修复·任务文件跨天不刷新] 读取侧兜底：先把非当日的「今日任务.md」
+    # 按当日重写，再读状态 —— 否则考生当天不报到时，面板与 JSON 给的都是
+    # 昨天的任务（实测 10-03 读到 10-02）。只动过期文件，当日文件与勾选不变；
+    # 失败静默跳过（读取不得因兜底而失败）。三端（ky today / REPL /today / TUI）
+    # 共用本函数，故只需在此一处收口。
+    try:
+        try:
+            from tools.study_planner import refresh_stale_today_tasks
+        except ImportError:
+            from study_planner import refresh_stale_today_tasks
+        refresh_stale_today_tasks()
+    except Exception:
+        pass
     if as_json:
         print(json.dumps(get_today_tasks_data(), ensure_ascii=False, indent=2))
         return
@@ -839,6 +870,12 @@ def print_today_tasks_summary(as_json: bool = False, show_flash: bool = True) ->
              for key in ("math", "eng", "pol", "pro") if key in _active_keys]
     if not subjs:
         subjs = [(key, dir_name, label) for key, (dir_name, label) in _display.items()]
+    # [F8 修复·/today 空任务指路] 此前提示「输入 /plan 一键生成」——/plan 会启动
+    # 2~3 分钟的完整建档向导，而生成单科今日任务的真实入口是「[科目]报到」
+    # （报到分支会调 ensure_subject_today_task 生成当日任务文件）。口令与
+    # CHINESE_SUBJECT_MAP 单源，按科目 key 映射（政治≠「思想政治理论报到」）。
+    _checkin_names = {"math": "数学报到", "eng": "英语报到",
+                      "pol": "政治报到", "pro": "专业课报到"}
     try:
         # [P2-3 修复·研招速递噪音] 三道闸：① ky_config.json 开关
         # (study_plan.news_flash=false 关闭)；② --no-flash 单次关闭；
@@ -916,8 +953,9 @@ def print_today_tasks_summary(as_json: bool = False, show_flash: bool = True) ->
             console.print(table)
             console.print()
         else:
-            console.print(Text(f"  【{label}】: 暂未生成今日任务，输入 /plan 一键生成。\n",
-                               style=subject_style))
+            console.print(Text(
+                f"  【{label}】: 暂未生成今日任务，输入「{_checkin_names.get(key, label + '报到')}」即可生成。\n",
+                style=subject_style))
     # [R2-A4 修复] 提示口令必须指向真实可用的科目：不考数学时不得再写「数学报到」。
     _checkin = recommended_checkin_command(load_config())
     tip = Text("💡 开始学习口令: 输入 ", style=st["muted"])
@@ -965,7 +1003,9 @@ def print_rag_results(outcome, query: str) -> None:
     # ── 降级提示（先于结果展示，避免用户误读结果性质）──
     if getattr(outcome, "degraded", False):
         reason = getattr(outcome, "degrade_reason", "") or "原因未知"
-        warn = Text("⚠️ 已降级：本次仅词法检索", style=st["warn"])
+        # [R4 #207 修复] 前缀不得写死「本次仅词法检索」：词法分支失败时
+        # 本次可能只有向量结果（甚至没有）——具体口径交给 reason 正文。
+        warn = Text("⚠️ 检索已降级", style=st["warn"])
         warn.append(f"\n   {reason}", style=st["muted"])
         warn.append(f"\n   词法召回 {getattr(outcome, 'lexical_count', 0)} 条 · "
                     f"向量召回 {getattr(outcome, 'vector_count', 0)} 条",
@@ -973,12 +1013,21 @@ def print_rag_results(outcome, query: str) -> None:
         console.print(Panel(warn, border_style=st["warn"], box=box.ROUNDED))
 
     if not results:
+        # [R4 #207 修复] 词法分支失败时 0 条结果**不代表**知识库为空：
+        # 必须与「真的没搜到」区分，否则复现「检索坏了 → 提示知识库是空的」
+        # 这条误导文案（R4 仿真三副本实测）。
+        if getattr(outcome, "lexical_failed", False):
+            hint = Text("   检索未完成（词法分支本次失败，见上方原因）——"
+                        "这不代表知识库中没有相关内容，请重试。", style=st["muted"])
+            console.print(hint)
+            console.print()
+            return
         hint = Text("   没有匹配的片段。", style=st["muted"])
         # [C5] 提示必须指向**真实可用**的数据通路：ky ingest 只把题卡归档到
-        # 各科 参考资料/ 目录，并不会写知识库；建索引的是 indexer.build_index()
-        # （目前没有 ky 子命令，只能直接跑该脚本）。此处不得写「ky ingest 即可检索」。
+        # 各科 参考资料/ 目录，并不会写知识库；建索引走 ky index。
+        # [2026-10-05] 建索引已补上 ky index 子命令，不再引导手敲脚本路径。
         hint.append("\n   知识库是空的/未建索引时：先 ky ingest <文件> 把题卡归档，"
-                    f"再执行 {interpreter_hint()} tools/search/indexer.py 建索引。", style=st["muted"])
+                    "再执行 ky index 建索引。", style=st["muted"])
         hint.append("\n   已建索引却搜不到，换个更具体的考点关键词再试。", style=st["muted"])
         console.print(hint)
         console.print()

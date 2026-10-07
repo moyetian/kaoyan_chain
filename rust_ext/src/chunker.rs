@@ -155,8 +155,22 @@ fn parse_single_block_dict(
     stem = score_prefix_pattern.replace(&stem, "").trim().to_string();
 
     // 识别题型与选项
-    let opt_pattern = Regex::new(r"(?:\n|^|\s+)([A-D])[\.、\s]+([^\n\rA-D]+)").unwrap();
-    let opt_matches: Vec<_> = opt_pattern.captures_iter(&stem).collect();
+    // [审查修复·选项边界泄漏/正文截断] 旧式
+    // `(?:\n|^|\s+)([A-D])[\.、\s]+([^\n\rA-D]+)` 有两处缺陷：
+    //   ① 裸空白分支把行内任意「空白 + 单个 A-D 字母 + 空白」当选项，实测大题
+    //      标题「## Part C 英译汉」被抽成选项 `C. 英译汉`（题 21 选项 4→5，
+    //      随题卡进组卷）；
+    //   ② 正文段 `[^\n\rA-D]+` 禁止 A-D 字母，`A. DNA 是遗传物质` 被截成
+    //      `A. `、`B. RNA 只存在于细胞质` 截成 `B. RN`（选项内容静默丢失）。
+    // 现改为行首锚定（紧凑单行选项已由 Python 侧 _split_compact_options 预拆行）
+    // 且正文允许 A-D 字母，与 Python 参考实现 _OPT_MATCH_RE 同口径；Rust regex
+    // 不支持前瞻，故「A/B/X 型题」分段标题的排除由下方 starts_with 过滤承担。
+    let opt_pattern = Regex::new(
+        r"(?m)^[ \t]*(?:[-*+>][ \t]*)?([A-D])[ \t]*(?:[\.、．)）][ \t]*)?([^\n\r]+?)[ \t]*$"
+    ).unwrap();
+    let opt_matches: Vec<_> = opt_pattern.captures_iter(&stem)
+        .filter(|om| !om.get(2).map(|m| m.as_str().trim().starts_with("型题")).unwrap_or(false))
+        .collect();
     let q_type: String;
     let final_score: usize;
     let mut options = Vec::new();

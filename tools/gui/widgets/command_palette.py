@@ -2,7 +2,7 @@
 """P2 组件族：Ctrl+K 命令面板（Raycast 模式）
 
 [为什么需要]
-导航收敛到 rail 后仍有 14 个条目（4 页面 + 10 工具），逐个用眼睛找太慢。
+导航收敛到 rail 后仍有 16 个条目（4 页面 + 12 工具），逐个用眼睛找太慢。
 命令面板把「全部导航项 + 全部工具动作」放进一个可搜索列表：输入即过滤，
 ↑↓ 选择，Enter 执行，Esc 关闭。
 
@@ -43,7 +43,10 @@ TOOL_PREFIX = "tool:"
 
 #: CLI 主命令总数（``ky commands`` 实测口径）——单一真源：
 #: 面板提示文案与 rail 审计声明（``views/nav_rail.py``）共用本常量。
-CLI_MAIN_COMMAND_COUNT = 43
+#: [2026-10-05 同步] 新增 ``ky index`` 命令（建索引 CLI 入口），44 → 45。
+#: [2026-10-06 同步] 新增 ``ky grade-regress`` 命令（判卷 prompt 回归对比），45 → 46。
+#: [2026-10-06 同步] 新增 ``ky budget``（输出预算档位），46 → 47。
+CLI_MAIN_COMMAND_COUNT = 47
 
 #: 分组标题行的 UserRole 值：空 key（``visible_keys()`` 过滤；执行前二次拦截）
 GROUP_HEADER_KEY = ""

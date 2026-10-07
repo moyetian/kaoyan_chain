@@ -17,12 +17,14 @@ from typing import Any, Dict, Optional
 try:
     from tools.cli.shared import (
         ROOT, CONFIG_FILE, SUBJECT_DIRS, DEFAULT_CONFIG,
-        load_config, save_config, read_text_safe, atomic_write_text
+        load_config, save_config, read_text_safe, atomic_write_text,
+        resolve_active_subject
     )
 except ImportError:
     from cli.shared import (
         ROOT, CONFIG_FILE, SUBJECT_DIRS, DEFAULT_CONFIG,
-        load_config, save_config, read_text_safe, atomic_write_text
+        load_config, save_config, read_text_safe, atomic_write_text,
+        resolve_active_subject
     )
 
 try:
@@ -340,7 +342,8 @@ def show_config(cfg: Dict[str, Any]) -> None:
     else:
         masked_key = _mask_secret(curr_key)
     print(f"  - API 密钥:   {masked_key}")
-    print(f"  - 当前学科:   {SUBJECT_DIRS.get(cfg.get('active_subject','math'), ('',''))[1]}")
+    # [F8 修复·不考数学默认激活数学] 统一经 resolve_active_subject 解析
+    print(f"  - 当前学科:   {SUBJECT_DIRS.get(resolve_active_subject(cfg), ('',''))[1]}")
 
     hooks = cfg.get("webhooks", {})
     print(colorize("\n--- 机器人 Webhook 配置状态 ---", C.CYAN))
@@ -503,7 +506,11 @@ def manage_syllabi_cli(cfg: Dict[str, Any]) -> None:
         # [P2-12 修复·护理考生无预设] 308 护理综合：写入模块骨架（含【待自填】告警）
         print("    [4] 全国统考/自命题 308 护理综合 (载入模块骨架，须按目标院校官网核验)")
         print("    [5] 全国统考 312 心理学专业基础综合 (载入模块索引，须按当年大纲核验)")
-        p_sel = input("  请选择 (1~5) [默认 3]: ").strip() or "3"
+        # [2026-10-06 批次·内置统考/联考/自命题大纲] 注册表入口（清单动态生成）
+        _builtin_codes = syllabus_manager.builtin_pro_syllabus_codes()
+        print(f"    [6] 更多内置统考/联考/自命题大纲 (按科目代码载入，共 {len(_builtin_codes)} 科；"
+              f"自命题为参考框架，以院校官方大纲为准)")
+        p_sel = input("  请选择 (1~6) [默认 3]: ").strip() or "3"
         pro_outline = ROOT / "04-专业课" / "考试大纲.md"
         existed_outline = pro_outline.exists()
         if existed_outline:
@@ -511,9 +518,28 @@ def manage_syllabi_cli(cfg: Dict[str, Any]) -> None:
             if bak:
                 print(colorize(f"  [i] 已将原大纲备份至: {bak.name}", C.CYAN))
 
+        # [2026-10-06 批次·内置统考/联考大纲] [6] 按代码选择内置大纲；未命中回退自命题
+        _pro_type = ("408" if p_sel == "1" else
+                     ("199" if p_sel == "2" else
+                      ("308" if p_sel == "4" else
+                       ("312" if p_sel == "5" else "custom"))))
+        if p_sel == "6":
+            _sel = syllabus_manager.prompt_builtin_pro_selection()
+            if _sel:
+                _pro_type, pro_title = _sel
+                atomic_write_text(
+                    pro_outline,
+                    syllabus_manager.builtin_pro_syllabus(_pro_type, "")["content"])
+            else:
+                p_sel = "3"  # 回退自命题流程
         if p_sel == "1":
             atomic_write_text(pro_outline, syllabus_manager.CS408_SYLLABUS)
             pro_title = "408 计算机学科专业基础"
+        elif p_sel == "2":
+            # [菜单修齐] 此前 [2] 199 无对应分支、落入自命题输入（选了 199 却不写
+            # 199 大纲），与 init_workspace / ky plan 的 [2]=199 行为不一致；现补齐。
+            atomic_write_text(pro_outline, syllabus_manager.MGMT199_SYLLABUS)
+            pro_title = "199 管理类综合能力"
         elif p_sel == "4":
             # [P2-12] 308 护理综合：模块骨架 + 【待自填】告警，不虚构逐章考点
             atomic_write_text(pro_outline, syllabus_manager.NURSING308_SYLLABUS)
@@ -521,7 +547,7 @@ def manage_syllabi_cli(cfg: Dict[str, Any]) -> None:
         elif p_sel == "5":
             atomic_write_text(pro_outline, syllabus_manager.PSYCHOLOGY312_SYLLABUS)
             pro_title = "312 心理学专业基础综合"
-        else:
+        elif p_sel == "3":
             pro_title = input("  请输入专业课代码与名称 [如 801 信号与系统]: ").strip() or "专业课"
             existing_txt = read_text_safe(pro_outline) if existed_outline else ""
             has_real_content = (
@@ -542,10 +568,7 @@ def manage_syllabi_cli(cfg: Dict[str, Any]) -> None:
         txt = read_text_safe(pro_agents)
         txt = re.sub(r"- \*\*专业课科目代码与名称\*\*：.*", f"- **专业课科目代码与名称**：`{pro_title}`", txt)
         atomic_write_text(pro_agents, txt)
-        _persist_subject(pro_type=("408" if p_sel == "1" else
-                                   ("308" if p_sel == "4" else
-                                    ("312" if p_sel == "5" else "custom"))),
-                         pro_name=pro_title)
+        _persist_subject(pro_type=_pro_type, pro_name=pro_title)
         print(colorize(f"\n[√] 专业课已更新为: {pro_title}！", C.GREEN))
     elif c == "4":
         init_py = ROOT / "tools" / "init_workspace.py"

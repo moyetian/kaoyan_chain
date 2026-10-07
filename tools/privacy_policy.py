@@ -201,6 +201,13 @@ DEV_SCRATCH_DIRS = frozenset({
     # （dry-run 实测 copy 清单首屏全是 ``.checkpoint\ckpt_*\...``）。
     # 与 .config_backup 同族：留档/快照目录必须在同一次改动里同步进导出排除名单。
     ".checkpoint",
+    # [2026-10-07 推送前核查] 多考生仿真工作流的产物目录：``.sim_tools`` 是仿真
+    # 驱动工具与 ``SIM_PROTOCOL*.md``（AI 代理的工作区），``.sim_logs`` 是仿真
+    # 日志与报告。二者**既未被 .gitignore 覆盖，也不在旧的排除名单里**，且主仓库
+    # 未跟踪 —— 导出副本走的是文件系统遍历（未跟踪 ≠ 不导出），于是整棵被镜像进
+    # 公开副本（推送前核查实测：两目录共 59 个文件）。与 .git_broken_backup 同族：
+    # 本机干活时的副产物，必须在导出层根级整棵排除。
+    ".sim_logs", ".sim_tools",
 })
 
 #: 根级整棵排除的目录（构建产物 + 开发脚手架）。
@@ -216,12 +223,16 @@ ROOT_ONLY_EXCLUDE_DIRS = BUILD_ARTIFACT_DIRS | DEV_SCRATCH_DIRS
 #:   - ``data/knowledge/``：检索知识库（KnowledgeStore 首次使用/切片入库时
 #:     自动生成的 sqlite 向量库）。它是**运行时产物**、可由「切片入库」重建，
 #:     且一旦学员用 ``ky ingest`` 入库自己的真题资料，库内就会含资料正文。
+#:   - ``data/grading/``：判卷明细留痕（grading_trace 追加写入的 JSONL，
+#:     含题面与学员作答原文、评审分与仲裁结论）。同属**运行时产物**，
+#:     且一旦学员提交过作答，文件内即含其作答全文。
 #: 注意：``data/universities/registry.json`` 与 ``national_institutions.json``
 #: 是**要发布**的公开派生库，**不得**加入本清单。
 NON_PUBLISH_PATH_PREFIXES: Tuple[Tuple[str, ...], ...] = (
     ("data", "universities", "_sources"),
     ("data", "universities", "exam_subjects.json"),
     ("data", "knowledge"),
+    ("data", "grading"),
     # [2026-09-24 检查补漏] 与 .gitignore 逐条对齐的本地产物（导出层此前未对齐）：
     #   - 05-考研看板/docs/（.gitignore:73）：看板构建产物，发布版在根 docs/；
     #   - scripts/gui_shots/（.gitignore:11）：GUI 冒烟截图与 result.json，
@@ -293,6 +304,13 @@ PRIVATE_WORKSPACE_ONLY_PATHS: Tuple[Tuple[str, ...], ...] = (
     # 同族引用 sp.dir_should_exclude / sp.file_should_exclude / sp.EXCLUDE_DIRS，
     # 一旦 BACKUP_MARK 判据调整就会漏进副本。
     ("tests", "test_fix_config_backup_exclusion.py"),
+    # [2026-10-07 推送前核查] 同族第四个：本文件测导出排除名单（新增的
+    # 「修复记录」内部文档模式 + ``.sim_logs`` / ``.sim_tools`` 仿真目录）与
+    # ``sp.python_mirror()`` 真实遍历，同样 import sync_publish —— 副本里它是
+    # 4 行占位 → 留在副本会让公开 CI 恒红。判据同前：grep 该测试是否
+    # import sync_publish / build_package，且目标模块在副本里被 neutralize，
+    # 必须同批进本清单。
+    ("tests", "test_fix_20261007_publish_exclusions.py"),
 )
 
 #: 备份文件标记：任何带此标记的文件都是历史快照，绝不发布（含私有目录白名单内）。
@@ -320,6 +338,12 @@ INTERNAL_DOC_PATTERNS: Tuple[str, ...] = (
     # 任何清单里，被文件系统遍历原样导出到公开副本 —— 与「审查报告」同类
     # （含内部短板实测记录），任何位置都不得进入发布物。
     "*评审*.md",
+    # [2026-10-07 推送前核查] 「修复记录」类内部文档（如
+    # ``深度修复记录_<目标院校>_<专业>.md``：记录本机仿真考生的深度修复过程，
+    # 含真实校名与本机工作区路径）此前不在任何名单里，被文件系统遍历原样导出
+    # 到公开副本。全仓扫描「修复记录」子串仅此一份文档（含 git 历史），
+    # 按类排除无误伤面；与「审查报告 / 评审」同为内部工作记录，任何位置不得发布。
+    "*修复记录*.md",
 )
 
 

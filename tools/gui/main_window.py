@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -59,6 +60,11 @@ except ImportError:  # pragma: no cover
 
 CONFIG_FILE = ROOT / "ky_config.json"
 
+#: [修复④] 恢复会话时载入聊天页的消息条数上限（防超长会话卡 UI）。与
+#: ``session_log.RESUME_TAIL_MESSAGES=12`` 是两回事：后者是 AgentRunner 重建
+#: 上下文用的条数，这里是「给人看」的回放条数。
+RESTORE_TAIL_MESSAGES = 60
+
 #: 页面标题的唯一真源在 views/nav_rail.NAV_VIEWS（rail 的「视图」组同源）
 TAB_TITLES = tuple(title for _icon, title in views.nav_rail.NAV_VIEWS)
 
@@ -72,6 +78,15 @@ class MainWindow(QMainWindow):
         # 再次发送时被覆盖会导致运行中线程对象被 GC 销毁、进程直接崩溃。
         self.agent_worker = None
         self._worker_refs = []
+        # [缺陷修复·审批"本会话记住"跨消息失效] 进程级审批信任集：GUI 每条
+        # 消息新建 AgentWorker → 新建 GuiApproval，信任集必须由窗口持有并
+        # 透传（AgentWorker → GuiApproval → PermissionManager 共享同一 set），
+        # 否则勾选"本会话记住"只在本条消息内生效，下一条又会弹卡。
+        self._session_allowed_tools: set = set()
+        # Keep modal entry points alive and prevent duplicate nested dialogs
+        # when a toolbar click races the automatic onboarding timer.
+        self._settings_dialog = None
+        self._onboarding_wizard = None
         # [轻微泄漏修复] 微信检索对话框的唯一实例（惰性创建后长期复用）。
         # 旧实现 ``WeChatSearchDialog(self).exec()`` 用临时对象弹窗：exec() 返回后
         # Python 引用即失效，但对话框是主窗口的 Qt 子对象 → 每打开一次就留下一个
@@ -286,7 +301,19 @@ class MainWindow(QMainWindow):
             from gui.widgets.settings_dialog import SettingsDialog
         except ImportError:  # pragma: no cover
             from tools.gui.widgets.settings_dialog import SettingsDialog  # type: ignore
-        SettingsDialog(self).exec()
+        dialog = self._settings_dialog
+        if dialog is not None and dialog.isVisible():
+            dialog.raise_()
+            dialog.activateWindow()
+            return dialog
+        dialog = SettingsDialog(self, parent=self)
+        self._settings_dialog = dialog
+        dialog.finished.connect(
+            lambda _result, d=dialog: setattr(self, "_settings_dialog", None)
+            if self._settings_dialog is d else None
+        )
+        dialog.exec()
+        return dialog
 
     def _open_onboarding_wizard(self):
         """打开 5 步新手引导与个性化学情建档向导。"""
@@ -294,9 +321,24 @@ class MainWindow(QMainWindow):
             from gui.widgets.onboarding_wizard import OnboardingWizard
         except ImportError:  # pragma: no cover
             from tools.gui.widgets.onboarding_wizard import OnboardingWizard  # type: ignore
+        wizard = self._onboarding_wizard
+        if wizard is not None and wizard.isVisible():
+            wizard.raise_()
+            wizard.activateWindow()
+            return wizard.result()
         wizard = OnboardingWizard(self, workspace_root=self.workspace_root)
+        self._onboarding_wizard = wizard
         wizard.config_saved.connect(self.on_config_updated)
-        return wizard.exec()
+        wizard.finished.connect(
+            lambda _result, d=wizard: setattr(self, "_onboarding_wizard", None)
+            if self._onboarding_wizard is d else None
+        )
+        result = wizard.exec()
+        # Some offscreen test adapters implement exec() as show()+return and
+        # therefore never emit finished; do not leave a stale visible guard.
+        if not wizard.isVisible() and self._onboarding_wizard is wizard:
+            self._onboarding_wizard = None
+        return result
 
     def on_config_updated(self, config: dict):
         """向导或设置中心保存后即时热更新 GUI 界面，无需重启。"""
@@ -484,9 +526,82 @@ class MainWindow(QMainWindow):
             self._run_scout_from_dialog()
         elif alias == "compare":
             self._run_compare_from_dialog()
+        elif alias == "rag":
+            # [2026-10-06 补 GUI 入口] 检索需要关键词输入，故不能走 else 分支的
+            # 无参异步执行；建索引无入参，直接后台跑。
+            self._run_rag_from_dialog()
+        elif alias == "index":
+            self._run_index_action()
         else:
             self.tabs.setCurrentIndex(0)
             self._run_action_to_display(alias, self.chat_display, brief_to_chat=False)
+
+    def _run_rag_from_dialog(self):
+        """本地知识库检索：先取检索词，再后台执行（建库/加载模型可能耗时）。
+
+        走 ``gui.services.rag_search``（内部复用 ``ky rag`` 的
+        ``cli.commands.search.run_rag_search``），不在 GUI 侧另写检索逻辑。
+        """
+        # [为什么默认值留空] 知识库按「考点」切片，预填「专业名+代码」这类串
+        # 几乎必然 0 命中，考生会以为检索坏了。宁可让考生自己敲一个
+        # 考点词（对话框标题里已给示例）。
+        # [隐私] 举例一律用**通用学科词**（如「剩余价值」），不得写入考生真实
+        # 专业代码/校名——注释同样会被编译进发布包 exe 的 PYZ 层，且
+        # tests/test_privacy_identity_rules.py 会为此报红。
+        query, ok = QInputDialog.getText(
+            self, "本地知识库检索",
+            "请输入要检索的考点关键词（如：剩余价值 / 矛盾的普遍性）:"
+        )
+        if not ok or not query.strip():
+            self.chat_display.append("\n[i] 本地检索已取消：未输入检索关键词。")
+            return
+        self.tabs.setCurrentIndex(0)
+        self.chat_display.append(
+            f"\n▶ 正在检索本地知识库 [{query.strip()}] ...（只读本地索引，不联网）")
+
+        try:
+            from tools.gui.workers.intel_worker import IntelTaskWorker
+        except ImportError:  # pragma: no cover
+            from gui.workers.intel_worker import IntelTaskWorker  # type: ignore
+
+        worker = IntelTaskWorker("rag_search", self.workspace_root,
+                                 {"query": query.strip()})
+        self._worker_refs.append(worker)
+        worker.log_signal.connect(lambda text: self.chat_display.append(text))
+        worker.finished_signal.connect(
+            lambda out, saved: self.chat_display.append(out if out else "（无输出）"))
+        worker.error_signal.connect(
+            lambda err: self.chat_display.append(f"\n[×] 本地检索异常: {err}\n"))
+        worker.finished.connect(
+            lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.start()
+
+    def _run_index_action(self):
+        """本地知识库建索引：无入参，后台执行（切片 + 可选向量编码，耗时较长）。
+
+        走 ``gui.services.build_index``（复用 ``ky index`` 的唯一实现）。
+        不预建空库、不联网、不代造资料——资料为空时后端如实提示「没有找到
+        可索引的文档」，此处原样透出，不美化。
+        """
+        self.tabs.setCurrentIndex(0)
+        self.chat_display.append(
+            "\n▶ 正在后台构建本地知识库索引（只读本地院校库与各科 参考资料/，不联网）...")
+
+        try:
+            from tools.gui.workers.intel_worker import IntelTaskWorker
+        except ImportError:  # pragma: no cover
+            from gui.workers.intel_worker import IntelTaskWorker  # type: ignore
+
+        worker = IntelTaskWorker("index_build", self.workspace_root, {})
+        self._worker_refs.append(worker)
+        worker.log_signal.connect(lambda text: self.chat_display.append(text))
+        worker.finished_signal.connect(
+            lambda out, saved: self.chat_display.append(out if out else "（无输出）"))
+        worker.error_signal.connect(
+            lambda err: self.chat_display.append(f"\n[×] 建索引异常: {err}\n"))
+        worker.finished.connect(
+            lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.start()
 
     def _run_scout_from_dialog(self):
         """院校侦察：显式确认或输入目标高校，后台异步执行，绝不卡死界面。"""
@@ -498,6 +613,7 @@ class MainWindow(QMainWindow):
             self, "目标院校深度侦察", "请输入要侦察的高校名称:", text=default_sch
         )
         if not ok or not sch.strip():
+            self.intel_display.append("\n[i] 院校侦察已取消：未指定目标高校。")
             return
         sch = sch.strip()
         mj, ok2 = QInputDialog.getText(
@@ -505,6 +621,7 @@ class MainWindow(QMainWindow):
             text=info.get("major") or self.config.get("target_major") or ""
         )
         if not ok2:
+            self.intel_display.append("\n[i] 院校侦察已取消：未指定专业关键词。")
             return
         major = mj.strip() or info.get("major") or self.config.get("target_major") or ""
 
@@ -541,6 +658,7 @@ class MainWindow(QMainWindow):
             self, "选择要切片的真题 / 讲义文件", str(self.workspace_root),
             "题库文件 (*.md *.txt *.pdf);;所有文件 (*.*)")
         if not path:
+            self.chat_display.append("\n[i] 切片入库已取消：未选择待切片文件。")
             return
         self.tabs.setCurrentIndex(0)
         self.chat_display.append(f"\n▶ 正在切片入库 [{path}] ...")
@@ -563,11 +681,13 @@ class MainWindow(QMainWindow):
             self, "选择【基准(旧)】考纲文件", str(self.workspace_root / "04-专业课"),
             "Markdown (*.md *.txt);;所有文件 (*.*)")
         if not old_path:
+            self.chat_display.append("\n[i] 考纲 Diff 已取消：未选择基准（旧）考纲。")
             return
         new_path, _ = QFileDialog.getOpenFileName(
             self, "选择【最新】考纲文件", str(Path(old_path).parent),
             "Markdown (*.md *.txt);;所有文件 (*.*)")
         if not new_path:
+            self.chat_display.append("\n[i] 考纲 Diff 已取消：未选择最新考纲。")
             return
         self.tabs.setCurrentIndex(0)
         self.chat_display.append(
@@ -624,6 +744,7 @@ class MainWindow(QMainWindow):
             self, "双校对标", "请输入专业关键词（可选）:",
             text=info.get("major") or self.config.get("target_major") or "")
         if not ok3:
+            self.chat_display.append("\n[i] 双校对标已取消：未指定专业关键词。")
             return
         major = mj.strip() or info.get("major") or self.config.get("target_major") or ""
 
@@ -680,13 +801,47 @@ class MainWindow(QMainWindow):
             self._wechat_dialog = WeChatSearchDialog(self)
         self._wechat_dialog.exec()
 
+    #: 错题盲盒可选科目（key → 展示名，与 exam_composer.SUBJECT_DIRS 同键）。
+    #: [缺陷修复·只抽专业课] 此前 IntelTaskWorker("error_quiz", ...) 不传 params，
+    #: 固定回落 subject="pro" —— 英语/政治错题永远抽不到。现由考生选科目；
+    #: 数学按 is_math_disabled 单源判定过滤（不考数学时不出现在选项里）。
+    _QUIZ_SUBJECTS = (
+        ("pro", "专业课"), ("eng", "英语"), ("pol", "思想政治理论"), ("math", "数学"),
+    )
+
+    def _quiz_subject_options(self):
+        """按备考方案过滤错题盲盒可选科目。"""
+        out = []
+        for key, name in self._QUIZ_SUBJECTS:
+            if key == "math":
+                try:
+                    try:
+                        from cli.shared import is_math_disabled
+                    except ImportError:  # pragma: no cover
+                        from tools.cli.shared import is_math_disabled
+                    if is_math_disabled(self.config):
+                        continue
+                except Exception:
+                    pass
+            out.append((key, name))
+        return out
+
     def _generate_error_quiz(self):
         try:
             from tools.gui.workers.intel_worker import IntelTaskWorker
         except ImportError:  # pragma: no cover
             from gui.workers.intel_worker import IntelTaskWorker  # type: ignore
 
-        worker = IntelTaskWorker("error_quiz", self.workspace_root, {})
+        options = self._quiz_subject_options()
+        names = [name for _key, name in options]
+        chosen, ok = QInputDialog.getItem(
+            self, "错题盲盒自测卷", "选择要组卷的科目:", names, 0, False)
+        if not ok or not chosen:
+            self.chat_display.append("\n[i] 错题盲盒组卷已取消：未选择科目。")
+            return
+        subject = next(key for key, name in options if name == chosen)
+
+        worker = IntelTaskWorker("error_quiz", self.workspace_root, {"subject": subject})
         self._worker_refs.append(worker)
         worker.log_signal.connect(lambda text: self.chat_display.append(text))
 
@@ -738,7 +893,8 @@ class MainWindow(QMainWindow):
             from gui.workers.agent_worker import AgentWorker  # type: ignore
 
         self.agent_worker = AgentWorker(self.config, text,
-                                        workspace_root=self.workspace_root)
+                                        workspace_root=self.workspace_root,
+                                        session_allowed_tools=self._session_allowed_tools)
         self._worker_refs.append(self.agent_worker)
         # [S3 改善·流式输出与中间态上屏] 实时追加思考链、工具调用与文字片段
         self.agent_worker.chunk_signal.connect(self._on_agent_chunk)
@@ -754,16 +910,144 @@ class MainWindow(QMainWindow):
         """[K7-U1] 标记本窗口已发生过真实 Agent 会话（跨线程信号槽）。"""
         self._agent_session_ran = True
 
+    def _on_stop_agent(self):
+        """[缺陷修复·无法中断] 聊天区「停止」按钮：中止本轮回答并立即恢复可输入。
+
+        语义分两层：
+          * ``worker.cancel()`` 置取消位 —— 回调包装（_guarded_callback）会在
+            AgentRunner 的下一个步骤边界抛 AgentCancelled，终止 run 主循环；
+            LLM 请求在途期间无法打断，但请求返回后即终止。
+          * ``agent_worker`` 立即置 None —— 用户无需等旧线程收尾即可发下一条
+            消息；旧 worker 的迟到回复由 _on_agent_reply 的发送者校验丢弃。
+        """
+        worker = getattr(self, "agent_worker", None)
+        if worker is None:
+            self.chat_display.append("\n[i] 当前没有正在进行的回答。")
+            return
+        try:
+            running = worker.isRunning()
+        except RuntimeError:
+            running = False
+        if not running:
+            self.agent_worker = None
+            self.chat_display.append("\n[i] 当前没有正在进行的回答。")
+            return
+        try:
+            worker.cancel()
+        except Exception:
+            pass
+        self.agent_worker = None
+        self.chat_display.append(
+            "\n[i] 已停止本轮回答；私教将在当前请求返回后终止，可直接发送下一条消息。")
+
+    # ════════════════════════════════════════════════════════════
+    # 会话管理（历史 / 恢复 / 新建）——修复④
+    # ════════════════════════════════════════════════════════════
+
+    def _agent_is_running(self) -> bool:
+        """当前是否有正在跑的私教 worker（含 RuntimeError 防御，同 _on_send_message）。"""
+        worker = getattr(self, "agent_worker", None)
+        if worker is None:
+            return False
+        try:
+            return worker.isRunning()
+        except RuntimeError:
+            # 底层 C++ 对象已销毁：清掉句柄，按空闲处理
+            self.agent_worker = None
+            return False
+
+    def _on_open_sessions(self):
+        """「历史」按钮：打开会话列表；选中恢复时重建上下文并载入消息到聊天页。
+
+        恢复动作由「进程内共享会话 id」驱动（AgentWorker._shared_session_id =
+        所选 id）——后续每条消息新建的 worker 都会复用该 id，AgentRunner 构造
+        时自动从日志重建 history（loop.py._restore_history_from_log）。
+        """
+        if self._agent_is_running():
+            self.chat_display.append(
+                "\n[!] 私教仍在回答中，请先停止或等待完成后再切换会话。")
+            return
+        try:
+            from tools.gui.widgets.session_dialog import SessionDialog
+        except ImportError:  # pragma: no cover
+            from gui.widgets.session_dialog import SessionDialog  # type: ignore
+        dialog = SessionDialog(self.workspace_root, parent=self)
+        if not dialog.exec():
+            return
+        chosen = dialog.chosen_session_id()
+        if not chosen:
+            return
+        try:
+            from tools.gui.workers.agent_worker import AgentWorker
+        except ImportError:  # pragma: no cover
+            from gui.workers.agent_worker import AgentWorker  # type: ignore
+        AgentWorker._shared_session_id = chosen
+        self._apply_session_restore(chosen)
+
+    def _apply_session_restore(self, sid: str):
+        """把指定会话的历史消息回放到聊天页（尾部最近 RESTORE_TAIL_MESSAGES 条）。
+
+        只消费 ``user`` / ``assistant`` 事件（与 resume 重建同口径，工具事件
+        不上屏）；超长会话截断时先插一条系统气泡说明省略条数。
+        """
+        try:
+            from tools.agent.session_log import SessionLog, load_events
+        except ImportError:  # pragma: no cover
+            from agent.session_log import SessionLog, load_events  # type: ignore
+        self.chat_display.clear()
+        messages = []
+        try:
+            log = SessionLog(workspace_root=self.workspace_root, session_id=sid)
+            for evt in load_events(log.path):
+                if not isinstance(evt, dict):
+                    continue
+                etype = evt.get("type")
+                if etype not in ("user", "assistant"):
+                    continue
+                payload = evt.get("payload")
+                content = payload.get("content") if isinstance(payload, dict) else None
+                if isinstance(content, str) and content.strip():
+                    messages.append((etype, content))
+        except Exception:
+            messages = []
+        omitted = max(0, len(messages) - RESTORE_TAIL_MESSAGES)
+        if omitted:
+            self.chat_display.append(f"\n[i] （更早的 {omitted} 条消息已省略）")
+        for role, content in messages[-RESTORE_TAIL_MESSAGES:]:
+            if role == "user":
+                self.chat_display.add_user_message(content)
+            else:
+                self.chat_display.add_agent_message(content)
+        self.chat_display.append(
+            f"\n[i] 已恢复会话 {sid[:15]}，继续对话将接续上下文。")
+
+    def _on_new_session(self):
+        """「新建」按钮：开始一段新对话（旧对话已自动保存，可在历史中找回）。"""
+        if self._agent_is_running():
+            self.chat_display.append(
+                "\n[!] 私教仍在回答中，请先停止或等待完成后再新建会话。")
+            return
+        try:
+            from tools.gui.workers.agent_worker import AgentWorker
+        except ImportError:  # pragma: no cover
+            from gui.workers.agent_worker import AgentWorker  # type: ignore
+        AgentWorker._shared_session_id = None
+        self.chat_display.clear()
+        self.chat_display.append(
+            "\n[+] 已开始新对话（上一段对话已自动保存，可在「历史会话」中找回）。")
+
     def _on_agent_step(self, step_text: str):
-        """私教动作/思考链实时上屏（系统气泡），免除查看外部命令行黑框。"""
+        """私教动作/思考链实时上屏（收进默认收起的思考折叠块，不再占满页面）。"""
         if not step_text:
             return
-        self.chat_display.append(step_text.strip())
+        self.chat_display.append_step(step_text.strip())
 
     def _on_agent_chunk(self, chunk: str):
         """流式片段：续写当前私教气泡（不另起一条，保持一段话连续）。"""
         if not chunk:
             return
+        # 答案开始即封口思考折叠块：后续步骤会新起一块（区分「思考」与「作答」）
+        self.chat_display.finish_step_group()
         self._streamed = True
         self.chat_display.append_agent_chunk(chunk)
 
@@ -781,7 +1065,16 @@ class MainWindow(QMainWindow):
         """收尾：已流式输出过就只封口当前气泡；未流式（本地兜底路径）才整条补上。
 
         这样两类路径都能正确显示，且不会把答案打两遍。
+
+        [缺陷修复·停止后迟到回复] 点「停止」会把 ``agent_worker`` 置 None 并
+        允许立即发下一条消息；被停止的旧 worker 之后返回的回复必须丢弃，
+        否则会插到新对话中间。判据 = 发送者是否为当前活跃 worker。
         """
+        # 收尾即封口思考折叠块（放在发送者校验之前：迟到回复也保证不再续写旧块）
+        self.chat_display.finish_step_group()
+        w = self.sender()
+        if w is not None and w is not getattr(self, "agent_worker", None):
+            return
         if getattr(self, "_streamed", False):
             self.chat_display.finish_agent_message()
         else:
@@ -816,17 +1109,24 @@ class MainWindow(QMainWindow):
         # [B5 修复·关窗 abort] IntelTaskWorker/AgentWorker 均为无 parent 的
         # QThread，仅靠 _worker_refs 持有。任务进行中关窗会触发
         # "QThread: Destroyed while thread is still running" 导致进程 abort。
-        # 现先 cancel 再 quit+wait（2s 上限，不无限阻塞关窗）。
+        # 现先 cancel 再 quit+wait。
+        # [缺陷修复·关窗等待过短] 原先每个线程 wait(2000)：LLM 请求在途时 2s
+        # 远不够（流式单次读超时可达 90s），关窗后线程仍在跑 → 析构风险照旧。
+        # 现改为**全局 5s 截止**：cancel 后给每个在跑线程分配剩余时间等待，
+        # 总时长有界（不无限等待，不让关窗卡死）。
         for w in list(getattr(self, "_worker_refs", [])):
             try:
                 w.cancel()
             except Exception:
                 pass
+        deadline = time.monotonic() + 5.0
         for w in list(getattr(self, "_worker_refs", [])):
             try:
                 if w.isRunning():
                     w.quit()
-                    w.wait(2000)
+                    remaining = deadline - time.monotonic()
+                    if remaining > 0:
+                        w.wait(int(remaining * 1000))
             except Exception:
                 pass
         theme_apply.write_pref(theme_apply.KEY_LAST_TAB, self.tabs.currentIndex())

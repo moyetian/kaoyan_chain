@@ -93,6 +93,42 @@ _INSTALL_HINT = (
 )
 
 
+def _run_bench_process(cmd: Sequence[str], *args: str, **kwargs) -> subprocess.CompletedProcess:
+    """Run a benchmark command, including Windows ``.cmd`` launchers.
+
+    ``subprocess.run([path_to_cmd, ...])`` does not consistently invoke a
+    batch launcher on Windows.  That made an explicitly supplied test/CI
+    runner silently fall through to an unrelated PATH installation.  Keep the
+    returned command prefix unchanged while invoking batch files through the
+    shell only when required.
+    """
+    full = list(cmd) + list(args)
+    if os.name == "nt" and full and Path(full[0]).suffix.lower() in {".cmd", ".bat"}:
+        # Invoke cmd.exe explicitly.  Relying on shell=True makes the result
+        # depend on the parent test runner's shell state and can silently fall
+        # through to a PATH-installed kaoyanbench when a temp .cmd is used.
+        command = subprocess.list2cmdline(full)
+        argv = ["cmd.exe", "/d", "/s", "/c", command]
+        # Use Popen directly so a neighboring test that instruments the
+        # high-level subprocess.run helper cannot make an explicit runner
+        # silently disappear and trigger PATH fallback.
+        capture = kwargs.pop("capture_output", False)
+        text_mode = kwargs.pop("text", False)
+        encoding = kwargs.pop("encoding", None)
+        errors = kwargs.pop("errors", None)
+        if capture:
+            kwargs.setdefault("stdout", subprocess.PIPE)
+            kwargs.setdefault("stderr", subprocess.PIPE)
+        timeout = kwargs.pop("timeout", None)
+        proc = subprocess.Popen(argv, **kwargs)
+        out, err = proc.communicate(timeout=timeout)
+        if text_mode:
+            out = (out or b"").decode(encoding or "locale", errors or "strict") if isinstance(out, bytes) else out
+            err = (err or b"").decode(encoding or "locale", errors or "strict") if isinstance(err, bytes) else err
+        return subprocess.CompletedProcess(argv, proc.returncode, out, err)
+    return subprocess.run(full, **kwargs)
+
+
 def resolve_data_root(explicit: Optional[str]) -> Optional[Path]:
     """解析数据集根；显式路径不存在返回 None（调用方判 2）。"""
     root = Path(explicit).resolve() if explicit else _REPO_ROOT.joinpath(*DATA_ROOT_REL)
@@ -116,9 +152,9 @@ def find_bench_cli(explicit: Optional[str] = None) -> Optional[Tuple[List[str], 
 
     for cmd in candidates:
         try:
-            probe = subprocess.run(cmd + ["--version"], capture_output=True,
-                                   text=True, encoding="utf-8",
-                                   errors="replace", timeout=60)
+            probe = _run_bench_process(cmd, "--version", capture_output=True,
+                                       text=True, encoding="utf-8",
+                                       errors="replace", timeout=60)
         except (OSError, subprocess.TimeoutExpired):
             continue
         if probe.returncode == 0:
@@ -131,8 +167,8 @@ def run_bench(bench_cmd: Sequence[str], data_root: Path,
               sub_args: Sequence[str]) -> subprocess.CompletedProcess:
     """执行一条评测器命令（``--root`` 指向本仓库数据集）。"""
     cmd = list(bench_cmd) + ["--root", str(data_root)] + list(sub_args)
-    return subprocess.run(cmd, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace")
+    return _run_bench_process(cmd, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
 
 
 def _suite_json_path(data_root: Path, suite_id: str, agent: str, tag: str) -> Path:

@@ -191,6 +191,26 @@ def normalize_openai_url(base_url: str, endpoint: str = "chat/completions") -> s
 # 自己的**展示与降级策略**（spinner、error_kind 遥测、400 自适应 payload、
 # 空回复重试等），行为契约逐字保持（详见各调用点的注释）。
 
+# ── [R3 波动收敛] 采样温度：稳定优先 vs 对话 ───────────────────────────
+#: 对话链路（私教讲题、Agent 主循环、收尾链）的默认温度：保留多样性，
+#:但**必须显式声明**（不得依赖调用方忘传导致的隐式 0.3）。
+DIALOGUE_TEMPERATURE = 0.3
+#: 稳定性优先链路（判卷 open_grader、采分点补全、切片识别、抽取/分类类
+#: 任务）的温度：**关闭采样**。
+#:
+#: 口径依据（业界通行）：抽取 / 分类 / 翻译 / 代码生成这类「输入相同则应得
+#: 到相同输出」的任务，要么关采样（temperature=0），要么固定全部随机因素
+#:（seed + top_p=1）；否则输出不可复现，轮间对比失去可比性——同一份材料
+#: 两次抽取得到不同采分点，判分与统计都会被噪声污染。对话/创作类则相反：
+#: 关采样会导致措辞僵硬重复，故保留低温度多样性。
+STABLE_TEMPERATURE = 0.0
+
+#: [R3 波动收敛] 单次请求的默认输出上限（token）。三条链路（Agent 主循环 /
+#: Agent 收尾链 / CLI 流式）此前不一致：CLI 非Agent 路径**根本不传**
+#: ``max_tokens``，由上游自行决定输出上限 → 同一操作在两条路径上的输出长度
+#: 结构性不同（R3 实测 8998 → 4927 字符，−45%）。此处定一份，两侧共用。
+DEFAULT_MAX_TOKENS = 4096
+
 
 class LLMError(Exception):
     """LLM 调用错误基类。
@@ -350,6 +370,30 @@ _SSE_READ_CHUNK = 4096
 #: 有效超时 = ``min(request_timeout, 本值)``（用户显式调低 request_timeout 时从严）。
 #: **超时策略留在调用方**（loop 的 ``_stream_timeout()`` 计算后传入 ChatRequest.timeout）。
 _STREAM_STALL_TIMEOUT = 90.0
+
+#: [R3 波动收敛] **Agent 对话链路**单次 LLM 请求超时的单一真源（秒）。
+#:
+#: 收敛前同一操作在三处各写各的：CLI 流式讲题 120s、网关/群聊问答 55s、
+#: GUI 侧 90s（``agentic_research`` 也独立写了 90s）。三处不一致的直接后果是
+#: 「同一操作在不同入口有不同的等待上限」→ 多轮之间的耗时差异无法归因
+#: （到底是模型慢还是超时口径不同？），能力波动无法收敛到 ±15%。
+#:
+#: 取值 90s 的依据（与 :mod:`tools.intelligence.agentic_research` 的 deadline
+#: 范式对齐）：那边把「单请求超时」（``self.timeout``，默认 90s）与「整轮
+#: 总预算」（``budget_s``，默认 240s）分成两层——单请求不得无限等，但整轮
+#: 仍有自己的天花板。本常量属于**第一层**（单请求），与之取同值；第二层
+#: （整轮/整 run 预算）由 ``agentic_research.budget_s`` 与
+#: :mod:`tools.agent.runtime` 的 ``max_seconds`` 各自负责，互不耦合。
+#:
+#: [口径边界·勿再误读] 本常量是**Agent 对话链路**（``agent/loop`` /
+#: ``cli/agent/engine`` / ``gui/workers/agent_worker``）单请求超时的真源，
+#: **不是全仓所有 LLM 调用的统一上限**。``chat_completion`` 这条薄封装有
+#: 自己的默认值（40s），且各调用点按业务性质显式传参——批量入库 90s、
+#: 院校研报 60s、组卷 15s、变式检索/大纲 Diff 12s。这些差异是**刻意的**：
+#: 后三者在交互路径上等不起（宁可少答也不要卡住 REPL），统一拉齐到 90s
+#: 会把「快速失败」变成「长时间卡住」。:class:`ChatRequest` 的类文档
+#: (``timeout`` 由调用方决定) 是这条边界的权威说明。
+DEFAULT_LLM_TIMEOUT = _STREAM_STALL_TIMEOUT
 
 
 class _StreamAccumulator:
@@ -669,22 +713,28 @@ def _read_http_error_body(e: urllib.error.HTTPError) -> str:
 class ChatRequest:
     """统一 chat/completions 请求描述（K4）。
 
-    ``stream=True``（默认）走 SSE 增量解析（绕开网关 ~60s 硬超时）；
+    ``stream=True``（默认）走 SSE 增量解析（绕开网关~60s 硬超时）；
     ``stream=False`` 走整体读取 + JSON 解析（含被代理缓冲的 SSE 容错）。
     ``headers_extra`` 覆盖/补充默认请求头；``timeout`` 由调用方决定
-    （loop 传 ``_stream_timeout()``，engine/vision_solver 传 120s，
-    study_planner 传 60s，chat_completion/open_grader 传各自的既有值）。
+    （loop 传 ``_stream_timeout()``，engine/vision_solver 传
+    ``DEFAULT_LLM_TIMEOUT``，study_planner 传 60s，
+    chat_completion/open_grader 传各自的既有值）。
+
+    [R3 波动收敛] ``temperature`` / ``max_tokens`` 的默认值为**具名单一真源**
+    （:data:`DIALOGUE_TEMPERATURE` / :data:`DEFAULT_MAX_TOKENS`）：调用方
+    省略即取对话链路口径，但不再依赖「dataclass 里恰好写着 0.3」这种隐式约定
+    ——稳定性优先的调用点必须显式传 :data:`STABLE_TEMPERATURE`。
     """
 
     messages: List[Dict[str, Any]] = field(default_factory=list)
     model: str = ""
-    temperature: float = 0.3
+    temperature: float = DIALOGUE_TEMPERATURE
     max_tokens: Optional[int] = None
     stream: bool = True
     tools: Optional[List[Dict[str, Any]]] = None
     tool_choice: Optional[Any] = None
     stream_options: Optional[Dict[str, Any]] = None
-    timeout: float = 120.0
+    timeout: float = DEFAULT_LLM_TIMEOUT
     api_key: str = ""
     base_url: str = ""
     headers_extra: Optional[Dict[str, str]] = None
@@ -939,7 +989,7 @@ def chat_completion(
     config: Optional[Dict[str, Any]] = None,
     workspace_root: Optional[Path | str] = None,
     system_prompt: Optional[str] = None,
-    temperature: float = 0.3,
+    temperature: float = DIALOGUE_TEMPERATURE,
     timeout: float = 40.0,
     max_tokens: Optional[int] = None,
     urlopen_fn: Optional[Callable] = None,
@@ -952,6 +1002,12 @@ def chat_completion(
     签名与返回契约不变：任何失败一律返回 ``None``（**绝不抛异常**）。
 
     自动容错：若遇 HTTP 400 提示 max_tokens 或 system 角色受限，自动调整后重试一次。
+
+    [R3 波动收敛] 本函数是**抽取 / 判卷 / 补全**等稳定性优先链路的公共出口
+    （采分点补全、切片识别、变式抽取、上下文摘要压缩都走这里），因此
+    ``temperature`` 的默认值取 :data:`DIALOGUE_TEMPERATURE` 只是**兜底**——
+    这些调用点必须显式传 :data:`STABLE_TEMPERATURE`，否则同一份输入会得到
+    措辞不同、长度不同的抽取结果，判分与统计被采样噪声污染。
     """
     cfg = config if config is not None else get_llm_config(workspace_root)
     if not is_llm_configured(cfg):
@@ -1054,12 +1110,16 @@ call_llm_sync = chat_completion
 
 __all__ = [
     "ChatRequest",
+    "DEFAULT_LLM_TIMEOUT",
+    "DEFAULT_MAX_TOKENS",
+    "DIALOGUE_TEMPERATURE",
     "LLMDeterministicError",
     "LLMEmptyStreamError",
     "LLMError",
     "LLMResponseTooLargeError",
     "LLMRetryExhausted",
     "LLMRetryableError",
+    "STABLE_TEMPERATURE",
     "_decompress_response_bytes",
     "call_llm_sync",
     "chat_completion",

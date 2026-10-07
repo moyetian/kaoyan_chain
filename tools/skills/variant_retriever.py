@@ -9,6 +9,7 @@
   3. 杜绝 AI 凭空捏造张宇、李林等未持有的图书来源
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -27,11 +28,35 @@ ROOT = resolve_workspace_root(__file__)
 # 用到 pdf_extractor 的地方改走惰性获取函数。
 from . import error_logger
 
-try:
-    from . import get_subject_name
-except Exception:                                   # 循环导入兜底
-    def get_subject_name(s, d=None):
-        return SUBJECT_NAMES.get(s, d if d is not None else s)
+
+def get_subject_name(subject_key, default=None):
+    """从当前工作区配置读取科目全称，规避 ``skills`` 循环导入静态回退。
+
+    ``variant_retriever`` 在 ``tools.skills`` 注册表初始化期间会先于
+    ``skills.get_subject_name`` 定义；导入期绑定该函数会永久退回「专业课」，
+    使 308 护理题在 CLI 中显示成通用专业课。这里改为调用时读取配置，保证
+    CLI、TUI 与知识图谱都以 ``study_plan.*_name`` 为同一真源。
+    """
+    aliases = {
+        "maths": "math", "数学": "math", "math1": "math", "math2": "math", "math3": "math",
+        "english": "eng", "英语": "eng", "eng1": "eng", "eng2": "eng",
+        "politics": "pol", "政治": "pol", "思想政治理论": "pol",
+        "major": "pro", "专业课": "pro", "护理": "pro", "护理综合": "pro", "308": "pro", "408": "pro",
+    }
+    norm = str(subject_key or "").strip().lower()
+    norm = aliases.get(norm, norm)
+    try:
+        cfg_file = ROOT / "ky_config.json"
+        if cfg_file.exists():
+            plan = (json.loads(cfg_file.read_text(encoding="utf-8")) or {}).get("study_plan") or {}
+            configured = str(plan.get(f"{norm}_name") or "").strip()
+            if configured:
+                return configured
+    except Exception:
+        pass
+    if default is not None:
+        return default
+    return _SUBJECT_NAME_FALLBACK.get(norm, str(subject_key or ""))
 
 
 def _pdf_extractor():
@@ -170,6 +195,53 @@ _Q_START_RE = re.compile(
 )
 
 
+# ── [仿真 F9 修复] 题性判定：考纲条目/章节清单不得被当作「真实题目」命中 ──
+# 背景：考纲文件按 `### N. 标题` 被 _Q_START_RE 切成块，BM25 一命中就标
+# real_file 报「精准命中 N 道题目」（C-P3 双复现）。以下信号用于区分
+# 「真题目」与「考纲条目/章节说明」。
+#: 考纲条目的掌握等级前缀（「掌握/理解/了解/会用/识记：…」）
+_Q_MASTERY_RE = re.compile(r"(?:掌握|理解|了解|会用|识记)[^：:\n]{0,6}[：:]")
+#: 题性信号 · 设问词（中文）
+_Q_ASK_WORDS = (
+    "试述", "试论", "简述", "简答", "论述", "辨析", "名词解释", "阐述", "评价",
+    "比较", "计算", "证明", "求解", "指出", "解释", "举例", "谈谈",
+    "为什么", "如何", "怎样", "下列", "以下",
+)
+#: 题性信号 · 选项行（行首 A-D + 顿点/括号）
+_Q_OPTION_LINE_RE = re.compile(r"(?m)^[ \t]*[A-D][\.、．)）]\s*\S")
+#: 题性信号 · 分值声明（（N 分）/ 共 N 分 / 满分 N 分）
+_Q_SCORE_RE = re.compile(
+    r"[（(]\s*\d+(?:\.\d+)?\s*分\s*[)）]|共\s*\d+(?:\.\d+)?\s*分|满分\s*\d+(?:\.\d+)?\s*分")
+#: 题性信号 · 英文设问
+_Q_EN_ASK_RE = re.compile(r"\b(?:Which|What|Why|How|According to|The author)\b")
+
+
+def _looks_like_question_block(blk: str) -> bool:
+    """[仿真 F9 修复] 判定题块是否真的是「题目」而非考纲条目/章节清单。
+
+    判据：含「掌握/理解/了解/会用/识记：」等级条目且无问号 → 非题；
+    其余须命中题性信号（问号 / 设问词 / 选项行 / 分值声明 / 英文设问）
+    才算题目。全部被过滤时由调用方走既有「自拟变式」诚实路径。
+    """
+    text = str(blk or "")
+    if not text.strip():
+        return False
+    has_qmark = ("？" in text) or ("?" in text)
+    if not has_qmark and _Q_MASTERY_RE.search(text):
+        return False
+    if has_qmark:
+        return True
+    if any(w in text for w in _Q_ASK_WORDS):
+        return True
+    if _Q_OPTION_LINE_RE.search(text):
+        return True
+    if _Q_SCORE_RE.search(text):
+        return True
+    if _Q_EN_ASK_RE.search(text):
+        return True
+    return False
+
+
 def _extract_question_block(content: str, idx: int, kw_len: int = 0) -> str:
     """[变式溯源粒度修复] 命中关键词后不再取前后 ±100/300 字整段（实测会从
     "里士多德；要求「掌握」"开始输出整块文档），而是向前找最近题号、向后找
@@ -214,6 +286,10 @@ def search_real_variant(subject="math", keyword="", limit=2, **kwargs):
         # 扫描 Markdown / 文本
         _candidates = []  # (block, source_name)
         for txt_file in sorted(ref_dir.glob("*.*")):
+            # [仿真 F9 修复] 考纲/大纲类文件不是题源，整文件跳过
+            # （此前按 `### N.` 切块后 BM25 命中即报「精准命中 N 道题目」）
+            if "考纲" in txt_file.name or "大纲" in txt_file.name:
+                continue
             if txt_file.suffix.lower() in (".md", ".txt"):
                 try:
                     content = txt_file.read_text(encoding="utf-8", errors="ignore")
@@ -221,6 +297,9 @@ def search_real_variant(subject="math", keyword="", limit=2, **kwargs):
                     continue
                 for blk in _split_question_blocks(content):
                     if re.search(r"(\.{4,}|…{2,}|·{4,})\s*\d+", blk) or blk.startswith(("目 录", "目录")):
+                        continue
+                    # [仿真 F9 修复] 题性判定：考纲条目/章节清单不算题目
+                    if not _looks_like_question_block(blk):
                         continue
                     _candidates.append((blk, txt_file.name))
         if _candidates:
@@ -230,8 +309,9 @@ def search_real_variant(subject="math", keyword="", limit=2, **kwargs):
                 key=lambda t: (-t[0], _candidates[t[1]][1], t[1]))
             for _s, _i in _ranked[:max(1, limit)]:
                 _blk, _src = _candidates[_i]
+                user_imported = "[USER_IMPORTED" in _blk or "自拟测试资料" in _blk
                 hits.append({
-                    "source_type": "real_file",
+                    "source_type": "user_imported_file" if user_imported else "real_file",
                     "source_name": _src,
                     "topic": kw,
                     "question": f"【从本地实体资料提取】\n{_blk[:1200]}"
@@ -281,12 +361,17 @@ def search_real_variant(subject="math", keyword="", limit=2, **kwargs):
             "variants": synthetic_variants
         }
 
+    imported = any(h.get("source_type") == "user_imported_file" for h in hits)
     return {
         "subject": subject,
         "subject_name": subj_name,
         "keyword": kw,
         "is_real_source": True,
-        "source_status": f"成功从本地资料库精准命中 {len(hits)} 道真实同考点题目",
+        "source_verified": not imported,
+        "source_status": (
+            f"成功从本地资料库精准命中 {len(hits)} 道题目；"
+            + ("题源文件为用户导入，尚未官方核验" if imported else "题源身份已标记")
+        ),
         "variants": hits[:limit]
     }
 
@@ -300,9 +385,17 @@ def _generate_synthetic_variant(subject, keyword):
     # 若已配置大模型，优先调用 LLM 动态命制高质量同源变式试题
     try:
         try:
-            from tools.llm_client import is_llm_configured, chat_completion
+            from tools.llm_client import (
+                STABLE_TEMPERATURE,
+                is_llm_configured,
+                chat_completion,
+            )
         except ImportError:
-            from llm_client import is_llm_configured, chat_completion
+            from llm_client import (  # type: ignore
+                STABLE_TEMPERATURE,
+                is_llm_configured,
+                chat_completion,
+            )
 
         if is_llm_configured(workspace_root=ROOT):
             subj_title = get_subject_name(subject, SUBJECT_NAMES.get(subject, subject))
@@ -313,7 +406,11 @@ def _generate_synthetic_variant(subject, keyword):
                 f"请围绕该考点命制一道高仿全国真题风格的经典同源变式题，要求题干完整、设问严谨有针对性。\n"
                 f"请直接输出试题正文，不要输出多余客套话。"
             )
-            llm_q = chat_completion(prompt, workspace_root=ROOT, timeout=12.0)
+            # [R3 波动收敛·根因 3] temperature=0（STABLE_TEMPERATURE）：变式题命制是
+            # **抽取/生成结构化试题**类任务，同一考点应得到同一道题（否则练兵
+            # 题每次都变、无法复现与对比）；此前走 chat_completion 的 0.3 缺省。
+            llm_q = chat_completion(prompt, workspace_root=ROOT, timeout=12.0,
+                                  temperature=STABLE_TEMPERATURE)
             if llm_q and len(llm_q.strip()) > 15:
                 q_text = (
                     f"【⚠️ 私教自拟变式 · 题源未挂载本地实体资料】\n"
@@ -416,6 +513,7 @@ def format_variant_output(result: dict) -> str:
     subj_name = result.get("subject_name", "")
     kw = result.get("keyword", "")
     is_real = result.get("is_real_source", False)
+    source_verified = result.get("source_verified", is_real)
     status_desc = result.get("source_status", "")
     variants = result.get("variants", [])
 
@@ -423,7 +521,7 @@ def format_variant_output(result: dict) -> str:
         f"\n============================================================",
         f"  🔍 考研同类真题变式检索 · {subj_name} · 考点: 【{kw}】",
         f"============================================================",
-        f"题源溯源属性: {'[白名单实体资料]' if is_real else '[⚠️ 私教自拟变式]'}",
+        f"题源溯源属性: {'[本地实体资料·待核验]' if is_real and not source_verified else ('[白名单实体资料]' if is_real else '[⚠️ 私教自拟变式]')}",
         f"溯源状态说明: {status_desc}",
         f"------------------------------------------------------------"
     ]

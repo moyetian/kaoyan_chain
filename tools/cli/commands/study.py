@@ -10,11 +10,17 @@ from typing import List
 
 try:
     from tools.cli.dispatch import Command, register
-    from tools.cli.shared import SUBJECT_DIRS, _looks_like_path, interpreter_hint, load_config
+    from tools.cli.shared import (
+        SUBJECT_DIRS, _looks_like_path, interpreter_hint, load_config,
+        normalize_subject, subject_display_name,
+    )
     from tools.cli.repl.renderer import C, colorize
 except ImportError:
     from cli.dispatch import Command, register
-    from cli.shared import SUBJECT_DIRS, _looks_like_path, interpreter_hint, load_config
+    from cli.shared import (
+        SUBJECT_DIRS, _looks_like_path, interpreter_hint, load_config,
+        normalize_subject, subject_display_name,
+    )
     from cli.repl.renderer import C, colorize
 
 
@@ -24,12 +30,11 @@ def _cmd_exam(args: List[str]) -> int:
     save_flag = False
     allow_placeholder = False
     unknown_flags = []
-    _SUBJ_ALIAS = {
-        "math": "math", "eng": "eng", "pol": "pol", "pro": "pro",
-        "数": "math", "英": "eng", "政": "pol", "专": "pro",
-    }
+    target_subj = normalize_subject(target_subj, "math") or "math"
     argv = args[1:]
-    for idx, a in enumerate(argv):
+    idx = 0
+    while idx < len(argv):
+        a = argv[idx]
         if a.startswith("--count="):
             try:
                 count = int(a.split("=")[1])
@@ -41,11 +46,13 @@ def _cmd_exam(args: List[str]) -> int:
                     count = int(argv[idx + 1])
                 except (ValueError, TypeError):
                     pass
+                idx += 1
         elif a.startswith("--subject="):
-            target_subj = _SUBJ_ALIAS.get(a.split("=", 1)[1].strip().lower(), target_subj)
-        elif a == "--subject":
-            nxt = argv[idx + 1].strip().lower() if idx + 1 < len(argv) else ""
-            target_subj = _SUBJ_ALIAS.get(nxt, target_subj)
+            target_subj = normalize_subject(a.split("=", 1)[1], target_subj) or target_subj
+        elif a in ("--subject", "-S"):
+            if idx + 1 < len(argv):
+                target_subj = normalize_subject(argv[idx + 1], target_subj) or target_subj
+                idx += 1
         elif a in ("--save", "-s"):
             save_flag = True
         elif a == "--allow-placeholder":
@@ -53,13 +60,13 @@ def _cmd_exam(args: List[str]) -> int:
             allow_placeholder = True
         else:
             matched = False
-            for sk, sv in (("math", "数"), ("eng", "英"), ("pol", "政"), ("pro", "专")):
-                if sk in a.lower() or sv in a:
-                    target_subj = sk
-                    matched = True
-                    break
+            parsed = normalize_subject(a)
+            if parsed:
+                target_subj = parsed
+                matched = True
             if not matched and a.startswith("-"):
                 unknown_flags.append(a)
+        idx += 1
     if unknown_flags:
         print(colorize(
             "[!] 已忽略无法识别的参数: " + " ".join(unknown_flags) + "\n"
@@ -147,11 +154,8 @@ def _cmd_exam_submit(args: List[str]) -> None:
 def _cmd_review(args: List[str]) -> None:
     target_subj = load_config().get("active_subject", "math")
     if len(args) > 1:
-        raw_s = args[1].lower()
-        for s_k, s_v in (("math", "数"), ("eng", "英"), ("pol", "政"), ("pro", "专")):
-            if s_k in raw_s or s_v in raw_s:
-                target_subj = s_k
-                break
+        target_subj = normalize_subject(args[1], target_subj) or target_subj
+    target_subj = normalize_subject(target_subj, "math") or "math"
 
     try:
         from tools.skills import error_logger
@@ -227,7 +231,7 @@ def _cmd_diagnose(args: List[str]) -> None:
                 break
 
     cfg = load_config()
-    active_subj = cfg.get("active_subject", "math")
+    active_subj = normalize_subject(cfg.get("active_subject", "math"), "math") or "math"
     d_subj = d_subj if d_subj in SUBJECT_DIRS else active_subj
     if d_subj != active_subj:
         print(colorize(f"[i] 已按试卷归属科目诊断: {SUBJECT_DIRS[d_subj][1]} (会话科目为 {SUBJECT_DIRS[active_subj][1]})", C.CYAN))
@@ -251,19 +255,35 @@ def _cmd_variant(args: List[str]) -> None:
     if len(args) < 2:
         print(colorize("用法: ky variant <考点关键词或原题干> [--subject=math/eng/pol/pro]\n示例: ky variant 傅里叶变换 --subject=pro", C.YELLOW))
         sys.exit(1)
-    v_subj = None
+    active_subj = normalize_subject(load_config().get("active_subject", "math"), "math") or "math"
+    v_subj = active_subj
+    explicit_subject = False
     v_words = []
-    for a in args[1:]:
+    idx = 1
+    while idx < len(args):
+        a = args[idx]
         if a.startswith("--subject="):
-            v_subj = a.split("=", 1)[1].strip().lower()
+            explicit_subject = True
+            v_subj = normalize_subject(a.split("=", 1)[1], v_subj) or v_subj
+        elif a in ("--subject", "-S"):
+            if idx + 1 < len(args):
+                explicit_subject = True
+                v_subj = normalize_subject(args[idx + 1], v_subj) or v_subj
+                idx += 1
         else:
             v_words.append(a)
+        idx += 1
     topic = " ".join(v_words)
     cfg = load_config()
-    active_subj = cfg.get("active_subject", "math")
-    v_subj = v_subj if v_subj in SUBJECT_DIRS else active_subj
+    active_subj = normalize_subject(cfg.get("active_subject", "math"), "math") or "math"
+    if not explicit_subject and any(k in topic for k in ("护理", "心肺复苏", "内科", "外科", "儿科", "妇产科")):
+        v_subj = "pro"
+    v_subj = normalize_subject(v_subj, active_subj) or active_subj
     if v_subj != active_subj:
-        print(colorize(f"[i] 变式检索科目: {SUBJECT_DIRS[v_subj][1]} (会话科目为 {SUBJECT_DIRS[active_subj][1]}，可用 --subject 调整)", C.CYAN))
+        print(colorize(
+            f"[i] 变式检索科目: {subject_display_name(cfg, v_subj)} "
+            f"(会话科目为 {subject_display_name(cfg, active_subj)}，可用 --subject 调整)",
+            C.CYAN))
 
     try:
         from tools.skills import variant_retriever
@@ -285,4 +305,4 @@ register(Command('exam', ("exam", "--exam", "compose", "--compose"), '[科目] [
 register(Command('exam-submit', ("exam-submit", "--exam-submit", "grade-paper", "--grade-paper"), '<试卷路径> <作答文本>', '自动判卷并输出正答率、采分点与错题归因', handler=_cmd_exam_submit, write=True))
 register(Command('review', ("review", "--review", "quiz", "--quiz"), '[math|eng|pol|pro]', '查看 FSRS 待复测错题列表', handler=_cmd_review))
 register(Command('diagnose', ("diagnose", "--diagnose"), '<答题卡文本或文件>', '整卷级多题诊断引擎 (章节失分排行与薄弱处方)', handler=_cmd_diagnose))
-register(Command('variant', ("variant", "--variant"), '<考点关键词>', '白名单同类真题变式检索与防幻觉溯源', handler=_cmd_variant, write=True))
+register(Command('variant', ("variant", "--variant"), '<考点关键词>', '四科白名单同类真题变式检索与防幻觉溯源', handler=_cmd_variant, write=True))

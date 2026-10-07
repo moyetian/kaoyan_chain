@@ -8,7 +8,8 @@ def load_all_commands() -> None:
     """按序加载命令模块，触发其内部 register() 调用"""
     try:
         from tools.cli.commands import (system, daily, study, intel, material,
-                                        misc, session, search, gain)
+                                        misc, session, search, gain, grading,
+                                        budget)
     except ImportError:
         from cli.commands import (system, daily, study, intel, material,
-                                  misc, session, search, gain)
+                                  misc, session, search, gain, grading, budget)

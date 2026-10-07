@@ -1045,3 +1045,79 @@ class TestRecursionGuardV3:
         assert dur < 2.5, dur  # 不等待 5s 睡眠
         assert res == "中间说明"
 
+
+
+class TestRetryBudgetVsJitter:
+    """[退避统一批次·2026-10-06] 预算约束与 full jitter 的交互。
+
+    [为什么要有这个用例] 把 `agentic_research` 的线性退避（``1.5*(attempt+1)``）
+    换成单一真源的 full jitter 后，本用例的姊妹用例
+    ``TestResearchBudgetDeadline::test_retry_chain_respects_deadline`` **变红了**：
+    旧线性退避固定等1.5s，必然耗尽 0.15s 预算 → 只发1 次请求；而 full jitter
+    可能取到接近 0 的值，第二次重试就「挤」进剩余预算里多发一次请求。
+
+    [教训] 引入抖动后，**「是否还值得重试」的判断不能看实际等待值**（它随机），
+    必须看**最坏情况上界``jitter_ceiling``** —— 预算是硬约束，不能让随机数决定。
+    这条用例钉住该语义，且刻意在多个随机种子下重复断言（确定性、不 flaky）。
+    """
+
+    def _run_with_budget(self, budget: float):
+        """跑一次重试链，返回 ``(发起次数, 终局异常)``。
+
+        [终局异常有两种，属于设计而非缺陷] 预算被退避上界耗尽 → ``TimeoutError``（快速失败）；
+        预算充裕但 3 次尝试都失败 → 原始 ``URLError`` 上抛（交调用方走本地降级）。
+        """
+        import time
+        import urllib.error as _uerr
+        from unittest.mock import patch
+        from tools.intelligence.agentic_research import AgenticResearchEngine
+
+        engine = AgenticResearchEngine()
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(timeout)
+            raise _uerr.URLError("模拟网络失败")
+
+        raised: Exception = _uerr.URLError("未触发")
+        with patch("tools.intelligence.agentic_research.safe_urlopen", fake_urlopen):
+            try:
+                engine.execute_loop(
+                    "p",
+                    api_config={"api_key": "sk-mock-valid-key",
+                                "base_url": "https://api.deepseek.com/v1",
+                                "model": "deepseek-chat"},
+                    deadline=time.monotonic() + budget,
+                )
+            except Exception as exc:            # noqa: BLE001 - 记录终局异常供断言
+                raised = exc
+        return calls, raised
+
+    def test_tiny_budget_never_retries_even_if_jitter_draws_near_zero(self):
+        """预算小于退避上界时，**无论 jitter 取到多小**都不得发起第 2 次请求。
+
+        阴性对照：若把 `ceiling > left` 改成`delay > left`（用实际随机值判断），
+        本用例会有概率失败（jitter≈0 时多发一次请求）。
+        """
+        from tools.intelligence.agentic_research import (
+            _LLM_RETRY_BASE, _LLM_RETRY_CAP,
+        )
+        from tools.http_backoff import jitter_ceiling
+
+        ceiling = jitter_ceiling(0, base=_LLM_RETRY_BASE, cap=_LLM_RETRY_CAP)
+        assert ceiling > 0.15, (
+            f"退避上界 {ceiling}s 应大于本用例给的预算 0.15s —— "
+            "否则本用例测不到「上界约束」这个分支")
+        for _ in range(8):                      # 多次重复：不依赖某一次随机取值
+            calls, raised = self._run_with_budget(0.15)
+            assert len(calls) == 1, (
+                f"预算 0.15s 内不应重试（退避上界 {ceiling:.2f}s 放不下），"
+                f"实际发起了 {len(calls)} 次：{calls}")
+            assert isinstance(raised, TimeoutError), (
+                f"预算耗尽应快速失败为 TimeoutError，实际 {type(raised).__name__}")
+
+    def test_generous_budget_still_retries(self):
+        """反向：预算充裕时**必须**仍然重试（别把预算约束写成「永不重试」）。"""
+        calls, _raised = self._run_with_budget(30.0)
+        assert len(calls) == 3, (
+            f"预算 30s 时应走完 1+2 次重试（共 3 次请求），实际 {len(calls)} 次：{calls}")

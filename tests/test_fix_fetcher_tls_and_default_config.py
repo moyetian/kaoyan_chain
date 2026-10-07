@@ -131,8 +131,17 @@ def test_fetch_verified_ssl_keeps_status_true(monkeypatch, no_ssrf_guard):
 
 
 def test_fetch_non_ssl_error_is_not_retried_as_downgrade(monkeypatch, no_ssrf_guard):
-    """重试 ≠ 降级：普通网络错误既不加次数、也不换未验证上下文。"""
+    """重试 ≠ 降级：普通网络错误**即便退避重试**，也绝不换未验证上下文。
+
+    [2026-10-06 随瞬时故障重试更新] 改动前只断言「只调用一次」；现在 timeout
+    属于**可重试的瞬时故障**（AWS full-jitter 口径，见 ``fetcher`` 模块注释），
+    会退避重试若干次——但这是「同一 TLS 配置下重试」，与「降级」是两件事。
+    本测试的原意图（重试不得滑向未验证连接）**不变**，故断言改为：
+    全程使用受信任 SSL 上下文，且失败仍如实报 ``TIMEOUT``。
+    """
     calls = []
+    # 退避不真实等待（保持测试快）
+    monkeypatch.setattr(fetcher_mod.time, "sleep", lambda _s: None)
 
     def _timeout(req, timeout=6, context=None):
         calls.append(context)
@@ -143,8 +152,9 @@ def test_fetch_non_ssl_error_is_not_retried_as_downgrade(monkeypatch, no_ssrf_gu
     res = fetcher_mod.HTTPFetcher().fetch(OK_URL)
 
     assert res.access_status == "TIMEOUT"
-    assert len(calls) == 1, "非证书错误被额外重试（重试与降级耦合未理清）"
-    assert all(getattr(c, "check_hostname", True) for c in calls)
+    assert len(calls) >= 1
+    assert all(getattr(c, "check_hostname", True) for c in calls), \
+        "重试滑向了未验证连接（重试与降级耦合，本测试正是该缺陷的护栏）"
 
 
 def test_negative_control_old_auto_downgrade_would_hit_insecure_ctx(monkeypatch):

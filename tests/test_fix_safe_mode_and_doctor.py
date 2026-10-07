@@ -85,6 +85,22 @@ def _write_cfg(path: Path) -> bytes:
     return path.read_bytes()
 
 
+def _seed_today_task(root: Path) -> None:
+    """放一份含未完成任务的今日任务表。
+
+    [2026-10-05] 零任务会话已改为不写 completion（假疲劳警报修复）：
+    凡验证「写入路径」的用例都必须先造出真实任务，否则拿到的是空会话语义。
+    """
+    task_dir = root / "04-专业课" / "_状态"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    (task_dir / "今日任务.md").write_text(
+        "| 模块 | 任务 | 完成状态 |\n"
+        "|---|---|---|\n"
+        "| 背诵 | 测试任务 | [ ] |\n",
+        encoding="utf-8",
+    )
+
+
 # ───────────────────────── R2-D1 ─────────────────────────
 
 def test_record_daily_completion_refuses_when_read_only(tmp_path, monkeypatch, read_only):
@@ -119,11 +135,17 @@ def test_record_daily_completion_still_writes_by_default(tmp_path, monkeypatch):
 
 
 def test_session_end_hook_notice_when_read_only(tmp_path, monkeypatch, read_only, capsys):
-    """safe 模式会话结束：不得静默 —— 必须给出可读中文提示，且配置不变。"""
+    """safe 模式会话结束：不得静默 —— 必须给出可读中文提示，且配置不变。
+
+    [2026-10-05 语义更新] 零任务会话已改为**不写** completion（假疲劳警报
+    修复）；本用例验证「有任务时写入被只读闸门拒绝必须可见」，故显式放一份
+    今日任务，保持原测试意图不变。
+    """
     cfg = tmp_path / "ky_config.json"
     before = _write_cfg(cfg)
     for sp in _study_planner_modules():
         monkeypatch.setattr(sp, "ROOT", tmp_path, raising=False)
+    _seed_today_task(tmp_path)
 
     from tools.agent.hooks import HookManager
     hm = HookManager(workspace_root=tmp_path)
@@ -136,11 +158,12 @@ def test_session_end_hook_notice_when_read_only(tmp_path, monkeypatch, read_only
 
 
 def test_session_end_hook_writes_when_not_read_only(tmp_path, monkeypatch, capsys):
-    """反向对照：默认模式下会话结束仍要落盘 completion_history。"""
+    """反向对照：默认模式下会话结束仍要落盘 completion_history（有任务时）。"""
     cfg = tmp_path / "ky_config.json"
     before = _write_cfg(cfg)
     for sp in _study_planner_modules():
         monkeypatch.setattr(sp, "ROOT", tmp_path, raising=False)
+    _seed_today_task(tmp_path)
 
     from tools.agent.hooks import HookManager
     hm = HookManager(workspace_root=tmp_path)

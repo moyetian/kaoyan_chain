@@ -228,6 +228,8 @@ CODE_REVIEW_*.md
 .sim_*.txt
 .sim_review_*.txt
 simulation_cli.json
+.sim_logs/
+.sim_tools/
 .dashboard_check_*.js
 .llm_*.txt
 .atomic_test.log
@@ -259,6 +261,13 @@ data/universities/exam_subjects.json
 # data/knowledge/embeddings.db 由 KnowledgeStore 首次使用/切片入库时自动创建
 # （sqlite 单文件，可由「切片入库」重建），属本机状态而非源码。
 data/knowledge/
+
+# ── 判卷明细留痕：运行时产物 + 含题面/作答原文，不入库（2026-10-06）──
+# data/grading/traces/<日期>.jsonl 由 tools/skills/grading_trace.py 追加写入
+# （open_grader 每次真实判分落一条：rubric/评审分/分歧度/仲裁/最终裁决），
+# 属本机状态；发布层同口径排除见 tools/privacy_policy.py 的
+# NON_PUBLISH_PATH_PREFIXES（两条出口缺一都会漏，同 data/knowledge 教训）。
+data/grading/
 
 # ── W13-2 R1：影子集 *.shadow.jsonl 不入库（2026-09-29）──
 # 影子集（W14 R1c 落地，含人工种子）是为 canary 与防污染评测预留的资产，只在本机

@@ -265,6 +265,36 @@ def _cmd_tools(args: List[str]) -> int:
                 pass
 
 
+def _cmd_audit(args: List[str]) -> int:
+    """Read-only permission approval audit query."""
+    if len(args) < 2 or args[1] not in ("approvals", "approval"):
+        print(colorize("用法: ky audit approvals [--limit=N] [--json]", C.YELLOW))
+        return 1
+    limit = 100
+    as_json = "--json" in args
+    for item in args[2:]:
+        if item.startswith("--limit="):
+            try:
+                limit = max(1, min(1000, int(item.split("=", 1)[1])))
+            except ValueError:
+                print(colorize("[!] --limit 必须是整数", C.RED))
+                return 1
+    try:
+        from tools.agent.approval_audit import read_approval_events, resolve_audit_root
+    except ImportError:
+        from agent.approval_audit import read_approval_events, resolve_audit_root
+    rows = read_approval_events(resolve_audit_root(ROOT), limit)
+    if as_json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+        return 0
+    print(colorize(f"\n=== 审批审计（{len(rows)} 条）===", C.BOLD))
+    for row in rows:
+        decision = "ALLOW" if row.get("allowed") else "DENY"
+        print(f"  {decision:5} {row.get('tool', '')} | level={row.get('level')} | "
+              f"mode={row.get('mode')} | {row.get('reason', '')}")
+    return 0
+
+
 # 注册系统级命令
 register(Command('version', ("--version", "-v", "version"), '', '查看当前版本号（与 pyproject.toml 保持一致）', handler=_cmd_version))
 register(Command('help', ("help", "--help", "-h"), '[命令]', '显示帮助；`ky help <命令>` 查看单个命令用法', handler=_cmd_help))
@@ -276,3 +306,4 @@ register(Command('subject', ("subject", "--subject", "syllabus", "--syllabus"), 
 register(Command('build', ("build", "--build"), '', '一键重新编译并刷新本地与移动端看板', handler=_cmd_build, write=True))
 register(Command('plan', ("plan", "--plan", "profile", "--profile", "onboarding"), '', '启动个人专属定制化必考方案向导', handler=_cmd_plan, write=True))
 register(Command('tools', ("tools", "--tools"), 'list [--tier=essential|extended|all] [--json] [--with-mcp]', '审计 Agent 工具注册表（名称 | tier | Level | 来源 | 描述）', handler=_cmd_tools))
+register(Command('audit', ("audit", "--audit"), 'approvals [--limit=N] [--json]', '查询权限审批 append-only 审计记录', handler=_cmd_audit))

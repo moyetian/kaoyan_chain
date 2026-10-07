@@ -159,12 +159,38 @@ def _cmd_mount(args: List[str]) -> None:
     apply_flag = any(a in ("--apply", "--write") for a in args)
     yes_flag = any(a in ("-y", "--yes") for a in args)
 
+    # [修复 2026-10-05·目录参数被静默忽略] `ky mount [目录]` 此前只解析
+    # --apply/-y，位置参数被丢弃、恒扫描默认工作区。现解析首个位置参数并
+    # 透传给 scan_and_mount_materials(workspace_root=...)（该函数原生支持
+    # workspace_root，语义即「以此为工作区根扫描四科 参考资料/」）。
+    # 相对路径相对工作区根解析；目录不存在时报可读错误，不再静默回落默认目录。
+    target_root = None
+    for a in args[1:]:
+        if not a.startswith("-"):
+            if target_root is not None:
+                print(colorize("[!] ky mount 只接受一个目录参数", C.RED))
+                sys.exit(1)
+            target_root = a
+    if target_root:
+        try:
+            from tools.cli.shared import ROOT as _WS_ROOT
+        except ImportError:
+            from cli.shared import ROOT as _WS_ROOT
+        cand = Path(target_root)
+        if not cand.is_absolute():
+            cand = _WS_ROOT / cand
+        if not cand.exists() or not cand.is_dir():
+            print(colorize(f"[!] 目录不存在或不是目录: {target_root}", C.RED))
+            sys.exit(1)
+        target_root = cand.resolve()
+
     print(colorize("\n[🔍 正在智能扫描本地 参考资料/ 目录与考研资料库...]\n", C.CYAN))
 
     # [P1-8 修复·默认只读] 先只读盘点并展示将发生的变更；写回必须显式 --apply。
     # 此前 ky mount（0 份资料）也会把目标高校塞进简章雷达、重写 config 与 AGENTS.md
     # 白名单（实测偷改志愿雷达），默认行为必须无副作用。
-    preview = material_scanner.scan_and_mount_materials(apply=False)
+    preview = material_scanner.scan_and_mount_materials(
+        workspace_root=target_root, apply=False)
     if not preview.get("success"):
         print(colorize(f"[!] 资料扫描失败: {preview.get('msg')}", C.RED))
         return
@@ -215,7 +241,8 @@ def _cmd_mount(args: List[str]) -> None:
             print(colorize("[i] 已取消，未写入任何文件。\n", C.YELLOW))
             return
 
-    result = material_scanner.scan_and_mount_materials(apply=True)
+    result = material_scanner.scan_and_mount_materials(
+        workspace_root=target_root, apply=True)
     if not result.get("success"):
         print(colorize(f"[!] 资料挂载失败: {result.get('msg')}", C.RED))
         return
@@ -288,5 +315,5 @@ def _cmd_key(args: List[str]) -> None:
 register(Command('ingest', ("ingest", "--ingest"), '<试题文件路径> [--subject=pro/math]', '外部真题/试卷智能切片入库管道 (题型识别/采分点提取/白名单归档)', handler=_cmd_ingest, write=True))
 # [P1-8 修复] mount 默认只读盘点，仅 --apply 才写回 —— 不再注册为 write=True 整体拦截，
 # 改由 shared._SAFE_MODE_WRITE_FLAGS 按 --apply 粒度判定（与 scout 同模式）。
-register(Command('mount', ("mount", "scan", "--mount", "--scan"), '[--apply] [-y]', '扫描本地资料目录（默认只读盘点；--apply 显式写回白名单与研招雷达）', handler=_cmd_mount))
+register(Command('mount', ("mount", "scan", "--mount", "--scan"), '[目录] [--apply] [-y]', '扫描本地资料目录（默认只读盘点；--apply 显式写回白名单与研招雷达）', handler=_cmd_mount))
 register(Command('key', ("key", "--key", "keys", "--keys"), '[list|set] <试卷编号> [题号] ["标准答案"]', '管理自测卷的加密标准答案（判卷自动采分依赖它）', handler=_cmd_key, write=True))

@@ -19,6 +19,7 @@ import json
 import sqlite3
 import logging
 import sys
+import threading
 from pathlib import Path
 
 # [F3 修复·脚本直跑导入引导] `py tools/search/knowledge_store.py` 时 sys.path[0]
@@ -71,6 +72,7 @@ class KnowledgeStore:
     2. 支持向量相似度检索
     3. 支持元数据过滤
     4. 自动降级到纯文本检索
+    5. 线程安全：连接为线程本地（每线程独立连接 + WAL 并发读写）
     """
 
     def __init__(self, db_path: Path | str | None = None):
@@ -85,43 +87,82 @@ class KnowledgeStore:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.conn: Optional[sqlite3.Connection] = None
+        # [R4 #207 修复·跨线程 SQLite] sqlite3 连接默认绑定创建它的线程，
+        # 跨线程使用会抛 ``ProgrammingError: SQLite objects created in a
+        # thread can only be used in that same thread``。GUI 的「建索引」与
+        # 「本地检索」各在独立 QThread 里执行，却共享全局单例 → 检索线程
+        # 复用索引线程的连接 → 报错被 hybrid 词法分支吞掉 → 静默 0 条，
+        # 界面还提示「知识库是空的」。
+        # 修法：连接改为**线程本地** —— 每线程各自持有连接到同一库文件
+        # （WAL 模式保证读写并发互不阻塞）；close() 只关当前线程的连接。
+        self._local = threading.local()
         self.has_vector = False
 
         self._init_db()
 
-    def _init_db(self):
-        """初始化数据库连接和表结构"""
-        self.conn = sqlite3.connect(str(self.db_path))
-        self.conn.row_factory = sqlite3.Row
+    @property
+    def conn(self) -> sqlite3.Connection:
+        """当前线程的数据库连接（首次访问时惰性建立）。
+
+        线程本地：同一线程内多次访问复用同一连接（不重复建连）；其他线程
+        各自独立。``store.conn.execute(...)`` 的既有用法（hybrid 词法分支）
+        保持不变。
+        """
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = self._open_connection()
+            self._local.conn = conn
+        return conn
+
+    def _open_connection(self) -> sqlite3.Connection:
+        """为当前线程建立连接（WAL + sqlite-vec 扩展加载 + 幂等建表）。"""
+        # timeout：多线程写并发时等锁而非立刻报 database is locked
+        conn = sqlite3.connect(str(self.db_path), timeout=30)
+        conn.row_factory = sqlite3.Row
 
         # [K3] 启用 WAL 日志模式：读写并发互不阻塞（看板/检索与入库并存时
         # 避免「database is locked」），崩溃恢复也更稳。不支持 WAL 的文件系统
         # 回落默认模式，不阻断初始化。
         try:
-            self.conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA journal_mode=WAL")
         except sqlite3.Error as e:
             logger.warning("⚠️ 启用 WAL 日志模式失败（保持默认模式）: %s", e)
 
-        # 尝试加载 sqlite-vec 扩展
-        self.has_vector = self._try_load_vec_extension()
+        # 尝试加载 sqlite-vec 扩展（扩展是 per-connection 的：每个线程的
+        # 新连接都要重新加载，否则该线程拿不到向量检索能力）
+        if self._try_load_vec_extension(conn):
+            self.has_vector = True
 
-        # 创建表结构
-        self._create_tables()
+        # 建表（CREATE ... IF NOT EXISTS 幂等；仅当表缺失时才执行 DDL，
+        # 后续线程的连接零写入）
+        self._ensure_schema(conn)
 
+        return conn
+
+    def _init_db(self):
+        """初始化数据库（保持历史语义：构造即建库建表）。
+
+        [只读守卫依赖] ``hybrid.search_with_diagnostics`` / ``ky rag`` 等
+        只读入口靠「先判 DEFAULT_DB_PATH.exists()」防止凭空建库 —— 本方法
+        必须在构造时就把库文件建出来，该守卫才有意义。
+        """
+        self.conn  # 触发当前线程的连接建立
         if self.has_vector:
             logger.info("✅ sqlite-vec 扩展加载成功，向量检索已启用")
         else:
             logger.warning("⚠️ sqlite-vec 扩展不可用，将使用纯文本检索降级模式")
 
-    def _try_load_vec_extension(self) -> bool:
-        """尝试加载 sqlite-vec 扩展
+    def _try_load_vec_extension(self, conn: sqlite3.Connection) -> bool:
+        """尝试在指定连接上加载 sqlite-vec 扩展
+
+        Args:
+            conn: 要加载扩展的连接（扩展是 per-connection 的）
 
         Returns:
             是否成功加载
         """
         try:
-            self.conn.enable_load_extension(True)
+            conn.enable_load_extension(True)
 
             # 尝试多个可能的扩展文件名
             vec_extensions = [
@@ -133,9 +174,9 @@ class KnowledgeStore:
 
             for ext in vec_extensions:
                 try:
-                    self.conn.load_extension(ext)
+                    conn.load_extension(ext)
                     # 测试是否真正可用
-                    self.conn.execute("SELECT vec_version()").fetchone()
+                    conn.execute("SELECT vec_version()").fetchone()
                     return True
                 except Exception:
                     continue
@@ -145,9 +186,26 @@ class KnowledgeStore:
             logger.debug(f"加载 sqlite-vec 失败: {e}")
             return False
 
-    def _create_tables(self):
-        """创建表结构"""
-        cursor = self.conn.cursor()
+    def _ensure_schema(self, conn: sqlite3.Connection):
+        """确保表结构存在（幂等；仅缺失时做 DDL，已有库的线程连接零写入）。"""
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='chunks'"
+        ).fetchone()
+        if row is None:
+            self._create_tables(conn)
+            return
+        # 边界：库先建、sqlite-vec 后装 —— 旧实现每次构造都会补建向量表，
+        # 这里保持同语义（仅当扩展可用且向量表缺失时补一次）
+        if self.has_vector:
+            vec = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='vec_chunks'"
+            ).fetchone()
+            if vec is None:
+                self._create_tables(conn)
+
+    def _create_tables(self, conn: sqlite3.Connection):
+        """在指定连接上创建表结构"""
+        cursor = conn.cursor()
 
         # 主表：存储文本片段和元数据
         cursor.execute("""
@@ -182,7 +240,7 @@ class KnowledgeStore:
                 logger.warning(f"创建向量表失败，降级到纯文本模式: {e}")
                 self.has_vector = False
 
-        self.conn.commit()
+        conn.commit()
 
     def add_chunk(self, chunk: Chunk) -> bool:
         """添加单个文本片段
@@ -257,6 +315,12 @@ class KnowledgeStore:
 
         Returns:
             [(chunk_id, similarity_score), ...]
+
+        Raises:
+            sqlite3.Error: 查询失败。[R4 #207 修复] 此前吞掉异常返回 []，
+                让 hybrid 无法区分「0 命中」与「查询坏了」；已知不可用
+                （has_vector / numpy 缺失）在函数开头已提前返回，故此处
+                异常一律上抛，由上层记入用户可见的降级原因。
         """
         if not self.has_vector:
             logger.warning("向量检索不可用，返回空结果")
@@ -266,45 +330,40 @@ class KnowledgeStore:
             logger.warning("numpy 不可用，无法进行向量检索")
             return []
 
-        try:
-            # 转换查询向量格式
-            query_blob = np.array(query_embedding, dtype=np.float32).tobytes()
+        # 转换查询向量格式
+        query_blob = np.array(query_embedding, dtype=np.float32).tobytes()
 
-            # 构建查询
-            if source_filter:
-                # 带源过滤的查询
-                sql = """
-                    SELECT v.chunk_id, vec_distance_cosine(v.embedding, ?) as distance
-                    FROM vec_chunks v
-                    JOIN chunks c ON v.chunk_id = c.id
-                    WHERE c.source LIKE ?
-                    ORDER BY distance
-                    LIMIT ?
-                """
-                cursor = self.conn.execute(sql, (query_blob, f"%{source_filter}%", top_k))
-            else:
-                # 无过滤查询
-                sql = """
-                    SELECT chunk_id, vec_distance_cosine(embedding, ?) as distance
-                    FROM vec_chunks
-                    ORDER BY distance
-                    LIMIT ?
-                """
-                cursor = self.conn.execute(sql, (query_blob, top_k))
+        # 构建查询
+        if source_filter:
+            # 带源过滤的查询
+            sql = """
+                SELECT v.chunk_id, vec_distance_cosine(v.embedding, ?) as distance
+                FROM vec_chunks v
+                JOIN chunks c ON v.chunk_id = c.id
+                WHERE c.source LIKE ?
+                ORDER BY distance
+                LIMIT ?
+            """
+            cursor = self.conn.execute(sql, (query_blob, f"%{source_filter}%", top_k))
+        else:
+            # 无过滤查询
+            sql = """
+                SELECT chunk_id, vec_distance_cosine(embedding, ?) as distance
+                FROM vec_chunks
+                ORDER BY distance
+                LIMIT ?
+            """
+            cursor = self.conn.execute(sql, (query_blob, top_k))
 
-            # 转换距离到相似度（余弦距离 → 余弦相似度）
-            results = []
-            for row in cursor.fetchall():
-                chunk_id = row[0]
-                distance = row[1]
-                similarity = 1.0 - distance  # 余弦相似度 = 1 - 余弦距离
-                results.append((chunk_id, similarity))
+        # 转换距离到相似度（余弦距离 → 余弦相似度）
+        results = []
+        for row in cursor.fetchall():
+            chunk_id = row[0]
+            distance = row[1]
+            similarity = 1.0 - distance  # 余弦相似度 = 1 - 余弦距离
+            results.append((chunk_id, similarity))
 
-            return results
-
-        except Exception as e:
-            logger.error(f"向量检索失败: {e}")
-            return []
+        return results
 
     def get_chunk(self, chunk_id: str) -> Optional[Chunk]:
         """根据 ID 获取文本片段
@@ -378,10 +437,18 @@ class KnowledgeStore:
             self.conn.rollback()
 
     def close(self):
-        """关闭数据库连接"""
-        if self.conn:
-            self.conn.close()
-            self.conn = None
+        """关闭当前线程的数据库连接。
+
+        [R4 #207] 连接是线程本地的：本方法只关闭**当前线程**持有的连接，
+        其他线程的连接随其线程退出（threading.local 清理）或对象回收自动
+        释放。关闭后本线程再次访问会惰性重建连接。
+        """
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            try:
+                conn.close()
+            finally:
+                self._local.conn = None
 
     def __enter__(self):
         return self

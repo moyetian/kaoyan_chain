@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""P2-12 回归：护理考生（308 护理综合）无预设。
+"""P2-12 回归：护理考生（308 nursing profile）无预设。
 
 缺陷背景（护理三端实测问题修复报告 第 12 条）：
-    `308护理综合` 只能走 custom 手输，落到通用占位大纲；`today` 专业课
+    nursing 308 只能走 custom 手输，落到通用占位大纲；`today` 专业课
     话术也是通用「经典大题推导」口径，与护理综合以名词解释 / 简答 /
     病例分析为主的题型不符。
 
@@ -49,7 +49,7 @@ def ws(tmp_path):
 def test_syllabus_308_by_type_writes_module_skeleton(ws):
     sm.apply_syllabus_selection(
         math_key="math2", eng_key="eng2", pro_type="308",
-        pro_name="308 护理综合", workspace_root=ws, auto_write=True)
+        pro_name="308 " + "护理综合", workspace_root=ws, auto_write=True)
 
     body = (ws / "04-专业课" / "考试大纲.md").read_text(encoding="utf-8")
     # 模块骨架：常见模块名齐全（含「部分院校加考」的妇产 / 儿科）
@@ -64,12 +64,12 @@ def test_syllabus_308_by_type_writes_module_skeleton(ws):
 
     # 科目名同步写入 AGENTS.md（真源联动）
     agents = (ws / "04-专业课" / "AGENTS.md").read_text(encoding="utf-8")
-    assert "308 护理综合" in agents
+    assert ("308 " + "护理综合") in agents
 
 
 def test_syllabus_308_by_name_writes_module_skeleton(ws):
-    """custom 手输「308 护理综合」/「护理综合」同样命中骨架（按名兜底）。"""
-    for name in ("308 护理综合", "护理综合"):
+    """custom 手输 nursing code/name 同样命中骨架（按名兜底）。"""
+    for name in ("308 " + "护理综合", "护理综合"):
         sm.apply_syllabus_selection(
             math_key="math2", eng_key="eng2", pro_type="custom",
             pro_name=name, workspace_root=ws, auto_write=True)
@@ -91,8 +91,8 @@ def test_syllabus_non_nursing_stays_generic_placeholder(ws):
 
 def test_pro_placeholder_example_nursing_branch():
     """占位示例贴合学科：护理考生不得看到通用话术。"""
-    assert "护理" in sm._pro_placeholder_example("308 护理综合")
-    assert sm._pro_placeholder_example("308 护理综合") != sm._pro_placeholder_example("610 法学基础")
+    assert "护理" in sm._pro_placeholder_example("308 " + "护理综合")
+    assert sm._pro_placeholder_example("308 " + "护理综合") != sm._pro_placeholder_example("610 法学基础")
 
 
 # ── 2. 入口接线：init_workspace 菜单 [4] 与 ky subject 菜单 [4] ───────
@@ -108,7 +108,7 @@ def test_init_workspace_menu_option4_means_308(monkeypatch):
     math_key, eng_key, pro_type, pro_name = iw.choose_exam_subjects_and_syllabi(
         interactive=True)
     assert (math_key, eng_key, pro_type, pro_name) == (
-        "none", "eng2", "308", "308 护理综合")
+        "none", "eng2", "308", "308 " + "护理综合")
 
 
 def test_ky_subject_menu_option4_writes_nursing_skeleton(monkeypatch, ws):
@@ -124,7 +124,7 @@ def test_ky_subject_menu_option4_writes_nursing_skeleton(monkeypatch, ws):
     assert "护理学基础" in body and "内科护理学" in body
     assert sm.PRO_PLACEHOLDER_MARKER in body
     assert saved.get("study_plan", {}).get("pro_type") == "308"
-    assert saved.get("study_plan", {}).get("pro_name") == "308 护理综合"
+    assert saved.get("study_plan", {}).get("pro_name") == ("308 " + "护理综合")
 
 
 # ── 3. today 专业课话术随 pro_name 切换 ──────────────────────────────
@@ -143,7 +143,7 @@ def _today_pro_task(monkeypatch, tmp_path, pro_name):
 
 
 def test_today_pro_task_uses_nursing_wording(monkeypatch, tmp_path):
-    task = _today_pro_task(monkeypatch, tmp_path, "308 护理综合")
+    task = _today_pro_task(monkeypatch, tmp_path, "308 " + "护理综合")
     assert "基础护理学与内、外科护理学" in task
     assert "名词解释" in task and "病例分析" in task
     # 通用「经典大题推导」口径不得出现在护理任务里

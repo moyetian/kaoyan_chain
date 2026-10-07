@@ -3,7 +3,73 @@
 Target Schools Database extracted for Single Responsibility Principle.
 """
 
+try:
+    from tools.intelligence.subject_catalog import nursing_308_subjects
+except ImportError:  # pragma: no cover - direct ``tools`` path execution
+    from intelligence.subject_catalog import nursing_308_subjects
+
 TARGET_SCHOOLS_DB = {
+    # The candidate profile explicitly supplies 101/201/308 for both nursing
+    # choices.  Keep the record structured and clearly non-official: the
+    # current-year school catalog still has to be checked before applying it.
+    "中国医科大学": {
+        "alias": ["中国医大", "CMU"],
+        "level": "硕士研究生招生单位 / 国家一区线高校 (A区)",
+        "region": "辽宁沈阳",
+        "official_site": "",
+        "yz_chsi_id": "368048",
+        "pro_departments": {
+            "护理": {
+                "college": "护理学院（院系与方向以当年招生目录为准）",
+                "major_code": "105400",
+                "degree_type": "专业学位",
+                "exam_subjects": nursing_308_subjects(),
+                "subject_status": "candidate_config",
+                "subject_source": "考生档案记录（需以当年招生目录核验）",
+                "majors": [
+                    "(101)思想政治理论",
+                    "(201)英语（一）",
+                    "(308)护理综合",
+                ],
+                "score_trend": "未核验：请以中国医科大学当年复试分数线公告为准。",
+                "ratio_quota": "未核验：请以当年招生简章、专业目录与拟录取公示为准。",
+                "protect_first": "未核验：请以当年复试录取细则与拟录取名单为准。",
+                "reputation": ["未核验：本地库不替代官方培养与就业信息。"],
+                "pitfalls": ["308 科目与招生方向须按当年目录逐项核验，不能仅凭往年记录报考。"],
+            }
+        },
+        "default_reputation": "未核验：请以学校研究生院和护理学院官方信息为准。",
+        "default_pitfalls": "报考前核对 105400 护理的学习方式、研究方向、考试科目和招生人数。",
+    },
+    "哈尔滨医科大学": {
+        "alias": ["哈医大", "HMU"],
+        "level": "硕士研究生招生单位 / 国家一区线高校 (A区)",
+        "region": "黑龙江哈尔滨",
+        "official_site": "",
+        "yz_chsi_id": "368089",
+        "pro_departments": {
+            "护理": {
+                "college": "护理学院（院系与方向以当年招生目录为准）",
+                "major_code": "105400",
+                "degree_type": "专业学位",
+                "exam_subjects": nursing_308_subjects(),
+                "subject_status": "candidate_config",
+                "subject_source": "考生档案记录（需以当年招生目录核验）",
+                "majors": [
+                    "(101)思想政治理论",
+                    "(201)英语（一）",
+                    "(308)护理综合",
+                ],
+                "score_trend": "未核验：请以哈尔滨医科大学当年复试分数线公告为准。",
+                "ratio_quota": "未核验：请以当年招生简章、专业目录与拟录取公示为准。",
+                "protect_first": "未核验：请以当年复试录取细则与拟录取名单为准。",
+                "reputation": ["未核验：本地库不替代官方培养与就业信息。"],
+                "pitfalls": ["308 科目与招生方向须按当年目录逐项核验，不能仅凭往年记录报考。"],
+            }
+        },
+        "default_reputation": "未核验：请以学校研究生院和护理学院官方信息为准。",
+        "default_pitfalls": "报考前核对 105400 护理的学习方式、研究方向、考试科目和招生人数。",
+    },
     "华中科技大学": {
         "alias": ["华科", "华科大", "HUST"],
         "level": "985工程 / 211工程 / 双一流A类 / 34所自主划线 / 教育部直属全国重点大学",

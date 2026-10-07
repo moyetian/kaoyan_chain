@@ -26,6 +26,12 @@ except ImportError:  # pragma: no cover
 from .models import UniversityEntity
 from .registry import get_registry, resolve_university
 from .chsi_connector import CHSIConnector
+from .subject_catalog import (
+    format_subject_items,
+    is_nursing_major,
+    nursing_308_subjects,
+    profile_subject_items,
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -62,6 +68,27 @@ _INSUFFICIENT_SUBJECT_EVIDENCE = (
     "或在配置大模型 API 后重新对标，获取在线核验的科目对比。"
 )
 
+#: [F4 修复·408 过度断言] hedge 词：科目记录含这些词说明「408」只是可能性而非确认。
+_408_HEDGE_RE = re.compile(r"或|待核验|可能")
+
+
+def _confirmed_408(subjects) -> bool:
+    """科目记录中是否存在**已确认**的 408（排除「408 或院校自命题」类 hedge 表述）。
+
+    [F4 修复·408 过度断言] 画像里常见「(408)计算机学科专业基础或院校自命题」
+    这类待核验记录，旧实现用裸子串 ``"408" in m_str`` 判定，把它当成确认并
+    对两校输出「均统一采用国家统考 408」的虚假断言（A-P5/B-P5 实测复现）。
+    逐条按与 :func:`_analyze_differences` 相同的拼接口径判定：含 408 且不含
+    「或 / 待核验 / 可能」才算确认。
+    """
+    for item in subjects or []:
+        code = item.get("code")
+        name = item.get("name", "")
+        txt = f"({code}){name}" if code else str(name or "")
+        if "408" in txt and not _408_HEDGE_RE.search(txt):
+            return True
+    return False
+
 # [UT4 修复·WEB-3] 省级行政区名单（不含直辖市）：用于识别「仅省级粒度」的
 # region 文本（如兜底启发式产出的「河南」），以便与市级粒度（「河南新乡」）
 # 区分。直辖市（北京/天津/上海/重庆）省市同体、粒度天然一致，不在列即无需标注。
@@ -85,6 +112,34 @@ def normalize_region_granularity(region) -> str:
     if text in _PROVINCE_LEVEL_REGIONS:
         return f"{text}（市级待核验）"
     return text
+
+
+def _apply_requested_subject_hint(profile: Dict[str, Any], major_keyword: str) -> Dict[str, Any]:
+    """Preserve an explicit 105400/308 candidate subject selection.
+
+    Online research responses are free-form and occasionally return the
+    generic ``301/8xx`` template even when the requested major is nursing.
+    The caller's explicit major selection is stronger than that fallback, but
+    it is labelled as candidate configuration rather than official evidence.
+    """
+    if not isinstance(profile, dict) or not is_nursing_major(major_keyword):
+        return profile
+    current = profile_subject_items(profile)
+    if any(item.get("code") == "308" for item in current):
+        return profile
+    updated = dict(profile)
+    subjects = nursing_308_subjects()
+    updated["exam_subjects"] = subjects
+    updated["subject_codes"] = [item["code"] for item in subjects]
+    updated["subject_status"] = "candidate_config"
+    updated["subject_source"] = "考生档案记录（需以当年招生目录核验）"
+    updated["majors"] = [f"({item['code']}){item['name']}" for item in subjects]
+    base = str(updated.get("catalog_source") or "").strip()
+    updated["catalog_source"] = (
+        f"{base}；科目字段来自考生档案，待当年招生目录核验"
+        if base else "[CANDIDATE_CONFIG 考生档案记录，待当年招生目录核验]"
+    )
+    return updated
 
 
 def report_fingerprint(text) -> str:
@@ -329,6 +384,7 @@ class SchoolComparator:
             prof = {"name": school_name,
                     "catalog_source": "[FALLBACK 研究未完成]",
                     "score_trend": "参照国家线与校自划线"}
+        prof = _apply_requested_subject_hint(prof, major_keyword)
         if reason and isinstance(prof, dict):
             _base = str(prof.get("catalog_source") or "").strip()
             prof["catalog_source"] = f"{_base}（{reason}）" if _base else reason
@@ -355,7 +411,9 @@ class SchoolComparator:
         dept_info = None
         if db_item and "pro_departments" in db_item:
             for k, v in db_item["pro_departments"].items():
-                if major_keyword in k or k in major_keyword:
+                major_code = str(v.get("major_code") or "") if isinstance(v, dict) else ""
+                if (major_keyword in k or k in major_keyword or
+                        (major_code and major_code in major_keyword)):
                     dept_info = v
                     break
 
@@ -366,10 +424,19 @@ class SchoolComparator:
             official = entity.official_domain if entity else ""
             graduate = entity.graduate_domain if entity else ""
             majors = dept_info.get("majors", [])
+            exam_subjects = dept_info.get("exam_subjects") or dept_info.get("subjects") or []
+            subject_status = dept_info.get("subject_status", "catalog_record")
+            subject_source = dept_info.get("subject_source", "院校画像库记录")
             # [诚信修复] 该分支数据来自 school_db.py 的**人工整理考情专栏**（8 校），
             # 其中的复试线/报录比/一志愿保护/口碑属人工评述，并非官方原文，
             # 旧标签「OFFICIAL_VERIFIED 院校专栏实录」属来源夸大，现如实改标。
-            catalog_source = "[CURATED_NOTES 人工整理考情专栏]"
+            # [护理 308 链路] 考生档案记录（candidate_config）不得贴「人工整理
+            # 考情专栏」标签——该标签暗示已人工核验过。
+            catalog_source = (
+                "[CANDIDATE_CONFIG 考生档案科目记录，待当年招生目录核验]"
+                if subject_status == "candidate_config"
+                else "[CURATED_NOTES 人工整理考情专栏]"
+            )
             score_trend = dept_info.get("score_trend", "参照国家线与校自划线")
             ratio = dept_info.get("ratio_quota", "以官方最终报录公示为准")
             protect = dept_info.get("protect_first", "遵循教育部统一录取规范")
@@ -384,6 +451,13 @@ class SchoolComparator:
                 "official": official,
                 "graduate": graduate,
                 "majors": majors,
+                "exam_subjects": exam_subjects,
+                "subject_codes": [str(item.get("code")) for item in exam_subjects
+                                  if isinstance(item, dict) and item.get("code")],
+                "subject_status": subject_status,
+                "subject_source": subject_source,
+                "major_code": dept_info.get("major_code", ""),
+                "degree_type": dept_info.get("degree_type", ""),
                 "catalog_source": catalog_source,
                 "score_trend": score_trend,
                 "ratio": ratio,
@@ -398,7 +472,7 @@ class SchoolComparator:
         from tools.intelligence.agentic_research import research_university_profile
         profile = research_university_profile(school_name, major_keyword, api_config=api_config,
                                               budget_s=200.0)
-        return profile
+        return _apply_requested_subject_hint(profile, major_keyword)
 
     def _analyze_differences(
         self,
@@ -409,15 +483,55 @@ class SchoolComparator:
         major: str
     ) -> Dict[str, Any]:
         """提炼两校竞争差异与决策建议"""
-        # 1. 科目差异
-        m1_str = " ".join(info1.get("majors", []))
-        m2_str = " ".join(info2.get("majors", []))
-        if "408" in m1_str and "408" not in m2_str:
+        # 1. 科目差异。优先读取结构化 exam_subjects；旧画像仍可通过
+        # majors 兼容。这样 105400 护理不会再落入 301/8xx 泛化模板。
+        subjects1 = profile_subject_items(info1)
+        subjects2 = profile_subject_items(info2)
+        codes1 = [item["code"] for item in subjects1 if item.get("code")]
+        codes2 = [item["code"] for item in subjects2 if item.get("code")]
+        m1_str = " ".join(
+            f"({item.get('code')}){item.get('name')}" if item.get("code") else item.get("name", "")
+            for item in subjects1
+        )
+        m2_str = " ".join(
+            f"({item.get('code')}){item.get('name')}" if item.get("code") else item.get("name", "")
+            for item in subjects2
+        )
+        # [F4 修复·408 过度断言] 仅「含 408 且无 hedge 词」才算确认；裸子串会把
+        # 「(408)…或院校自命题」误判为确认并输出「均统一采用」（A-P5/B-P5 复现）。
+        confirmed1 = _confirmed_408(subjects1)
+        confirmed2 = _confirmed_408(subjects2)
+        structured_statuses = {"candidate_config", "catalog_record", "verified"}
+        structured_ready = bool(subjects1 and subjects2) and all(
+            str(info.get("subject_status", "")).strip() in structured_statuses
+            for info in (info1, info2)
+        )
+        if structured_ready:
+            display1 = format_subject_items(subjects1) or "待核验"
+            display2 = format_subject_items(subjects2) or "待核验"
+            if codes1 == codes2 and display1 == display2:
+                subject_diff = (
+                    f"两校当前记录的初试科目一致：{display1}；"
+                    "科目复习通用度较高，但仍需以当年招生目录核验。"
+                )
+            else:
+                subject_diff = (
+                    f"【{name1}】初试科目：{display1} ｜ "
+                    f"【{name2}】初试科目：{display2}；科目代码存在差异，"
+                    "请分别按当年目录准备。"
+                )
+        elif confirmed1 and "408" not in m2_str:
             subject_diff = f"【{name1}】采用全国统考 408，【{name2}】包含专业自主命题或待核验"
-        elif "408" in m2_str and "408" not in m1_str:
+        elif confirmed2 and "408" not in m1_str:
             subject_diff = f"【{name2}】采用全国统考 408，【{name1}】包含专业自主命题或待核验"
-        elif "408" in m1_str and "408" in m2_str:
+        elif confirmed1 and confirmed2:
             subject_diff = "两校主流专硕/学硕均统一采用国家统考 408（复习通用度极高）"
+        elif "408" in m1_str or "408" in m2_str:
+            # [F4 修复] 任一侧仅「提及」408（hedge）时不得断言统一统考，如实提示核验。
+            subject_diff = (
+                "两校初试科目记录含 408 相关表述，但存在「或院校自命题」等待核验成分，"
+                "不得据此断言统一统考 408；请以当年招生目录核验。"
+            )
         else:
             # 只有画像确实携带已核验的科目来源时，才敢逐条列出初试科目。
             # [LOCAL_DB_VERIFIED] 表示科目来自本地全国高校库（研招网 408 逐校核验数据
@@ -471,6 +585,12 @@ class SchoolComparator:
 
         return {
             "subject_diff": subject_diff,
+            "subject_codes1": codes1,
+            "subject_codes2": codes2,
+            "subject_names1": [item.get("name", "") for item in subjects1],
+            "subject_names2": [item.get("name", "") for item in subjects2],
+            "subject_status1": info1.get("subject_status", "unverified"),
+            "subject_status2": info2.get("subject_status", "unverified"),
             "region_diff": region_diff,
             "recommendation": recommendation
         }
@@ -524,6 +644,8 @@ class SchoolComparator:
                 w += cw
             return _pad(out + "...", width)
 
+        subject_display1 = format_subject_items(profile_subject_items(info1)) or "待核验"
+        subject_display2 = format_subject_items(profile_subject_items(info2)) or "待核验"
         lines = [
             f"\n=== ⚔️ 目标高校招考深度横向对比大盘 · 【{name1}】 VS 【{name2}】 ({major}) ===",
             "-" * table_w,
@@ -533,7 +655,7 @@ class SchoolComparator:
             f"{_pad('所在城市', col1_w)} | {_col(info1.get('region', '待核验'), col2_w)} | {_col(info2.get('region', '待核验'), col3_w)}",
             f"{_pad('办学层次', col1_w)} | {_col(info1.get('level', '待核验'), col2_w)} | {_col(info2.get('level', '待核验'), col3_w)}",
             f"{_pad('数据源属性', col1_w)} | {_col(info1.get('catalog_source', ''), col2_w)} | {_col(info2.get('catalog_source', ''), col3_w)}",
-            f"{_pad('初试科目特征', col1_w)} | {_col((info1.get('majors') or ['待核验'])[0], col2_w)} | {_col((info2.get('majors') or ['待核验'])[0], col3_w)}",
+            f"{_pad('初试科目', col1_w)} | {_col(subject_display1, col2_w)} | {_col(subject_display2, col3_w)}",
             f"{_pad('复试线走向', col1_w)} | {_col(info1.get('score_trend', '待核验'), col2_w)} | {_col(info2.get('score_trend', '待核验'), col3_w)}",
             f"{_pad('一志愿保护', col1_w)} | {_col(info1.get('protect', '未核验'), col2_w)} | {_col(info2.get('protect', '未核验'), col3_w)}",
             "-" * table_w,
@@ -554,6 +676,8 @@ class SchoolComparator:
         major: str
     ) -> str:
         """生成 Markdown 深度对比研报"""
+        subject_display1 = format_subject_items(profile_subject_items(info1)) or "待核验"
+        subject_display2 = format_subject_items(profile_subject_items(info2)) or "待核验"
         lines = [
             f"# ⚔️ 考研目标院校横向对比研报 · {name1} VS {name2} ({major})",
             f"> 深度对标办学层次、自划线特征、初试统考/自命题科目、近三年复试线、一志愿保护机制与备考风险",
@@ -566,6 +690,7 @@ class SchoolComparator:
             f"| **所在地区** | {info1.get('region', '待核验')} | {info2.get('region', '待核验')} |",
             f"| **办学层次** | {info1.get('level', '待核验')} | {info2.get('level', '待核验')} |",
             f"| **专业库来源** | `{info1.get('catalog_source', '')}` | `{info2.get('catalog_source', '')}` |",
+            f"| **初试科目（结构化）** | {subject_display1} | {subject_display2} |",
             f"| **复试分数线走势** | {info1.get('score_trend', '待核验')} | {info2.get('score_trend', '待核验')} |",
             f"| **招生规模与报录** | {info1.get('ratio', '待核验')} | {info2.get('ratio', '待核验')} |",
             f"| **一志愿保护机制** | {info1.get('protect', '未核验')} | {info2.get('protect', '未核验')} |",

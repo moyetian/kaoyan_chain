@@ -482,8 +482,19 @@ def run_study_plan_wizard(interactive=True, preset_data=None):
         # [P2-12 修复·护理考生无预设] 308 护理综合：载入模块骨架（含【待自填】告警）
         print("    [4] 全国统考/自命题 308 护理综合 (载入模块骨架，须按目标院校官网核验)")
         print("    [5] 全国统考 312 心理学专业基础综合 (须按目标院校官网核验)")
-        p_sel = input("  请选择专业课类型 (1/2/3/4/5) [默认: 1]: ").strip() or "1"
-        if p_sel == "1":
+        # [2026-10-06 批次·内置统考/联考/自命题大纲] 注册表入口（清单动态生成）
+        _builtin_codes = syllabus_manager.builtin_pro_syllabus_codes()
+        print(f"    [6] 更多内置统考/联考/自命题大纲 (按科目代码载入，共 {len(_builtin_codes)} 科；"
+              f"自命题为参考框架，以院校官方大纲为准)")
+        p_sel = input("  请选择专业课类型 (1~6) [默认: 1]: ").strip() or "1"
+        if p_sel == "6":
+            _sel = syllabus_manager.prompt_builtin_pro_selection()
+            if _sel:
+                pro_type, pro_name = _sel
+            else:
+                pro_type = "custom"
+                pro_name = input("  请输入自命题专业课科目名称与代码 [如 801 信号与系统]: ").strip() or "专业课"
+        elif p_sel == "1":
             pro_type = "408"
             pro_name = "408 计算机学科专业基础"
         elif p_sel == "2":
@@ -1392,6 +1403,60 @@ def ensure_subject_today_task(plan, subject_key, workspace_root=None):
     status_raw = _safe_write_today_task(task_file, today_str, content)
     status = "created" if status_raw == "已创建" else "overwritten"
     return {"status": status, "path": str(task_file), "task_count": 3}
+
+
+def refresh_stale_today_tasks(plan=None, workspace_root=None) -> List[Dict]:
+    """[审查修复·任务文件跨天不刷新] 读取侧兜底：把非当日的「今日任务.md」重写为当日版本。
+
+    背景：全仓只有两条写入路径 —— 建档向导 ``generate_plan_and_today_files``
+    与报到 ``ensure_subject_today_task``（且只处理报到的那一科）。考生当天不报到、
+    直接 ``ky today`` / 打开看板时，四科文件仍是**昨天**的：任务面板显示昨天的
+    任务、勾选也算进今天的完成率（实测 2026-10-03 读到 2026-10-02 的任务）。
+    本函数在读取入口前调用一次即可让「今日」名副其实。
+
+    行为边界（刻意保守）：
+      - **文件不存在不动** —— 保持「报到/建档才生成」的既有语义，不给未报到的
+        科目凭空造文件；
+      - 过期文件走 ``ensure_subject_today_task`` 同款模板重写（不调 LLM、
+        当日文件与 [x] 勾选绝不覆盖，禁用科目自动跳过）；
+      - 任何单科失败只跳过该科，绝不阻断读取（读取侧兜底不得比不兜底更脆）。
+
+    返回被刷新的科目信息列表（空列表 = 无需刷新）。
+    """
+    ws = Path(workspace_root) if workspace_root else ROOT
+    if not isinstance(plan, dict):
+        plan = None
+    if plan is None:
+        try:
+            _cfg = json.loads((ws / "ky_config.json").read_text(encoding="utf-8"))
+            plan = _cfg.get("study_plan") if isinstance(_cfg, dict) else {}
+        except (OSError, ValueError):
+            plan = {}
+    if not isinstance(plan, dict):
+        plan = {}
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    refreshed: List[Dict] = []
+    for _key, (_folder, _ratios, _name) in _CHECKIN_SUBJECT_SPECS.items():
+        task_file = ws / _folder / "_状态" / "今日任务.md"
+        if not task_file.exists():
+            continue
+        first_line = ""
+        for _enc in ("utf-8", "utf-8-sig", "gbk"):
+            try:
+                first_line = task_file.read_text(encoding=_enc).splitlines()[0]
+                break
+            except (OSError, UnicodeDecodeError, IndexError):
+                continue
+        if today_str in first_line:
+            continue
+        try:
+            info = ensure_subject_today_task(plan, _key, workspace_root=ws)
+        except Exception:
+            continue
+        if str(info.get("status") or "") in ("created", "overwritten", "refreshed"):
+            refreshed.append({"subject": _key, **info})
+    return refreshed
 
 
 def _generate_subject_task_content(subject_key: str, subject_display: str, plan: dict, today_str: str, default_template: str, workspace_root=None) -> str:
@@ -2558,10 +2623,15 @@ def restore_relief_mode() -> dict:
     atomic_write_text(cfg_path, json.dumps(cfg, ensure_ascii=False, indent=2))
 
     agents_file = ROOT / "AGENTS.md"
-    if agents_file.exists() and restored_style:
+    if agents_file.exists():
         content = agents_file.read_text(encoding="utf-8", errors="ignore")
-        content = re.sub(r"- \*\*当前激活辅导风格\*\*：.*",
-                         f"- **当前激活辅导风格**：`{restored_style}`", content)
+        # [keep-style 恢复修复] keep-style 减负不记录 style_before_relief，
+        # restored_style 为 None 时也要把预算行从减负值恢复；风格行按
+        # 「记录的原风格 → 当前配置 → plan」顺序兜底。
+        style_to_write = restored_style or cfg.get("coaching_style") or plan.get("style_name")
+        if style_to_write:
+            content = re.sub(r"- \*\*当前激活辅导风格\*\*：.*",
+                             f"- **当前激活辅导风格**：`{style_to_write}`", content)
         content = re.sub(r"每日投入 `[\d\.]+ 小时`",
                          f"每日投入 `{plan['total_hours']} 小时`", content)
         atomic_write_text(agents_file, content)

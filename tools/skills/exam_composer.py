@@ -12,6 +12,7 @@
 import os
 import re
 import json
+import secrets
 from datetime import datetime, date
 from pathlib import Path
 
@@ -247,15 +248,15 @@ except Exception:
 try:
     from skills.question_source import (  # noqa: F401
         ORIGIN_MISTAKE, ORIGIN_PLACEHOLDER, ORIGIN_SYNTHETIC_LLM, ORIGIN_WHITELIST,
-        QuestionSource, extract_card_stem, has_declared_identity, source_from_card,
-        split_card_blocks,
+        QuestionSource, extract_card_stem, fence_for_text, has_declared_identity,
+        source_from_card, split_card_blocks,
     )
     from skills.question_source import REAL_ORIGINS as _REAL_ORIGINS
 except Exception:  # pragma: no cover - 包式导入路径
     from tools.skills.question_source import (  # noqa: F401
         ORIGIN_MISTAKE, ORIGIN_PLACEHOLDER, ORIGIN_SYNTHETIC_LLM, ORIGIN_WHITELIST,
-        QuestionSource, extract_card_stem, has_declared_identity, source_from_card,
-        split_card_blocks,
+        QuestionSource, extract_card_stem, fence_for_text, has_declared_identity,
+        source_from_card, split_card_blocks,
     )
     from tools.skills.question_source import REAL_ORIGINS as _REAL_ORIGINS
 
@@ -592,7 +593,18 @@ def _generate_synthetic_question_llm(subject: str, subj_name: str, topic: str, p
 
 
 def _read_radar_rows(subject: str):
-    """读取「_状态/薄弱点雷达.md」里评级为 C/D 的行 → [(模块名, 核心卡点)]。"""
+    """读取「_状态/薄弱点雷达.md」里评级为 C/D 的行 → [(模块名, 核心卡点)]。
+
+    [数据正确性修复·多列模板滑窗错位] 旧实现用固定 4 列正则
+    （``| c1 | c2 | [CD] | c3 |``）在整行上滑窗：
+      * 政治 5 列模板（``| 模块 | 考题形式 | 目标分 | 当前评级 | 易混卡点 |``）
+        的 C/D 行会把**第二列**「考题形式」当成模块名、卡点取第五列（错位）；
+      * 英语 3 列模板（``| 题型模块 | 熟练评级 | 主要失分原因 |``）格数不足，
+        所有 C/D 行**全部漏检**。
+    现按表头定位：评级列 = 表头含「评级」的列（当前评级/熟练评级），
+    模块名取第一列，卡点取含「卡点/失分/原因」的列（缺省最后一列）。
+    4 列数学模板的输出与旧实现逐项一致（模块名、卡点均不变）。
+    """
     subj_folder = SUBJECT_DIRS.get(subject, "01-数学")
     radar_file = ROOT / subj_folder / "_状态" / "薄弱点雷达.md"
     if not radar_file.exists():
@@ -603,9 +615,33 @@ def _read_radar_rows(subject: str):
         return []
     rows = []
     seen = set()
-    for m in re.findall(r"\|\s*([^|\n]+?)\s*\|\s*([^|\n]+?)\s*\|\s*[CD]\s*\|\s*([^|\n]+?)\s*\|", txt):
-        module_name = m[0].strip()
-        pain_point = m[2].strip()
+    rating_col = None
+    pain_col = None
+    for line in txt.splitlines():
+        stripped = line.strip()
+        if not (stripped.startswith("|") and stripped.endswith("|")):
+            # 离开表格：表头定位失效，下一张表重新定位
+            rating_col = None
+            pain_col = None
+            continue
+        cells = [p.strip() for p in stripped.split("|")[1:-1]]
+        if not cells:
+            continue
+        # 表头行：定位「评级」列（评级列确定后才可能读数据行）
+        idx_rating = next((i for i, c in enumerate(cells) if "评级" in c), None)
+        if idx_rating is not None:
+            rating_col = idx_rating
+            idx_pain = next((i for i, c in enumerate(cells)
+                             if ("卡点" in c) or ("失分" in c) or ("原因" in c)), None)
+            pain_col = idx_pain if idx_pain is not None else len(cells) - 1
+            continue
+        if rating_col is None or len(cells) <= rating_col:
+            continue
+        if cells[rating_col] not in ("C", "D"):
+            continue
+        module_name = cells[0].strip()
+        pain_point = (cells[pain_col].strip()
+                      if (pain_col is not None and len(cells) > pain_col) else "")
         if not module_name or module_name in seen:
             continue
         seen.add(module_name)
@@ -822,11 +858,15 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
     selected_keys = set()
 
     def item_identity(item):
-        return (
-            str(item.get("file_name", "")).strip(),
-            str(item.get("title", "")).strip(),
-            str(item.get("question") or item.get("title") or "").strip(),
-        )
+        # 同一题经多次 ingest 会出现在不同切片文件中；文件名不能参与主身份，
+        # 否则同一题仍会在一张试卷中重复出现。身份 = 规范化题干，标题兜底。
+        canonical_stem = re.sub(
+            r"\s+", "", str(item.get("question") or "").strip()).lower()
+        if canonical_stem:
+            return ("stem", canonical_stem)
+        canonical_title = re.sub(
+            r"\s+", "", str(item.get("title", "")).strip()).lower()
+        return ("title", canonical_title)
 
     def add_unique(item, origin=None):
         """按题源、标题和题干去重，避免同一错题重复占位；同时补齐 origin 标签。"""
@@ -975,7 +1015,13 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
     shortfall = max(0, count - len(selected_items))
 
     today_str = datetime.now().strftime("%Y-%m-%d")
-    paper_id = f"EXAM-{subject.upper()}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    # [数据正确性修复·paper_id 秒级碰撞] 旧编号精确到秒（%H%M%S），同一秒内
+    # 连续组卷（脚本/测试/连点两次）会生成**相同 paper_id**：密钥文件与试卷
+    # 文件互相覆盖，后一卷的答案盖掉前一卷（判卷取到错卷密钥）。
+    # 追加 2 字节随机短后缀（4 位 hex，字符集 [0-9a-f-] 全部消费方兼容：
+    # EXAM_PAPER_ID 注释正则、伴生密钥反解、密钥 glob、文件名）。
+    paper_id = (f"EXAM-{subject.upper()}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+                f"-{secrets.token_hex(2)}")
 
     # 构建自测试卷 Markdown 内容
     lines = [
@@ -1054,7 +1100,11 @@ def compose_exam_paper(subject="math", count=3, include_weak=True, save_file=Tru
                 "- **题源属性**：⚠️ `[私教自拟变式]` —— 按薄弱点由大模型命制的巩固题，"
                 "附参考答案但**并非真题**。")
         lines.append(f"- **题目设问与题干**：")
-        lines.append(f"```text\n{q_text.strip()}\n```")
+        # [数据正确性修复·围栏提前闭合] 题面含 ``` 时（代码题/Markdown 摘录）
+        # 固定 3 反引号围栏会让题面在内容里的 ``` 处提前闭合、卷面结构损坏。
+        # 围栏长度自适应（与错题卡写入/解析共用 question_source.fence_for_text）。
+        _q_fence = fence_for_text(q_text)
+        lines.append(f"{_q_fence}text\n{q_text.strip()}\n{_q_fence}")
         lines.append(f"")
         lines.append(f"**【学员作答区】**：")
         lines.append(f"> (请在此处填写您的推导步骤与最终答案)")
@@ -1181,6 +1231,12 @@ def _grade_open_by_llm(key_item: dict, student_answer: str, subject: str):
             subject=str(key_item.get("subject", subject) or subject),
             reference_answer=str(key_item.get("standard_answer", "") or ""),
             key_points=key_item.get("key_points"),
+            # [D2] 判卷留痕溯源：key_item 是加密答案库中的题卡（含题号 id）；
+            # paper_id 由 exam_grading 侧持有、本回调签名拿不到 → 置空，不硬造。
+            trace_meta={
+                "paper_id": "",
+                "question_id": str(key_item.get("id", "") or ""),
+            },
         )
         # [K1 设计取舍·故意保守] open_grader 给出 0~10 的部分分（og.score），但本
         # 链路只按 match_level(2/1/0) 二值化采分：仅 2 判满分计入总分；1（含 0~10

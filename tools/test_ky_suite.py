@@ -28,6 +28,14 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
+# [2026-10-04 P3-4] 审批审计隔离：套件在真实工作区运行时，PermissionManager
+# 默认会把审计写到工作区父目录（= 真实桌面 / 共享目录）。测试行为不应污染
+# 真实环境 —— 未显式设置时统一重定向到系统临时目录。
+if not os.environ.get("KY_APPROVAL_AUDIT_ROOT"):
+    import tempfile as _tempfile_audit
+    os.environ["KY_APPROVAL_AUDIT_ROOT"] = str(
+        Path(_tempfile_audit.gettempdir()) / "kaoyan-study-chain" / "audit_test_ky_suite")
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 

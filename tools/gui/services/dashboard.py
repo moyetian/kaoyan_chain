@@ -88,6 +88,17 @@ def load_state(workspace_root: Path) -> Optional[DashboardState]:
     状态对象及其子对象均为 frozen dataclass，调用方只读，可安全共享。
     """
     root = Path(workspace_root)
+    # [审查修复·任务文件跨天不刷新] 读盘前先把非当日的「今日任务.md」按当日
+    # 重写（与 ky today / REPL / TUI / 看板同源，不调 LLM）；失败静默跳过，
+    # 读取不得因兜底而失败。刷新后文件 mtime 变化会让下方指纹自然失效。
+    try:
+        try:
+            from tools.study_planner import refresh_stale_today_tasks
+        except ImportError:
+            from study_planner import refresh_stale_today_tasks
+        refresh_stale_today_tasks(workspace_root=root)
+    except Exception:
+        pass
     key = (str(root), date.today().isoformat(), _input_fingerprint(root))
     if key in _STATE_CACHE:
         return _STATE_CACHE[key]
@@ -172,6 +183,18 @@ _ERROR_STATUS_RE = re.compile(r"\*\*掌握状态\*\*[：:]\s*`?\[?([^\]`\n]*)\]?
 _ERROR_TYPE_RE = re.compile(r"\*\*错因分类\*\*[：:]\s*`?([^`\n(]*)`?")
 _ERROR_QUESTION_RE = re.compile(
     r"\*\*题干\s*设问\*\*[：:]\s*```(?:text)?\s*(.*?)\s*```", re.DOTALL)
+
+#: [围栏自适应·2026-10-05] 错题卡写入侧（error_logger.fence_for_text）在题干
+#: 含 ``` 时会把围栏加长；本模块的固定 3 反引号正则只兼容旧格式，会把
+#: 长围栏卡片的题干截断。优先复用 question_source.extract_mistake_stem
+#: （纯函数、不绑定仓库根，与写入侧同一口径）；导入不可用时回落本地正则。
+try:  # pragma: no cover - 双导入路径兼容（与文件既有模式一致）
+    from skills.question_source import extract_mistake_stem as _extract_mistake_stem
+except ImportError:  # pragma: no cover
+    try:
+        from tools.skills.question_source import extract_mistake_stem as _extract_mistake_stem
+    except ImportError:  # pragma: no cover
+        _extract_mistake_stem = None
 _ERROR_DUE_RE = re.compile(r"下次到期\s*`?(\d{4}-\d{2}-\d{2})`?")
 
 #: 非错题档案（模板/索引/自测卷）文件名特征
@@ -257,7 +280,9 @@ def error_queue_cards(workspace_root: Path) -> List[Dict[str, str]]:
                     "status": _first_group(_ERROR_STATUS_RE, section) or "待复测",
                     "error_type": _first_group(_ERROR_TYPE_RE, section),
                     "next_due": _first_group(_ERROR_DUE_RE, section),
-                    "question": _first_group(_ERROR_QUESTION_RE, section),
+                    "question": (_extract_mistake_stem(section)
+                                 if _extract_mistake_stem is not None
+                                 else _first_group(_ERROR_QUESTION_RE, section)),
                     "file_name": md_file.name,
                 })
 

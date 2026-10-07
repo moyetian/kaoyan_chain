@@ -136,7 +136,8 @@ def test_function_cards_breathing_room_and_no_overlap(win, app):
     app.processEvents()
 
     cards = win.feature_cards
-    assert len(cards) == 10
+    # [2026-10-06] 10 → 12：新增 rag（本地检索）/ index（建索引）两个 GUI 入口
+    assert len(cards) == 12
     for c in cards:
         assert c.width() >= 180
         assert c.height() >= 80

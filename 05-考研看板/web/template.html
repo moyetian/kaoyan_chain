@@ -1208,7 +1208,7 @@ function tabBtn(key){
       || document.querySelector('[data-p="' + key + '"]');
 }
 var _tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"][data-p]'));
-function _activateTab(b, focusIt){
+function _activateTab(b, focusIt, noPush){
   // 二级入口（带 data-parent）激活时宿主页签保持选中：图谱是「进度」的
   // 二级视图，底栏高亮不悬空；入口自身的当前位置由 aria-current="page" 表达。
   var activeKey = b.dataset.parent || b.dataset.p;
@@ -1228,6 +1228,13 @@ function _activateTab(b, focusIt){
   window.scrollTo(0, 0);
   if (b.dataset.p === 'stat') animate();
   try{ localStorage.setItem('kytab', b.dataset.p); }catch(e){}
+  /* [A8③ 修复·手机返回键退出页面] 每个页签切换压入一条历史记录：安卓返回键
+     / 浏览器后退先回到上一个页签，而不是直接退出看板。刻意不传 URL 参数
+     （file:// 下带 URL 的 pushState 会抛 SecurityError，看板常在 file:// 打开）；
+     恢复上次页签与 popstate 自身不再压栈（noPush），避免返回键陷入死循环。 */
+  if (!noPush && window.history && history.pushState){
+    try{ history.pushState({kytab: b.dataset.p}, ''); }catch(e){}
+  }
   var live = document.getElementById('a11y-live');
   if (live) live.textContent = b.dataset.parent
     ? '已打开「' + b.textContent.trim() + '」'
@@ -1299,7 +1306,11 @@ try{
   var t=localStorage.getItem('kytab');
   if(t&&t!=='today'){
     var el=tabBtn(t);
-    if(el){ el.click(); }
+    if(el){
+      /* 恢复上次页签不压历史栈（noPush）：否则返回键会先"回到"本次恢复动作
+         之前的状态，语义上等于按了两次返回。 */
+      _activateTab(el, false, true);
+    }
     else{
       /* [W13-6] 显式降级：kytab 为过期/未知值（如历史遗留的脏值）时，
          不再静默跳过——清除脏值，页面保持初始「今日」页。行为可预期：
@@ -1308,6 +1319,42 @@ try{
     }
   }
 }catch(e){}
+
+/* 返回键 / 前进键：按历史记录里的页签状态还原视图（popstate 自身不压栈）。 */
+window.addEventListener('popstate', function(e){
+  var key = (e.state && e.state.kytab) || 'today';
+  var el = tabBtn(key);
+  if (el) _activateTab(el, false, true);
+});
+
+/* ── 倒计时客户端重算（渐进增强） ───────────────────────────────────
+   [缺陷修复·看板倒计时不重建就过期] hero 大数字 / title / 环形进度 aria-label
+   / sr-only 标题里的剩余天数此前只由构建期注入，产物一旦生成就冻结：
+   实测 docs/index.html 落后 3 天（显示 78、真实 75）。页面加载时用注入的
+   考期（EXAM_YEAR + EXAM_MMDD）按**本地日期**重算并就地更新上述四处；
+   构建期注入值保持不变（无 JS 环境下仍是构建当日快照，测试对产物的
+   断言不受影响）。考期已过显示 0，不出负数（与 GUI / CLI 的 max(0, …) 同口径）。 */
+(function(){
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec('{{EXAM_YEAR}}-{{EXAM_MMDD}}');
+  if(!m) return;
+  var exam = new Date(+m[1], +m[2]-1, +m[3]);
+  var now = new Date();
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var days = Math.round((exam - today) / 86400000);
+  if(days < 0) days = 0;
+  var heroNum = document.querySelector('.hero-num');
+  if(heroNum) heroNum.textContent = String(days);
+  if(document.title.indexOf('倒计时') !== -1){
+    document.title = document.title.replace(/倒计时\s*\d+\s*天/, '倒计时 ' + days + ' 天');
+  }
+  var h1 = document.querySelector('h1.sr-only');
+  if(h1) h1.textContent = h1.textContent.replace(/还有\s*\d+\s*天/, '还有 ' + days + ' 天');
+  var ring = document.querySelector('.hero-ring');
+  if(ring){
+    var label = ring.getAttribute('aria-label') || '';
+    ring.setAttribute('aria-label', label.replace(/还有\s*\d+\s*天/, '还有 ' + days + ' 天'));
+  }
+})();
 </script>
 
 <canvas id="confetti" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;"></canvas>

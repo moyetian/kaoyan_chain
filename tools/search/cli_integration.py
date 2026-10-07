@@ -39,14 +39,23 @@ def cli_search(query: str, top_k: int = 5, source_filter: Optional[str] = None) 
         搜索结果列表 [{"text": ..., "source": ..., "score": ...}, ...]
     """
     try:
-        from tools.search.hybrid import search as hybrid_search
+        # [修复 2026-10-05·只读检索不得建库] 改用 search_with_diagnostics：
+        # 库文件不存在时 hybrid 层直接返回降级诊断（不再 get_knowledge_store()
+        # 凭空建库）；0 条命中时把降级原因写进日志，调用方能区分「没搜到」
+        # 与「知识库未建立/向量不可用」。
+        from tools.search.hybrid import search_with_diagnostics
 
-        results = hybrid_search(
+        outcome = search_with_diagnostics(
             query=query,
             top_k=top_k,
             enable_vector=True,
             source_filter=source_filter
         )
+        results = outcome.results
+        if not results and outcome.degraded:
+            import logging
+            logging.getLogger(__name__).warning(
+                "本地知识库检索为空：%s", outcome.degrade_reason or "未命中任何片段")
 
         # 转换为简单字典格式
         return [

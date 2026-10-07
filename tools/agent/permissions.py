@@ -138,6 +138,13 @@ class PermissionManager:
         self.headless_policy = resolve_headless_policy(self.config)
         self.headless_allow_tools = resolve_headless_allow_tools(self.config)
         self.approval_channel = approval_channel
+        # Keep audit durable outside the workspace so permission checks never
+        # create an unexpected project file or alter safe-mode snapshots.
+        # 落点解析统一走 approval_audit.resolve_audit_root（env 覆盖 / 父目录 /
+        # LOCALAPPDATA 兜底），写入与 `ky audit` 读取共用同一实现，避免漂移。
+        from .approval_audit import resolve_audit_root
+        self.audit_root = resolve_audit_root(self.workspace_root)
+        self.audit_enabled = True
         if approval_channel is not None:
             # 通道侧若自带信任集（TtyApproval / GuiApproval 均是），必须**共享同一个
             # set 对象**：用户在弹窗里选"本会话信任"后，策略层的
@@ -464,6 +471,15 @@ class PermissionManager:
         :meth:`restore_checkpoint` / :meth:`restore_last_checkpoint`。
         """
         allowed, reason = self._decide_permission(tool_name, level, tool_args, interactive)
+        if self.audit_enabled:
+            try:
+                from .approval_audit import append_approval_event
+                append_approval_event(self.audit_root, tool_name=tool_name,
+                                      level=level, allowed=allowed, reason=reason,
+                                      mode=self.mode, interactive=interactive,
+                                      args=tool_args)
+            except Exception:
+                pass
         if allowed:
             self._snapshot_before_write(tool_name, tool_args)
         return allowed, reason

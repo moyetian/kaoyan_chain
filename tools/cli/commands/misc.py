@@ -107,7 +107,20 @@ def _cmd_rollback(args: List[str]) -> None:
         res = pm.restore_checkpoint(checkpoint=opts["checkpoint"],
                                     files=opts["file"] or None,
                                     dry_run=opts["dry_run"])
-        if res.get("success"):
+        if res.get("dry_run"):
+            # [审查修复·dry-run 文案自相矛盾] 预演（未动磁盘）不是「失败」：
+            # 旧代码在无动作（全 skipped / 无 restored）时走 else 分支，打出
+            # 「[!] 快照回滚失败: 将按检查点 …（dry-run，未动磁盘）」——同一行里
+            # 「失败」与「未动磁盘」互相打架，考生误以为回滚能力坏了。预演一律
+            # 按中性报告渲染，且动作列表用「将还原/将删除」而非「已」。
+            print(colorize(f"\n[预演·未动磁盘] {res.get('message')}\n", C.CYAN))
+            for f in res.get("restored", []):
+                print(f"   ↩ 将还原 {f}")
+            for f in res.get("deleted", []):
+                print(f"   ✂ 将删除新建文件 {f}")
+            for s in res.get("skipped", []):
+                print(colorize(f"   ! 跳过 {s.get('file')}（{s.get('reason')}）", C.YELLOW))
+        elif res.get("success"):
             print(colorize(f"\n[√ 快照回滚] {res.get('message')}\n", C.GREEN))
             for f in res.get("restored", []):
                 print(f"   ↩ 已还原 {f}")

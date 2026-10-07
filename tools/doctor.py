@@ -16,6 +16,14 @@ import re
 import socket
 from pathlib import Path
 
+# Script execution (`python tools/doctor.py`) sets sys.path[0] to `tools/`,
+# which makes the package import `tools.skills` unavailable.  Add the workspace
+# root before any dual-path imports so diagnostics use the same modules as the
+# installed/CLI entry points.
+_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent
+if str(_WORKSPACE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_WORKSPACE_ROOT))
+
 # [审计 2026-09-30 P1-7 出站收敛] 探活请求统一走 net_guard.safe_urlopen：
 # 此前裸 urlopen 携带 `Authorization: Bearer <key>` 且默认跟随 3xx —— 恶意/被
 # 劫持的上游用一次 302 即可把 API Key 转发到任意目标。safe_urlopen 对初始 URL
@@ -838,9 +846,13 @@ def run_doctor(return_summary=False, check_persistence=False):
     print(color("\n【7.5 技能中枢真实状态 (Skills Health)】", C.BOLD))
     try:
         try:
-            from skills import SKILLS_REGISTRY
-        except ImportError:
             from tools.skills import SKILLS_REGISTRY
+        except ImportError:
+            # Script-style execution (`python tools/doctor.py`) places `tools/`
+            # itself on sys.path.  Keep the legacy fallback for that mode, but
+            # prefer the package import so the health check matches normal CLI
+            # execution and does not report a false missing-module warning.
+            from skills import SKILLS_REGISTRY
         _total = len(SKILLS_REGISTRY)
         _unavail = [k for k, v in SKILLS_REGISTRY.items()
                     if (v.get("health") or {}).get("status") == "UNAVAILABLE"]

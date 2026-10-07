@@ -16,6 +16,7 @@ import logging
 import ipaddress
 import os
 import ssl
+import time
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -63,6 +64,129 @@ RESOURCE_KINDS = ("pdf", "media", "json", "doc")
 # 默认启用标准受信任 SSL 证书验证，确保研招网与高校官方页面证据真实可信
 _DEFAULT_SSL_CONTEXT = ssl.create_default_context()
 
+# ── 瞬时故障的指数退避重试（AWS「Exponential Backoff and Jitter」口径）──
+#
+# [为什么加] R3 全矩阵仿真（3 考生 × 6 环节 × 3 端 = 54 格）实测：研招网抓取
+# 频现 ``RemoteDisconnected``（A 侧两轮皆现），而改动前的 HTTP 层**只尝试 1 次**
+# （``max_attempts = 2 if allow_insecure_ssl else 1``），一次瞬时抖动即判失败 ——
+# 这是「上游站点波动」直接传导为工具能力波动的根因：同一院校在不同轮次给出
+# 「完整研报」与「UNVERIFIED 降级」两种结果，波动幅度远超 15%。
+#
+# [为什么用 full jitter] AWS 架构博客（Marc Brooker, 2015）比较四种退避后给出的
+# 结论是 **full jitter**（``sleep = random(0, min(cap, base * 2**attempt))``）综合
+# 最优：模拟显示它比「无抖动指数退避」**完成更快、总服务器负载更低**（随机性比
+# 顺序更便宜）。无抖动退避会让所有客户端在同一时刻齐步重试（惊群），在反爬站点
+# 上恰恰会**加重**封禁。业界通行顺序是
+# ``限流 → 熔断 → 重试 → 超时 → 业务逻辑``，本模块只承担「重试」这一层。
+#
+# [边界·刻意不做]
+#   * **证书错误不重试**（TLS 口径不变：重试 ≠ 降级，见 fetch 内注释）；
+#   * **403/404 等永久错误不重试**（重试无意义，只会浪费预算并加深封禁）；
+#   * **对外 access_status 语义完全不变**（瞬时错误耗尽后仍是 ``BLOCKED`` /
+#     ``TIMEOUT``），故 watcher / scout_engine / wechat_searcher 等下游零改动；
+#   * **异常详情只进日志**（S9 铁律：access_status 仅枚举值，绝不外泄异常文本）。
+_RETRYABLE_HTTP_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+#: 瞬时网络故障的判定特征（``URLError.reason`` 的文本形式，跨版本稳定）。
+#: 注意与「真被封禁」区分：403/``BROWSER_REQUIRED`` 走 :data:`ESCALATABLE_STATUSES`
+#: 升级浏览器，而连接被重置/远端断开这类**传输层瞬时故障**此前被误归为
+#: ``BLOCKED``（看起来像「被封禁」）——这里单独识别出来以便退避重试。
+_TRANSIENT_REASON_MARKERS = (
+    "remotedisconnected",   # http.client.RemoteDisconnected：远端未响应即断开
+    "remote end closed",    # 同一故障在 CPython 的 str() 文本形式
+    "connectionreseterror",  # 对端 RST（keep-alive 复用竞态的典型症状）
+    "connection reset",     # 同上的文本形式（"Connection reset by peer" 等）
+    "connectionabortederror",
+    "connection aborted",
+    "connectionerror",
+    "brokenpipeerror",
+    "broken pipe",          # BrokenPipeError 的 str() 文本形式
+    "reset by peer",
+    "timed out",             # 超时（socket.timeout 的 str 形式）
+    "timeout",
+    "temporarily unavailable",
+    "bad gateway",
+    "service unavailable",
+)
+
+#: 退避公式与节流/冷却策略的**单一真源**在 ``tools/http_backoff.py``（AWS 口径）。
+#: 这里按原名 re-export，既让本模块与搜索侧共用同一实现（避免两套节奏并存
+#: 在反爬站点上互相踩踏），也不破坏既有调用方与测试的引用。
+try:  # 源码脚本式（``py tools/xxx.py``）
+    from http_backoff import (  # noqa: F401
+        RETRY_BASE_DELAY as _RETRY_BASE_DELAY,
+        RETRY_MAX_DELAY as _RETRY_MAX_DELAY,
+        full_jitter_delay as _full_jitter_delay,
+        retry_after_or_jitter as _retry_after_or_jitter,
+    )
+except ImportError:  # pragma: no cover - 包式导入
+    from tools.http_backoff import (  # type: ignore  # noqa: F401
+        RETRY_BASE_DELAY as _RETRY_BASE_DELAY,
+        RETRY_MAX_DELAY as _RETRY_MAX_DELAY,
+        full_jitter_delay as _full_jitter_delay,
+        retry_after_or_jitter as _retry_after_or_jitter,
+    )
+
+#: 额外尝试次数的默认值（1 次 + 2 次重试 = 共 3 次尝试）
+_DEFAULT_RETRY_ATTEMPTS = 2
+
+
+def _is_transient_network_error(reason: Any) -> bool:
+    """判定 ``URLError.reason`` 是否为**可重试的瞬时**网络故障。
+
+    与「永久性错误」的边界：证书错误（``certificate``/``ssl``）、403/404 一律
+    **不**重试 —— 重试既无收益，又会在反爬站点上累积请求量。
+    """
+    try:
+        text = str(reason).lower()
+    except Exception:  # pragma: no cover - 防御 exotic reason 对象
+        return False
+    if "certificate" in text or "ssl" in text:
+        return False
+    return any(marker in text for marker in _TRANSIENT_REASON_MARKERS)
+
+
+def _retry_after_seconds(headers: Any) -> Optional[float]:
+    """读取 ``Retry-After``（秒数形态）；非法/过大时返回 ``None`` 交退避公式处理。
+
+    只支持「整数秒」形态（``Retry-After: 120``）；HTTP-date 形态返回 ``None``
+    ——抓取场景不值得为它引入 ``email.utils`` 解析与时钟偏差处理。
+    """
+    if not headers:
+        return None
+    try:
+        raw = headers.get("Retry-After") or headers.get("retry-after")
+    except AttributeError:
+        return None
+    if raw is None:
+        return None
+    return _parse_retry_after(raw)
+
+
+def _parse_retry_after(raw: Any) -> Optional[float]:
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    if value < 0:
+        return None
+    return min(value, _RETRY_MAX_DELAY * 4)
+
+
+def _wait_before_retry(attempt: int, reason: str,
+                       retry_after: Optional[float] = None) -> float:
+    """退避等待后返回实际等待秒数（供测试断言与调用方记账）。
+
+    ``retry_after`` 优先（服务端 ``Retry-After``），否则用 full-jitter 公式
+    （与搜索侧共用 ``tools/http_backoff`` 的单一真源）。
+    **异常详情只进日志**（S9 铁律：``access_status`` 仅枚举值）。
+    """
+    delay = _retry_after_or_jitter(attempt, retry_after)
+    _LOG.warning("瞬时故障退避重试（将在 %.2fs 后进行第 %d 次尝试）: %s",
+                 delay, attempt + 2, reason)
+    time.sleep(delay)
+    return delay
+
 # 未验证（CERT_NONE）备用上下文。**只在调用方显式 opt-in**（``allow_insecure_ssl=True``）
 # 时才被使用；默认路径下证书校验失败即如实失败，绝不自动降级（口径与
 # tools/search/providers/_http.py 的 ``ssl_fallback_ctx`` 完全一致）。
@@ -100,8 +224,13 @@ class FetchResult:
 class HTTPFetcher:
     """轻量标准库 HTTP 抓取器 (零外部依赖)"""
 
-    def __init__(self, timeout: int = 6):
+    def __init__(self, timeout: int = 6, retry_attempts: Optional[int] = None):
         self.timeout = timeout
+        # [瞬时故障重试·见模块注释] 额外尝试次数：None=用默认 2（总计 3 次尝试）；
+        # 传 0 退回「只试一次」的历史口径。证书/403/404 等永久错误任何取值下
+        # 都不重试 —— 重试无收益且在反爬站点上会累积请求量。
+        self.retry_attempts = (_DEFAULT_RETRY_ATTEMPTS if retry_attempts is None
+                              else max(0, int(retry_attempts)))
 
     def fetch(self, url: str, referer: Optional[str] = None,
               extra_headers: Optional[Dict[str, str]] = None,
@@ -157,10 +286,15 @@ class HTTPFetcher:
         ssl_ctx = _DEFAULT_SSL_CONTEXT
         is_fallback_ssl = False
         # [TLS 降级口径对齐 _http.py] 重试 ≠ 降级：重试同一 TLS 配置是合理的，
-        # 降级不行。因此重试次数不再与「自动降级」耦合 ——
-        #   * 默认（未 opt-in）：只有 1 次尝试，证书错误即如实失败；
-        #   * 显式 allow_insecure_ssl=True：最多 2 次，第 2 次才是未验证重试。
-        max_attempts = 2 if allow_insecure_ssl else 1
+        # 降级不行。因此证书降级的重试次数不再与「自动降级」耦合 ——
+        #   * 默认（未 opt-in）：证书错误即如实失败，**不重试也不降级**；
+        #   * 显式 allow_insecure_ssl=True：额外多给 1 次未验证重试机会。
+        # [瞬时故障重试] 传输层瞬时故障（连接重置/远端断开/超时/5xx/429）走
+        # full-jitter 退避重试，次数由 retry_attempts 控制（见模块注释）。
+        max_attempts = self.retry_attempts + 1
+        if allow_insecure_ssl:
+            max_attempts = max(max_attempts, 2)
+        last_attempt = max_attempts - 1
 
         for attempt in range(max_attempts):
             try:
@@ -216,6 +350,13 @@ class HTTPFetcher:
                     url=url, status_code=0, content="", is_valid=False,
                     access_status="BLOCKED", headers={}, evidence_eligible=False)
             except urllib.error.HTTPError as e:
+                # [瞬时故障重试] 408/425/429/5xx 是「服务端暂时不行」而非「资源不存在」，
+                # 退避后重试有意义；403/404 等永久错误直接如实返回（不重试）。
+                # 429/503 优先遵守服务端给的 ``Retry-After``（反爬站点常用它告知冷却）。
+                if e.code in _RETRYABLE_HTTP_STATUS and attempt < last_attempt:
+                    _wait_before_retry(attempt, f"HTTP {e.code}",
+                                       _retry_after_seconds(getattr(e, "headers", None)))
+                    continue
                 status = "HTTP_403" if e.code == 403 else f"HTTP_{e.code}"
                 return FetchResult(
                     url=url,
@@ -250,6 +391,14 @@ class HTTPFetcher:
                         "重试（ssl_verified=False）: %s (%s)", url, e)
                     ssl_ctx = _FALLBACK_UNVERIFIED_SSL_CONTEXT
                     is_fallback_ssl = True
+                    continue
+
+                # [瞬时故障重试] 连接被重置/远端断开/超时这类**传输层**故障此前被
+                # 归为 ``BLOCKED``（看起来像「被封禁」）且一次即失败——R3 实测研招网
+                # ``RemoteDisconnected`` 正是此类。现在按 full jitter 退避重试；
+                # 耗尽后**仍返回原有枚举值**（BLOCKED/TIMEOUT），下游语义零变化。
+                if _is_transient_network_error(e.reason) and attempt < last_attempt:
+                    _wait_before_retry(attempt, f"{type(e.reason).__name__}: {e.reason}")
                     continue
 
                 status = "TIMEOUT" if "timed out" in reason_str else "BLOCKED"

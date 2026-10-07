@@ -43,6 +43,59 @@ def run_action_capture(alias: str, interactive: bool = False, extra: Optional[di
         return f"[×] 模块 [{alias}] 执行异常: {exc}"
 
 
+def rag_search(query: str, top_k: int = 5, source_filter: str = "") -> str:
+    """本地知识库检索，返回可读结果文本。
+
+    [为什么复用而不是重写] ``ky rag`` 的检索与**显式降级提示**都在
+    ``cli.commands.search.run_rag_search`` 里（词法+向量 RRF 融合、向量不可用
+    时打印降级原因、知识库不存在时给「先 ingest 再 index」两步引导）。此处
+    只做「调用 + 捕获 stdout」，不碰检索逻辑，也不美化任何降级话术 ——
+    R2/R3 仿真里这两条命令的缺口正是**入口不可达**，不是实现缺失。
+    """
+    try:
+        try:
+            from cli.commands.search import run_rag_search as _run_rag
+        except ImportError:  # pragma: no cover
+            from tools.cli.commands.search import run_rag_search as _run_rag  # type: ignore
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = _run_rag(query, top_k=top_k,
+                            source_filter=source_filter or None)
+        out = buf.getvalue().strip()
+        if not out:
+            # run_rag_search 空查询时打印用法，这里兜底补上，避免面板一片空白
+            return ("[!] 请输入检索关键词后再试（本地知识库检索，"
+                    "内容来自院校库与各科 参考资料/ 的切片索引）。")
+        return out
+    except Exception as exc:
+        _LOG.warning("本地检索失败: %s", exc)
+        return f"[×] 本地检索异常: {exc}"
+
+
+def build_index(show_progress: bool = True) -> str:
+    """本地知识库建索引，返回可读结果文本。
+
+    复用 ``ky index`` 的唯一实现 ``run_index_build``（只读本地文件、不联网、
+    不代建资料；资料为空时如实提示「没有找到可索引的文档」）。GUI 只负责把
+    它的输出搬到面板上。
+    """
+    try:
+        try:
+            from cli.commands.search import run_index_build as _run_index
+        except ImportError:  # pragma: no cover
+            from tools.cli.commands.search import run_index_build as _run_index  # type: ignore
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            _run_index(enable_vector=True, show_progress=show_progress)
+        out = buf.getvalue().strip()
+        return out or "[!] 建索引未产生任何输出，请检查本地资料目录是否为空。"
+    except Exception as exc:
+        _LOG.warning("建索引失败: %s", exc)
+        return f"[×] 建索引异常: {exc}"
+
+
 def ingest_file(workspace_root: Path, path: str, subject: str = "pro") -> str:
     """把一份真题/讲义切片入库，返回可读结果文本。"""
     try:
@@ -162,9 +215,11 @@ def _target_labels(workspace_root: Path, new_path: Path) -> Tuple[str, str]:
 
 
 __all__ = [
+    "build_index",
     "compare_schools",
     "diff_syllabus",
     "ingest_file",
     "make_error_quiz",
+    "rag_search",
     "run_action_capture",
 ]

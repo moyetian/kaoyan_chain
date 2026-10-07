@@ -33,6 +33,19 @@ except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
     from tools.net_guard import (MAX_HTTP_RESPONSE_BYTES, decompress_limited,
                                  read_response_limited, safe_urlopen)  # type: ignore
 
+# [退避单一真源] 本模块原用 ``1.5*(attempt+1)`` 线性退避，与全仓其他处的指数/
+# full-jitter 节奏都不一致 —— 同机不同步的重试在反爬站点上等于惊群。
+try:  # 源码脚本式（``py tools/xxx.py``）
+    from http_backoff import full_jitter_delay, jitter_ceiling
+except ImportError:  # pragma: no cover - 包式导入
+    from tools.http_backoff import full_jitter_delay, jitter_ceiling  # type: ignore
+
+#: LLM 端点重试的退避参数（与抓取侧同一口径：0.5s 起、8s 封顶）。
+#: LLM 单次超时较长，故基数略放大到 1.0s —— 线性 1.5/3.0s 的旧节奏在高并发
+#: 下会让多个会话同一时刻砸向同一端点。
+_LLM_RETRY_BASE = 1.0
+_LLM_RETRY_CAP = 8.0
+
 ROOT = resolve_workspace_root(__file__)
 _LOG = logging.getLogger(__name__)
 
@@ -283,6 +296,16 @@ class ToolDispatcher:
             service = SearchService.default()
             # 真实签名是 search(self, query, limit=None)，返回 SearchResponse。
             response = service.search(query, limit=limit)
+            # [修复 2026-10-05·全源冷却空转] all_failed_cooling 是「检索能力
+            # 暂时归零」的唯一判据（W11 已实现，见 search/models.py）。此前这里
+            # 只透出 results —— 全源冷却时返回 []，模型误以为「没搜到」并反复
+            # 换词重试（W11 实测 19 次 Bing 反爬页空转）。现如实返回带标记的
+            # 错误条目，供 execute_loop 统计连续失败并提前终止。
+            if response.all_failed_cooling:
+                return [{
+                    "error": "全部检索源处于反爬冷却期（暂时不可用，稍后自动恢复）",
+                    "all_failed_cooling": True,
+                }]
             return [
                 {
                     "title": r.title,
@@ -437,6 +460,12 @@ class AgenticResearchEngine:
         self.config = self._load_config()
         self.dispatcher = ToolDispatcher(workspace_root=self.workspace_root)
         self.max_steps = 6
+        # [修复 2026-10-05·全源冷却空转] 连续 N 次 web_search 全部「全源冷却」
+        # 即提前终止研究循环，返回降级说明（调用方解析不到 JSON 会自动走
+        # dynamic_fallback_profile 本地降级）。W11 实测：全源反爬冷却时模型
+        # 仍反复换词重试（19 次 Bing 反爬页空转）直到 max_steps/预算耗尽。
+        # 与 block_escalate_threshold 同口径取 3；<=0 表示禁用收敛（测试用）。
+        self.retrieval_fail_limit = 3
         # 默认超时放宽至 90 秒（或读取配置项 request_timeout），防止多轮工具大上下文被过早断开
         try:
             self.timeout = float(self.config.get("request_timeout") or 90.0)
@@ -548,6 +577,14 @@ class AgenticResearchEngine:
         import socket
         import http.client
 
+        # [修复 2026-10-05·全源冷却空转] 连续「全源冷却」计数（见 __init__ 说明）。
+        # limit <= 0 表示禁用收敛（仅供测试做阴性对照）。
+        _retrieval_fail_streak = 0
+        try:
+            _retrieval_fail_limit = max(0, int(getattr(self, "retrieval_fail_limit", 3)))
+        except (TypeError, ValueError):
+            _retrieval_fail_limit = 3
+
         for step in range(self.max_steps):
             # [多角色实测·卡死修复] 总时长预算检查：超 deadline 提前终止循环
             # （返回已有内容，调用方解析失败会自动走 dynamic_fallback_profile 本地降级）。
@@ -592,7 +629,23 @@ class AgenticResearchEngine:
                         break
                 except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionResetError, http.client.RemoteDisconnected) as e:
                     if attempt < max_retries:
-                        delay = 1.5 * (attempt + 1)
+                        # [预算 × full jitter 的交互] 退避上限（ceiling）先于随机取值判断：
+                        # 引入 full jitter 后「实际等待」不再可预测，而预算是硬约束，
+                        # 因此判断「还值不值得重试」必须用**最坏情况** `jitter_ceiling`。
+                        # 若连上界都放不进剩余预算，本次重试就不该发生 —— 否则 jitter
+                        # 偶尔取到近0 值会让预算约束被绕过（多发一次请求、实测耗时翻倍）。
+                        # 用ceiling 而非实际 delay 判断，同时保证了这个分支**不依赖随机数**。
+                        if deadline is not None:
+                            left = deadline - time.monotonic()
+                            ceiling = jitter_ceiling(attempt, base=_LLM_RETRY_BASE,
+                                                     cap=_LLM_RETRY_CAP)
+                            if left <= 0 or ceiling > left:
+                                _LOG.warning("LLM 重试退避上界 %.1fs 超出剩余预算 %.1fs，"
+                                             "放弃本轮重试（原因: %s）", ceiling, left, e)
+                                raise TimeoutError("深度研究总预算耗尽（LLM 重试链）")
+                        delay = full_jitter_delay(attempt,
+                                                  base=_LLM_RETRY_BASE,
+                                                  cap=_LLM_RETRY_CAP)
                         _LOG.warning("LLM API 连接超时或波动 (%s)，%.1f 秒后进行第 %d 次自动重试...", e, delay, attempt + 1)
                         time.sleep(delay)
                     else:
@@ -657,6 +710,27 @@ class AgenticResearchEngine:
                     result = _box.get("v")
                 else:
                     result = self.dispatcher.dispatch(func_name, **args)
+
+                # [修复 2026-10-05·全源冷却空转] 连续全源冷却收敛：web_search
+                # 返回全源冷却标记即计数，达到阈值立即终止循环并返回降级说明
+                # （不再让模型继续换词空转）；任何一次正常返回即重置计数。
+                if func_name == "web_search" and _retrieval_fail_limit > 0:
+                    if (isinstance(result, list)
+                            and any(isinstance(_it, dict) and _it.get("all_failed_cooling")
+                                    for _it in result)):
+                        _retrieval_fail_streak += 1
+                        if _retrieval_fail_streak >= _retrieval_fail_limit:
+                            _LOG.warning(
+                                "检索源连续 %d 次全部处于反爬冷却期，提前终止研究循环走本地降级",
+                                _retrieval_fail_streak)
+                            return (
+                                f"【检索源全部冷却 · 降级说明】连续 {_retrieval_fail_streak} 次"
+                                "联网检索均失败：全部检索源处于反爬冷却期"
+                                "（暂时不可用，稍后自动恢复）。为避免继续空转，"
+                                "已提前终止在线研究，改走本地权威库降级。")
+                    else:
+                        _retrieval_fail_streak = 0
+
                 messages.append({
                     "role": "tool",
                     "tool_call_id": call_id,
@@ -791,6 +865,12 @@ class AgenticResearchEngine:
         严禁输出 [OFFLINE_BASELINE 离线通用基准] 或'待查/未核验'！
         """
         from tools.intelligence.registry import get_registry
+        try:  # 护理 308 结构化科目（与 school_db / comparator 同源）
+            from tools.intelligence.subject_catalog import (
+                nursing_308_subjects, normalize_subject_items)
+        except ImportError:  # pragma: no cover - 直接脚本上下文
+            from subject_catalog import (  # type: ignore
+                nursing_308_subjects, normalize_subject_items)
         reg = get_registry()
         entity = reg.resolve(school_name)
 
@@ -844,6 +924,11 @@ class AgenticResearchEngine:
         # 标记本画像的「初试科目」是否来自最末的通用兜底（既无本地库实录、也无专业专用分支）。
         # [反幻觉] 该标记决定 catalog_source 能否自称"已核验"：兜底科目不得贴信任标签。
         majors_from_generic_fallback = False
+        # [护理 308 链路] 结构化科目（含 code/name）与核验状态，供上层组装
+        # 「初试科目（结构化）」与 CANDIDATE_CONFIG 信任标签使用。
+        exam_subjects: List[Dict[str, str]] = []
+        subject_status = "unverified"
+        subject_source = ""
         # 1. 优先从 entity.departments 提取
         dept_info = None
         if entity and entity.departments:
@@ -857,8 +942,15 @@ class AgenticResearchEngine:
                     dept_info = v
                     break
 
-        if dept_info and dept_info.get("subjects"):
-            majors = list(dept_info.get("subjects"))
+        if dept_info and (dept_info.get("subjects") or dept_info.get("exam_subjects")):
+            raw_subjects = dept_info.get("exam_subjects") or dept_info.get("subjects")
+            exam_subjects = normalize_subject_items(raw_subjects)
+            majors = [
+                f"({item['code']}){item['name']}" if item.get("code") else item["name"]
+                for item in exam_subjects
+            ]
+            subject_status = str(dept_info.get("subject_status") or "catalog_record")
+            subject_source = str(dept_info.get("subject_source") or "院校画像库记录")
         else:
             # 2. 从全国学科门类目录匹配
             if any(k in major_keyword for k in ("马克思主义理论", "0305", "思想政治", "马理论")):
@@ -868,6 +960,13 @@ class AgenticResearchEngine:
                     majors = ["(101)思想政治理论", "(201)英语(一)", "(622)马克思主义基本原理", "(826)中国化马克思主义理论与实践"]
                 else:
                     majors = ["(101)思想政治理论", "(201)英语(一)", "(618/自命题)马克思主义基本原理", "(823/自命题)中国化马克思主义理论与实践"]
+            elif any(k in major_keyword for k in ("护理", "105400", "308")):
+                # 105400 护理的公共课和 308 护理综合是画像里的明确事实。
+                # 离线降级也必须保留该事实，不能套用通用 301/8xx 模板。
+                exam_subjects = nursing_308_subjects()
+                majors = [f"({item['code']}){item['name']}" for item in exam_subjects]
+                subject_status = "candidate_config"
+                subject_source = "考生档案记录（需以当年招生目录核验）"
             elif any(k in major_keyword for k in ("计算机", "软件", "0812", "0854")):
                 majors = ["(101)思想政治理论", "(201)英语(一)或(204)英语(二)", "(301)数学(一)或(302)数学(二)", "(408)计算机学科专业基础或院校自命题"]
             else:
@@ -904,10 +1003,19 @@ class AgenticResearchEngine:
             ratio = "未核验：本地高校库不含报录比与拟招人数，请以该校当年招生简章与拟录取公示为准"
             protect = "未核验：本地高校库不含一志愿保护机制，请以该校当年复试录取细则与往年拟录取名单为准"
             reputation = "未核验：本地高校库不含口碑评价，请以官方渠道与在读生真实反馈交叉核实"
-            pitfalls = "建议提前研读目标学院当期考试大纲与指定教材，紧跟自命题真题历年题型演变与论述深度，切勿忽视政治英语统考科目基本功"
+            # [F7 修复·pitfalls 对统考不准确] 旧模板无条件写「紧跟**自命题**真题
+            # 历年题型演变与论述深度」：对 408/311 等统考科目不实（C-P5 实测）。
+            # 改为中性表述，按统考/自命题分述大纲依据。
+            pitfalls = ("建议提前研读目标学院当期考试大纲与指定教材，紧跟历年真题题型演变与考查深度"
+                        "（统考科目以教育部考试大纲为准，自命题科目以院校指定大纲为准），"
+                        "切勿忽视政治英语统考科目基本功")
 
         # 数据源属性：只如实反映本次画像的真实来源，绝不谎报"已深度检索"
-        if is_unverified_school:
+        if subject_status == "candidate_config":
+            # [护理 308 链路] 考生档案记录：科目结构化但未经当年招生目录核验，
+            # 不得贴「本地高校库实录」信任标签。
+            catalog_source = "[CANDIDATE_CONFIG 考生档案科目记录，待当年招生目录核验]"
+        elif is_unverified_school:
             catalog_source = "[UNVERIFIED 未核验]"
         elif majors_from_generic_fallback:
             # 院校代码/地区/层次/官网仍是本地高校库实录，但**初试科目**是通用兜底推测。
@@ -928,6 +1036,10 @@ class AgenticResearchEngine:
             "graduate": graduate,
             "graduate_web": graduate,
             "majors": majors,
+            "exam_subjects": exam_subjects,
+            "subject_codes": [item["code"] for item in exam_subjects if item.get("code")],
+            "subject_status": subject_status,
+            "subject_source": subject_source,
             "catalog_source": catalog_source,
             "score_trend": score_trend,
             "ratio": ratio,

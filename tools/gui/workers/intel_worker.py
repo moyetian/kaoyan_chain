@@ -21,6 +21,11 @@ for p in (str(ROOT), str(TOOLS)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+try:
+    from action_status import output_has_failure
+except ImportError:  # pragma: no cover - package import fallback
+    from tools.action_status import output_has_failure  # type: ignore
+
 
 class IntelTaskWorker(QThread):
     """异步执行研招情报耗时任务（如单校侦察、双校对标、简章监控）的后台工作线程。"""
@@ -39,6 +44,15 @@ class IntelTaskWorker(QThread):
     def cancel(self):
         """取消任务"""
         self._is_cancelled = True
+
+    def _emit_result(self, output: str, saved_path: str = "") -> None:
+        """Route captured backend output to the correct GUI signal."""
+        if self._is_cancelled:
+            return
+        if output_has_failure(output):
+            self.error_signal.emit(str(output))
+        else:
+            self.finished_signal.emit(str(output), str(saved_path or ""))
 
     def run(self):
         if self._is_cancelled:
@@ -62,8 +76,7 @@ class IntelTaskWorker(QThread):
                     f"  （分析可能需要 20~40 秒，界面保持流畅，请稍候）\n"
                 )
                 report, saved = services.compare_schools(self.workspace_root, s1, s2, major)
-                if not self._is_cancelled:
-                    self.finished_signal.emit(report, saved)
+                self._emit_result(report, saved)
 
             elif self.task_type == "action":
                 alias = self.params.get("alias", "")
@@ -80,16 +93,14 @@ class IntelTaskWorker(QThread):
                     f"  （多源官方数据联网检索与深度推理中，界面随时可操作交互）\n"
                 )
                 out = services.run_action_capture(alias, extra=self.params)
-                if not self._is_cancelled:
-                    self.finished_signal.emit(out, "")
+                self._emit_result(out)
 
             elif self.task_type == "ingest_file":
                 path = self.params.get("path", "")
                 subject = self.params.get("subject", "pro")
                 self.log_signal.emit(f"▶ 正在后台切片入库 [{path}]...\n")
                 out = services.ingest_file(self.workspace_root, path, subject)
-                if not self._is_cancelled:
-                    self.finished_signal.emit(out, "")
+                self._emit_result(out)
 
             elif self.task_type == "diff_syllabus":
                 old_path = self.params.get("old_path", "")
@@ -99,16 +110,30 @@ class IntelTaskWorker(QThread):
                     f"  （AST 级逐考点比对，界面保持流畅）\n"
                 )
                 out = services.diff_syllabus(self.workspace_root, old_path, new_path)
-                if not self._is_cancelled:
-                    self.finished_signal.emit(out, "")
+                self._emit_result(out)
 
             elif self.task_type == "error_quiz":
                 subject = self.params.get("subject", "pro")
                 count = self.params.get("count", 3)
                 self.log_signal.emit("▶ 正在后台生成错题盲盒自测卷...\n")
                 display, saved = services.make_error_quiz(self.workspace_root, subject, count)
-                if not self._is_cancelled:
-                    self.finished_signal.emit(display, saved)
+                self._emit_result(display, saved)
+
+            elif self.task_type == "rag_search":
+                query = str(self.params.get("query", "") or "")
+                self.log_signal.emit(f"▶ 正在后台检索本地知识库 [{query}]...\n")
+                out = services.rag_search(query)
+                self._emit_result(out)
+
+            elif self.task_type == "index_build":
+                self.log_signal.emit(
+                    "▶ 正在后台构建本地知识库索引...\n"
+                    "  （只读本地院校库与各科 参考资料/，不联网、不代建资料）\n"
+                )
+                # show_progress=False：逐条进度打印会淹没 GUI 文本框，
+                # 末段的片段数/向量开关才是考生关心的结论。
+                out = services.build_index(show_progress=False)
+                self._emit_result(out)
 
             else:
                 self.error_signal.emit(f"未知的后台任务类型: {self.task_type}")

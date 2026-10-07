@@ -15,18 +15,35 @@
 两个既有调用点（上传提示、向导热更新通知、动作回显），并新增
 ``add_user_message`` / ``add_agent_message`` / ``append_agent_chunk`` 三个流式接口。
 
+[公式渲染] Qt 原生 MarkdownText 不支持 LaTeX，``$$\frac{a}{b}$$`` 之类的源码会
+直接裸露给考生。私教气泡现复用终端同源美化器 ``prettify_latex_for_terminal``
+（``tools/skills/latex_beautifier.py``）把公式转成 Unicode 排版后再 setText，
+保证 GUI / TUI / CLI 三端公式观感一致；美化失败一律降级为原文（绝不吞消息）。
+
+[思考链折叠] ``append_step`` 把私教动作/工具步骤收进默认收起的
+``StepBubble``（一行「🧠 思考过程 · N 步」，点击展开），避免长任务的几十条
+步骤把对话页占满；``finish_step_group`` 在答案开始/收尾时封口。
+
 [样式铁律] 全部走 objectName + 主题 QSS，组件内部不写内联样式。
 """
 
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy,
-    QVBoxLayout, QWidget,
+    QToolButton, QVBoxLayout, QWidget,
 )
+
+try:  # pragma: no cover - 取决于运行方式
+    from skills.latex_beautifier import prettify_latex_for_terminal
+except ImportError:  # pragma: no cover
+    try:
+        from tools.skills.latex_beautifier import prettify_latex_for_terminal
+    except ImportError:  # pragma: no cover - 兜底：美化器不可用时保持原文渲染
+        prettify_latex_for_terminal = None  # type: ignore[assignment]
 
 #: 空状态示例提示词：(按钮文字, 实际填入输入框的口令)
 EXAMPLE_PROMPTS: Tuple[Tuple[str, str], ...] = (
@@ -44,13 +61,19 @@ _BUBBLE_META = {"user": "你", "agent": "私教"}
 
 
 class ChatBubble(QFrame):
-    """一条消息气泡：可选发言者元信息 + 正文（私教侧按 Markdown 渲染）。"""
+    """一条消息气泡：可选发言者元信息 + 正文（私教侧按 Markdown 渲染）。
+
+    私教气泡的正文经 LaTeX 美化后再 setText：``_raw_text`` 始终保存原始
+    文本（流式累积 / 兜底降级都基于它），``text()`` 返回上屏的显示文本。
+    """
 
     def __init__(self, text: str = "", kind: str = "system", parent=None):
         super().__init__(parent)
         self.kind = kind
         #: 是否处于流式写入中（决定后续 chunk 追加到本条还是新起一条）
         self.streaming = False
+        #: 原始文本（未美化）；显示文本由 _render() 派生
+        self._raw_text = text
         self.setObjectName(_BUBBLE_NAMES.get(kind, "SystemBubble"))
 
         layout = QVBoxLayout(self)
@@ -63,7 +86,7 @@ class ChatBubble(QFrame):
             meta.setObjectName("BubbleMeta")
             layout.addWidget(meta)
 
-        self._label = QLabel(text)
+        self._label = QLabel()
         self._label.setObjectName("BubbleText")
         self._label.setWordWrap(True)
         self._label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -71,12 +94,82 @@ class ChatBubble(QFrame):
             # 私教回复按 Markdown 渲染，避免把 **加粗** 之类的源码直接漏给用户
             self._label.setTextFormat(Qt.TextFormat.MarkdownText)
         layout.addWidget(self._label)
+        self._render()
+
+    def _display_text(self) -> str:
+        """由 ``_raw_text`` 派生显示文本：私教侧做公式美化，其余原样。"""
+        if self.kind != "agent" or prettify_latex_for_terminal is None:
+            return self._raw_text
+        try:
+            rendered = prettify_latex_for_terminal(self._raw_text)
+        except Exception:  # noqa: BLE001 - 美化失败必须降级为原文，绝不吞消息
+            return self._raw_text
+        return rendered if rendered is not None else self._raw_text
+
+    def _render(self) -> None:
+        self._label.setText(self._display_text())
 
     def text(self) -> str:
         return self._label.text()
 
     def append_text(self, chunk: str) -> None:
-        self._label.setText(self._label.text() + chunk)
+        self._raw_text += chunk
+        self._render()
+
+
+class StepBubble(ChatBubble):
+    """思考链折叠块：默认收起的一行「🧠 思考过程 · N 步」，点击展开步骤正文。
+
+    与 ChatBubble 同族（可放入 ``ChatView.bubbles``），但 ``streaming`` 恒为
+    False —— 不参与 ``append_agent_chunk`` 的流式续写；``text()`` 返回步骤
+    正文，保证 ``toPlainText()`` 仍能导出全部步骤文本。
+    """
+
+    def __init__(self, parent=None):
+        QFrame.__init__(self, parent)  # 跳过 ChatBubble 的单一正文骨架
+        self.kind = "steps"
+        self.streaming = False
+        self.setObjectName("StepGroup")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 4, 10, 6)
+        layout.setSpacing(2)
+
+        self._steps: List[str] = []
+
+        self._toggle = QToolButton()
+        self._toggle.setObjectName("StepToggle")
+        self._toggle.setCheckable(True)
+        self._toggle.setChecked(False)
+        self._toggle.setCursor(Qt.PointingHandCursor)
+        self._toggle.setToolTip("展开 / 收起思考过程")
+        self._toggle.toggled.connect(self._on_toggled)
+        layout.addWidget(self._toggle)
+
+        self._body = QLabel()
+        self._body.setObjectName("StepBody")
+        self._body.setWordWrap(True)
+        self._body.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._body.setVisible(False)  # 默认折叠
+        layout.addWidget(self._body)
+
+        self._refresh_header()
+
+    def _on_toggled(self, checked: bool) -> None:
+        self._body.setVisible(checked)
+        self._refresh_header()
+
+    def _refresh_header(self) -> None:
+        arrow = "▾" if self._toggle.isChecked() else "▸"
+        self._toggle.setText(f"{arrow} 🧠 思考过程 · {len(self._steps)} 步")
+
+    def add_step(self, text: str) -> None:
+        self._steps.append(text)
+        self._body.setText("\n".join(self._steps))
+        self._refresh_header()
+
+    def text(self) -> str:
+        return "\n".join(self._steps)
 
 
 class ChatView(QScrollArea):
@@ -100,6 +193,8 @@ class ChatView(QScrollArea):
 
         self.bubbles: List[ChatBubble] = []
         self.example_pills: List[QPushButton] = []
+        #: 当前未封口的思考折叠块（append_step 续写它；finish_step_group 置空）
+        self._open_step_group: Optional[StepBubble] = None
         self.empty_state = self._build_empty_state()
         # 空状态整体垂直居中：内容上下各一个伸缩项（伸缩因子相同才会均分空间，
         # 只给下方 addStretch 会让空状态贴顶）。首个气泡出现时收起上方伸缩
@@ -158,6 +253,9 @@ class ChatView(QScrollArea):
         self.add_bubble(text, kind="system")
 
     def add_user_message(self, text: str) -> ChatBubble:
+        # 用户新发言 = 上一轮彻底结束：先封口思考折叠块，防停止/丢回复场景下
+        # 新一轮步骤续进上一轮未封口的块里（步骤分组边界必须跟消息对齐）
+        self.finish_step_group()
         return self.add_bubble(text, kind="user")
 
     def add_agent_message(self, text: str) -> ChatBubble:
@@ -181,6 +279,62 @@ class ChatView(QScrollArea):
         bubble.streaming = True
         return bubble
 
+    # ── 思考链折叠 ──────────────────────────────────────────
+    def append_step(self, text: str) -> Optional[StepBubble]:
+        """把一条思考链步骤追加进当前折叠块；没有（或已封口）则新起一块。"""
+        if not text:
+            return self._open_step_group
+        group = self._open_step_group
+        if group is None:
+            group = StepBubble(self._canvas)
+            self._hide_empty_state()
+            self._insert_row(group, "steps")
+            self.bubbles.append(group)
+            self._open_step_group = group
+        group.add_step(text)
+        self._scroll_to_bottom()
+        return group
+
+    def finish_step_group(self) -> None:
+        """封口当前思考折叠块：后续 step 新起一块。
+
+        幂等且零成本 —— ``_on_agent_chunk`` 每个流式片段都会调用它
+        （答案开始/收尾即封口），不能做任何布局遍历。
+        """
+        self._open_step_group = None
+
+    def clear(self) -> None:
+        """清空全部消息与折叠块，恢复初始空状态（「新建/恢复会话」前置接口）。"""
+        self.finish_step_group()
+        for bubble in list(self.bubbles):
+            row = bubble.parentWidget()
+            if row is not None and row is not self._canvas:
+                self._layout.removeWidget(row)
+                row.deleteLater()
+        self.bubbles.clear()
+        # 还原上方伸缩项（_hide_empty_state 曾把它压成 Fixed），空状态恢复垂直居中
+        self._top_stretch.changeSize(
+            0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+        self.empty_state.setVisible(True)
+
+    def _insert_row(self, widget: QWidget, kind: str) -> None:
+        """把 widget 包进一行并插到消息末尾：用户右对齐，其余左对齐。"""
+        row = QWidget(self._canvas)
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(0)
+        if kind == "user":
+            row_layout.addStretch(1)
+            row_layout.addWidget(widget, 4)
+        elif kind == "agent":
+            row_layout.addWidget(widget, 4)
+            row_layout.addStretch(1)
+        else:
+            row_layout.addWidget(widget)
+
+        # 插到末尾的 stretch 之前，保持消息时序
+        self._layout.insertWidget(self._layout.count() - 1, row)
+
     def add_bubble(self, text: str, kind: str = "system") -> ChatBubble:
         """新建一条气泡：用户右对齐、私教与系统左对齐。"""
         for bubble in self.bubbles:
@@ -188,21 +342,7 @@ class ChatView(QScrollArea):
         self._hide_empty_state()
 
         bubble = ChatBubble(text, kind, self._canvas)
-        row = QWidget(self._canvas)
-        row_layout = QHBoxLayout(row)
-        row_layout.setContentsMargins(0, 0, 0, 0)
-        row_layout.setSpacing(0)
-        if kind == "user":
-            row_layout.addStretch(1)
-            row_layout.addWidget(bubble, 4)
-        elif kind == "agent":
-            row_layout.addWidget(bubble, 4)
-            row_layout.addStretch(1)
-        else:
-            row_layout.addWidget(bubble)
-
-        # 插到末尾的 stretch 之前，保持消息时序
-        self._layout.insertWidget(self._layout.count() - 1, row)
+        self._insert_row(bubble, kind)
         self.bubbles.append(bubble)
         self._scroll_to_bottom()
         return bubble
@@ -216,4 +356,4 @@ class ChatView(QScrollArea):
         QTimer.singleShot(0, lambda: bar.setValue(bar.maximum()))
 
 
-__all__ = ["ChatBubble", "ChatView", "EXAMPLE_PROMPTS"]
+__all__ = ["ChatBubble", "ChatView", "StepBubble", "EXAMPLE_PROMPTS"]

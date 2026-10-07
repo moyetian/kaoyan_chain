@@ -487,3 +487,38 @@ def test_autosave_skips_unparseable_answer(tmp_path, monkeypatch):
     assert not (tmp_path / "output" / "report.json").exists()
     assert len(calls) == 3
     assert answer == text
+
+
+# ── [4f9 回归] extract_json_payload：数组不得被截断为第一个对象 ──────────
+
+def test_extract_json_payload_keeps_whole_array():
+    """前置散文 + JSON 数组：必须解析出完整数组。
+
+    4f9bfad 重构后 raw_decode 兜底按 ``{`` 优先尝试起点，``[{"a":1},{"b":2}]``
+    会被截成第一个对象（dict）；修复后按最靠前起点尝试，数组整段保留。
+    """
+    from tools.agent.recovery import extract_json_payload
+    assert extract_json_payload('分析如下：\n[{"a": 1}, {"b": 2}]') == [{"a": 1}, {"b": 2}]
+
+
+def test_extract_json_payload_object_and_junk_boundaries():
+    from tools.agent.recovery import extract_json_payload
+    assert extract_json_payload('说明：\n{"a": 1}') == {"a": 1}
+    # 最靠前起点解析失败时，仍可退到后续有效起点
+    assert extract_json_payload('坏对象 {"a": 1 坏的\n[{"x": 9}]') == [{"x": 9}]
+    assert extract_json_payload("没有任何 JSON 内容") is None
+
+
+def test_autosave_keeps_whole_array_payload(tmp_path, monkeypatch):
+    """runner 级：兜底落盘数组型答案时必须整段写入，不得截成第一个对象。"""
+    payload = [{"year": 2025, "min_score": 318},
+               {"year": 2024, "min_score": 355}]
+    text = "分析如下：\n" + json.dumps(payload, ensure_ascii=False)
+    fake, calls = _scripted_urlopen([_text_body(text)])
+    monkeypatch.setattr(loop_module, "safe_urlopen", fake)
+    _make_runner(tmp_path, step_callback=[].append).run(
+        PROMPT_GATE, interactive=False)
+    assert len(calls) == 3, "1 次初答 + 2 次 nudge 重入"
+    p = tmp_path / "output" / "report.json"
+    assert p.exists(), "兜底应把可解析 JSON 落盘"
+    assert json.loads(p.read_text(encoding="utf-8")) == payload

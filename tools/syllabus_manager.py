@@ -13,11 +13,36 @@ except ImportError:  # pragma: no cover
 from typing import Any, Dict, List, Optional
 
 import os
+import re
 
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
     from ky_io import atomic_write_text  # noqa: E402
 except ImportError:  # pragma: no cover
     from tools.ky_io import atomic_write_text  # noqa: E402
+
+try:  # [2026-10-06 批次] 内置统考/联考/自命题大纲注册表（缺失时按空表降级）
+    from tools.builtin_pro_syllabi import (
+        PRO_SYLLABI as _PRO_REGISTRY,
+        PRO_GROUP_ORDER as _PRO_GROUP_ORDER,
+        PRO_SELF_DEFINED_NOTICE as _PRO_SELF_DEFINED_NOTICE,
+        label as _pro_registry_label,
+    )
+except ImportError:  # pragma: no cover
+    try:
+        from builtin_pro_syllabi import (
+            PRO_SYLLABI as _PRO_REGISTRY,
+            PRO_GROUP_ORDER as _PRO_GROUP_ORDER,
+            PRO_SELF_DEFINED_NOTICE as _PRO_SELF_DEFINED_NOTICE,
+            label as _pro_registry_label,
+        )
+    except ImportError:
+        _PRO_REGISTRY = {}
+        _PRO_GROUP_ORDER = ()
+        #降级常量：注册表缺失时三端仍能拼出自命题标注（诚实标注不得依赖注册表可用）
+        _PRO_SELF_DEFINED_NOTICE = "自命题·以院校官方大纲为准"
+
+        def _pro_registry_label(info):  # type: ignore[misc]
+            return str((info or {}).get("name") or "")
 
 #: 工作区根（默认仓库根），允许 ``KY_WORKSPACE_ROOT`` 覆盖 —— 理由同
 #: ``tools/study_planner.py`` 的同名变量：独立套件在假工作区里运行、本模块却从
@@ -674,6 +699,196 @@ PRO_PLACEHOLDER_MARKER = "【待自填"
 #: 旧版占位文案（历史文件兼容，与 PRO_PLACEHOLDER_MARKER 同义判定）
 _PRO_LEGACY_PLACEHOLDER = "请根据报考院校官网大纲填入"
 
+# [F7 修复·统考占位文案不准确] 全国统考专业课科目代码（与生成骨架直接覆盖的
+# 内置键一致）；311 等未内置骨架的统考科目由名称正则兜底识别。
+# [2026-10-06 批次·内置大纲注册表] 分类升级为三档：``unified``（全国统一命题，
+# 教育部教育考试院）/ ``joint``（联考，招生单位自主选用）/ ``custom``（自命题）。
+# 注册表科目按其 ``category`` 字段并入集合；408/199/312 的正文仍是本模块内的
+# 既有常量（不在注册表），308 为联考口径（骨架正文即要求按院校官网核验）。
+_UNIFIED_PRO_TYPES = frozenset({"408", "199", "312"}) | frozenset(
+    k for k, v in _PRO_REGISTRY.items() if v.get("category") == "unified"
+)
+_JOINT_PRO_TYPES = frozenset({"308"}) | frozenset(
+    k for k, v in _PRO_REGISTRY.items() if v.get("category") == "joint"
+)
+
+#: 统考科目名称中的科目代码（如「311 教育学专业基础」）。前后不能紧邻数字，
+#: 避免把「1811」「4088」这类自命题编号误判为统考。
+_UNIFIED_PRO_NAME_RE = re.compile(
+    r"(?<!\d)(101|199|201|204|301|302|303|306|307|311|312|313|314|315|333|396|397|398|408|414|415|497|498)(?!\d)"
+)
+
+#: 联考科目名称中的科目代码（如「347 心理学专业综合」）。招生单位可选用联考
+#: 大纲或自命题，占位指引与统考分档（研招网 + 目标院校研究生院官网核验）。
+_JOINT_PRO_NAME_RE = re.compile(
+    r"(?<!\d)(211|308|346|347|348|349|354|357|431|432|433|434|435|436|445|448)(?!\d)"
+)
+
+#: [2026-10-06 B 批次] 菜单分组的展示名覆盖。键是注册表里的 ``group`` 原值，
+#: 只有自命题需要改写 —— 它的 4 个代码（811/813/814/816）与统考代码在菜单里
+#: 长得一样，考生无法从「811」这个数字看出它没有全国统一大纲。展示名直接用
+#: 标注常量本身（它已含「自命题」前缀），避免拼成「自命题·自命题…」这种叠词。
+_PRO_GROUP_DISPLAY = {"自命题": _PRO_SELF_DEFINED_NOTICE}
+
+
+def pro_exam_category(pro_type, pro_name) -> str:
+    """[2026-10-06 批次] 专业课三分类：``unified`` / ``joint`` / ``custom``。
+
+    unified=全国统一命题（教育部教育考试院统一发布大纲，中国教育考试网可查）；
+    joint=联考（专业学位教指委/考试院发布大纲，招生单位自主选用，须按目标院校
+    当年招生简章与大纲核验）；custom=院校自命题（目标院校研究生院官网）。
+    优先级：unified > joint > custom（名称同时含两类代码时按统考口径）。
+    """
+    t = str(pro_type or "").strip()
+    if t in _UNIFIED_PRO_TYPES:
+        return "unified"
+    if _UNIFIED_PRO_NAME_RE.search(str(pro_name or "")):
+        return "unified"
+    if t in _JOINT_PRO_TYPES:
+        return "joint"
+    if _JOINT_PRO_NAME_RE.search(str(pro_name or "")):
+        return "joint"
+    return "custom"
+
+
+def is_unified_pro_subject(pro_type, pro_name) -> bool:
+    """[F7 修复] 判定专业课是否为全国统考科目（决定占位大纲的官方指引口径）。
+
+    背景：311 教育学专业基础（全国统考）此前拿到「请前往目标院校研究生院官网
+    下载最新**自命题**考试大纲」的错误指引（C-P1 实测）。统考大纲由教育部教育
+    考试院统一发布、中国教育考试网可查；只有自命题才走目标院校研究生院官网。
+    """
+    return pro_exam_category(pro_type, pro_name) == "unified"
+
+
+def pro_syllabus_label(info) -> str:
+    """[2026-10-06 B 批次] 注册表条目的三端统一展示名（自命题必带诚实标注）。
+
+    转出 ``builtin_pro_syllabi.label``，让GUI / CLI / 配置层只依赖
+    ``syllabus_manager`` 这一个门面，避免三端各写一份拼接逻辑后某端漏标。
+    自命题条目的名称里已含「（自命题·以院校官方大纲为准）」，因此考生在
+    GUI 下拉、``ky subject`` [6] 菜单、``ky_config.json`` 的 ``pro_name`` 与
+    ``AGENTS.md`` 的科目名四处都能看到同一句口径，不会把通用参考框架
+    误读成官方考纲。
+    """
+    try:
+        return _pro_registry_label(info)
+    except Exception:  # pragma: no cover - 注册表结构异常时不阻断建档
+        return str((info or {}).get("name") or "") if isinstance(info, dict) else str(info or "")
+
+
+def self_defined_pro_codes() -> List[str]:
+    """[2026-10-06 B 批次] 注册表内自命题科目代码（升序）。
+
+    供三端把「自命题」预设与统考/联考**分组展示**（菜单分组 / GUI 分组标题），
+    也供测试钉住"811 必须在内置库里"这条产品承诺。
+    """
+    return sorted(k for k, v in _PRO_REGISTRY.items()
+                  if v.get("category") == "self_defined")
+
+
+def is_self_defined_pro(info) -> bool:
+    """注册表条目是否自命题分类（展示层决定是否追加诚实标注）。"""
+    return isinstance(info, dict) and info.get("category") == "self_defined"
+
+
+def builtin_pro_syllabus(pro_type, pro_name):
+    """[2026-10-06 批次] 查询内置统考/联考/自命题大纲注册表。
+
+    命中返回注册表条目 dict（含 name/category/group/content），未命中返回 None。
+    匹配优先级：``pro_type`` 精确命中 → ``pro_name`` 中的三位科目代码（按出现
+    顺序，前后不紧邻数字）。自命题编号（如 801/811）不在注册表内，天然返回
+    None，由调用方走既有分支或占位流程。
+    """
+    key = str(pro_type or "").strip()
+    if key in _PRO_REGISTRY:
+        return _PRO_REGISTRY[key]
+    for code in re.findall(r"(?<!\d)\d{3}(?!\d)", str(pro_name or "")):
+        if code in _PRO_REGISTRY:
+            return _PRO_REGISTRY[code]
+    return None
+
+
+def builtin_pro_syllabus_codes() -> List[str]:
+    """返回注册表内全部科目代码（按代码升序），供三端菜单提示。"""
+    return sorted(_PRO_REGISTRY)
+
+
+def builtin_pro_syllabi_grouped() -> List[tuple]:
+    """[2026-10-06 批次] 按分组顺序返回注册表条目 ``[(code, info), …]``。
+
+    GUI 下拉等需要平铺展示时使用；分组顺序遵循 ``PRO_GROUP_ORDER``，
+    组内按科目代码升序；注册表为空时返回空列表。
+    """
+    if not _PRO_REGISTRY:
+        return []
+    order = list(_PRO_GROUP_ORDER)
+
+    def _key(item):
+        code, info = item
+        g = str(info.get("group") or "其它")
+        return (order.index(g) if g in order else len(order), code)
+
+    return sorted(_PRO_REGISTRY.items(), key=_key)
+
+
+def builtin_pro_menu_lines(indent: str = "    ", width: int = 68) -> List[str]:
+    """[2026-10-06 批次] 三端菜单共用的内置大纲分组提示行。
+
+    按 ``PRO_GROUP_ORDER`` 分组（如 ``医学 306/307 | 教育 311/333``），按宽度
+    自动折行；注册表为空时返回空列表（调用方回退自命题提示）。
+    [2026-10-06 B 批次] 自命题分组显示为「自命题·以院校官方大纲为准」——
+    考生在 CLI 菜单里光看代码（811/813/814/816）无从判断权威来源，标注必须
+    与代码同处一行，否则等于没标。
+    """
+    if not _PRO_REGISTRY:
+        return []
+    groups: Dict[str, List[str]] = {}
+    for code, info in _PRO_REGISTRY.items():
+        groups.setdefault(str(info.get("group") or "其它"), []).append(code)
+    order = [g for g in _PRO_GROUP_ORDER if g in groups]
+    order += [g for g in sorted(groups) if g not in order]
+    parts = [f"{_PRO_GROUP_DISPLAY.get(g, g)} {'/'.join(sorted(groups[g]))}"
+             for g in order]
+    lines: List[str] = []
+    cur = ""
+    for part in parts:
+        if cur and len(cur) + len(part) + 3 > width:
+            lines.append(indent + cur)
+            cur = part
+        else:
+            cur = f"{cur} | {part}" if cur else part
+    if cur:
+        lines.append(indent + cur)
+    return lines
+
+
+def prompt_builtin_pro_selection():
+    """[2026-10-06 批次] 三端菜单共用的「内置大纲按代码选择」交互。
+
+    展示按分组排版的可用科目清单并读取科目代码。命中返回 ``(code, name)``；
+    未命中或注册表为空时返回 ``None``（由调用方回退自命题输入流程）。
+    [2026-10-06 B 批次] 选中的自命题条目额外打印一行诚实提示，并把带标注的
+    展示名随 ``name`` 返回 —— 该name 会直写 AGENTS.md 与 ky_config.json，
+    是CLI 端唯一的「标注出口」，漏了就等于没标。
+    """
+    if not _PRO_REGISTRY:
+        print("  [!] 内置大纲库暂不可用，改走自命题输入。")
+        return None
+    print("  可用科目代码（按分组）：")
+    for line in builtin_pro_menu_lines():
+        print(line)
+    code = input("  请输入科目代码（如 333）: ").strip()
+    hit = builtin_pro_syllabus(code, "")
+    if hit is None:
+        print(f"  [!] 代码 '{code}' 不在内置库，改走自命题输入。")
+        return None
+    name = pro_syllabus_label(hit)
+    if is_self_defined_pro(hit):
+        print(f"  [i] {code} 为院校自命题：已载入**学科通用参考框架**，"
+              f"不是官方考纲。请到目标院校研究生院官网下载当年《考试大纲》核对替换。")
+    return code, name
+
 
 def pro_syllabus_state(workspace_root, filename: str = "考试大纲.md") -> str:
     """专业课考试大纲的真实状态：``ready`` / ``placeholder`` / ``missing``。
@@ -697,29 +912,73 @@ def pro_syllabus_state(workspace_root, filename: str = "考试大纲.md") -> str
 
 
 def pro_books_placeholder_text(workspace_root, pro_name: str = "专业课",
-                               filename: str = "考试大纲.md") -> str:
+                               filename: str = "考试大纲.md",
+                               pro_type: str = "custom") -> str:
     """专业课白名单为空时的如实占位文案（按大纲真实状态分档）。
 
     ``ready`` 才允许「私教严格按官方考纲出题」的表述；``placeholder`` /
     ``missing`` 时如实标注，并给出导入指引 —— 该文案会写入 AGENTS.md 与
     ky_config.json，是 Agent 的常驻上下文，源头不能有虚假承诺。
+
+    [F7 修复] 导入指引按统考/自命题分档：统考科目（如 311）的官方大纲由
+    教育部教育考试院统一发布，不得再引导考生去目标院校官网找「自命题」大纲
+    （C-P1 实测）。``pro_type`` 缺省时按 ``pro_name`` 中的科目代码识别。
+
+    [2026-10-06 批次] 升级三档：新增联考（joint）口径 —— 联考大纲由教指委/
+    考试院发布、招生单位自主选用，指引为「研招网获取 + 目标院校核验」。
     """
     state = pro_syllabus_state(workspace_root, filename)
     if state == "ready":
         return f"暂未放置实体资料（私教严格按【{pro_name}】官方考纲出题，严禁虚构书目）"
+    category = pro_exam_category(pro_type, pro_name)
     if state == "placeholder":
+        if category == "unified":
+            return (f"暂未放置实体资料，且考试大纲仍为【待自填】骨架（请从教育部教育考试院"
+                    f" / 中国教育考试网获取当年统考大纲，或对照权威教辅核对后替换 "
+                    f"04-专业课/{filename}；替换前不得宣称按纲出题）")
+        if category == "joint":
+            return (f"暂未放置实体资料，且考试大纲仍为【待自填】骨架（请从研招网 / "
+                    f"教育部教育考试院获取联考大纲（招生单位自主选用），并前往目标院校"
+                    f"研究生院官网核验当年招生简章与大纲后替换 04-专业课/{filename}；"
+                    f"替换前不得宣称按纲出题）")
         return (f"暂未放置实体资料，且考试大纲仍为【待自填】骨架（请从目标院校研究生院"
                 f"官网下载真实大纲替换 04-专业课/{filename}；替换前不得宣称按纲出题）")
+    if category == "unified":
+        return (f"暂未放置实体资料，且尚未导入考试大纲（请从教育部教育考试院 / "
+                f"中国教育考试网获取当年统考大纲后放入 04-专业课/{filename}；"
+                f"导入前不得宣称按纲出题）")
+    if category == "joint":
+        return (f"暂未放置实体资料，且尚未导入考试大纲（请从研招网获取联考大纲"
+                f"（招生单位自主选用），并前往目标院校研究生院官网核验后放入 "
+                f"04-专业课/{filename}；导入前不得宣称按纲出题）")
     return (f"暂未放置实体资料，且尚未导入考试大纲（请从目标院校研究生院官网下载后"
             f"放入 04-专业课/{filename}；导入前不得宣称按纲出题）")
 
 
-def _pro_placeholder_body(pro_real_name: str, example: str) -> str:
-    """生成自命题专业课的「待自填」占位大纲正文（P12：明确标注待办而非成品）。"""
+def _pro_placeholder_body(pro_real_name: str, example: str,
+                          pro_type: str = "custom") -> str:
+    """生成专业课的「待自填」占位大纲正文（P12：明确标注待办而非成品）。
+
+    [F7 修复] 统考科目（如 311 教育学专业基础）的官方大纲由教育部教育考试院
+    统一发布，指引走中国教育考试网；自命题才引导至目标院校研究生院官网。
+    [2026-10-06 批次] 联考科目（如 347 心理学专业综合）指引为「研招网查询 +
+    目标院校研究生院官网核验」。
+    """
+    category = pro_exam_category(pro_type, pro_real_name)
+    if category == "unified":
+        guide = ("请前往 **教育部教育考试院 / 中国教育考试网** 获取当年统考大纲"
+                 "（或对照权威教辅核对），替换下方各章节内容后再按纲复习。")
+    elif category == "joint":
+        guide = ("请前往 **研招网 / 教育部教育考试院** 查询联考大纲（招生单位自主"
+                 "选用），并**以目标院校研究生院官网当年招生简章与大纲核验**后，"
+                 "替换下方各章节内容再按纲复习。")
+    else:
+        guide = ("请前往 **目标院校研究生院官网** 下载最新自命题考试大纲，"
+                 "替换下方各章节内容后再按纲复习。")
     return (
         f"# 04-专业课 · 【{pro_real_name}】官方考试大纲与核心考点清单\n\n"
         f"> ⚠️ **【待自填·占位大纲】** 本文件为系统生成的占位模板，**尚未包含真实考点**。\n"
-        f"> 请前往 **目标院校研究生院官网** 下载最新自命题考试大纲，替换下方各章节内容后再按纲复习。\n"
+        f"> {guide}\n"
         f"> 在替换之前，AI 私教不得据本文件宣称「已按考纲出题」。\n\n"
         "## 核心考查章节与重点要求（待自填）：\n"
         f"- 第一章：【待自填】请替换为官网大纲中的真实章节与考点（参考示例：{example}） (要求：掌握)\n"
@@ -820,7 +1079,18 @@ def apply_syllabus_selection(
     # 4. 处理专业课大纲
     pro_outline = ws / "04-专业课" / "考试大纲.md"
     if auto_write:
-        if pro_type == "199" or "199" in str(pro_name):
+        # [2026-10-06 批次·内置统考/联考大纲] 注册表优先：命中即直接载入官方
+        # 结构大纲（306/307/311/313/333/314/315/414/415/396/397/398/497/498/
+        # 211/346/347/348/349/354/357/431/432/433/434/435/436/445/448 等）；
+        # 未命中再走既有分支（199/408/432/308/312）与占位流程。
+        _builtin = builtin_pro_syllabus(pro_type, pro_name)
+        if _builtin is not None:
+            atomic_write_text(pro_outline, _builtin["content"])
+            # [2026-10-06 B 批次] 自命题条目必须用带诚实标注的展示名写入
+            # AGENTS.md/ky_config —— 那是 Agent 的常驻上下文，写成「811 信号与系统」
+            # 会让私教直接把它当官方考纲宣称「已按考纲出题」。
+            pro_real_name = pro_syllabus_label(_builtin)
+        elif pro_type == "199" or "199" in str(pro_name):
             atomic_write_text(pro_outline, MGMT199_SYLLABUS)
             pro_real_name = "199 管理类综合能力"
         elif pro_type == "408" or "408" in str(pro_name):
@@ -859,8 +1129,9 @@ def apply_syllabus_selection(
                 # has_real_content 误判为真实内容而保留。一律走占位正文
                 # （学科贴合示例仍由 _pro_placeholder_example 按 信号/811 区分）。
                 # [P12 修复] 明确标注「待自填」并给出官网指引，避免用户误把占位当成品
+                # [F7 修复] 指引按统考/自命题分档（311 等统考科目走教育部考试院口径）
                 atomic_write_text(pro_outline,
-                    _pro_placeholder_body(pro_real_name, _pro_example))
+                    _pro_placeholder_body(pro_real_name, _pro_example, pro_type))
         updated_files.append(pro_outline)
 
         # 若存在专业课二 (Mode B 双专业课)，生成专业课二大纲文件
@@ -869,7 +1140,7 @@ def apply_syllabus_selection(
             _pro2_example = _pro_placeholder_example(pro2_name)
             # [P12 修复] 同样明确标注「待自填」并给出官网指引
             atomic_write_text(pro2_outline,
-                _pro_placeholder_body(f"{pro2_name} (专业课二)", _pro2_example))
+                _pro_placeholder_body(f"{pro2_name} (专业课二)", _pro2_example, pro_type))
             updated_files.append(pro2_outline)
 
         pro_agents = ws / "04-专业课" / "AGENTS.md"

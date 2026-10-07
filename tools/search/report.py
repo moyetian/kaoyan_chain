@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -150,6 +151,16 @@ class SearchReport:
         }
 
 
+#: ``providers_used`` 里的缓存标注后缀（新鲜命中 / 陈旧兜底）。
+#: [serve-stale] 冷却期会用陈旧缓存兜底，标注必须能被识别并**如实呈现陈旧度**
+#: —— 否则报告会写成「命中缓存」，让模型以为拿到的是新鲜数据。
+_CACHE_SUFFIX_RE = re.compile(r"\(缓存(?:·陈旧)?\)")
+
+
+def _strip_cache_suffix(name: str) -> str:
+    return _CACHE_SUFFIX_RE.sub("", name)
+
+
 def build_report(response: SearchResponse, *, intent: str = "general",
                  year: Optional[int] = None,
                  expect_sources: Sequence[str] = ()) -> SearchReport:
@@ -157,16 +168,24 @@ def build_report(response: SearchResponse, *, intent: str = "general",
     report = SearchReport(query=response.query, intent=intent,
                           year=year or response.year)
 
-    used = {name.replace("(缓存)", "") for name in response.providers_used}
+    used = {_strip_cache_suffix(name) for name in response.providers_used}
     failed = dict(response.providers_failed)
     cooling = {name for name, _ in response.providers_cooling}
+    stale_used = any("·陈旧" in name for name in response.providers_used)
 
     for name in sorted(used | set(failed)):
         if name in failed:
             report.sources.append(SourceStatus(name, False, failed[name],
                                                cooling=name in cooling))
         else:
-            extra = "（命中缓存）" if f"{name}(缓存)" in response.providers_used else ""
+            hit = next((n for n in response.providers_used
+                        if _strip_cache_suffix(n) == name), "")
+            if "·陈旧" in hit:
+                extra = "（命中陈旧缓存，检索源当时不可用）"
+            elif hit:
+                extra = "（命中缓存）"
+            else:
+                extra = ""
             report.sources.append(SourceStatus(name, True, extra))
     report.sources.sort(key=lambda s: (not s.ok, s.name))
 
@@ -187,6 +206,10 @@ def build_report(response: SearchResponse, *, intent: str = "general",
     if any((r.extra or {}).get("year_status") == "outdated" for r in report.found):
         report.notes.append("结果中包含往年数据（已标注 ⚠️），"
                             "请勿直接当作目标年份的官方结论")
+    if stale_used:
+        # [serve-stale] 陈旧兜底必须留痕：结论仍成立，但时效性由考生自行判断。
+        report.notes.append("部分结果来自**过期缓存**兜底（相应检索源当时被反爬拦截"
+                            "或不可用）——内容大概率仍然有效，但请勿当作刚刚发布的口径")
 
     return report
 

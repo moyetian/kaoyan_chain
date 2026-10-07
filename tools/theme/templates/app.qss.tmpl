@@ -36,7 +36,8 @@ QPushButton#SecondaryBtn:focus, QPushButton[secondary="true"]:focus {
 }
 
 QPushButton#SettingsBtn:focus, QPushButton#ThemeToggle:focus, QPushButton#UploadBtn:focus,
-QPushButton#QuickPill:focus, QPushButton#ExamplePill:focus, QPushButton#NavPaletteBtn:focus {
+QPushButton#QuickPill:focus, QPushButton#ExamplePill:focus, QPushButton#NavPaletteBtn:focus,
+QPushButton#SessionBtn:focus {
     border: {{focus-w}}px solid {{acc}};
 }
 
@@ -192,6 +193,22 @@ QCheckBox:focus, QRadioButton:focus {
 }
 
 #ThemeToggle:hover {
+    background-color: {{surf3}};
+    border: 1px solid {{acc}};
+}
+
+/* 会话管理按钮（对话页快捷栏行尾的「历史 / 新建」）——次要操作样式，
+   与 ThemeToggle 同族：静音表面 + accent 描边，hover 提亮。 */
+#SessionBtn {
+    background-color: {{surf2}};
+    color: {{acc-soft}};
+    border: 1px solid {{acc-line}};
+    border-radius: {{radius-sm}}px;
+    padding: {{pad-sm}} {{pad}};
+    font-size: {{fs-sm}};
+}
+
+#SessionBtn:hover {
     background-color: {{surf3}};
     border: 1px solid {{acc}};
 }
@@ -704,6 +721,41 @@ QToolTip {
     color: {{mut}};
     font-size: {{fs-caption}};
     font-weight: 600;
+}
+
+/* ── 思考链折叠块：默认收起为一行「🧠 思考过程 · N 步」────────────
+   左侧 accent 竖条表明这是「过程信息」，与私教正文气泡（毛玻璃）区分；
+   展开正文用小字号次要色，视觉权重低于答案。 */
+#StepGroup {
+    background-color: {{surf2}};
+    border: 1px solid {{line}};
+    border-left: 3px solid {{acc-line}};
+    border-radius: {{radius-sm}}px;
+}
+
+#StepToggle {
+    background-color: transparent;
+    border: none;
+    color: {{mut}};
+    font-size: {{fs-caption}};
+    font-weight: 600;
+    padding: {{space-1}} {{space-2}};
+    text-align: left;
+}
+
+#StepToggle:hover, #StepToggle:focus {
+    color: {{acc-soft}};
+}
+
+#StepToggle:checked {
+    color: {{fg-strong}};
+}
+
+#StepBody {
+    background-color: transparent;
+    color: {{mut}};
+    font-size: {{fs-caption}};
+    padding: {{space-1}} {{space-2}};
 }
 
 /* ── 错题本：卡片 + chip ────────────────────────────────────────── */

@@ -68,8 +68,14 @@ def test_ky_launcher_bash_syntax_ok():
 # R2-4a · TUI 纯文本循环序号提示
 # ════════════════════════════════════════════════════════════════
 
-def test_tui_text_loop_prompt_range_is_0_10(monkeypatch, capsys):
-    """纯文本循环的序号提示必须与菜单实际编号（0-10）一致。"""
+def test_tui_text_loop_prompt_range_matches_menu(monkeypatch, capsys):
+    """纯文本循环的序号提示必须与菜单实际编号一致。
+
+    [2026-10-06] 原用例把区间写死成 "0-10"，新增菜单项后必然变红。现改为
+    **由 ``menu_key_range()`` 派生后比对**——这才是本用例真正的意图（提示与
+    菜单同源），且新增菜单项不再需要手工改断言（该提示历史上已因写死而
+    失真过两次：0-9 → 0-10）。
+    """
     from tools import tui_navigator
 
     prompts = []
@@ -84,8 +90,23 @@ def test_tui_text_loop_prompt_range_is_0_10(monkeypatch, capsys):
     capsys.readouterr()
 
     assert prompts, "未触发输入提示，测试前置条件不成立"
-    assert "[0-10]" in prompts[0], f"序号提示口径不是 0-10: {prompts[0]!r}"
+    expected = f"[{tui_navigator.menu_key_range()}]"
+    assert expected in prompts[0], (
+        f"序号提示口径与菜单实际编号 {expected} 不一致: {prompts[0]!r}")
     assert "[0-9]" not in prompts[0], "残留旧口径 [0-9]"
+
+
+def test_tui_menu_key_range_derives_from_menu_options():
+    """``menu_key_range()`` 必须由菜单数据派生，且覆盖新增的 11/12 与末位 0。"""
+    from tools import tui_navigator
+
+    nums = sorted(int(k) for k, _, _, _ in tui_navigator.MENU_OPTIONS
+                  if str(k).isdigit())
+    assert tui_navigator.menu_key_range() == f"{nums[0]}-{nums[-1]}"
+    assert nums == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], \
+        "菜单编号应为 0-12（新增报到 11 / 交作业 12，退出 0 保持末位）"
+    # render_menu 的尾部提示与纯文本循环提示必须同源（同一派生函数）
+    assert f"[{tui_navigator.menu_key_range()}]" in tui_navigator.render_menu()
 
 
 # ════════════════════════════════════════════════════════════════
@@ -124,27 +145,28 @@ def test_command_palette_lists_paste():
 
 
 # ════════════════════════════════════════════════════════════════
-# R2-4d · rag 建索引提示用平台自适应解释器名
+# R2-4d · rag 建索引提示不得写死解释器名
 # ════════════════════════════════════════════════════════════════
 
-def test_rag_usage_uses_platform_interpreter(capsys):
-    """``ky rag`` 帮助里的建索引命令必须用 ``interpreter_hint()``，不得写死 python。"""
-    from cli.commands import search as cmd_search
-    from cli.shared import interpreter_hint
+def test_rag_usage_points_to_ky_index(capsys):
+    """``ky rag`` 帮助里的建索引指引必须是可直接照敲的 ``ky index`` 命令。
 
-    hint = interpreter_hint()
+    [2026-10-05 演进] R2-4d 当时把写死的 `python` 换成 interpreter_hint()；
+    现在建索引已补上 CLI 子命令，指引直接给 `ky index` —— 从根上免疫
+    「本机 python 是商店 stub」问题，也不再引导用户手敲脚本路径。
+    """
+    from cli.commands import search as cmd_search
+
     assert cmd_search.run_rag_search("") == 1, "空查询应打印用法并返回 1"
     out = capsys.readouterr().out
-    assert "indexer.py" in out
-    assert f"{hint} tools/search/indexer.py" in out, f"用法未使用平台解释器 {hint}"
-    if hint != "python":
-        assert "python tools/search/indexer.py" not in out, "残留写死的 python 命令"
+    assert "ky index" in out, "用法应给出 ky index 建索引入口"
+    assert "tools/search/indexer.py" not in out, "不得再引导手敲脚本路径"
+    assert "python tools/search/indexer.py" not in out, "残留写死的 python 命令"
 
 
-def test_rag_missing_db_hint_uses_platform_interpreter(tmp_path, monkeypatch, capsys):
-    """知识库缺失提示（run_rag_search 返回 2 的分支）同样用平台解释器名。"""
+def test_rag_missing_db_hint_points_to_ky_index(tmp_path, monkeypatch, capsys):
+    """知识库缺失提示（run_rag_search 返回 2 的分支）同样指向 ky index。"""
     from cli.commands import search as cmd_search
-    from cli.shared import interpreter_hint
 
     try:
         ks_mod = importlib.import_module("tools.search.knowledge_store")
@@ -152,11 +174,10 @@ def test_rag_missing_db_hint_uses_platform_interpreter(tmp_path, monkeypatch, ca
         ks_mod = importlib.import_module("search.knowledge_store")
 
     monkeypatch.setattr(ks_mod, "DEFAULT_DB_PATH", tmp_path / "nope.db", raising=False)
-    hint = interpreter_hint()
     assert cmd_search.run_rag_search("测试关键词") == 2
     out = capsys.readouterr().out
-    assert "indexer.py" in out
-    assert f"{hint} tools/search/indexer.py" in out, f"提示未使用平台解释器 {hint}"
+    assert "ky index" in out, "缺失提示应给出 ky index 建索引入口"
+    assert "indexer.py" not in out, "不得再引导手敲脚本路径"
 
 
 # ════════════════════════════════════════════════════════════════

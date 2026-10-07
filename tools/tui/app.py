@@ -59,6 +59,11 @@ try:  # pragma: no cover - 取决于运行方式
 except ImportError:  # pragma: no cover
     from tools import tui_navigator  # type: ignore
 
+try:
+    from action_status import output_has_failure
+except ImportError:  # pragma: no cover
+    from tools.action_status import output_has_failure  # type: ignore
+
 #: textual 主题名（与 tools/theme 的 token 同源，Web/GUI/CLI 共用这套 token）
 THEME_NAME = "ky"
 
@@ -438,6 +443,11 @@ class KaoyanTUI(App):
                 self._log_write(output)
             if error is not None:
                 log.write(f"[red]执行异常：{escape_markup(error)}[/red]")
+            elif output_has_failure(output):
+                # ``execute_action`` keeps its boolean return value for loop
+                # control and reports backend failures as text. Do not paint
+                # those outputs as a green success in the TUI.
+                log.write(f"[red]动作 [{escape_markup(alias)}] 执行失败，请查看上方错误信息[/red]")
             else:
                 log.write(f"[green]✔ 动作 [{escape_markup(alias)}] 执行完毕[/green]")
             self._refresh_summary()

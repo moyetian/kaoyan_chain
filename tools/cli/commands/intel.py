@@ -228,6 +228,12 @@ def _cmd_watch(args: List[str]) -> None:
 
 def render_syllabus_diff(res, school, major, y1, y2) -> None:
     """考纲 Diff 看板渲染，供 REPL /diff 与 CLI 共用同一口径。"""
+    # [F13 修复·基准警示收口] 同文件自我对照 / 【待自填】占位基准的警示统一在
+    # 渲染器入口打印（REPL /diff 与 ky fetch diff 共用），先于看板正文，避免
+    # 考生把「0.0% 稳定」当成真实考纲结论。
+    _baseline_warning = str(res.get("baseline_warning") or "").strip()
+    if _baseline_warning:
+        print(colorize(f"[⚠️ 基准警示] {_baseline_warning}\n", C.YELLOW))
     m = res["metrics"]
     print(colorize(f"=== 考纲变动全景看板 · {school} ({y1} vs {y2}) ===", C.BOLD))
     print(f"  • 变动等级: {colorize(m['stability_grade'], C.GREEN if m['volatility_percentage'] < 10 else C.YELLOW)} (波动率: {m['volatility_percentage']}%)")
@@ -456,6 +462,8 @@ def _cmd_fetch(args: List[str]) -> None:
                 res = diff_gen.compare_texts(old_text=base_text, new_text=new_text, school=school, major=major, year_old=y1, year_new=y2)
                 res["is_demo"] = demo_mode
 
+            # [F13 修复·基准警示收口] 警示打印已统一收口至 render_syllabus_diff
+            # 入口（REPL /diff 与 CLI 共用），此处不再单独打印。
             render_syllabus_diff(res, school, major, y1, y2)
             # [缺陷修复] 此前无条件 save_diff_report，帮助里宣称的 [--save] 形同虚设。
             # 现改为默认仅预览，显式 --save 才落盘（与 sync_publish/update_dashboard

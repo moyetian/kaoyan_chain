@@ -441,8 +441,17 @@ class WeChatSearchEngine(_AccountNameResolver):
 
         for p in range(1, pages_to_fetch + 1):
             if _wx_health.is_cooling("sogou-weixin"):
+                # 冷却事实**始终**留痕（调用方据此知道结果不是新抓的）。
                 self._note_source_error("搜狗微信", RuntimeError(
                     _wx_health.cooldown_reason("sogou-weixin")))
+                # [serve-stale 兜底·2026-10-06] 冷却期**不再直接返回空**：
+                # R3 全矩阵仿真实测到「早跑的 CLI 抓 5 篇 / 10 分钟内后跑的 GUI 抓
+                # 0 篇」的时序互补 —— 冷却让该源 10 分钟内彻底不参与检索，检索能力
+                # 直接归零。改为先查本地沉淀（``.memory/experiences/``），
+                # 有就返回并标注「冷却期缓存兜底」，没有才如实返回空。
+                local_items = self._cooldown_cache_fallback(keyword, max_results)
+                if local_items:
+                    return local_items[:max_results]
                 break
             params = {
                 "type": "2",  # 2 = 搜文章
@@ -574,6 +583,30 @@ class WeChatSearchEngine(_AccountNameResolver):
                 item.url = final_url
             item.source_platform = "sogou_browser"
         return items[:max_results]
+
+    def _cooldown_cache_fallback(self, keyword: str, max_results: int
+                                 ) -> List[WeChatArticleItem]:
+        """冷却期兜底：返回本地沉淀里命中的文章（标注来源通道）。
+
+        [为什么需要] R3 全矩阵仿真（54 格）实测到该源「10 分钟内彻底不参与检索」，
+        公众号检索直接归零 —— 早跑的那次抓了 5 篇，稍后跑的一次抓 0 篇。冷却是为了
+        保护源不被封，代价不该是「能力归零」：``.memory/experiences/`` 里的沉淀
+        本来就是同一批文章，冷却期先用它顶上。
+
+        标注为 ``local_cooldown``（区别于正常本地检索的 ``local``），让三端都能
+        如实告诉考生「这是缓存兜底，不是本次新检索到的」。
+        """
+        try:
+            items = self.search_local_cache(keyword, max_results)
+        except Exception as exc:                   # pragma: no cover - 兜底不该抛
+            self._note_source_error("搜狗微信(冷却兜底)", exc)
+            return []
+        for it in items:
+            it.source_platform = "local_cooldown"
+        if items:
+            self.last_source_status.append(
+                f"冷却期缓存兜底: 成功 {len(items)} 条（标注 local_cooldown）")
+        return items
 
     def search_local_cache(self, keyword: str, max_results: int) -> List[WeChatArticleItem]:
         """检索已沉淀在 .memory/experiences/ 中的本地文章（兼容读取旧 docs/experiences/ 存量）"""

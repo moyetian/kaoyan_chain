@@ -61,6 +61,19 @@ def test_relief_restore_reverts_hours_and_style(_ws):
     assert "严格把关" in agents
 
 
+def test_relief_keep_style_restore_syncs_agents_budget(_ws):
+    """keep-style 也必须把 AGENTS.md 的预算从减负值恢复到原值。"""
+    planner.apply_relief_mode(keep_style=True)
+    assert "每日投入 `6.0 小时`" in (_ws / "AGENTS.md").read_text(encoding="utf-8")
+
+    res = planner.restore_relief_mode()
+
+    assert res["success"] is True
+    agents = (_ws / "AGENTS.md").read_text(encoding="utf-8")
+    assert "每日投入 `8.0 小时`" in agents
+    assert "每日投入 `6.0 小时`" not in agents
+
+
 def test_relief_is_idempotent(_ws):
     first = planner.apply_relief_mode()
     second = planner.apply_relief_mode()

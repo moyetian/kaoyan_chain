@@ -43,6 +43,24 @@ def test_intel_task_worker_action_execution():
     assert "中国人民大学" in results[0][0]
 
 
+def test_intel_task_worker_routes_backend_failure_to_error_signal():
+    """后端错误文案不得被 GUI 当成正常完成结果。"""
+    from tools.gui.workers.intel_worker import IntelTaskWorker
+
+    worker = IntelTaskWorker("action", ROOT, {"alias": "scout"})
+    finished = []
+    errors = []
+    worker.finished_signal.connect(lambda out, saved: finished.append((out, saved)))
+    worker.error_signal.connect(errors.append)
+
+    with patch("tools.gui.services.run_action_capture", return_value="[×] 模块 [scout] 执行异常: 网络不可用"), \
+         patch("gui.services.run_action_capture", return_value="[×] 模块 [scout] 执行异常: 网络不可用", create=True):
+        worker.run()
+
+    assert finished == []
+    assert errors and "网络不可用" in errors[0]
+
+
 def test_intel_task_worker_compare_execution():
     from tools.gui.workers.intel_worker import IntelTaskWorker
 

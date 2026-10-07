@@ -122,9 +122,28 @@ def build(offline: bool = False):
     :param offline: 为 True 时第三方前端资源改用本地 vendor 目录，
                     供无外网环境使用（配合 `--offline` 参数）。
     """
+    # [审查修复·任务文件跨天不刷新] 本地完整模式：构建前先把非当日的
+    # 「今日任务.md」按当日重写（读取侧兜底，与 ky today / REPL / TUI 同源，
+    # 不调 LLM）。仅本地模式执行 —— 发布安全模式（opt-in）下构建须保持对
+    # 源文件的只读，且公开快照的任务卡本就是脱敏示例，无需按日刷新。
+    if not snapshot_opt_in():
+        try:
+            _repo_root = ROOT.parent          # ROOT = 05-考研看板/，其父即仓库根
+            if str(_repo_root) not in sys.path:
+                sys.path.insert(0, str(_repo_root))
+            try:
+                from tools.study_planner import refresh_stale_today_tasks
+            except ImportError:
+                from study_planner import refresh_stale_today_tasks
+            refresh_stale_today_tasks(workspace_root=_repo_root)
+        except Exception:
+            pass
     today = datetime.date.today()
-    d_math = (EXAM_DATE - today).days
-    d_day1 = (EXAM_DAY1 - today).days
+    # [缺陷修复·考试日后负数倒计时] GUI/CLI 已统一 max(0, …)（exam_calendar.
+    # countdown_days），看板此前直接取差值 —— 初试日过后 hero 会显示负数
+    # （如「-2 天」）。现与三端同口径 clamp 到 0。
+    d_math = max(0, (EXAM_DATE - today).days)
+    d_day1 = max(0, (EXAM_DAY1 - today).days)
     day_no = (today - PLAN_START).days + 1
     total_days = (EXAM_DATE - PLAN_START).days
 
@@ -140,13 +159,17 @@ def build(offline: bool = False):
     # Markdown 会被不同关键词反复 get_section 切片，此前每条都重读一次磁盘。
     # 缓存放在**构建局部**（而非全局 lru_cache）：同进程多次 build（测试/看板连续
     # 重建）时不会读到上一轮的陈旧内容。
+    # [缺陷修复·缺文件静默回落模板] 只有脱敏发布模式（公开演示副本）允许回落
+    # 到 *.template.md/*.example.md；本地完整模式 = 真实工作区，缺文件走空态 +
+    # 解析告警，绝不把模板示例内容当成考生数据展示。
+    _allow_template_fallback = snapshot_opt_in()
     _read_memo: dict = {}
 
     def read_memo(path):
         key = str(path)
         if key in _read_memo:
             return _read_memo[key]
-        content = read(path)
+        content = read(path, allow_fallback=_allow_template_fallback)
         _read_memo[key] = content
         return content
 

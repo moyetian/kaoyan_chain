@@ -54,6 +54,9 @@ except ImportError:  # pragma: no cover
 
 try:  # [K4] 统一 LLM 出口：SSE 基础设施 / 结构化异常 / URL 归一（双导入路径兼容）
     from llm_client import (
+        DEFAULT_LLM_TIMEOUT,
+        DEFAULT_MAX_TOKENS,
+        DIALOGUE_TEMPERATURE,
         ChatRequest,
         LLMDeterministicError,
         LLMResponseTooLargeError,
@@ -65,6 +68,9 @@ try:  # [K4] 统一 LLM 出口：SSE 基础设施 / 结构化异常 / URL 归一
     )
 except ImportError:  # pragma: no cover
     from tools.llm_client import (  # type: ignore
+        DEFAULT_LLM_TIMEOUT,
+        DEFAULT_MAX_TOKENS,
+        DIALOGUE_TEMPERATURE,
         ChatRequest,
         LLMDeterministicError,
         LLMResponseTooLargeError,
@@ -74,6 +80,11 @@ except ImportError:  # pragma: no cover
         normalize_openai_url,
         request_chat,
     )
+
+try:  # 输出预算档位（双导入路径兼容；不能塞进上面的 import 括号里）
+    import output_budget
+except ImportError:  # pragma: no cover
+    from tools import output_budget  # type: ignore
 
 #: [K4] ``normalize_openai_url`` 已收敛为 ``llm_client`` 单一实现（本模块 re-export）。
 #: 兼容既有导入路径：doctor.py / school_scout.py / agentic_research.py /
@@ -86,6 +97,43 @@ except ImportError:  # pragma: no cover
 #: [B3a] ``COMPACT_SUMMARY_PREFIX``（从 compaction 导入）用于识别「本次
 #: compact_context 是否真的发生了压缩」—— 只有真的插入了新摘要，才写 compact
 #: 事件并更新 resume 用的摘要。[B3b] 私有副本已删除，避免两处字面量各自漂移。
+
+
+# ── [R3 波动收敛] 采样温度 / 输出上限的解析（单一真源）────────────────────
+# 这两个参数此前散落成裸字面量（``config.get("temperature", 0.3)`` /
+# ``config.get("max_tokens", 4096)``），带来两个问题：
+#   ① 「对话链路用 0.3 / 4096」这个口径没有具名，稳定性优先的子链路
+#      （判卷、采分点补全、切片识别）无法表达「本次要关采样」；
+#   ② CLI 非 Agent 路径压根不传 max_tokens（见 cli/agent/engine.py），
+#      两条路径的输出长度行为结构性不同（R3 实测 8998 → 4927 字符）。
+# 现统一经由下面两个解析函数 + llm_client 的具名常量，缺省值只存一份。
+def _resolve_temperature(config: Optional[Dict[str, Any]]) -> float:
+    """解析采样温度：配置项优先，缺失/非法回落 :data:`DIALOGUE_TEMPERATURE`。
+
+    显式化本身就是目的：调用点写 ``_resolve_temperature(self.config)`` 就把
+    「我属于对话链路（用多样性）」这件事写进了代码，评审与后续收紧都有抓手；
+    而 ``config.get("temperature", 0.3)`` 只说明「没有就用 0.3」。
+    """
+    try:
+        val = float((config or {}).get("temperature"))
+    except (TypeError, ValueError):
+        return DIALOGUE_TEMPERATURE
+    return val if 0.0 <= val <= 2.0 else DIALOGUE_TEMPERATURE
+
+
+def _resolve_max_tokens(config: Optional[Dict[str, Any]]) -> int:
+    """解析输出上界：**按输出预算档位**取值（缺省 ``standard`` = 2048）。
+
+    关键：**永不为 None**。``max_tokens=None`` 时 ``llm_client._build_payload``
+    会整个省略该字段，输出长度由上游默认值决定——这正是 R3 观测到的输出长度
+    收缩机制（8998 → 4927 字符），必须由本函数兜住。
+
+    [2026-10-06 输出预算分档] 原固定回落 :data:`DEFAULT_MAX_TOKENS`（4096），
+    对「查个概念」太贵、对「模拟考详解」又太紧。现按 :mod:`output_budget`
+    档位取值：**显式 ``config["max_tokens"]`` 仍优先**（向后兼容），
+    否则查档位表、缺省 standard。触达上界时由最终答案出口显式标注截断。
+    """
+    return output_budget.max_tokens_for(config)
 
 
 # ── [W8] 流式（SSE）客户端 ──────────────────────────────────────────────
@@ -223,7 +271,15 @@ class AgentRunner:
 
     @staticmethod
     def _resolve_timeout(explicit, config) -> float:
-        """解析请求超时秒数：显式参数 > 配置项 > 默认 120；非法值一律回落默认。"""
+        """解析请求超时秒数：显式参数 > 配置项 > 默认 :data:`DEFAULT_LLM_TIMEOUT`；
+        非法值一律回落默认。
+
+        [R3 波动收敛·根因 3] 默认值由裸字面量 120.0 改为引用
+        ``llm_client.DEFAULT_LLM_TIMEOUT``（90s）——与 CLI 流式讲题、网关问答、
+        GUI worker 同一真源。注意 Agent 路径最终生效值是
+        ``min(request_timeout, _STREAM_STALL_TIMEOUT)``，此前 120 只是被隐式
+        min 压到 90；口径靠隐式行为收敛而非显式声明，现改为直接对齐。
+        """
         for cand in (explicit, (config or {}).get("request_timeout")):
             if cand is None or cand == "":
                 continue
@@ -233,7 +289,7 @@ class AgentRunner:
                     return val
             except (TypeError, ValueError):
                 continue
-        return 120.0
+        return DEFAULT_LLM_TIMEOUT
 
     @staticmethod
     def _resolve_extra_paths(config) -> list:
@@ -713,7 +769,11 @@ class AgentRunner:
                     continue
 
                 # ── 情形 B: 模型输出最终答案 (Final Answer) ──
-                final_answer = content
+                # [输出预算分档] 上游 finish_reason=="length" 说明本档硬上界
+                # 触达、内容被截断 —— 显式标注，否则考生会把半截答案当完整。
+                # 判据用上游上报值（llm_client 已透传），不用长度启发式。
+                final_answer = content + output_budget.truncation_notice(
+                    (choice or {}).get("finish_reason"), self.config)
                 # 打字机流式输出给学员
                 self._display_final_answer(final_answer)
                 # [K7-U2] 迭代末扩展点（最终答案出口）。
@@ -747,6 +807,13 @@ class AgentRunner:
                     break
                 deliverable_nudges += 1
                 step_budget = step + self._DELIVERABLE_NUDGE_STEPS
+                # [R3 波动收敛·根因 2] 抬高步数上限时**必须同步抬高时间预算**。
+                # 收敛前 extend_step_budget 只动 max_steps，于是「步数上限」与
+                # 「时间上限」脱钩：nudge 可把 8 步抬到 20 步而时间预算纹丝
+                # 不动 → 耗时上限实际由「步数 × 单步耗时」决定，无界（R3 实测
+                # 同一操作 84s → 511s，+506%）。现由
+                # ``RunRuntime.extend_step_budget`` 按「每步时间配额」线性折算
+                # 同步放宽 max_seconds（详见该方法 docstring）。
                 self.runtime.extend_step_budget(step_budget)
                 api_failed = False
                 final_answer = ""
@@ -958,44 +1025,10 @@ class AgentRunner:
         绝不因兜底动作把 run() 弄崩，也绝不写入非模型产出的内容。
         """
         try:
-            text = str(final_answer or "").strip()
-            if not text:
-                return
-            payload: Any = None
-            try:
-                payload = json.loads(text)
-            except Exception:
-                pass
-            if payload is None:
-                m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-                if m:
-                    try:
-                        payload = json.loads(m.group(1).strip())
-                    except Exception:
-                        pass
-            if payload is None:
-                starts = [i for i in (text.find("{"), text.find("[")) if i >= 0]
-                if starts:
-                    try:
-                        payload, _ = json.JSONDecoder().raw_decode(text[min(starts):])
-                    except Exception:
-                        pass
-            if payload is None:
-                return
+            from .recovery import autosave_json_outputs
             root = Path(getattr(self.sandbox, "workspace_root", None)
                         or self.workspace_root or ".")
-            saved: List[str] = []
-            for rel in missing:
-                p = root / rel
-                if p.suffix.lower() != ".json":
-                    continue
-                try:
-                    p.parent.mkdir(parents=True, exist_ok=True)
-                    p.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
-                                 encoding="utf-8")
-                    saved.append(rel)
-                except Exception:
-                    continue
+            saved = autosave_json_outputs(root, missing, final_answer)
             if saved:
                 self._append_event(EVENT_TOOL_RESULT, {
                     "tool_call_id": None,
@@ -1024,21 +1057,15 @@ class AgentRunner:
         整个恢复过程尽力而为：任何异常（含收尾请求网络失败）都静默回退，
         绝不让收尾环节把已经跑完的 run() 弄崩。
         """
-        content = ""
-        if api_failed:
-            content = self._finalize_request(
-                self._build_minimal_finalize_messages(messages),
-                self.FINALIZE_MINIMAL_INSTRUCTION)
-            if not (content or "").strip():
-                content = self._finalize_request(messages, self.FINALIZE_INSTRUCTION)
-        else:
-            content = self._finalize_request(messages, self.FINALIZE_INSTRUCTION)
-            if not (content or "").strip():
-                content = self._finalize_request(messages, self.FINALIZE_RETRY_INSTRUCTION)
-            if not (content or "").strip():
-                content = self._finalize_request(
-                    self._build_minimal_finalize_messages(messages),
-                    self.FINALIZE_MINIMAL_INSTRUCTION)
+        from .recovery import finalize_attempts
+        content = finalize_attempts(
+            api_failed=api_failed,
+            messages=messages,
+            minimal_messages=self._build_minimal_finalize_messages(messages),
+            instructions=(self.FINALIZE_INSTRUCTION, self.FINALIZE_RETRY_INSTRUCTION,
+                          self.FINALIZE_MINIMAL_INSTRUCTION),
+            request=self._finalize_request,
+        )
         if isinstance(content, str):
             # 模型可能仍模拟输出 <tool_call> 降级标签：取标签前文本，
             # 避免把工具调用语法当成答案回传。
@@ -1075,16 +1102,8 @@ class AgentRunner:
     @staticmethod
     def _strip_code_fence(text: str) -> str:
         """剥掉整体包裹的 markdown 代码围栏（格式归一化，不改内容）。"""
-        t = (text or "").strip()
-        if not t.startswith("```"):
-            return t
-        lines = t.splitlines()
-        if lines and lines[0].strip().startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        stripped = "\n".join(lines).strip()
-        return stripped or t
+        from .recovery import strip_code_fence
+        return strip_code_fence(text)
 
     def _repair_json_answer(self, final_answer: str,
                             messages: Optional[List[Dict[str, Any]]] = None) -> str:
@@ -1103,6 +1122,7 @@ class AgentRunner:
 
         成本：仅触发时多一次 LLM 调用（禁用工具、输出即答案，开销小）。
         """
+        from .recovery import build_json_repair_instruction, validate_repaired_json
         text = (final_answer or "").strip()
         if text[:1] not in ("{", "["):
             return final_answer
@@ -1113,15 +1133,7 @@ class AgentRunner:
             err = f"{exc.msg}（第 {exc.lineno} 行第 {exc.colno} 列，字符 {exc.pos}）"
         except Exception:
             return final_answer
-        instruction = (
-            "（系统提示）你上一条最终回复以 { 或 [ 开头，本应是完整 JSON，"
-            f"但存在语法错误：{err}\n"
-            "请**仅修复 JSON 语法**（补齐或修正括号、引号、逗号、键名等），"
-            "**不得增删或改变任何实质内容**——所有事实、数字、链接、文字必须"
-            "保持原样。直接输出修复后的完整 JSON 本体：不要任何解释，不要用 "
-            "``` 代码块包裹。\n\n"
-            "=== 你上一条回复的原文 ===\n" + text
-        )
+        instruction = build_json_repair_instruction(text, err)
         context: List[Dict[str, Any]] = []
         for msg in (messages or []):
             if isinstance(msg, dict) and msg.get("role") == "system":
@@ -1129,14 +1141,8 @@ class AgentRunner:
                                 "content": str(msg.get("content") or "")[:6000]})
                 break
         repaired = self._finalize_request(context, instruction)
-        cand = self._strip_code_fence(repaired)
-        if "<tool_call>" in cand:
-            cand = cand.split("<tool_call>")[0].strip()
-        if cand[:1] not in ("{", "["):
-            return final_answer
-        try:
-            json.loads(cand)
-        except Exception:
+        cand = validate_repaired_json(repaired)
+        if cand is None:
             return final_answer
         self._append_event(EVENT_TOOL_RESULT, {
             "tool_call_id": None,
@@ -1254,8 +1260,17 @@ class AgentRunner:
         req = ChatRequest(
             messages=messages,
             model=model,
-            temperature=self.config.get("temperature", 0.3),
-            max_tokens=self.config.get("max_tokens", 4096),
+            # [R3 波动收敛·根因 3] 采样温度与输出上限改引具名真源，不再依赖
+            # 「config 缺 0.3 / 4096」这两个裸字面量：
+            #   * temperature：Agent 主循环是**对话链路**（私教讲题 + 工具调用），
+            #     保留 :data:`DIALOGUE_TEMPERATURE` 的多样性，但**显式声明**——
+            #     不隐式依赖 0.3，稳定性优先的子链路（如收尾链的 JSON 修复、
+            #     判卷 open_grader、采分点补全）才有关采样的地方可明确关掉。
+            #   * max_tokens：取 :data:`DEFAULT_MAX_TOKENS`，与 CLI 非 Agent
+            #     路径同一真源（R3 根因 1：两条路径曾结构性不同 → 输出长度
+            #     8998 vs 4927 字符）。
+            temperature=_resolve_temperature(self.config),
+            max_tokens=_resolve_max_tokens(self.config),
             # [W8] 默认流式：绕开网关 ~60s 硬超时（非流式 60.5s 被掐断的实测根因）。
             stream=True,
             tools=tools_list or None,
@@ -1408,12 +1423,19 @@ class AgentRunner:
             })
 
         def _make_req(cur_msgs: List[Dict[str, Any]]) -> ChatRequest:
-            """[W8] 同 _call_llm：流式 + identity 编码（增量 SSE 不可边收边解压）。"""
+            """[W8] 同 _call_llm：流式 + identity 编码（增量 SSE 不可边收边解压）。
+
+            [R3 波动收敛·根因 3] 温度/输出上限与主循环引用同一真源
+            （:func:`_resolve_temperature` / :func:`_resolve_max_tokens`）。
+            收尾链仍是**对话链路**（要的是可直接给学员看的答复，不是结构化
+            抽取结果），故保留 :data:`DIALOGUE_TEMPERATURE`；此处显式解析而非
+            隐式依赖 0.3，是为了让「收尾链也关采样」这类决定只需改一处常量。
+            """
             return ChatRequest(
                 messages=cur_msgs,
                 model=model,
-                temperature=self.config.get("temperature", 0.3),
-                max_tokens=self.config.get("max_tokens", 4096),
+                temperature=_resolve_temperature(self.config),
+                max_tokens=_resolve_max_tokens(self.config),
                 # [W8] 收尾链同样走流式，避免 60s 网关墙把「最后一根救命稻草」掐断。
                 stream=True,
                 stream_options={"include_usage": True},
@@ -1483,24 +1505,8 @@ class AgentRunner:
 
     def _parse_fallback_tool_calls(self, content: str) -> List[Dict[str, Any]]:
         """从纯文本中解析 <tool_call>...</tool_call> 降级标签"""
-        import re
-        calls = []
-        pattern = r"<tool_call>(.*?)</tool_call>"
-        matches = re.findall(pattern, content, re.DOTALL)
-        for idx, m in enumerate(matches):
-            try:
-                data = json.loads(m.strip())
-                calls.append({
-                    "id": f"call_fallback_{idx}_{int(time.time())}",
-                    "type": "function",
-                    "function": {
-                        "name": data.get("name"),
-                        "arguments": data.get("arguments", {})
-                    }
-                })
-            except Exception:
-                continue
-        return calls
+        from .recovery import parse_fallback_tool_calls
+        return parse_fallback_tool_calls(content, time.time)
 
     def _display_final_answer(self, text: str):
         """流式打字机逐字输出给终端学员。
@@ -1510,26 +1516,8 @@ class AgentRunner:
         ，并且把「每次 1 个字符 + sleep 2ms」改为**按小片段推送**：原实现对上千字答案会
         产生上千次跨线程信号，GUI 主线程事件循环被刷爆，表现为界面卡顿。
         """
-        if not text:
-            return
-        if self.stream_callback:
-            step = 12                       # 每 12 字推送一次，兼顾手感与主线程压力
-            for i in range(0, len(text), step):
-                self.stream_callback(text[i:i + step])
-                if not self.quiet:
-                    sys.stdout.write(text[i:i + step])
-                    sys.stdout.flush()
-                    # [审计 2026-09-30 · 中影响] sleep 只服务终端打字机手感；
-                    # quiet（GUI）场景不再制造 1000 字 ≈ 1.7s 的人为延迟。
-                    time.sleep(0.02)
-        elif not self.quiet:
-            for char in text:
-                sys.stdout.write(char)
-                sys.stdout.flush()
-                time.sleep(0.002)
-
-        if not self.quiet:
-            print()
+        from .answer_output import display_final_answer
+        display_final_answer(text, quiet=self.quiet, stream_callback=self.stream_callback)
 
     #: [W4 引用接线] 引用产出文件名（相对工作区）：收尾后把本轮答案中的
     #: URL 引用与工具证据核验结果写入，供评测适配器与下游如实读取。
@@ -1599,71 +1587,8 @@ class AgentRunner:
         * 任何异常静默降级 —— 引用落盘绝不把已完成的 run() 弄崩。
         """
         try:
-            import re as _re
-            text = str(final_answer or "")
-            if not text.strip():
-                return
-            url_re = _re.compile(r"https?://[^\s\"'<>（）()【】\[\]]+")
-            evidence_text = "\n".join(
-                str(m.get("content") or "") for m in messages
-                if isinstance(m, dict) and m.get("role") == "tool")
-            citations: List[Dict[str, Any]] = []
-            seen = set()
-            for match in url_re.finditer(text):
-                url = match.group(0).rstrip(".,;:!?，。；：！？")
-                if url in seen:
-                    continue
-                seen.add(url)
-                # claim：URL 所在行的文本（折叠空白、截断 300 字符）
-                line_start = text.rfind("\n", 0, match.start()) + 1
-                line_end = text.find("\n", match.end())
-                if line_end == -1:
-                    line_end = len(text)
-                claim = " ".join(text[line_start:line_end].split())[:300]
-                in_evidence = url in evidence_text
-                citations.append({
-                    "citation_id": f"cit{len(citations) + 1}",
-                    "claim": claim,
-                    "source_ref": url,
-                    "supported": bool(in_evidence),
-                    "unsupported_reason": (
-                        None if in_evidence
-                        else "该 URL 未在本轮工具结果中出现（未经检索证据核验）"),
-                    "judge": "agent_reported",
-                })
-                if len(citations) >= self.CITATIONS_MAX:
-                    break
-            # [W7b] 页码 + 原文型引用（本地资料场景：PDF / 镜像站 HTML）
-            if len(citations) < self.CITATIONS_MAX:
-                for ref in self._extract_page_quote_refs(text):
-                    if len(citations) >= self.CITATIONS_MAX:
-                        break
-                    quote = str(ref.get("quote") or "")
-                    dedup = (ref.get("source_file"), ref.get("page"), quote[:80])
-                    if dedup in seen:
-                        continue
-                    seen.add(dedup)
-                    # 引文核验：取前 40 字符在工具结果中查找（容忍尾部差异）
-                    probe = quote[:40]
-                    in_evidence = bool(probe) and probe in evidence_text
-                    src_file = str(ref.get("source_file") or "").strip()
-                    source_ref = (
-                        f"{src_file} 第 {ref.get('page')} 页"
-                        if src_file else f"第 {ref.get('page')} 页")
-                    citations.append({
-                        "citation_id": f"cit{len(citations) + 1}",
-                        "claim": quote[:300],
-                        "source_ref": source_ref,
-                        "supported": bool(in_evidence),
-                        "unsupported_reason": (
-                            None if in_evidence
-                            else "引文未在本轮工具结果中出现（未经原文核验）"),
-                        "judge": "agent_reported",
-                    })
-            path = Path(self.sandbox.workspace_root) / self.CITATIONS_FILE
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(
-                json.dumps(citations, ensure_ascii=False, indent=2),
-                encoding="utf-8")
+            from .answer_output import emit_citations
+            return emit_citations(final_answer, messages, self.sandbox.workspace_root,
+                                  self.CITATIONS_MAX)
         except Exception:
             pass

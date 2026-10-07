@@ -12,7 +12,18 @@
   [7] ⚖️ 双校对标 · 招生规模/复试线/保护度对比 (School Comparator)
   [8] 📡 简章监控 · 目标高校研究生院变动预警 (Admission Watcher)
   [9] 📊 看板构建 · 静态 Web 看板同步与掌握度更新 (Dashboard Build)
+  [10] 📱 公众号检索 · 微信公众号考研经验文章检索与沉淀 (WeChat Search)
+  [11] 🎓 学科报到 · 选科目报到并给出今日攻坚任务 (Subject Check-in)
+  [12] 📝 交作业 · 三种提交方式指引与批改入口 (Homework Submit)
   [0] 🚪 安全退出 · 退出系统
+
+[2026-10-06 新增 11/12 · 为什么是「追加」而不是重排]
+  R2/R3 两轮全矩阵仿真（54 格 / 610 条记录）把「报到 / 交作业」记为交互方式
+  限制：能力在 REPL 私教链路里齐备，但 TUI 十个入口里完全没有它们，考生在
+  终端中枢按不到。此处只补这两个最高频项，且**编号追加为 11/12**——既有
+  1-10 与 0 的编号含义、分组归属和相对顺序一律不动（改既有编号会毁掉肌肉记忆，
+  也会让操作手册/看板文案里的「按 6 侦察」这类指引集体失真）。新组插在
+  「研招情报」与「全景大盘」之间，于是 [0] 安全退出仍留在菜单最后一行。
 """
 
 import sys
@@ -73,6 +84,11 @@ try:
     from state import load_dashboard_state
 except ImportError:  # pragma: no cover - 兼容 tools.state 包式导入
     from tools.state import load_dashboard_state
+
+try:
+    from cli.shared import normalize_subject
+except ImportError:  # pragma: no cover - 兼容 tools.cli 包式导入
+    from tools.cli.shared import normalize_subject
 
 # [缺陷修复·宽度写死 / 幽灵依赖 / Windows ANSI 乱码] 终端能力与排版工具
 # 统一收敛到 tools/tui/terminal.py（纯文本 TUI 与 textual 版共用）：
@@ -265,15 +281,18 @@ def _read_backup_school() -> str:
 
 
 def _discover_new_syllabus_file():
-    """[P3 修复·D7] 在 04-专业课/参考资料 内探测候选「新考纲」文件（排除演示样例目录）。"""
-    pro_ref = ROOT / "04-专业课" / "参考资料"
-    if not pro_ref.exists():
-        return None
-    for pat in ("*2027*大纲*", "*2027*考纲*", "*新*大纲*", "*新*考纲*", "*大纲*.md", "*大纲*.txt"):
-        cands = [f for f in pro_ref.glob(pat) if f.is_file() and "演示样例" not in str(f)]
-        if cands:
-            return cands[0]
-    return None
+    """[P3 修复·D7] 在 04-专业课/参考资料 内探测候选「新考纲」文件（排除演示样例）。
+
+    [F2 修复·双份模式集] 此前本函数自带第二份 glob 模式集，与 cli.shared 的
+    实现各自漂移（「408考纲_2027.md」这类年份在后的命名两侧都不命中，C-P6
+    实测坠演示模式）。现删除副本，惰性委托 ``cli.shared._discover_new_syllabus``
+    （双导入路径兼容），探测规则与年份排序单源。
+    """
+    try:
+        from cli.shared import _discover_new_syllabus
+    except ImportError:  # pragma: no cover - 兼容 tools.cli 包式导入
+        from tools.cli.shared import _discover_new_syllabus
+    return _discover_new_syllabus()
 
 
 def _resolve_input_path(raw: str):
@@ -366,7 +385,26 @@ def get_intel_ribbon() -> list[str]:
             sch_tag = f"【{target_school}】" if (user_diffs and target_school) else ""
             ribbon.append(f"📑 考纲变动: {sch_tag}波动率 {vol}% (已生成逐级处方)")
         elif target_school:
-            ribbon.append(f"📑 考纲变动: 【{target_school}】考纲已核验入库")
+            # [F11 修复·无依据宣称「已核验入库」] 此前无 diff 文件即无条件宣称
+            # 考纲已核验；占位（【待自填】）与缺失态同样显示，与产品红线
+            # 「替换前不得宣称按纲出题」矛盾（仿真 C 轮实测）。现按
+            # pro_syllabus_state(ROOT) 真实状态分档；探测/导入异常时保守沿用
+            # 原文案（不新增错误断言）。导入模式与 scout_engine 一致。
+            _syl_state = None
+            try:
+                try:
+                    from syllabus_manager import pro_syllabus_state
+                except ImportError:
+                    from tools.syllabus_manager import pro_syllabus_state
+                _syl_state = pro_syllabus_state(ROOT)
+            except Exception:
+                _syl_state = None
+            if _syl_state == "placeholder":
+                ribbon.append(f"📑 考纲变动: 【{target_school}】考纲为待自填占位（未核验）")
+            elif _syl_state == "missing":
+                ribbon.append(f"📑 考纲变动: 【{target_school}】尚未导入考纲")
+            else:
+                ribbon.append(f"📑 考纲变动: 【{target_school}】考纲已核验入库")
 
     # 3. 社媒经验贴
     # [P0 修复] 经验档案属学员隐私，主读取路径迁移至 .memory/experiences/（兼容旧目录存量）
@@ -414,6 +452,18 @@ MENU_GROUPS = [
         [
             ("9", "看板更新 (Dashboard Build)", "📊", "重编译掌握度雷达并刷新本地 Web 看板", "build"),
             ("10", "公众号检索 (WeChat Search)", "📱", "微信公众号考研经验、院校解读与文章沉淀", "wechat_search"),
+        ]
+    ),
+    (
+        # [2026-10-06 新增] 组标题同时涵盖 [0] 退出，是因为两项新入口追加为
+        # 11/12 后菜单编号需要保持升序（1..10 → 11 → 12 → 0），而 [0] 必须
+        # 留在最后一行（退出项固定末位是既有惯例）。既有 1-10 的分组归属与
+        # 相对顺序完全未动，只有 [0] 从「大盘」组末尾移到了本组末尾。
+        "🎓 学科报到·作业批改与退出 (Check-in, Homework & Exit)",
+        Colors.GREEN,
+        [
+            ("11", "学科报到 (Subject Check-in)", "🎓", "选科目报到：调取学情档案、派发今日攻坚任务", "checkin"),
+            ("12", "交作业 (Homework Submit)", "📝", "三种提交方式指引：截图草稿 / 答题卡 / 推导文字", "homework"),
             ("0", "安全退出 (Exit System)", "🚪", "保存状态并平稳退出终端导航器", "exit"),
         ]
     )
@@ -421,6 +471,18 @@ MENU_GROUPS = [
 
 # 扁平化映射列表，供快速查询与测试断言
 MENU_OPTIONS = [(k, n, d, alias) for _, _, items in MENU_GROUPS for k, n, icon, d, alias in items]
+
+
+def menu_key_range() -> str:
+    """菜单里**数字键**的实际区间文案（如 ``0-12``）。
+
+    [为什么改成派生] 这段提示此前两次写死（先"0-9"、后"0-10"），每次新增菜单项
+    都会静默变成错误指引——考生按提示里的编号找不到对应项。现直接由
+    ``MENU_OPTIONS`` 推导，新增/删除菜单项不再需要手工同步三处文案
+    （``render_menu`` 尾部提示、纯文本循环 input 提示、未知编号分支）。
+    """
+    nums = sorted(int(k) for k, _, _, _ in MENU_OPTIONS if str(k).isdigit())
+    return f"{nums[0]}-{nums[-1]}" if nums else "无"
 
 # [缺陷修复·宽度写死] 原先写死 TOTAL_PANEL_WIDTH = 84，与终端实际列数无关：
 # 窄终端折行错位、宽终端右侧空一大片。现在宽度由 terminal.panel_width() 动态
@@ -533,7 +595,9 @@ def render_menu() -> str:
         lines.append(render_sec_footer(W, group_color))
         lines.append("")
 
-    lines.append(colorize("💡 提示：输入操作序号 [0-10] 或指令别名 (如 1 / today / compose) 即可启动模块", Colors.DIM + Colors.CYAN))
+    lines.append(colorize(
+        f"💡 提示：输入操作序号 [{menu_key_range()}] 或指令别名 (如 1 / today / compose) 即可启动模块",
+        Colors.DIM + Colors.CYAN))
     return "\n".join(lines)
 
 
@@ -565,12 +629,13 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
             break
 
     if not matched:
-        # [P2 修复·文案] 菜单实际含 10 项（编号 0-10），此前提示写死 "0-9"，与界面不符。
+        # [P2 修复·文案] 提示区间此前写死（"0-9" → "0-10"），两次新增菜单项都
+        # 留下过错误指引；现统一由 menu_key_range() 派生。
         _keys = [k for k, _, _, _ in MENU_OPTIONS]
-        _nums = sorted(int(k) for k in _keys if k.isdigit())
-        _rng = f"{_nums[0]}-{_nums[-1]}" if _nums else "0-10"
+        _hint = menu_key_range()
         _extra = "/".join(k for k in _keys if not k.isdigit())
-        _hint = f"{_rng}" + (f" 或 {_extra}" if _extra else "")
+        if _extra:
+            _hint += f" 或 {_extra}"
         print(colorize(f"\n[!] 未知操作编号: '{key}'，请输入 {_hint} 之间的选项。", Colors.RED))
         return True
 
@@ -582,11 +647,10 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
             from ky_cli import print_today_tasks_summary
             print_today_tasks_summary(as_json=False)
         elif cmd_alias == "compose":
-            sub = "pro"
-            subj_input = input(f"请输入组卷科目 [math/eng/pol/pro，默认 pro]: ").strip() if interactive else ""
-            if subj_input:
-                sub = subj_input
-            cnt_input = input("请输入组卷题量 [默认 3]: ").strip() if interactive else ""
+            cfg_sub = normalize_subject(_load_config_dict().get("active_subject"), "pro") or "pro"
+            subj_input = input(f"请输入组卷科目 [math/eng/pol/pro，默认 {cfg_sub}]: ").strip() if interactive else ""
+            sub = normalize_subject(subj_input or extra.get("subject"), cfg_sub) or cfg_sub
+            cnt_input = input("请输入组卷题量 [默认 3]: ").strip() if interactive else str(extra.get("count") or "")
             try:
                 count = int(cnt_input) if cnt_input.strip().isdigit() else 3
             except Exception:
@@ -607,8 +671,9 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
             if res.get("saved_path"):
                 print(colorize(f"\n[+] 自测卷已落盘: {res['saved_path']}", Colors.GREEN))
         elif cmd_alias == "variant":
-            sub_input = input("请输入科目 [math/eng/pol/pro，默认 pro]: ").strip() if interactive else ""
-            sub = sub_input or "pro"
+            cfg_sub = normalize_subject(_load_config_dict().get("active_subject"), "pro") or "pro"
+            sub_input = input(f"请输入科目 [math/eng/pol/pro，默认 {cfg_sub}]: ").strip() if interactive else ""
+            sub = normalize_subject(sub_input or extra.get("subject"), cfg_sub) or cfg_sub
             from skills import variant_retriever
             # 默认考点必须从本科目真实考纲中推荐，严禁硬编码他科考点（如 408 的「二叉树」）
             default_kw = variant_retriever.suggest_keyword(sub)
@@ -674,6 +739,12 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
                         f"定性: {m['stability_grade']}):", Colors.GREEN))
                     print(f"    新增 {m['added_count']} / 剔除 {m['removed_count']} / "
                           f"调整 {m['modified_count']} / 不变 {m['unchanged_count']}")
+                    # [F13 显示位] 基准异常警示（同一文件自我对照 / 占位模板作基准）。
+                    # 契约键 baseline_warning 由 syllabus_diff 提供（compare_texts 检测
+                    # 占位基准；compare_files 检测同文件自我对照，优先级更高）；
+                    # 缺失/为空不打，兼容旧版返回。
+                    if rep.get("baseline_warning"):
+                        print(colorize("  [!] " + str(rep["baseline_warning"]), Colors.YELLOW))
                     print(f"    生成路径: {saved}")
         elif cmd_alias == "ingest":
             # [P3 修复·D7] 同上：非交互模式支持 --file= / --subject=，此前恒「未指定文件路径，已返回」。
@@ -825,6 +896,98 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
                 print(colorize("\n[!] 未找到 05-考研看板/build.py 脚本", Colors.RED))
             else:
                 print(colorize(f"\n[!] 看板构建失败（退出码 {rc}），请检查上方输出。", Colors.RED))
+        elif cmd_alias == "checkin":
+            # [2026-10-06 新增·TUI 报到入口] 业务逻辑**不重写**：播报文本来自
+            # cli.shared.build_subject_checkin_brief（REPL/GUI/ky_cli 同一实现），
+            # 今日任务生成走 study_planner.ensure_subject_today_task（REPL 报到
+            # 分支同款）。本分支只做「选科目 + 调既有实现 + 说明后续去哪派题」。
+            # 为什么需要这一层：R2/R3 仿真证实 TUI 十项里没有报到入口，考生在
+            # 终端中枢无法触发私教链路；而 AGENTS.md 把「[科目]报到 → 做题 →
+            # 交作业」列为日常主流程。
+            _cfg = _load_config_dict()
+            _plan = _cfg.get("study_plan", {}) or {}
+            # 科目清单与 REPL 侧同源（SUBJECT_DIRS），并按 is_math_disabled 过滤
+            # —— 不考数学的方案不得出现「数学报到」（R2-A4 统一口径）。
+            try:
+                from cli.shared import SUBJECT_DIRS, is_math_disabled
+            except ImportError:  # pragma: no cover - 包式导入上下文
+                from tools.cli.shared import (  # type: ignore
+                    SUBJECT_DIRS, is_math_disabled,
+                )
+            _math_off = is_math_disabled(_cfg)
+            _subj_items = [(k, v[1]) for k, v in SUBJECT_DIRS.items()
+                           if not (_math_off and k == "math")]
+            if interactive:
+                print(colorize("\n请选择要报到的科目:", Colors.CYAN))
+                for _i, (_k, _label) in enumerate(_subj_items, 1):
+                    print(f"  {_i}. {_label}")
+                _raw = input("输入序号或科目代号 (回车用当前激活科目): ").strip()
+                _pick = ""
+                if _raw.isdigit() and 1 <= int(_raw) <= len(_subj_items):
+                    _pick = _subj_items[int(_raw) - 1][0]
+                elif _raw:
+                    _pick = normalize_subject(_raw, "") or ""
+                if not _pick:
+                    _pick = normalize_subject(
+                        extra.get("subject") or _cfg.get("active_subject"),
+                        _subj_items[0][0])
+            else:
+                _pick = normalize_subject(
+                    extra.get("subject") or _cfg.get("active_subject"),
+                    _subj_items[0][0])
+            if _pick == "math" and _math_off:
+                print(colorize(
+                    "\n[!] 当前备考方案为「不考数学」，不派发数学任务。"
+                    "请选择英语 / 政治 / 专业课报到。", Colors.YELLOW))
+                return True
+            # 报到时确保该科今日任务文件存在（与 REPL 报到分支同款调用）——
+            # 缺这一步，菜单 1「今日任务」在报到后仍显示 0/0。
+            try:
+                try:
+                    from study_planner import ensure_subject_today_task
+                except ImportError:  # pragma: no cover - 包式导入上下文
+                    from tools.study_planner import ensure_subject_today_task  # type: ignore
+                _task_res = ensure_subject_today_task(
+                    _plan, _pick, workspace_root=ROOT) or {}
+            except Exception:
+                _task_res = {}
+            try:
+                from cli.shared import build_subject_checkin_brief
+            except ImportError:  # pragma: no cover - 包式导入上下文
+                from tools.cli.shared import build_subject_checkin_brief  # type: ignore
+            print(colorize(
+                "\n" + build_subject_checkin_brief(_cfg, _pick) + "\n", Colors.GREEN))
+            if _task_res.get("status") in ("created", "overwritten", "refreshed"):
+                print(colorize(
+                    f"  [i] 今日任务已生成: {_task_res.get('path')}"
+                    f"（{_task_res.get('task_count', 0)} 项）", Colors.DIM))
+            # 报到口令取自 REPL 的中文口令表（单一真源，避免这里另拼一个
+            # 「英语报到」字符串 future-proof 地写错）。找不到就退回科目键。
+            try:
+                from cli.repl.router import CHINESE_SUBJECT_MAP
+            except ImportError:  # pragma: no cover - 包式导入上下文
+                from tools.cli.repl.router import CHINESE_SUBJECT_MAP  # type: ignore
+            _cmd = next((k for k, v in CHINESE_SUBJECT_MAP.items()
+                         if v == _pick and k.endswith("报到")), f"{_pick}报到")
+            print(colorize(
+                "  [i] 题目派发、逐步讲解与采分点批改由私教大模型完成，"
+                f"请在私教会话中继续：运行 ky 后输入「{_cmd}」。\n",
+                Colors.CYAN))
+        elif cmd_alias == "homework":
+            # [2026-10-06 新增·TUI 交作业入口] 复用 REPL 的同一份指引文本
+            # （cli.repl.router.build_homework_menu），三端话术天然一致。
+            # 之所以只到「指引」为止：批改必须由私教大模型按采分点完成，
+            # TUI 本身没有会话上下文，让考生在此粘贴答案是错位交互。
+            try:
+                from cli.repl.router import build_homework_menu
+            except ImportError:  # pragma: no cover - 包式导入上下文
+                from tools.cli.repl.router import build_homework_menu  # type: ignore
+            print(colorize(build_homework_menu(), Colors.CYAN))
+            print(colorize(
+                "\n  [i] 批改由私教大模型按采分点逐步赋分，请在私教会话中提交："
+                "运行 ky（或 ky gui）后输入「交作业」，再按上方指引"
+                "粘贴草稿照片（/paste）、提交答题卡（/batch）或直接贴推导文字。\n",
+                Colors.DIM))
         elif cmd_alias in ("wechat_search", "wechat", "wx"):
             # [P0 修复] 非交互默认词此前硬编码「408计算机考研经验」，
             # 对自命题考生（如 814 信号与系统）完全无关；改为取自考生档案。
@@ -913,9 +1076,12 @@ def _run_text_loop():
         print("\n" + render_header())
         print(render_menu())
         try:
-            # [W13 R2-4a 修复·文案口径] 菜单实际含 10 项（编号 0-10），此处提示
-            # 与 render_menu/未知编号分支同口径（此前残留 "0-9"）。
-            prompt_str = colorize("⌨️  请输入操作序号 [0-10] 或指令别名: ", Colors.BOLD + Colors.YELLOW)
+            # [W13 R2-4a 修复·文案口径] 序号提示必须与菜单实际编号一致；
+            # [2026-10-06] 区间改为 menu_key_range() 派生（新增 11/12 后
+            # 「0-10」即为错指引），不再手工维护。
+            prompt_str = colorize(
+                f"⌨️  请输入操作序号 [{menu_key_range()}] 或指令别名: ",
+                Colors.BOLD + Colors.YELLOW)
             choice = input(prompt_str).strip()
             keep_running = execute_action(choice, interactive=True)
             if not keep_running:
@@ -957,7 +1123,8 @@ def main():
     parser.add_argument("--new", dest="new_path", type=str, default="", help="[action 4 考纲Diff] 新考纲文件路径")
     parser.add_argument("--old", dest="old_path", type=str, default="", help="[action 4 考纲Diff] 基准(旧)考纲文件路径")
     parser.add_argument("--file", "-f", dest="in_file", type=str, default="", help="[action 5 切片入库] 待切片试题文件路径")
-    parser.add_argument("--subject", type=str, default="", help="[action 5 切片入库] 归属科目 math/eng/pol/pro")
+    parser.add_argument("--subject", type=str, default="", help="[action 2/3/5/11] 科目 math/eng/pol/pro（也接受 308/护理等名称）")
+    parser.add_argument("--count", type=int, default=0, help="[action 2 组卷] 题量（默认 3）")
     parser.add_argument("--list", "-l", action="store_true", help="打印可用菜单并退出")
     args = parser.parse_args()
 
@@ -976,6 +1143,7 @@ def main():
             "old": args.old_path,
             "file": args.in_file,
             "subject": args.subject,
+            "count": args.count,
         }
         execute_action(args.action, interactive=False, extra=extra, batch=True)
         return

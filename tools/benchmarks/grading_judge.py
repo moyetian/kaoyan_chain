@@ -28,6 +28,16 @@
 
 不进 CI：本评测**不接入** ``ci_evaluate_gate.py`` / ``test.yml``（元测试钉住），
 因为 pilot 阶段尚无正式达标阈值，快照回放只用于本地回归与基线观测。
+
+prompt 版本回归对比（``compare_prompt_versions``，供 ``ky grade-regress`` 调用）：
+  * 快照**按采集时的 prompt 文本冻结**响应（``classify_call`` 依赖提示词特征串，
+    响应内容与具体 prompt 版本绑定），换 prompt 版本后旧快照不再对应 —— 因此
+    快照文件记录采集时的 ``prompt_version``；回放请求的版本与快照记录不一致时
+    **明确报错（fail-closed）**，绝不静默拿错配快照算出错误指标；
+  * 版本不匹配时需 ``--live`` 真实重跑（**计费**，≈21 分钟/30 份 × 版本数），
+    或用 ``--grading-live`` 以目标版本重新采集快照；
+  * 判定阈值（MAE 上升 / 命中一致率下降 / 错因一致率下降）为**报告先行**：
+    只影响 grade-regress 的显示与退出码，不改变任何默认行为。
 """
 
 from __future__ import annotations
@@ -40,7 +50,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 __all__ = [
     "CALL_KINDS", "SUBJECTS", "QUALITIES", "CASE_REQUIRED_KEYS",
     "MIN_PILOT_SAMPLES", "PILOT_ALERT_THRESHOLD", "HIT_JACCARD_FLOOR",
-    "TOTAL_TOLERANCE",
+    "TOTAL_TOLERANCE", "REGRESS_THRESHOLDS",
+    "GradingRegressError", "check_prompt_version_match", "compare_prompt_versions",
     "classify_call", "call_key", "build_replay_client", "build_capture_client",
     "build_pilot_config", "validate_case", "aggregate_hit_set", "case_metrics",
     "load_snapshots", "build_judge", "evaluate_grading_pilot", "capture_snapshots",
@@ -90,6 +101,29 @@ TOTAL_TOLERANCE = 2.0
 #: pilot 探索性预警线：单条一致率低于此值提示链路可能与预标系统性偏离。
 #: 正式 MAE / Kappa 目标待人工标注量上来后再定（规划 C4 条款）。
 PILOT_ALERT_THRESHOLD = 0.6
+
+#: prompt 版本回归对比的默认判定阈值（``ky grade-regress``）。
+#: **报告先行**：阈值只影响该命令的显示与退出码，不改变任何默认行为；
+#: 可通过 ``compare_prompt_versions(thresholds=...)`` 或 ky_config.json 的
+#: ``exam_grading.regress_*`` 键覆盖（CLI 侧读取）。
+#:   * ``mae_delta``        —— 总分 MAE 上升超过该值 → fail（10 分制，0.5 分）；
+#:   * ``hit_jaccard_drop`` —— 采分点命中一致率下降超过该值 → fail；
+#:   * ``mistake_type_drop``—— 错因一致率下降超过该值 → fail；
+#:   * 退化达到阈值一半但未超阈值 → warn（提示关注，不判 fail）。
+REGRESS_THRESHOLDS: Dict[str, float] = {
+    "mae_delta": 0.5,
+    "hit_jaccard_drop": 0.05,
+    "mistake_type_drop": 0.10,
+}
+
+
+class GradingRegressError(RuntimeError):
+    """``ky grade-regress`` 对比无法进行（快照版本不匹配 / 评测不可行）。
+
+    该异常只用于「测不了」的场景 —— 绝不用于表达「回归失败」（那是 verdict=fail
+    的正常结果）。CLI 捕获后明确报错并退出码 2，不静默给出指标。
+    """
+
 
 #: 命中票值口径 —— 与 ``open_grader._recompute_total`` 的 fractions 同源
 #: （full=1.0 / partial=half=0.5 / none=0.0），保证「命中判定」与链路自身的
@@ -219,6 +253,11 @@ def build_pilot_config(base_url: str, api_key: str, model: str,
         "min_confidence": 0.6,
         "per_call_timeout": 45.0,
         "total_budget": 90.0,
+        # 评测链路（采集 + 回放）不写判卷留痕：这是评估资产自身的运行，
+        # 不是学员的真实判卷；否则每次 --grading / grade-regress 都会向
+        # 工作区 data/grading/traces/ 追加约 120 条合成 trace，污染 D3
+        # 候选提取（把评估集自身的回放当成「真实分歧案例」）。
+        "trace_enabled": False,
         "reviewers": reviewers,
         "judge": {"name": "judge", "role": "judge", "base_url": base_url,
                   "api_key": api_key, "model": model, "weight": 2.0,
@@ -463,20 +502,54 @@ def _write_snapshots(path: Path, snaps: Dict[str, Dict[str, Any]]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def check_prompt_version_match(snapshots: Dict[str, Dict[str, Any]],
+                               prompt_version: Optional[str]) -> List[Tuple[str, str]]:
+    """逐条核对快照记录的 ``prompt_version`` 与请求版本；返回不匹配清单。
+
+    返回 ``[(case_id, 快照记录的版本)]``，空列表 = 全部匹配。fail-closed 口径：
+      * 请求版本为空（latest）时，只接受**同样未记录版本**的快照 —— 快照记录
+        了具体版本（说明采集时用的是非默认 prompt），请求 latest 无法确认两者
+        一致，算不匹配；
+      * 请求具体版本时，快照未记录版本（旧快照，早于本字段引入）或版本不同，
+        都算不匹配。
+
+    理由：快照响应绑定采集时的 prompt 文本（``classify_call`` 依赖提示词特征串
+    分类，响应内容与具体 prompt 版本绑定），错配快照算出的指标是**错误指标**。
+    宁可明确报错要求 ``--live`` 重跑，不得静默给出。
+    """
+    req = str(prompt_version or "").strip()
+    mismatched: List[Tuple[str, str]] = []
+    for cid in sorted(snapshots):
+        snap = snapshots.get(cid) or {}
+        snap_ver = str(snap.get("prompt_version") or "").strip()
+        if snap_ver != req:
+            mismatched.append((str(cid), snap_ver))
+    return mismatched
+
+
+
 # ════════════════════════════════════════════════════════════════
 # judge（供 runner）与评测入口
 # ════════════════════════════════════════════════════════════════
 
 def build_judge(snapshots: Dict[str, Dict[str, Any]], *,
                 metrics_sink: Optional[List[Dict[str, Any]]] = None,
-                config: Optional[Dict[str, Any]] = None) -> Callable:
+                config: Optional[Dict[str, Any]] = None,
+                prompt_version: Optional[str] = None) -> Callable:
     """返回 ``judge(case) -> (passed, detail)``：回放快照并跑判分链路。
 
     单条一致判据（探索性）：``Jaccard ≥ HIT_JACCARD_FLOOR`` 且
     ``|Δ总分| ≤ TOTAL_TOLERANCE``。快照未命中的 case 一律判失败并把 miss 记入
     明细，评测层据此计入 invalid（退出码 2）。
+
+    ``prompt_version`` 非 None 时注入判分配置（``config["prompt_version"]``），
+    由 ``open_grader.grade_open_question`` 按该版本加载 prompt —— 回放与 live
+    必须用与快照采集时一致的版本，否则响应解析口径漂移。
     """
     cfg = config or build_pilot_config("http://replay.invalid/v1", "replay", "replay")
+    if prompt_version is not None:
+        cfg = dict(cfg)
+        cfg["prompt_version"] = prompt_version
 
     def judge(case: Dict[str, Any]) -> Tuple[bool, str]:
         cid = str(case.get("id"))
@@ -510,8 +583,13 @@ def build_judge(snapshots: Dict[str, Dict[str, Any]], *,
 
 def evaluate_grading_pilot(cases_path: Optional[Path] = None,
                            snapshots_path: Optional[Path] = None,
-                           *, min_samples: int = MIN_PILOT_SAMPLES) -> Dict[str, Any]:
+                           *, min_samples: int = MIN_PILOT_SAMPLES,
+                           prompt_version: Optional[str] = None) -> Dict[str, Any]:
     """回放快照评测判分链路；返回三指标、分层诊断与退出码。
+
+    ``prompt_version`` 非 None 时按该版本加载 prompt，并**先校验快照版本**：
+    快照记录的 ``prompt_version`` 与请求不一致 → 不可评测（fail-closed，退出码
+    2，结果含 ``prompt_version_mismatch`` 明细），绝不静默拿错配快照算指标。
 
     退出码语义（沿用 runner）：无快照 / 样本不足 / 数据损坏 → 2；
     单条一致率 ≥ ``PILOT_ALERT_THRESHOLD``（探索性预警线）→ 0；否则 → 1。
@@ -537,6 +615,36 @@ def evaluate_grading_pilot(cases_path: Optional[Path] = None,
             f"快照不存在或为空: {spath}（需先运行 `python tools/evaluate_pipeline.py "
             f"--grading-live` 采集，一次计费、之后永久回放）", spath)
 
+    mismatch = check_prompt_version_match(snapshots, prompt_version)
+    if mismatch:
+        res = _not_evaluable(_snapshot_mismatch_reason(prompt_version, mismatch), spath)
+        res["prompt_version_mismatch"] = [
+            {"id": cid, "snapshot_version": sv} for cid, sv in mismatch]
+        res["requested_prompt_version"] = str(prompt_version or "")
+        return res
+
+    return _evaluate_with_snapshots(good_cases, snapshots, invalid,
+                                    min_samples=min_samples,
+                                    prompt_version=prompt_version)
+
+
+def _snapshot_mismatch_reason(prompt_version: Optional[str],
+                              mismatch: Sequence[Tuple[str, str]]) -> str:
+    """快照版本不匹配的明确报错文案（fail-closed；提示 --live 重跑）。"""
+    req = str(prompt_version or "").strip() or "latest"
+    versions = sorted({(sv or "未记录") for _cid, sv in mismatch})
+    return (f"prompt 版本 {req} 与冻结快照不匹配（快照记录版本: {'/'.join(versions)}；"
+            f"快照响应绑定采集时的 prompt 文本），无法回放；"
+            f"请加 --live 真实跑（计费，≈21 分钟/30 份），"
+            f"或先用 `--grading-live` 以该版本重新采集快照")
+
+
+def _evaluate_with_snapshots(good_cases: Sequence[Dict[str, Any]],
+                             snapshots: Dict[str, Dict[str, Any]],
+                             invalid: List[Tuple[str, str]], *,
+                             min_samples: int,
+                             prompt_version: Optional[str] = None) -> Dict[str, Any]:
+    """对（磁盘或内存）快照执行统一评测流程；回放与 --live 共用同一口径。"""
     runnable: List[Dict[str, Any]] = []
     for c in good_cases:
         if str(c.get("id")) in snapshots:
@@ -545,7 +653,7 @@ def evaluate_grading_pilot(cases_path: Optional[Path] = None,
             invalid.append((str(c.get("id")), "缺少快照（需运行 --grading-live 采集该题）"))
 
     details: List[Dict[str, Any]] = []
-    judge = build_judge(snapshots, metrics_sink=details)
+    judge = build_judge(snapshots, metrics_sink=details, prompt_version=prompt_version)
     report = run_benchmark(runnable, judge, name="开放题判分 pilot（与预标一致率）",
                            invalid=list(invalid))
     for d in details:
@@ -600,16 +708,20 @@ def _not_evaluable(reason: str, snapshots_path: Path) -> Dict[str, Any]:
 def capture_snapshots(cases: Sequence[Dict[str, Any]], snapshots_path: Path,
                       *, base_url: str, api_key: str, model: str,
                       timeout: float = 45.0,
+                      prompt_version: Optional[str] = None,
                       progress: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
     """真实调用 LLM 采集判分快照（一次性，增量续跑）。
 
     增量语义：已有快照记录的 case 默认跳过（不重复计费）；想重采某题就先从
-    快照文件里删掉它的行。返回统计 ``{captured, skipped, invalid_cases,
-    failed_cases, total_snapshots}``。
+    快照文件里删掉它的行。``prompt_version`` 记录进每条快照并注入判分配置
+    （``""``=latest）——回放侧据此校验版本匹配（见 ``check_prompt_version_match``）。
+    返回统计 ``{captured, skipped, invalid_cases, failed_cases, total_snapshots}``。
     """
     path = Path(snapshots_path)
     snaps, _invalid = load_snapshots(path)
     cfg = build_pilot_config(base_url, api_key, model, max_retries=1)
+    if prompt_version is not None:
+        cfg["prompt_version"] = prompt_version
     say = progress or (lambda msg: None)
 
     captured = skipped = 0
@@ -655,6 +767,7 @@ def capture_snapshots(cases: Sequence[Dict[str, Any]], snapshots_path: Path,
             "id": cid,
             "captured_at": datetime.now().isoformat(timespec="seconds"),
             "model": model,
+            "prompt_version": str(prompt_version or ""),   # ""=latest（回放侧据此校验）
             "calls": calls,
         }
         captured += 1
@@ -664,3 +777,203 @@ def capture_snapshots(cases: Sequence[Dict[str, Any]], snapshots_path: Path,
     return {"captured": captured, "skipped": skipped,
             "invalid_cases": invalid_cases, "failed_cases": failed_cases,
             "total_snapshots": len(snaps)}
+
+
+# ════════════════════════════════════════════════════════════════
+# prompt 版本回归对比（供 ky grade-regress；**报告先行**）
+# ════════════════════════════════════════════════════════════════
+
+def _flat_metrics(res: Dict[str, Any], version: Optional[str]) -> Dict[str, Any]:
+    """评测结果的指标 dict（扁平化 + 版本/退出码），供对比表与 --json 消费。"""
+    flat = dict(res.get("metrics") or {})
+    flat["prompt_version"] = str(version or "")
+    flat["exit_code"] = int(res.get("exit_code") or 0)
+    flat["evaluable"] = bool(res.get("evaluable"))
+    return flat
+
+
+def _judge_regress(deltas: Dict[str, float],
+                   thresholds: Dict[str, float]) -> Tuple[str, Dict[str, str], List[str]]:
+    """按阈值判定回归结论 → ``(verdict, checks, reasons)``。
+
+    规则（**报告先行**：只影响 grade-regress 显示/退出码，不改默认行为）：
+      * 退化超过阈值 → 该项 fail，整体 verdict=fail；
+      * 退化达到阈值一半但未超 → 该项 warn；无 fail 时整体 verdict=warn；
+      * 否则 ok / pass。
+    ``deltas`` 为「候选 − 基线」（MAE 上升为正=变差；一致率下降为负=变差）。
+    """
+    checks: Dict[str, str] = {}
+    fails: List[str] = []
+    warns: List[str] = []
+
+    def _check(name: str, degrade: float, fail_th: float,
+               fail_msg: str, warn_msg: str) -> None:
+        """``degrade`` = 退化量（正数=变差：MAE 上升 / 一致率下降）。"""
+        if degrade > fail_th:
+            checks[name] = "fail"
+            fails.append(fail_msg)
+        elif degrade > fail_th / 2:
+            checks[name] = "warn"
+            warns.append(warn_msg)
+        else:
+            checks[name] = "ok"
+
+    mae, jac, mis = deltas["mae"], deltas["hit_jaccard"], deltas["mistake_type_rate"]
+    mae_th, jac_th, mis_th = (thresholds["mae_delta"], thresholds["hit_jaccard_drop"],
+                              thresholds["mistake_type_drop"])
+    _check("mae", mae, mae_th,
+           f"总分 MAE 上升 {mae:+.2f}（阈值 {mae_th}）",
+           f"总分 MAE 上升 {mae:+.2f}（接近阈值 {mae_th}）")
+    _check("hit_jaccard", -jac, jac_th,
+           f"采分点命中一致率下降 {-jac:.2%}（阈值 {jac_th:.0%}）",
+           f"采分点命中一致率下降 {-jac:.2%}（接近阈值 {jac_th:.0%}）")
+    _check("mistake_type_rate", -mis, mis_th,
+           f"错因一致率下降 {-mis:.2%}（阈值 {mis_th:.0%}）",
+           f"错因一致率下降 {-mis:.2%}（接近阈值 {mis_th:.0%}）")
+
+    if fails:
+        return "fail", checks, fails + warns
+    if warns:
+        return "warn", checks, warns
+    return "pass", checks, []
+
+
+def _evaluate_live_version(cases_path: Optional[Path], *,
+                           prompt_version: Optional[str],
+                           llm_config: Optional[Dict[str, str]],
+                           min_samples: int,
+                           timeout: float = 45.0,
+                           progress: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
+    """以指定 prompt 版本真实调用 LLM 评测（**计费**；不写任何快照文件）。
+
+    采集的调用响应只存在于内存（构造内存快照），随后走与回放完全相同的
+    ``_evaluate_with_snapshots`` 流程 —— 两条路径的指标口径 100% 一致。
+    """
+    cpath = Path(cases_path) if cases_path else CASES_FILE
+    if not cpath.exists():
+        raise GradingRegressError(f"评测集不存在: {cpath}")
+    conf = llm_config or {}
+    base_url = str(conf.get("base_url") or "").strip()
+    api_key = str(conf.get("api_key") or "").strip()
+    model = str(conf.get("model") or "").strip()
+    if not (base_url and api_key and model):
+        raise GradingRegressError(
+            "--live 需要 ky_config.json 配置 base_url / api_key / model（缺一不可）")
+
+    cases, invalid = load_cases(cpath, required_keys=CASE_REQUIRED_KEYS)
+    good_cases: List[Dict[str, Any]] = []
+    for c in cases:
+        problems = validate_case(c)
+        if problems:
+            invalid.append((str(c.get("id")), "数据契约校验失败：" + "；".join(problems)))
+        else:
+            good_cases.append(c)
+
+    cfg = build_pilot_config(base_url, api_key, model, max_retries=1)
+    if prompt_version is not None:
+        cfg["prompt_version"] = prompt_version
+    say = progress or (lambda msg: None)
+
+    snaps: Dict[str, Dict[str, Any]] = {}
+    live_cases: List[Dict[str, Any]] = []
+    for idx, case in enumerate(good_cases, 1):
+        cid = str(case.get("id"))
+        calls: Dict[str, Any] = {}
+        say(f"[{idx}/{len(good_cases)}] {cid} 真实评测中…")
+        try:
+            open_grader.grade_open_question(
+                question=str(case.get("question") or ""),
+                student_answer=str(case.get("student_answer") or ""),
+                subject=str(case.get("subject") or "pro"),
+                reference_answer=str(case.get("reference_answer") or ""),
+                key_points=case.get("key_points"),
+                config=cfg,
+                llm_client=build_capture_client(calls, timeout=timeout),
+            )
+        except Exception as e:  # noqa: BLE001 - 单题失败不中断整批（记 invalid）
+            say(f"    [!] 评测异常（该题计入 invalid）：{type(e).__name__}: {e}")
+            invalid.append((cid, f"live 评测异常：{type(e).__name__}: {str(e)[:200]}"))
+            continue
+        snaps[cid] = {"id": cid, "prompt_version": str(prompt_version or ""),
+                      "calls": calls}
+        live_cases.append(case)
+
+    return _evaluate_with_snapshots(live_cases, snaps, invalid,
+                                    min_samples=min_samples,
+                                    prompt_version=prompt_version)
+
+
+def compare_prompt_versions(candidate: str, baseline: str, *,
+                            cases_path: Optional[Path] = None,
+                            snapshots_path: Optional[Path] = None,
+                            live: bool = False,
+                            min_samples: int = MIN_PILOT_SAMPLES,
+                            llm_config: Optional[Dict[str, str]] = None,
+                            thresholds: Optional[Dict[str, float]] = None,
+                            timeout: float = 45.0,
+                            progress: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
+    """对比两个判卷 prompt 版本在 grading pilot 上的三指标（**报告先行**）。
+
+    Args:
+        candidate / baseline: 候选 / 基线的 prompt 版本（``""``=latest）。
+        live: False=快照回放（零网络；快照版本不匹配 → ``GradingRegressError``）；
+              True=真实 LLM 评测（**计费**，不写快照文件；需 ``llm_config``）。
+        thresholds: 覆盖默认判定阈值（键同 :data:`REGRESS_THRESHOLDS`）。
+
+    Returns:
+        ``{candidate, baseline, deltas, verdict, checks, reasons, thresholds,
+        live, samples, cases_path, disclaimer}``。deltas = 候选 − 基线
+        （``hit_jaccard`` / ``mae`` / ``mistake_type_rate``）；verdict 为
+        ``pass|warn|fail``。
+
+    Raises:
+        GradingRegressError: 任一版本评测不可行（快照版本不匹配 / 样本不足 /
+            数据损坏 / live 缺配置）—— 明确报错，绝不静默给出错误指标。
+    """
+    th = dict(REGRESS_THRESHOLDS)
+    for key, val in (thresholds or {}).items():
+        if key in th and val is not None:
+            th[key] = float(val)
+
+    runs: Dict[str, Dict[str, Any]] = {}
+    for role, version in (("baseline", baseline), ("candidate", candidate)):
+        if live:
+            res = _evaluate_live_version(cases_path, prompt_version=version,
+                                         llm_config=llm_config,
+                                         min_samples=min_samples,
+                                         timeout=timeout, progress=progress)
+        else:
+            res = evaluate_grading_pilot(cases_path, snapshots_path,
+                                         min_samples=min_samples,
+                                         prompt_version=version)
+            if res.get("prompt_version_mismatch"):
+                mismatch = [(m.get("id"), m.get("snapshot_version"))
+                            for m in res["prompt_version_mismatch"]]
+                raise GradingRegressError(_snapshot_mismatch_reason(version, mismatch))
+        if not res.get("evaluable"):
+            raise GradingRegressError(
+                f"prompt 版本 {str(version or '').strip() or 'latest'} 评测不可行"
+                f"（不静默给出指标）：{res.get('reason') or '样本不足 / 数据损坏'}")
+        runs[role] = res
+
+    cm, bm = runs["candidate"]["metrics"], runs["baseline"]["metrics"]
+    deltas = {
+        "hit_jaccard": round(cm["hit_jaccard"] - bm["hit_jaccard"], 4),
+        "mae": round(cm["total_mae"] - bm["total_mae"], 4),
+        "mistake_type_rate": round(cm["mistake_agreement"] - bm["mistake_agreement"], 4),
+    }
+    verdict, checks, reasons = _judge_regress(deltas, th)
+    return {
+        "candidate": _flat_metrics(runs["candidate"], candidate),
+        "baseline": _flat_metrics(runs["baseline"], baseline),
+        "deltas": deltas,
+        "verdict": verdict,
+        "checks": checks,
+        "reasons": reasons,
+        "thresholds": th,
+        "live": bool(live),
+        "samples": cm.get("samples", 0),
+        "cases_path": str(Path(cases_path) if cases_path else CASES_FILE),
+        "disclaimer": ("AI 预标（用户抽检）下的「与预标一致率」，非人工金标准准确率；"
+                       "本对比为**报告先行**：默认只报告，不阻断任何流程"),
+    }

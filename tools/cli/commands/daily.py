@@ -11,11 +11,11 @@ from typing import List
 
 try:
     from tools.cli.dispatch import Command, register
-    from tools.cli.shared import load_config, mark_today_task_done
+    from tools.cli.shared import load_config, mark_today_task_done, normalize_subject
     from tools.cli.repl.renderer import C, colorize, print_today_tasks_summary
 except ImportError:
     from cli.dispatch import Command, register
-    from cli.shared import load_config, mark_today_task_done
+    from cli.shared import load_config, mark_today_task_done, normalize_subject
     from cli.repl.renderer import C, colorize, print_today_tasks_summary
 
 
@@ -26,25 +26,45 @@ def _cmd_today(args: List[str]) -> None:
 
 
 def _cmd_done(args: List[str]) -> None:
-    if len(args) < 2:
-        print(colorize("用法: ky done <任务关键词>\n示例: ky done 导数中值定理", C.YELLOW))
+    # [审查修复·跨科目误打卡] 支持 --subject=<math|eng|pol|pro|数学|英语|政治|专业课>
+    # 显式指定打卡科目；未指定时由 mark_today_task_done 按当前科目优先判定，
+    # 多科同名命中时拒绝并提示候选，不再静默打到第一个科目。
+    subject = None
+    kw_parts: List[str] = []
+    for a in args[1:]:
+        if a.startswith("--subject="):
+            subject = a.split("=", 1)[1].strip() or None
+        else:
+            kw_parts.append(a)
+    if not kw_parts:
+        print(colorize(
+            "用法: ky done [--subject=<math|eng|pol|pro>] <任务关键词>\n"
+            "示例: ky done 导数中值定理\n"
+            "      ky done --subject=eng 核心精讲", C.YELLOW))
         sys.exit(1)
-    kw = " ".join(args[1:])
-    ok, msg = mark_today_task_done(kw)
+    kw = " ".join(kw_parts)
+    ok, msg = mark_today_task_done(kw, subject=subject)
     print(colorize(f"[{msg}]", C.GREEN if ok else C.YELLOW))
     sys.exit(0 if ok else 1)
 
 
 def _cmd_map(args: List[str]) -> None:
-    target_subj = load_config().get("active_subject", "math")
+    target_subj = normalize_subject(load_config().get("active_subject", "math"), "math") or "math"
     as_json = "--json" in args or "-j" in args
-    for a in args[1:]:
+    idx = 1
+    while idx < len(args):
+        a = args[idx]
         if a in ("--json", "-j"):
+            idx += 1
             continue
-        for sk, sv in (("math", "数"), ("eng", "英"), ("pol", "政"), ("pro", "专")):
-            if sk in a.lower() or sv in a:
-                target_subj = sk
-                break
+        if a.startswith("--subject="):
+            target_subj = normalize_subject(a.split("=", 1)[1], target_subj) or target_subj
+        elif a in ("--subject", "-S") and idx + 1 < len(args):
+            target_subj = normalize_subject(args[idx + 1], target_subj) or target_subj
+            idx += 1
+        else:
+            target_subj = normalize_subject(a, target_subj) or target_subj
+        idx += 1
     try:
         from tools.skills import knowledge_map
     except ImportError:
@@ -218,7 +238,7 @@ def _cmd_wechat(args: List[str]) -> None:
 
 
 # 注册日常命令
-register(Command('today', ("today", "--today", "tasks", "--tasks"), '[--json] [--no-flash]', '查看今日任务清单；加 --json 输出结构化数据；--no-flash 隐藏研招速递', handler=_cmd_today))
+register(Command('today', ("today", "--today", "tasks", "--tasks"), '[--json] [--no-flash]', '查看今日四科任务清单；加 --json 输出结构化数据；--no-flash 隐藏研招速递', handler=_cmd_today))
 register(Command('done', ("done", "--done"), '<关键词>', '快速将包含关键词的今日任务标记为完成并回写状态', handler=_cmd_done, write=True))
 register(Command('map', ("map", "--map", "knowledge", "--knowledge"), '[科目] [--json]', '官方考试大纲知识点图谱与掌握度映射', handler=_cmd_map))
 register(Command('calc', ("calc", "--calc", "verify", "--verify"), '<表达式>', '基于 SymPy 高精度数学符号验算 (极限/导数/积分/ODE/矩阵，别名: verify)', handler=_cmd_calc))

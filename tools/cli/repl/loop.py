@@ -16,7 +16,8 @@ try:
         interpreter_hint,
         load_config, save_config, read_text_safe,
         mark_today_task_done, detect_repl_safe_mode_violation,
-        resolve_major_keyword, subject_display_name, is_math_disabled
+        resolve_major_keyword, subject_display_name, is_math_disabled,
+        resolve_active_subject
     )
 except ImportError:
     from cli.shared import (
@@ -24,7 +25,8 @@ except ImportError:
         interpreter_hint,
         load_config, save_config, read_text_safe,
         mark_today_task_done, detect_repl_safe_mode_violation,
-        resolve_major_keyword, subject_display_name, is_math_disabled
+        resolve_major_keyword, subject_display_name, is_math_disabled,
+        resolve_active_subject
     )
 
 try:
@@ -159,6 +161,20 @@ def _normalize_mangled_slash_command(user_input: str) -> str:
     return _MANGLED_SLASH_REWRITE.get(_m.group(1).lower(), user_input)
 
 
+def _stdin_is_tty() -> bool:
+    """[F4 修复·首启向导吞首句输入] 标准输入是否连接交互式终端。
+
+    非 TTY（管道 / 自动化 / 重定向 / 测试捕获）下首启向导不得提问：
+    ``input()`` 会消费输入流里的首行指令，且回答非 n 时还会启动 2~3 分钟
+    向导，自动化链路直接丢指令或卡死。判定失败一律按非 TTY 处理（宁可跳过
+    向导，也不吞用户的输入）。
+    """
+    try:
+        return bool(sys.stdin and sys.stdin.isatty())
+    except Exception:
+        return False
+
+
 def _print_external_read_summary(agent_runner) -> None:
     """[B2b] 会话结束时汇总本会话读取过的「工作区外」文件（为空则静默）。
 
@@ -218,14 +234,25 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
     """
     cfg = load_config()
 
+    # [F10 修复·失败仍显示已就绪] 此前 ``or 8088`` 把启动失败（None）兜底成
+    # 8088，随后无条件打印「网页伴侣已就绪」——用户照着 /view 打开的是空端口。
+    # 保留 None 原值：就绪提示与欢迎横幅均按真实启动结果渲染（未启动时明说）。
     live_port = start_background_live_server(8088, host=gateway_host, token=gateway_token,
-                                             webhook_token=webhook_token) or 8088
+                                             webhook_token=webhook_token)
     print_welcome(live_port=live_port)
 
     # [P2-8 修复·拒绝后每次仍问] 用户明确拒绝（n）后必须记住选择，否则每次启动
     # 都问一遍。拒绝只记录标记不打断流程，随时可用 /plan 或 ky plan 重开。
+    # [F4 修复·首启向导吞首句输入] 非 TTY 下不提问；TTY 下非 y/yes/是/空 的
+    # 首条输入视为「拒绝向导 + 立即想执行该指令」，先记入 pending_input，
+    # 进主循环后优先执行（原实现把它吞给向导提问）。
+    pending_input: Optional[str] = None
     if not cfg.get("onboarding_completed") and not cfg.get("onboarding_declined"):
-        print(f"""
+        # 管道 / 自动化 / 重定向场景（stdin 非终端）下 input() 会消费流里的
+        # 首行指令，回答非 n 还会启动 2~3 分钟向导，自动化链路直接丢指令/卡死。
+        # 非 TTY 一律跳过提问，也不写配置（用户可在交互终端里用 /plan 重开）。
+        if _stdin_is_tty():
+            print(f"""
 {C.CYAN}╭────────────────────────────────────────────────────────────────────────╮
 │  🎓 欢迎使用考研全科 AI 私人教师中枢！                                 │
 │  检测到您尚未进行个人专属定制化必考方案设计。                          │
@@ -233,26 +260,37 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
 │     当前学情痛点摸底与每日复习黄金作息个性化建档！                     │
 ╰────────────────────────────────────────────────────────────────────────╯{C.RESET}
 """)
-        try:
-            init_plan = input("是否立即启动【个人定制化必考方案设计向导】? (y/n) [y]: ").strip().lower()
-            if init_plan != "n":
-                import study_planner
-                study_planner.run_study_plan_wizard(interactive=True)
-                cfg = load_config()
-            else:
-                cfg["onboarding_declined"] = True
-                try:
-                    save_config(cfg)
-                except Exception:
-                    pass
-                print(colorize("💡 提示：您可以随时在终端输入 /plan 或运行 ky plan 重新启动向导。\n", C.DIM))
-        except (EOFError, KeyboardInterrupt):
-            pass
+            init_plan: Optional[str]
+            try:
+                init_plan = input("是否立即启动【个人定制化必考方案设计向导】? (y/n) [y]: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                init_plan = None
+            if init_plan is not None:
+                if init_plan.lower() in ("y", "yes", "是", ""):
+                    import study_planner
+                    study_planner.run_study_plan_wizard(interactive=True)
+                    cfg = load_config()
+                else:
+                    cfg["onboarding_declined"] = True
+                    try:
+                        save_config(cfg)
+                    except Exception:
+                        pass
+                    print(colorize(
+                        "💡 已跳过向导；您可以随时在终端输入 /plan 或运行 ky plan 重新启动向导。\n",
+                        C.DIM))
+                    # 明确的拒绝（n/no/否/不）只记标记；其余首条输入是用户真想
+                    # 执行的指令（如「数学报到」），暂存后进主循环优先执行。
+                    if init_plan.lower() not in ("n", "no", "否", "不"):
+                        pending_input = init_plan
 
     if not cfg.get("api_key"):
         print(colorize("当前使用本地功能。需要 AI 讲解时，可输入 /config 配置模型。", C.YELLOW))
 
-    curr_subj = cfg.get("active_subject", "math")
+    # [F8 修复·不考数学默认激活数学] 统一经 resolve_active_subject：math_key=none
+    # / 双专业课等方案下缺失或为 math 的 active_subject 一律解析为 eng，不再让
+    # REPL 头部显示「数学专属私教」却拒绝 /math（自相矛盾）。
+    curr_subj = resolve_active_subject(cfg)
     history: List[Dict[str, Any]] = []
     active_quiz_item: Optional[Dict[str, Any]] = None
 
@@ -345,19 +383,29 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
     print(colorize(f"当前已激活：{SUBJECT_DIRS[curr_subj][1]}。直接输入问题/题目，或使用 /img 批改草稿{_extra}。", C.DIM))
     if live_port:
         print(colorize(f"🌐 [实时 LaTeX 网页伴侣已就绪]: http://localhost:{live_port}/live (随时输入 /view 自动打开浏览器对照排版)\n", C.CYAN))
+    else:
+        # [F10 修复] 启动失败（端口全占 / 非回环地址无鉴权被拒等）时不得再宣称
+        # 已就绪：如实说明未启动，并明确不影响终端对话。
+        print(colorize("🌐 [网页伴侣未启动] 不影响终端对话；稍后可输入 /view 或重启 ky 重试。\n", C.YELLOW))
 
     while True:
-        try:
-            user_input = input(get_prompt_tag()).strip()
-        except (KeyboardInterrupt, EOFError):
-            if agent_runner and hasattr(agent_runner, "hooks"):
-                agent_runner.hooks.trigger_session_end({"active_subject": curr_subj})
-            # [B3a] 写 session_end 事件并关闭会话日志（幂等；不重复触发钩子）
-            if agent_runner and hasattr(agent_runner, "close"):
-                _print_external_read_summary(agent_runner)   # [B2b] 会话外部读取汇总
-                agent_runner.close()
-            print("\n再见！保持节奏，一战成硕！🎓")
-            break
+        if pending_input is not None:
+            # [F4 修复·首启向导] 首启拒绝向导时暂存的首条指令：优先执行一次
+            # （不再次提问），保证用户输入不被向导吞掉。
+            user_input = pending_input.strip()
+            pending_input = None
+        else:
+            try:
+                user_input = input(get_prompt_tag()).strip()
+            except (KeyboardInterrupt, EOFError):
+                if agent_runner and hasattr(agent_runner, "hooks"):
+                    agent_runner.hooks.trigger_session_end({"active_subject": curr_subj})
+                # [B3a] 写 session_end 事件并关闭会话日志（幂等；不重复触发钩子）
+                if agent_runner and hasattr(agent_runner, "close"):
+                    _print_external_read_summary(agent_runner)   # [B2b] 会话外部读取汇总
+                    agent_runner.close()
+                print("\n再见！保持节奏，一战成硕！🎓")
+                break
 
         # [UT4 修复·CLI-2] 先还原 MSYS 改写形态（/today → C:/Program Files/Git/today
         # 等），让固定口令稳定命中本地分支，绝不坠入 Agent LLM 工具链。
@@ -437,6 +485,25 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
         raw_cmd = user_input.strip()
 
         # ── 中文原生口令路由 ──
+        # [F1 修复·AGENTS.md 中文口令 8 个全缺失] 快速口令映射表（AGENTS.md 113-127）
+        # 列了「终端中枢/导航/考纲Diff/切片入库/研招证据/双校对标/招生监控/高校侦察」，
+        # 但 REPL 从未注册这些中文形态：输入后不匹配任何本地分支，静默坠入 Agent
+        # LLM 计费对话（实测）。此处统一改写为对应斜杠指令，复用下方既有斜杠分支，
+        # 不复制任何业务逻辑；英文部分按 lower() 归一（考纲Diff / 考纲diff 都命中）。
+        _CHINESE_CMD_ALIASES = {
+            "终端中枢": "/menu", "导航": "/menu",
+            "考纲diff": "/diff", "切片入库": "/ingest",
+            "研招证据": "/admission", "双校对标": "/compare",
+            "招生监控": "/watch", "高校侦察": "/scout",
+            # [F3 修复·裸 exit/quit 坠入 LLM] 斜杠分支的退出元组位于
+            # startswith("/") 之内，裸词「exit/quit/退出」永远不可达 → 坠入
+            # Agent 计费对话且无任何提示（A-P2 实测）。此处把裸词改写为斜杠
+            # 形态，复用下方既有退出分支，不复制业务逻辑。
+            "exit": "/exit", "quit": "/quit", "退出": "/exit",
+        }
+        if raw_cmd.lower() in _CHINESE_CMD_ALIASES:
+            user_input = _CHINESE_CMD_ALIASES[raw_cmd.lower()]
+
         if raw_cmd in CHINESE_SUBJECT_MAP:
             # [P7 修复] 科目切换统一走 _switch_subject：safe 模式下会拒绝并提示，
             # 不再抛出未捕获的 PermissionDeniedError 堆栈。
@@ -521,6 +588,14 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                     raise
                 tag = C.GREEN if ok else C.YELLOW
                 print(colorize(f"\n[{msg}]\n", tag))
+                continue
+            else:
+                # [F7 修复·裸「打卡」坠 LLM] 缺任务关键词时此前既不提示也不
+                # continue，直接坠入下方 Agent LLM 链（实测真实计费）。对照
+                # /done 的空参守卫补用法提示。
+                print(colorize("用法: 打卡 <任务关键词>\n"
+                               "示例: 打卡 英语阅读2篇（或输入 /today 查看今日任务清单）\n",
+                               C.YELLOW))
                 continue
         elif raw_cmd in ("组卷", "反向组卷", "生成试卷") or raw_cmd.startswith("组卷 "):
             sub_target = curr_subj
@@ -872,7 +947,21 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                 continue
             elif cmd == "/clear":
                 history = []
-                print(colorize("\n[已清空当前会话上下文]\n", C.YELLOW))
+                # [F6 修复·AgentRunner 模式无效] Agent 模式下对话上下文由
+                # AgentRunner.history 持有（run 时组装进 messages），只清本地
+                # history 的话 AI 仍记得全部对话。此处就地同步清空（复用同一
+                # list 引用，run 直接读取该属性，无需新增 API）；压缩摘要
+                # _history_summary 会在下一轮 run 收尾时经 compose_history 重新
+                # 注入 history，必须一并清掉，否则「清空」名不副实。
+                if agent_runner is not None:
+                    try:
+                        if hasattr(agent_runner, "history"):
+                            agent_runner.history.clear()
+                        if hasattr(agent_runner, "_history_summary"):
+                            agent_runner._history_summary = None
+                    except Exception:
+                        pass
+                print(colorize("\n[已清空当前会话上下文（含 AI 对话记忆）]\n", C.YELLOW))
                 continue
             elif cmd == "/config":
                 interactive_config()
@@ -904,13 +993,26 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                 # 严禁改道 Agent LLM 工具链（UT4 实测误入链路 115s 真实计费）。
                 print_today_tasks_summary()
                 continue
-            elif cmd in ("/exit", "/quit", "exit", "quit"):
+            elif cmd in ("/exit", "/quit"):
+                # [F9 修复·续聊提示] B3b 已支持 `ky session resume <id>`（含前缀
+                # 匹配），但 REPL 退出时从不提示，用户重开只能从头聊。此处先取
+                # 会话 id（优先已落盘日志的真实 id），收尾前给出续聊指引。
+                _resume_sid = ""
+                try:
+                    _slog = getattr(agent_runner, "_session_log", None)
+                    _resume_sid = (getattr(_slog, "session_id", "") or
+                                   getattr(agent_runner, "_session_id", "") or "")
+                except Exception:
+                    _resume_sid = ""
                 if agent_runner and hasattr(agent_runner, "hooks"):
                     agent_runner.hooks.trigger_session_end({"active_subject": curr_subj})
                 # [B3a] 写 session_end 事件并关闭会话日志（幂等；不重复触发钩子）
                 if agent_runner and hasattr(agent_runner, "close"):
                     _print_external_read_summary(agent_runner)   # [B2b] 会话外部读取汇总
                     agent_runner.close()
+                if _resume_sid:
+                    print(colorize(f"💡 提示：下次可用 ky session resume {_resume_sid}"
+                                   "（支持 id 前缀）继续本会话。", C.DIM))
                 print("\n再见！保持节奏，一战成硕！🎓")
                 break
             # 别名取 `/tui` 而非 `/nav`：与 CLI 侧 `ky menu` 的别名集对齐
@@ -920,20 +1022,25 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                 # [B-01 修复] 操作手册 566 行宣称 `/menu` 可「退出交互 REPL 并打开
                 # TUI 终端全景导航面板」，AGENTS.md 113 行路由表同样列了 `/menu`，
                 # 但 REPL 内从未注册该分支。这里与 `ky menu`（commands/misc.py:204）
-                # 复用同一入口：先按 /exit 的口径触发会话收尾钩子，再惰性导入
-                # tui_navigator（会拉入 Textual 等重依赖，不宜进模块顶层），
-                # 启动后 break 退出 REPL，与文档「退出并打开」的语义一致。
+                # 复用同一入口：惰性导入 tui_navigator（会拉入 Textual 等重依赖，
+                # 不宜进模块顶层），启动后 break 退出 REPL，与文档「退出并打开」的
+                # 语义一致。
+                # [F5 修复·日终收尾时机] 进 TUI 前不再触发 trigger_session_end /
+                # close：那会提前写当日完成率并可能推送「今日收工」IM，而用户此刻
+                # 只是去 TUI 看看。收尾移到 TUI 退出之后 —— TUI 返回即 REPL 真正
+                # 退出（break），这才是 SessionEnd 该触发的时机。
+                print(colorize("\n[🚪 即将进入 TUI 终端中枢（退出后重新输入 ky 可回到对话）]\n", C.CYAN))
+                try:
+                    from tools import tui_navigator
+                except ImportError:
+                    import tui_navigator
+                tui_navigator.run_tui_loop()
                 if agent_runner and hasattr(agent_runner, "hooks"):
                     agent_runner.hooks.trigger_session_end({"active_subject": curr_subj})
                 # [B3a] 写 session_end 事件并关闭会话日志（幂等；不重复触发钩子）
                 if agent_runner and hasattr(agent_runner, "close"):
                     _print_external_read_summary(agent_runner)   # [B2b] 会话外部读取汇总
                     agent_runner.close()
-                try:
-                    from tools import tui_navigator
-                except ImportError:
-                    import tui_navigator
-                tui_navigator.run_tui_loop()
                 break
             elif cmd in ("/plan", "/profile", "/blueprint"):
                 try:
@@ -1031,6 +1138,27 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                             else:
                                 print(colorize("[!] 报告未写入磁盘（只读模式或落盘失败），以上要点即本次巡检结果。", C.YELLOW))
                             print()
+                    else:
+                        # [F2 修复·静默吞输入] 此前 `/watch <校名>` 不匹配 list/check
+                        # 时直接 continue、零输出；而上面 check 分支又提示「使用 /watch
+                        # <高校名> 添加监控目标」——用户照做只会看到静默。现把参数作为
+                        # 高校名调用 add_watch 纳入监控雷达，成功 / 已存在 / 失败都有输出。
+                        _school = " ".join(parts)
+                        try:
+                            res = watcher.add_watch(_school)
+                        except Exception as _e:
+                            if _e.__class__.__name__ == "PermissionDeniedError":
+                                print(colorize(f"\n[✘ 已拒绝] {_e}", C.RED))
+                                continue
+                            raise
+                        if res.get("success"):
+                            print(colorize(f"\n[√ {res.get('msg')}]", C.GREEN))
+                            if res.get("url"):
+                                print(colorize(f"    监控页面: {res['url']}"
+                                               "（已建立首次基线，下次巡检起比对新增）", C.DIM))
+                            print()
+                        else:
+                            print(colorize(f"\n[!] {res.get('msg')}\n", C.YELLOW))
                 continue
             elif cmd in ("/compare", "/vs", "/pk", "/duibi"):
                 parts = arg.strip().split()
@@ -1067,7 +1195,9 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                     res = exam_diagnoser.diagnose_mock_exam(subject=curr_subj, exam_input=content)
                     print(exam_diagnoser.format_diagnosis_report(res))
                 continue
-            elif cmd in ("/diff", "/kaogang", "/dagang"):
+            # [F1 修复·AGENTS.md 别名缺位] AGENTS.md 118 行「考纲Diff / /fetch」：
+            # /fetch 此前未注册，输入后坠入 LLM；与 /diff 同源并入别名元组。
+            elif cmd in ("/diff", "/kaogang", "/dagang", "/fetch"):
                 try:
                     from tools.cli.commands.intel import run_syllabus_diff
                 except ImportError:
@@ -1092,8 +1222,24 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
             elif cmd in ("/relieve", "/jianfu"):
                 try:
                     import study_planner
-                    res = study_planner.apply_relief_mode()
-                    print(colorize(f"\n[√ {res.get('message')}]\n", C.GREEN))
+                    # [F9 修复·--off 缺位] CLI 侧 `ky relieve` 支持 --off（恢复）
+                    # 与 --keep-style（只降时长不改风格，misc.py:212-223），REPL
+                    # 此前一律 apply_relief_mode()：用户输入的 --off 被静默忽略、
+                    # 没有退出减负的入口。现与 CLI 同口径透传。
+                    _relieve_args = arg.split()
+                    if "--off" in _relieve_args or "--restore" in _relieve_args:
+                        res = study_planner.restore_relief_mode()
+                        if res.get("success"):
+                            print(colorize("\n[√ 已退出减负模式]", C.GREEN))
+                            print(f"  • 每日复习总时间: 恢复为 {res.get('new_hours')}h")
+                            print(f"  • 辅导风格: {res.get('style')}")
+                            print(f"  • 说明: {res.get('message')}\n")
+                        else:
+                            print(colorize(f"\n[!] {res.get('message')}\n", C.YELLOW))
+                    else:
+                        res = study_planner.apply_relief_mode(
+                            keep_style="--keep-style" in _relieve_args)
+                        print(colorize(f"\n[√ {res.get('message')}]\n", C.GREEN))
                 except Exception as e:
                     print(f"启动减负异常: {e}")
                 continue
@@ -1240,6 +1386,15 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                     print(colorize(f"\n[✘ 已拒绝] {_agent_err}", C.RED))
                     continue
                 raise
+            # [F3 修复·Agent 模式 /2 /save /4 /5 全失效] AgentRunner 分支此前
+            # 既不写本地 history、也不打印跟随工具栏：/save（依赖 history[-1]）
+            # 永远提示「暂无可归档」、/4 /5 找不到上一题、数字快捷键指引从不
+            # 出现。现与下方 else（非 Agent）分支同口径补齐。live 消息不在此
+            # 重复推送：AgentRunner.run 内部已调用 live_callback（见 agent/loop.py）。
+            if reply:
+                history.append({"role": "user", "content": user_input})
+                history.append({"role": "assistant", "content": reply})
+                print_followup_toolbar()
         else:
             sys_prompt = build_system_prompt(curr_subj)
             messages = [{"role": "system", "content": sys_prompt}]

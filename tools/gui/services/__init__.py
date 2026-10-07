@@ -2,10 +2,12 @@
 """GUI 数据服务包（纯数据/后端调用，不依赖 Qt 控件）"""
 
 from .actions import (
+    build_index,
     compare_schools,
     diff_syllabus,
     ingest_file,
     make_error_quiz,
+    rag_search,
     run_action_capture,
 )
 from .dashboard import (
@@ -39,10 +41,12 @@ __all__ = [
     "subject_labels",
     "subject_progress",
     # actions
+    "build_index",
     "compare_schools",
     "diff_syllabus",
     "ingest_file",
     "make_error_quiz",
+    "rag_search",
     "run_action_capture",
     # settings
     "is_unconfigured",

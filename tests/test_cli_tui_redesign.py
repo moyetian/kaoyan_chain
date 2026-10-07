@@ -151,7 +151,7 @@ def test_tui_ky_theme_registered_and_active(tui_app):
 # ══════════════════════════════════════════════════════════════
 
 def test_tui_menu_group_titles_rendered(tui_app):
-    """三组标题挂在每组首条目上（视觉分组头），其余条目不重复标题。"""
+    """四组标题挂在每组首条目上（视觉分组头），其余条目不重复标题。"""
     try:
         import tui_navigator
     except ImportError:  # pragma: no cover
@@ -163,14 +163,14 @@ def test_tui_menu_group_titles_rendered(tui_app):
         group_starts[index] = title
         index += len(items)
     all_titles = list(group_starts.values())
-    assert len(group_starts) == 3 and index == 11, "菜单应为 3 组 11 项"
+    assert len(group_starts) == 4 and index == 13, "菜单应为 4 组 13 项"
 
     async def scenario():
         app = tui_app.KaoyanTUI()
         async with app.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
             items = list(app.query_one("#menu").children)
-            assert len(items) == 11, "分组头不得引入额外条目（导航语义不变）"
+            assert len(items) == 13, "分组头不得引入额外条目（导航语义不变）"
             for position, item in enumerate(items):
                 text = str(item.children[0].render())
                 if position in group_starts:
@@ -196,6 +196,8 @@ def test_digit_keys_zero_and_ten_reachable(tui_app):
     """
     keys = tui_app.KaoyanTUI.menu_keys()
     assert {"0", "10"} <= keys, "菜单数据里应存在 0 与 10"
+    # [2026-10-06] 新增 11/12 后仍须是两位数可达（走「1 再按 1/2」序列）
+    assert {"11", "12"} <= keys, "菜单数据里应存在 11 与 12"
 
     async def scenario():
         app = tui_app.KaoyanTUI()

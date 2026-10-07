@@ -15,7 +15,7 @@ except ImportError:  # pragma: no cover
     from tools.theme import list_presets, PRESET_ORDER  # type: ignore
     from tools.gui import theme_apply  # type: ignore
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QColorDialog, QComboBox, QDialog, QDoubleSpinBox, QFormLayout,
@@ -251,7 +251,10 @@ class SettingsDialog(QDialog):
         """关闭当前快速设置面板，唤起完备的 5 步新手引导与建档向导。"""
         self.reject()
         if hasattr(self._win, "_open_onboarding_wizard"):
-            self._win._open_onboarding_wizard()
+            # Let QDialog.exec() unwind before opening another modal dialog.
+            # Opening it directly from reject() nests two modal event loops and
+            # can leave focus/finished signals attached to the wrong dialog.
+            QTimer.singleShot(0, self._win._open_onboarding_wizard)
 
     def _open_provider_console(self):
         base_url = self.base_url_edit.text().strip().lower()

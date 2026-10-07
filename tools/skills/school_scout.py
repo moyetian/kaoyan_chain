@@ -17,6 +17,7 @@
 import json
 import logging
 import re
+import time
 import urllib.request
 import urllib.parse
 from pathlib import Path
@@ -41,6 +42,11 @@ try:  # [K9] 院校研报 LLM 调用统一走 llm_client
     from llm_client import chat_completion  # noqa: E402
 except ImportError:  # pragma: no cover
     from tools.llm_client import chat_completion  # type: ignore
+
+try:  # [退避单一真源] full jitter 与全仓其他出口同口径
+    from http_backoff import full_jitter_delay  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.http_backoff import full_jitter_delay  # type: ignore  # noqa: E402
 
 try:  # [K9] 结构化院校实体绑定（只作标识，不改变旧返回契约）
     from agent.kaoyan_context import school_entity_id  # noqa: E402
@@ -70,6 +76,10 @@ except ImportError:  # pragma: no cover
     )
 
 ROOT = resolve_workspace_root(__file__)
+
+#: 院校研报 LLM 合成的尝试次数（含首发）。单次 60s 超时，2 次足以覆盖绝大多数
+#: 瞬时波动，又不会把「上游持续不可用」拖成 minutes 级等待。
+_SCOUT_LLM_ATTEMPTS = 2
 CONFIG_FILE = ROOT / "ky_config.json"
 
 USER_AGENT = (
@@ -158,6 +168,33 @@ def find_school_in_db(school_name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+# [F10 修复·985 误标] 旧实现用简称裸子串匹配（「南大」∈「河南/济南/海南/江南/
+# 西南/云南大学」、「北大」∈「湖北/西北大学」），实测误标 8 校；且无条件覆盖
+# registry 权威 level。现改为精确全名集合（沿旧简称表逐条展开），且仅在
+# registry 未命中时才应用 —— 权威数据优先，不得被启发式覆盖。
+_TOP_985_FULL_NAMES = frozenset({
+    "清华大学", "北京大学", "浙江大学", "复旦大学", "上海交通大学", "南京大学",
+    "中国科学技术大学", "中国人民大学", "北京航空航天大学", "北京理工大学",
+    "哈尔滨工业大学", "同济大学", "南开大学", "天津大学", "大连理工大学",
+    "吉林大学", "东北大学", "华东师范大学", "东南大学", "中南大学", "湖南大学",
+    "华南理工大学", "四川大学", "重庆大学", "电子科技大学", "西安交通大学",
+    "西北工业大学", "兰州大学", "中国农业大学", "国防科技大学", "中山大学",
+    "厦门大学", "山东大学", "中国海洋大学", "中国地质大学", "中国矿业大学",
+    "中国石油大学",
+})
+
+
+def _is_top_985_name(school: str) -> bool:
+    """985 全名精确判定（F10）：去除空白与括号后缀后与全名集比对。
+
+    「清华大学（北京）」→「清华大学」命中；「河南大学」「湖北大学」「西北
+    大学」「西南大学」等含「南大/北大」字样的非 985 校不再误标。
+    """
+    s = re.sub(r"[（(].*?[)）]", "", str(school or "")).strip()
+    s = re.sub(r"\s+", "", s)
+    return s in _TOP_985_FULL_NAMES
+
+
 def infer_general_school_intel(school: str, major: str = "") -> Dict[str, Any]:
     """
     通用高校考研情报智能推断器：对未在预置库中的高校进行画像推导
@@ -169,6 +206,7 @@ def infer_general_school_intel(school: str, major: str = "") -> Dict[str, Any]:
     level = "教育部直属 / 省属重点本科院校"
     region = "全国"
     official_site = f"https://yz.chsi.com.cn/sch/search.do?xxmc={urllib.parse.quote(school)}"
+    resolved = False
     try:
         from tools.intelligence.registry import get_registry
         ent = get_registry().resolve(school)
@@ -176,14 +214,14 @@ def infer_general_school_intel(school: str, major: str = "") -> Dict[str, Any]:
             level = " / ".join(ent.level) if isinstance(ent.level, list) else str(ent.level)
             region = ent.region
             official_site = ent.official_domain or ent.graduate_domain or official_site
+            resolved = True
     except Exception:
         pass
 
-    top_985 = ["清华", "北大", "浙大", "复旦", "上交", "南大", "中科大", "人大学", "北航", "北理", "哈工大", "同济", "南开", "天津大学", "大连理工", "吉林大学", "东北大学", "华东师大", "东南大学", "中南大学", "湖南大学", "华南理工", "四川大学", "重庆大学", "电子科大", "西安交大", "西北工大", "兰州大学", "中国农大", "国防科大", "中山大学", "厦门大学", "山东大学", "海洋大学", "中国地大", "矿大", "石油大"]
-    for k in top_985:
-        if k in school:
-            level = "985工程 / 211工程 / 双一流建设重点高校"
-            break
+    # [F10 修复] 仅当 registry 未命中时才走 985 全名启发式；registry 的权威
+    # level 不得被覆盖（旧实现无条件覆盖，实测把河南大学等 8 校误标为 985）。
+    if not resolved and _is_top_985_name(school):
+        level = "985工程 / 211工程 / 双一流建设重点高校"
     if "大学" in school and "211" not in level and "双一流" not in level and "骨干" not in level:
         level += "（硕士学位授权重点高校）"
 
@@ -450,15 +488,31 @@ def synthesize_report_with_llm(school: str, major: str, official_items: List[Dic
     try:
         # [K9] 研报合成与 Agent、开放题和视觉链路共用同一出口，获得统一的
         # URL 规范化、SSRF 防护、响应体限制、结构化错误和重试策略。
-        return chat_completion(
-            messages,
-            config={**cfg, "base_url": base_url, "model": model},
-            workspace_root=ROOT,
-            temperature=0.3,
-            timeout=60.0,
-            max_tokens=2500,
-            urlopen_fn=safe_urlopen,
-        )
+        # [退避重试] 原实现是「单次 60s 失败即被``except: return None`` 吞掉」——
+        # 一次网络抖动就让整份研报降级为纯模板文本，而这本链路有充裕时间预算。
+        # 改为最多 2 次尝试，中间按 full jitter 退避（单一真源）。
+        last_exc: Optional[Exception] = None
+        for attempt in range(_SCOUT_LLM_ATTEMPTS):
+            try:
+                return chat_completion(
+                    messages,
+                    config={**cfg, "base_url": base_url, "model": model},
+                    workspace_root=ROOT,
+                    temperature=0.3,
+                    timeout=60.0,
+                    max_tokens=2500,
+                    urlopen_fn=safe_urlopen,
+                )
+            except Exception as exc:
+                last_exc = exc
+                if attempt + 1 >= _SCOUT_LLM_ATTEMPTS:
+                    break
+                delay = full_jitter_delay(attempt)
+                _LOG.warning("院校研报合成失败（%s），%.1f 秒后重试（第 %d/%d 次）...",
+                             exc, delay, attempt + 2, _SCOUT_LLM_ATTEMPTS)
+                time.sleep(delay)
+        _LOG.warning("院校研报合成重试耗尽，降级为模板研报: %s", last_exc)
+        return None
     except Exception:
         return None
 

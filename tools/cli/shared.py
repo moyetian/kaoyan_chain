@@ -53,6 +53,45 @@ SUBJECT_DIRS: Dict[str, Tuple[str, str]] = {
     "pro": ("04-专业课", "专业课专属私教"),
 }
 
+# 科目参数的唯一归一入口。CLI、REPL 和 TUI 都会接收用户直接输入的
+# ``pro``、``308 护理综合``、``护理`` 等自然写法；各入口自行做子串判断时，
+# 容易把 ``--subject pro`` 的值遗留到题干中，或把 308 误归到数学兜底。
+SUBJECT_ALIASES: Dict[str, str] = {
+    "math": "math", "maths": "math", "math1": "math", "math2": "math", "math3": "math",
+    "数学": "math", "数学一": "math", "数学二": "math", "数学三": "math",
+    "eng": "eng", "english": "eng", "eng1": "eng", "eng2": "eng",
+    "英语": "eng", "英语一": "eng", "英语二": "eng", "201": "eng", "204": "eng",
+    "pol": "pol", "politics": "pol", "政治": "pol", "思想政治理论": "pol", "101": "pol",
+    "pro": "pro", "major": "pro", "专业课": "pro", "护理": "pro", "护理综合": "pro",
+    "308": "pro", "408": "pro", "自命题": "pro",
+}
+
+
+def normalize_subject(value: Any, default: Optional[str] = None) -> Optional[str]:
+    """将科目代码、简称或报考科目名归一为 ``math/eng/pol/pro``。
+
+    仅返回受支持的四个稳定键；未知值返回 ``default``，避免把任意题干文本
+    当成科目。调用方可据此安全消费 ``--subject pro`` 这种分离参数。
+    """
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return default
+    if raw in SUBJECT_ALIASES:
+        return SUBJECT_ALIASES[raw]
+    # 允许「308 护理综合」「英语一 (201)」等带代码的完整名称。
+    compact = re.sub(r"[\s()（）\[\]【】_-]+", "", raw)
+    if compact in SUBJECT_ALIASES:
+        return SUBJECT_ALIASES[compact]
+    for alias, key in sorted(SUBJECT_ALIASES.items(), key=lambda item: -len(item[0])):
+        # 201/204/308/408 仅作为完整科目代码识别，不能因题干含「2019」
+        # 或「308 例」而误切换科目；中文名称和英文别名可做包含匹配。
+        if alias.isdigit():
+            continue
+        if alias and alias in compact:
+            return key
+    return default
+
+
 COACHING_STYLES: Dict[str, Tuple[str, str]] = {
     "1": ("严格把关·保姆提分型 (Strict & Disciplined)", "以真题阅卷人严苛视角审视解答，步步赋分，零容忍计算与书写失误，强制归因"),
     "2": ("高效应试·高频秒杀型 (High-Yield Hacker)", "80/20法则，只抓必考得分盘，传授代入/特值/排除/帽子词口诀与解题模板"),
@@ -230,15 +269,30 @@ def resolve_profile_schools(cfg=None) -> Tuple[str, str]:
     return ("" if s1 in bad else s1), s2
 
 def _discover_new_syllabus() -> Optional[Path]:
-    """探测 04-专业课/参考资料 下的新考纲文档"""
+    """探测 04-专业课/参考资料 下的新考纲文档（多候选取文件名年份最新者）。
+
+    [F2 修复·考纲 Diff 自动探测全线不命中] 原模式集要求年份在关键词之前
+    （``*2027*大纲*``/``*2027*考纲*``），学员实际命名「408考纲_2027.md」等
+    年份在后 → 全部模式不命中，自动关联静默失效坠入演示模式（仿真 C-P6
+    实测）。现补充「考纲/大纲 + 年份在后」与 ``*考纲*.md/txt`` 兜底模式；
+    命中从「首个」改为「全部候选按文件名四位年份降序取最新」（无年份排后、
+    同级按名称序稳定），避免「2026 旧版」盖过「2027 新版」。demo/样例排除保留。
+    """
     pro_ref = ROOT / "04-专业课" / "参考资料"
     if not pro_ref.exists():
         return None
-    for pat in ("*2027*大纲*", "*2027*考纲*", "*新*大纲*", "*新*考纲*", "*大纲*.md", "*大纲*.txt"):
+    candidates: Dict[Path, int] = {}
+    for pat in ("*2027*大纲*", "*2027*考纲*", "*新*大纲*", "*新*考纲*",
+                "*考纲*20??*", "*大纲*20??*",
+                "*大纲*.md", "*大纲*.txt", "*考纲*.md", "*考纲*.txt"):
         for m in pro_ref.glob(pat):
-            if m.is_file() and "demo" not in m.name.lower() and "样例" not in m.name:
-                return m
-    return None
+            if not m.is_file() or "demo" in m.name.lower() or "样例" in m.name:
+                continue
+            ym = re.search(r"(?<!\d)(20\d{2})(?!\d)", m.stem)
+            candidates.setdefault(m, int(ym.group(1)) if ym else 0)
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda p: (-candidates[p], p.name))[0]
 
 def _looks_like_path(token: str) -> bool:
     """判断字符串是否呈现为文件路径形态（用于区分答题卡内联文本与文件）"""
@@ -482,14 +536,47 @@ def _list_checkin_module_names(subject: str = None) -> list:
     return names
 
 
+#: [审查修复·打卡落点] 打卡回显/候选提示用的简短科目名（与 SUBJECT_DIRS 同源）
+_CHECKIN_SUBJECT_LABELS: Dict[str, str] = {
+    "math": "数学", "eng": "英语", "pol": "思想政治理论", "pro": "专业课",
+}
+
+#: [审查修复·打卡落点] --subject 入参的中英文别名归一
+_CHECKIN_SUBJECT_ALIASES: Dict[str, str] = {
+    "math": "math", "数学": "math",
+    "eng": "eng", "英语": "eng",
+    "pol": "pol", "政治": "pol", "思想政治理论": "pol",
+    "pro": "pro", "专业课": "pro",
+}
+
+
+def _normalize_checkin_subject(subject: Optional[str]) -> Optional[str]:
+    """[审查修复·打卡落点] 归一化 --subject 入参（支持 math/数学/eng/英语…）。"""
+    if not subject:
+        return None
+    key = str(subject).strip()
+    return _CHECKIN_SUBJECT_ALIASES.get(key) or _CHECKIN_SUBJECT_ALIASES.get(key.lower())
+
+
 def mark_today_task_done(keyword: str, subject: str = None) -> Tuple[bool, str]:
     """在今日任务中根据关键词匹配并标记为 [x] 完成
 
     [UT4 修复·CLI-1] 匹配基于磁盘任务原文；建档名/渲染名经同义词组互认
     （如「核心知识点」↔「核心精讲」）。匹配失败时列出当前可打卡模块名并
     以 difflib 给出最近似建议，不再冷失败。
+
+    [审查修复·跨科目误打卡] 打卡落点规则（此前固定按 数学→英语→政治→
+    专业课 顺序取第一个命中：当前科目是英语时 `ky done 核心精讲` 也会打卡
+    数学，且数学命中后英语永远打不上）：
+    1. 显式传入 subject（CLI ``--subject=`` / REPL 会话科目）→ 只在该科目内匹配；
+    2. 未显式指定 → **当前科目（active_subject）优先**；
+    3. 当前科目未命中时：仅一科命中 → 打卡该科并回显科目名；多科命中 →
+       不猜测，列出候选科目并提示显式指定；
+    4. 回显一律带科目名，考生可确认打卡落点。
     """
     _aliases = _expand_module_aliases(keyword)
+    _target = _normalize_checkin_subject(subject)
+    _current = ""
 
     def _humanize(line: str) -> str:
         # [收尾修复·回显竖线] 此前把整行表格原文（含 | 竖线）直接打印。
@@ -507,72 +594,45 @@ def mark_today_task_done(keyword: str, subject: str = None) -> Tuple[bool, str]:
         ("03-思想政治理论", "pol"),
         ("04-专业课", "pro"),
     ]
-    matched = False
-    match_info = ""
-    for dir_name, s_key in subjs:
-        if subject and subject != s_key:
-            continue
+
+    if _target:
+        ordered = [t for t in subjs if t[1] == _target]
+    else:
+        try:
+            _current = _normalize_checkin_subject(
+                str(load_config().get("active_subject") or "")) or ""
+        except Exception:
+            _current = ""
+        if _current:
+            ordered = [t for t in subjs if t[1] == _current] + \
+                      [t for t in subjs if t[1] != _current]
+        else:
+            ordered = list(subjs)
+
+    # 先收集各科目命中，再决定落点（不再"第一处命中即写入"）
+    _hits = []  # [(dir_name, s_key, task_file, lines, 命中行号)]
+    for dir_name, s_key in ordered:
         task_file = ROOT / dir_name / "_状态" / "今日任务.md"
         if not task_file.exists():
             continue
-        content = read_text_safe(task_file)
-        lines = content.splitlines()
-        new_lines = []
-        for line in lines:
-            # [UT4 修复·CLI-1] 关键词或其同义别名命中即视为同一任务环节。
+        _lines = read_text_safe(task_file).splitlines()
+        _hit_idx = [
+            i for i, line in enumerate(_lines)
             if ("|" in line and (keyword in line or any(_a in line for _a in _aliases))
-                    and not line.replace(" ", "").startswith("|---|") and "完成状态" not in line and "模块" not in line):
-                if "[x]" in line.lower():
-                    match_info = f"任务此前已是完成状态: {_humanize(line)}"
-                    matched = True
-                    new_lines.append(line)
-                else:
-                    new_line = re.sub(r'\[\s*\]', '[x]', line, count=1)
-                    if new_line != line:
-                        matched = True
-                        match_info = f"已完成打卡: {_humanize(new_line)}"
-                        new_lines.append(new_line)
-                    else:
-                        new_lines.append(line)
-            else:
-                new_lines.append(line)
-        if matched:
-            atomic_write_text(task_file, "\n".join(new_lines))
-            # [P2 修复·打卡完成率滞后] 打卡后立即重算今日完成率。此前唯一
-            # 记录点是 SessionEnd 钩子（agent/hooks.py）—— 打卡后看板/复盘
-            # 仍显示旧值，直到下次会话结束（实测 0/9 → 下次会话后才 1/9）。
-            # 统计口径与 SessionEnd 钩子逐条一致；同步失败不阻断打卡本身
-            # （SessionEnd 钩子仍会兜底重算，属可自愈副作用）。
-            try:
-                total_n = done_n = 0
-                for _d in ("01-数学", "02-英语", "03-思想政治理论", "04-专业课"):
-                    _tf = ROOT / _d / "_状态" / "今日任务.md"
-                    if not _tf.exists():
-                        continue
-                    for _l in read_text_safe(_tf).splitlines():
-                        if ("|" in _l and not _l.replace(" ", "").startswith("|---|")
-                                and "完成状态" not in _l and "模块" not in _l):
-                            total_n += 1
-                            if "[x]" in _l.lower():
-                                done_n += 1
-                if total_n:
-                    try:
-                        import study_planner as _sp
-                    except ImportError:  # pragma: no cover
-                        from tools import study_planner as _sp
-                    _sp.record_daily_completion(
-                        rate=round(done_n / total_n * 100, 1),
-                        total=total_n, completed=done_n)
-            except Exception:
-                pass
-            return True, match_info
+                and not line.replace(" ", "").startswith("|---|")
+                and "完成状态" not in line and "模块" not in line)
+        ]
+        if _hit_idx:
+            _hits.append((dir_name, s_key, task_file, _lines, _hit_idx))
 
-    if not matched:
+    if not _hits:
         # [UT4 修复·CLI-1] 匹配失败不得冷失败：列出当前可打卡模块名，并以
         # difflib 给出最近似建议（UT4 实测「打卡 核心知识点」时磁盘已改名
         # 「核心精讲」，旧文案无任何候选提示，考生无所适从）。
-        _names = _list_checkin_module_names(subject)
+        _names = _list_checkin_module_names(_target)
         _msg = f"未找到包含关键词「{keyword}」的今日任务"
+        if _target:
+            _msg += f"（{_CHECKIN_SUBJECT_LABELS.get(_target, _target)}）"
         if _names:
             _uniq = list(dict.fromkeys(_names))
             _msg += f"｜当前可打卡模块：{'、'.join(_uniq)}"
@@ -580,7 +640,75 @@ def mark_today_task_done(keyword: str, subject: str = None) -> Tuple[bool, str]:
             if _close:
                 _msg += f"；你是否想打卡「{_close[0]}」？可输入：打卡 {_close[0]}"
         return False, _msg
-    return True, match_info
+
+    # [审查修复·打卡落点] 当前科目未命中且多科命中 → 不猜测，要求显式指定
+    if (not _target) and len(_hits) > 1 and _hits[0][1] != _current:
+        _cand = "、".join(
+            f"{_CHECKIN_SUBJECT_LABELS.get(s, s)}(--subject={s})"
+            for _, s, *_ in _hits)
+        return False, (f"关键词「{keyword}」在多个科目命中：{_cand}；"
+                       f"请指定科目后重试，如：ky done --subject={_hits[0][1]} {keyword}")
+
+    dir_name, s_key, task_file, lines, _hit_idx = _hits[0]
+    _label = _CHECKIN_SUBJECT_LABELS.get(s_key, s_key)
+    matched = False
+    match_info = ""
+    new_lines = []
+    for line in lines:
+        # [UT4 修复·CLI-1] 关键词或其同义别名命中即视为同一任务环节。
+        if ("|" in line and (keyword in line or any(_a in line for _a in _aliases))
+                and not line.replace(" ", "").startswith("|---|") and "完成状态" not in line and "模块" not in line):
+            if "[x]" in line.lower():
+                match_info = f"任务此前已是完成状态（{_label}）: {_humanize(line)}"
+                matched = True
+                new_lines.append(line)
+            else:
+                new_line = re.sub(r'\[\s*\]', '[x]', line, count=1)
+                if new_line != line:
+                    matched = True
+                    match_info = f"已完成打卡（{_label}）: {_humanize(new_line)}"
+                    new_lines.append(new_line)
+                else:
+                    new_lines.append(line)
+        else:
+            new_lines.append(line)
+    if matched:
+        atomic_write_text(task_file, "\n".join(new_lines))
+        # [审查修复·打卡落点] 其他科目也有同名任务时附注（不静默）
+        _others = [s for _, s, *_ in _hits[1:]]
+        if _others:
+            _other_names = "、".join(_CHECKIN_SUBJECT_LABELS.get(s, s) for s in _others)
+            match_info += f"；其他科目也有同名任务：{_other_names}"
+        # [P2 修复·打卡完成率滞后] 打卡后立即重算今日完成率。此前唯一
+        # 记录点是 SessionEnd 钩子（agent/hooks.py）—— 打卡后看板/复盘
+        # 仍显示旧值，直到下次会话结束（实测 0/9 → 下次会话后才 1/9）。
+        # 统计口径与 SessionEnd 钩子逐条一致；同步失败不阻断打卡本身
+        # （SessionEnd 钩子仍会兜底重算，属可自愈副作用）。
+        try:
+            total_n = done_n = 0
+            for _d in ("01-数学", "02-英语", "03-思想政治理论", "04-专业课"):
+                _tf = ROOT / _d / "_状态" / "今日任务.md"
+                if not _tf.exists():
+                    continue
+                for _l in read_text_safe(_tf).splitlines():
+                    if ("|" in _l and not _l.replace(" ", "").startswith("|---|")
+                            and "完成状态" not in _l and "模块" not in _l):
+                        total_n += 1
+                        if "[x]" in _l.lower():
+                            done_n += 1
+            if total_n:
+                try:
+                    import study_planner as _sp
+                except ImportError:  # pragma: no cover
+                    from tools import study_planner as _sp
+                _sp.record_daily_completion(
+                    rate=round(done_n / total_n * 100, 1),
+                    total=total_n, completed=done_n)
+        except Exception:
+            pass
+        return True, match_info
+
+    return False, f"未找到包含关键词「{keyword}」的今日任务"
 
 def manage_coaching_style(choice: str = None) -> Tuple[str, bool]:
     """查看或切换私教辅导风格，并同步至 AGENTS.md 与 ky_config.json"""
@@ -661,6 +789,30 @@ def is_math_disabled(cfg: dict) -> bool:
     if str(plan.get("math_key") or "").strip().lower() in MATH_NONE_KEYS:
         return True
     return str(plan.get("math_name") or "").strip() == "不考数学"
+
+
+#: active_subject 的合法值集合（与 SUBJECT_DIRS 键集同源，杜绝两处漂移）。
+ACTIVE_SUBJECT_VALUES = frozenset(SUBJECT_DIRS)
+
+
+def resolve_active_subject(cfg: dict) -> str:
+    """解析「当前激活科目」，不考数学的方案绝不回落数学。
+
+    [F8 修复·不考数学默认激活数学] 此前各展示/初始化位直接
+    ``cfg.get("active_subject", "math")``：配置缺失或值为 math 时，不考数学
+    的考生（math_key=none / 双专业课 / 199 管综）在 REPL 头部、提示符与
+    config/gateway 显示位会看到「数学专属私教」，与拒绝 /math 的既有闸门
+    自相矛盾（仿真 C-P2 实测）。语义：合法值 ∈ {math,eng,pol,pro}；值为
+    math 且不考数学 → eng；缺失/非法 → 不考数学 ? eng : math；其余原样。
+    """
+    if not isinstance(cfg, dict):
+        cfg = {}
+    val = str(cfg.get("active_subject") or "").strip().lower()
+    if val not in ACTIVE_SUBJECT_VALUES:
+        return "eng" if is_math_disabled(cfg) else "math"
+    if val == "math" and is_math_disabled(cfg):
+        return "eng"
+    return val
 
 
 def recommended_checkin_command(cfg: dict) -> str:

@@ -389,8 +389,20 @@ def atomic_write_text(path: PathLike, text: str, *, encoding: str = "utf-8",
         fd = None
         tmp_path = None
         try:
+            # [深路径修复] mkstemp 临时名 = 前缀（".目标名."，比目标名长 2）+ 8 随机
+            # 字符 + ".tmp"，原样使用恒比目标名长 14 字符。目录路径较深时（实测
+            # pytest basetemp 偏长），目标名尚在 Windows MAX_PATH 内、临时名先
+            # 越界，_os.open 报 FileNotFoundError 写出失败（用例随 basetemp 长度
+            # 翻转：tests/test_fix_20261005_data.py::test_ingest_long_source_name_truncated）。
+            # 对长目标名截断前缀，保证临时名不长于目标名（目标名可写 ⇒ 临时名必
+            # 可写）；短名（≤76）保持原名便于残留排障 —— 既知局限：名字 62~76 ×
+            # 目录 169+ 字符的窄带内仍可能越界（双巧合、报可见异常非静默），正常
+            # 工作区目录远短于此。
+            _tmp_prefix = f".{target.name}."
+            if len(target.name) > 76:
+                _tmp_prefix = _tmp_prefix[:len(target.name) - 12]
             fd, tmp_name = tempfile.mkstemp(
-                prefix=f".{target.name}.", suffix=".tmp", dir=str(parent))
+                prefix=_tmp_prefix, suffix=".tmp", dir=str(parent))
             tmp_path = Path(tmp_name)
             with os.fdopen(fd, "w", encoding=encoding, newline=newline) as f:
                 fd = None          # 已交给文件对象，避免重复 close

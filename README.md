@@ -17,7 +17,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v3.1.2-blue?style=flat-square&logo=github&logoColor=white" alt="版本 v3.1.2" />
-  <img src="https://img.shields.io/badge/Tests-3313%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 3313 Passed" />
+  <img src="https://img.shields.io/badge/Tests-3889%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 3889 Passed" />
   <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-0f766e?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
   <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
   <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
@@ -236,9 +236,9 @@ ky
 方向键/鼠标选择、Enter 执行，长任务在后台线程运行不冻结界面，执行输出保留在右侧日志区不再一闪而过；
 - **纯终端极速体验**：数字快捷键 `1`-`9` 秒级穿透，资源占用极低；未安装 `textual`（或非交互式终端）时自动回落到纯文本控制台，功能不缺失；
 
-### 5. 📊 5-Tab 移动端自测看板 (`docs/index.html`)
+### 5. 📊 5-Tab 移动端自测看板 (本地完整版 `docs/.local/index.html`)
 
-- **零服务器依赖**：自包含单文件 HTML，手机浏览器打开即用，支持 **PWA 添加到手机主屏幕**；
+- **零服务器依赖**：自包含单文件 HTML，手机浏览器打开即用，支持 **PWA 添加到手机主屏幕**（日常复习请打开本地完整版 `docs/.local/index.html`；根目录 `docs/index.html` 是供分享的公开脱敏快照，不含今日任务正文与卡背答案）；
 - **独创遮罩自测**：在 `🧠 必背` 页签开启高斯模糊遮罩，触碰卡片秒测数学核心公式、英语高频词与政治帽子词；
 - **5 套主题预设一键轮换**：曜石黑 / 晨曦白 / 护眼绿 / 樱粉 / 高对比（无障碍）随按钮循环切换，选择自动记忆；
 - **备考节律主题**：按距初试天数自动推荐主题（基础期深色 → 强化期护眼绿 → 冲刺期亮色 → 临考月暖粉 → 决战周高对比），手动选择后不再被覆盖；
@@ -503,28 +503,29 @@ ASCII 字母 18 / 空白 6 / 其余 95，单位 1/100 token，最大实测误差
 #    请在干净副本里跑，或设 KY_TEST_ALLOW_REAL_WORKSPACE=1 显式放行（先备份 ky_config.json）。
 python tools/test_ky_suite.py
 
-# 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、开放题判分等，共 131 项断言)
+# 专项测试新增功能 (WeChat 检索、Rust 双模一致性、PySide6 桌面端、开放题判分等，共 132 项断言)
 python tools/test_new_features.py
 
-# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 2879 项）
+# pytest 单元与进程层测试（CLI 入口、并发与原子性、主题设计系统、看板资产、SVG 图标与设置面板等，共 3455 项）
 python -m pytest -q
 ```
 
 > [!NOTE]
-> **测试计数已做成环境无关，但前提仍要写清**（下列数字为 2026-10-02 实测）：
+> **测试计数已做成环境无关，但前提仍要写清**（下列数字为 2026-10-07 实测）：
 >
 > - `test_ky_suite.py`：26 组共 **307 项断言**。Git 工作区内为 307 通过 / 0 跳过；
 > 干净检出（`git archive` 导出、无 `.git`）为 **302 通过 + 5 跳过 = 307** ——
 > 「测试组 7 Git 隐私隔离」的 5 条断言需 `.git`，无 `.git` 时逐条记为跳过，故**两种环境总数恒为 307**。
-> - `test_new_features.py`：**131 项断言**（0 跳过），与是否 Git 工作区无关。
-> - `pytest tests/`：共 **2879 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
-> **含** `dist/` 构建产物，实测 2875 通过 + 4 跳过）。跳过项为联网测试未设
-> `KY_LIVE_TEST=1`（2 条）、一条需特定 registry 探测串的守卫（1 条）与一条 POSIX
-> 权限位断言（Windows 不适用，1 条）。
+> - `test_new_features.py`：**132 项断言**（0 跳过），与是否 Git 工作区无关。
+> - `pytest tests/`：共 **3455 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
+> **含** `dist/` 构建产物，实测 3450 通过 + 5 跳过）。跳过项为联网测试未设
+> `KY_LIVE_TEST=1`（2 条）、一条需特定 registry 探测串的守卫（1 条）、一条 POSIX
+> 权限位断言（Windows 不适用，1 条）与一条 prompt 外置迁移后的设计性跳过
+> （1 条，迁移完成后由 golden 固化用例持续覆盖该不变量）。
 > 在**无** `dist/` 的副本里跑，6 条打包断言会转为跳过 —— 收集总数不变，通过数下降。
 > 在**无 `cat` 的 Windows 裸机**（Git usr\bin 未加入 PATH）上，2 条沙箱阴性对照会转为
 > 跳过 —— 收集总数不变，通过数下降（该路径由 CI 的 Linux/macOS 作业与 Git 自带 coreutils 覆盖）。
-> 在**公开副本**里跑还会少一整份 `tests/test_fix_publish_privacy.py`（私有工作区实测 106 项）：
+> 在**公开副本**里跑还会少一整份 `tests/test_fix_publish_privacy.py`（私有工作区收集 139 项）：
 > 它测的 `tools/sync_publish.py` / `tools/build_package.py` 在公开副本里是刻意保留的占位文件，
 > 该测试只对私有工作区有意义，导出时按 `privacy_policy.PRIVATE_WORKSPACE_ONLY_PATHS` 剔除。
 > ⚠️ 造副本时排除目录**必须锚定根级路径**（如 `--exclude=./dist`）：写成裸 `dist` 会连
@@ -533,7 +534,7 @@ python -m pytest -q
 >
 > 改文档里的计数时，请**把对应环境一并写上**，否则下一个人会误判为「数字漂移」。
 
-- **测试保障**：主套件 26 组测试集 **307 项断言** + 新功能专项 **131 项断言** + pytest 单元/进程层 **2875 项**（合计 **3313 项通过**，另有 4 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
+- **测试保障**：主套件 26 组测试集 **307 项断言** + 新功能专项 **132 项断言** + pytest 单元/进程层 **3450 项**（合计 **3889 项通过**，另有 5 项按环境跳过），全链路覆盖工业级 Agent Loop、权限沙箱、研招情报、多模型开放题判分等；
 - **门禁脚本**：`python tools/lint_check.py`（零依赖静态检查，只卡 ERROR 级问题）、`python tools/check_dashboard.py`（看板产物守卫）已接入 CI；
 - **CI 流水线**：内置 GitHub Actions 多平台 (Linux/Windows) 与多 Python 版本自动化测试保障；
 - **开发者文档**：如需参与贡献或了解完整项目架构树，请参阅 [🛠️ 开发者与贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。

@@ -21,9 +21,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:
-    from tools.cli.shared import ROOT, SUBJECT_DIRS, load_config
+    from tools.cli.shared import ROOT, SUBJECT_DIRS, load_config, resolve_active_subject
 except ImportError:
-    from cli.shared import ROOT, SUBJECT_DIRS, load_config
+    from cli.shared import ROOT, SUBJECT_DIRS, load_config, resolve_active_subject
 
 try:
     from tools.cli.repl.renderer import C, colorize
@@ -69,6 +69,19 @@ MAX_POST_BODY_BYTES = 16 * 1024 * 1024
 
 #: [审计 2026-09-30 P1-8] 群聊机器人后台回复任务的并发闸（上限 8）。
 _WEBHOOK_BG_SEM = threading.BoundedSemaphore(8)
+
+#: [修复·伴侣页公式乱码] 网关 /assets/ 静态资源的后缀 → Content-Type 映射。
+_ASSET_CONTENT_TYPES = {
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".woff2": "font/woff2",
+    ".woff": "font/woff",
+    ".map": "application/json",
+    ".html": "text/html; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".ico": "image/x-icon",
+}
 
 # 回调入口是公网暴露面时，签名校验仍可能被重放/洪泛绕过业务层。这里做
 # 进程级短窗口限流；真正的多实例部署应在反向代理继续配置限流。
@@ -354,10 +367,70 @@ def create_gateway_handler(token: str = "", webhook_token: str = ""):
                            "hint": "Provide 'Authorization: Bearer <token>' or 'X-KY-Token: <token>' header"}
             self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
 
+        def _asset_404(self) -> None:
+            """静态资源 404 兜底（写响应失败也不拖垮请求线程）。"""
+            try:
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"asset not found")
+            except OSError:
+                self.close_connection = True
+
+        def _serve_asset(self, raw_path: str) -> None:
+            """[修复·伴侣页公式乱码] 服务 /assets/ 下的第三方静态资源。
+
+            live.html 以相对路径引用 KaTeX / marked（``assets/vendor/...``），
+            浏览器解析为本网关的 ``/assets/...`` 请求；此前 do_GET 无此分支，
+            资源全部 404，页面公式渲染降级为源码。资源根按 live.html 的既有
+            回退顺序定位：``ROOT/docs/assets``，不存在时回退
+            ``ROOT/05-考研看板/docs/assets``。
+
+            本分支在 ``_is_authorized`` 之前豁免 token 鉴权：``<script src>`` /
+            ``<link href>`` 标签请求由浏览器直接发起，无法携带 ``X-KY-Token``
+            头（live.html 的 authHeaders() 只作用于 fetch）；若静态资源也过
+            token 闸门，配了 KY_GATEWAY_TOKEN 的手机端必然加载失败。assets 下
+            只有 KaTeX / marked 等第三方库文件，无隐私数据，豁免不破坏 P0-3
+            「页面与 API 不裸奔」语义。
+            """
+            assets_root = ROOT / "docs" / "assets"
+            if not assets_root.is_dir():
+                assets_root = ROOT / "05-考研看板" / "docs" / "assets"
+            try:
+                rel = urllib.parse.unquote(raw_path[len("/assets/"):])
+                root_resolved = assets_root.resolve()
+                target = (assets_root / rel).resolve()
+            except (OSError, ValueError):
+                return self._asset_404()
+            # 安全：unquote 后再解析，任何越界（%2e%2e / .. / 绝对路径 / 符号链接
+            # 逃逸）与目录、不存在文件一律 404 —— 绝不读出 assets 根之外的任何
+            # 文件（尤其 ky_config.json）。
+            if not target.is_relative_to(root_resolved) or not target.is_file():
+                return self._asset_404()
+            ctype = _ASSET_CONTENT_TYPES.get(target.suffix.lower(),
+                                             "application/octet-stream")
+            try:
+                content = target.read_bytes()
+            except OSError:
+                return self._asset_404()
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.end_headers()
+                self.wfile.write(content)
+            except OSError:
+                # 单资源写失败（如客户端提前断开）不能拖垮请求线程。
+                self.close_connection = True
+
         def do_GET(self):
+            parsed = urllib.parse.urlparse(self.path)
+            # [修复·伴侣页公式乱码] /assets/ 静态资源在鉴权之前豁免处理，
+            # 理由见 ``_serve_asset`` 文档串。
+            if parsed.path.startswith("/assets/"):
+                return self._serve_asset(parsed.path)
             if not self._is_authorized():
                 return self._deny()
-            parsed = urllib.parse.urlparse(self.path)
             if parsed.path in ("/live", "/", "/index.html"):
                 live_html_p = ROOT / "docs" / "live.html"
                 if not live_html_p.exists():
@@ -846,7 +919,8 @@ def run_server(port: int = 8088, host: str = "127.0.0.1", gateway_token: Optiona
     print(colorize(f"\n[🚀 考研智能体 Webhook 网关与实时 Web 伴侣正在启动... 监听地址: {host}:{port}]", C.BOLD))
     print(f"  - 网页实时 LaTeX 伴侣: http://{host}:{port}/live")
     print(f"  - 钉钉/企业微信回调地址: http://{host}:{port}/webhook")
-    print(f"  - 当前默认学科: {SUBJECT_DIRS[cfg.get('active_subject','math')][1]}")
+    # [F8 修复·不考数学默认激活数学] 统一经 resolve_active_subject 解析
+    print(f"  - 当前默认学科: {SUBJECT_DIRS[resolve_active_subject(cfg)][1]}")
     print("  - 支持接收群聊提问并自动回复，按 Ctrl+C 停止服务。\n")
 
     effective_token = (gateway_token or "").strip() or os.environ.get("KY_GATEWAY_TOKEN", "").strip() \

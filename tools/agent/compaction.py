@@ -38,6 +38,17 @@ SUMMARY_KEYS = ("goal", "progress", "key_info", "file_ops", "pending")
 
 #: 压缩模式：规则摘要 / 大模型摘要。非法值一律回落 ``rule_only``。
 COMPACT_MODES = ("rule_only", "llm")
+
+# [R3 波动收敛] 稳定性优先链路的采样温度（关采样）。延迟导入 + 兜底值，
+# 避免 agent 包在导入期就牵出 llm_client（与 _default_llm_fn 的延迟导入
+# 理由一致：本模块须能被单独导入而不加载网络栈）。
+try:  # pragma: no cover - 双导入路径
+    from llm_client import STABLE_TEMPERATURE
+except ImportError:  # pragma: no cover
+    try:
+        from tools.llm_client import STABLE_TEMPERATURE  # type: ignore
+    except ImportError:
+        STABLE_TEMPERATURE = 0.0
 DEFAULT_COMPACT_MODE = "rule_only"
 
 #: key_info 的保护类别。前三类为考研教学语义；[W4] 新增 ``citations``：
@@ -513,7 +524,11 @@ def llm_summarize(messages: List[Dict[str, Any]], *, focus: Optional[str] = None
             config=config,
             workspace_root=workspace_root,
             system_prompt="你是严谨的上下文压缩器，只输出 JSON。",
-            temperature=0.1,
+            # [R3 波动收敛·根因 3] 0.1 → 0（STABLE_TEMPERATURE）：摘要压缩是
+            # **抽取/整理**类任务——同一段对话应压出同一份摘要。留 0.1 的采样
+            # 会让摘要措辞逐轮漂移，而摘要是 resume 上下文的唯一来源（漂移
+            # 直接等于「同一会话在不同轮次记得的事不一样」），跨轮对比失真。
+            temperature=STABLE_TEMPERATURE,
             timeout=60.0,
             max_tokens=2000,
         )

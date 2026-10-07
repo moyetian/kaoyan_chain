@@ -153,7 +153,7 @@ def test_textual_app_boots_with_menu_and_summary():
             await pilot.pause()
             menu = app.query_one("#menu")
             summary = str(app.query_one("#summary").render())
-            assert len(menu.children) == 11
+            assert len(menu.children) == 13  # [2026-10-06] 11 -> 13 (报到 11 / 交作业 12)
             assert "倒计时" in summary
             assert "今日打卡" in summary
 
@@ -220,6 +220,15 @@ def test_escape_markup_is_literal_and_idempotent_for_plain_text():
     assert tui_app.escape_markup("[red]x[/red]") == "\\[red]x\\[/red]"
     assert tui_app.escape_markup("纯文本，无标记") == "纯文本，无标记"
     assert tui_app.escape_markup(123) == "123"
+
+
+def test_action_output_failure_classification_is_shared():
+    from tools.action_status import output_has_failure
+
+    assert output_has_failure("\x1b[91m[!] 执行过程中发生异常: 连接失败\x1b[0m")
+    assert output_has_failure("[×] 考纲比对异常: 文件不存在")
+    assert not output_has_failure("[!] 检索源告警（可能是反爬验证，不代表无结果）")
+    assert not output_has_failure("[+] 考纲 Diff 完成：新增 2 / 削除 0")
 
 
 def test_summary_failure_escapes_exception_markup(tmp_path, monkeypatch):

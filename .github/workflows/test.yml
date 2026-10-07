@@ -144,6 +144,12 @@ jobs:
       run: |
         python tools/lint_check.py --quiet
 
+    - name: Source Size Ceiling
+      # 架构协议禁止源码文件超过 1,000 行；当前 agent loop 仍有历史遗留超限，
+      # 因此该门禁会明确暴露未完成的 P1-1 拆分，而不是让它继续静默膨胀。
+      run: |
+        python tools/check_source_size.py --report-only
+
     - name: Dashboard Artifact Guard
       # 重新构建看板并校验产物内嵌 JS 语法 + 前端契约 + 无空图标
       # （历史上曾因模板引号错误导致整页 JS 失效却顺利通过 CI）

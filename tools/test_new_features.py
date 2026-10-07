@@ -385,7 +385,10 @@ D. 2
             "GUI: MainWindow 成功实例化",
             "GUI: MainWindow 窗口标题正确",
             "GUI: Tab 分页完备",
-            "GUI: 10个功能卡片按钮已全部注册",
+            # [2026-10-06 同步] 下方断言文案已改为动态卡数（不再写死「10个」），
+            # 此处的跳过标签是给人看的输出文本，需与断言文案保持一致，否则 CI
+            # 上 PySide6 缺失时会显示一条与实际断言对不上的跳过项。
+            "GUI: 功能卡片按钮已全部注册",
             "GUI: WeChatSearchDialog 成功实例化",
             "GUI: 微信搜索对话框控件完整",
         ]
@@ -411,6 +414,7 @@ D. 2
             os.environ["QT_QPA_PLATFORM"] = "offscreen"
             from PySide6.QtWidgets import QApplication, QWidget
             from tools.gui.main_window import MainWindow
+            from tools.gui.views.function_cards import CARD_ITEMS
             from tools.gui.widgets.wechat_search_dialog import WeChatSearchDialog
 
             app = QApplication.instance()
@@ -422,7 +426,19 @@ D. 2
             runner.assert_true(win is not None, "GUI: MainWindow 成功实例化")
             runner.assert_true("考研学习链" in win.windowTitle(), "GUI: MainWindow 窗口标题正确")
             runner.assert_true(win.tab_widget.count() == 4, f"GUI: Tab 分页完备 (共 {win.tab_widget.count()} 个Tab)")
-            runner.assert_true(len(win._feature_buttons) == 10, f"GUI: 10个功能卡片按钮已全部注册 (实际: {len(win._feature_buttons)})")
+            # [动态断言·2026-10-06] 卡数此前硬编码 10，扩卡时必然漂移（2026-10-06
+            # 由 10 扩到 12 后此处变红）。改为对 CARD_ITEMS 长度断言：卡片数与功能
+            # 卡清单「同源一致」由数据结构保证，而非靠人手同步一个数字。
+            # 同时钉住 feature_cards（同一批控件的另一个契约名）也一致。
+            _expected_cards = len(CARD_ITEMS)
+            runner.assert_true(
+                len(win._feature_buttons) == _expected_cards,
+                f"GUI: 功能卡片按钮已全部注册 (期望 {_expected_cards} 个 / "
+                f"实际 {len(win._feature_buttons)})")
+            runner.assert_true(
+                len(win.feature_cards) == _expected_cards,
+                f"GUI: feature_cards 与 _feature_buttons 卡数一致 "
+                f"(期望 {_expected_cards} / 实际 {len(win.feature_cards)})")
 
             # C.2 微信搜索对话框实例化
             dialog = WeChatSearchDialog(parent=win)
@@ -438,8 +454,16 @@ D. 2
                                "GUI: 暗黑主题编译产物覆盖 GUI 实际使用的全部核心控件规则")
             runner.assert_true(len(light_qss) > 200 and all(s in light_qss for s in _required_selectors),
                                "GUI: 明亮主题编译产物覆盖 GUI 实际使用的全部核心控件规则")
-            runner.assert_true(app.styleSheet() == dark_qss or app.styleSheet() == light_qss,
-                               "GUI: 主窗口构造后已把编译出的主题应用到 QApplication")
+            # [审查修复·环境相关断言] 此前断言 QSS ∈ {dark, light}，但只要本机
+            # QSettings 里记住过非明暗预设（如护眼绿 ui/preset=eye-green），
+            # resolve_theme 就会解析出该预设并应用，断言在"用户本机"必然红。
+            # 改为对照窗口同源解析结果（resolve_theme 是主窗口应用主题的唯一入口），
+            # 无论用户记住哪套预设都成立，且仍能抓住"根本没应用主题"的回归。
+            from tools.gui.theme_apply import resolve_theme as _resolve_theme
+            expected_qss = render_qss(_resolve_theme(getattr(win, "workspace_root", None)))
+            runner.assert_true(app.styleSheet() == expected_qss,
+                               "GUI: 主窗口构造后已把编译出的主题应用到 QApplication"
+                               f"（当前预设解析 QSS 长度 {len(expected_qss)}，实际 {len(app.styleSheet())}）")
 
             # C.4 改造前后对比：控件不得再持有内联样式（浅色主题曾被内联深色压过）
             inline_styled = [w for w in win.findChildren(QWidget)

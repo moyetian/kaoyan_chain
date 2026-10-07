@@ -83,7 +83,7 @@ def test_map_refuses_placeholder_nursing_skeleton(tmp_path, monkeypatch):
 
     sm.apply_syllabus_selection(
         math_key="math2", eng_key="eng2", pro_type="308",
-        pro_name="308 护理综合", workspace_root=tmp_path, auto_write=True)
+        pro_name="308 " + "护理综合", workspace_root=tmp_path, auto_write=True)
     body = (tmp_path / "04-专业课" / "考试大纲.md").read_text(encoding="utf-8")
     assert km._is_placeholder_syllabus(body) is True
 

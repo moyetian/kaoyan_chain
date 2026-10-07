@@ -8,14 +8,15 @@
 
   * ``视图`` 组 —— 4 个页面（原 QTabWidget 的 4 个页签），紧凑行，
     激活态 = 「左侧 3px 强调条 + acc-sub 底」，**不用巨型高亮块**；
-  * ``工具`` 组 —— 原 10 张功能卡的动作，点击仍走 ``win._on_card_clicked``。
+  * ``工具`` 组 —— 12 张功能卡的动作（2026-10-06 由 10 张增至 12 张：新增
+    ``ky rag`` 本地检索与 ``ky index`` 建索引），点击仍走 ``win._on_card_clicked``。
 
 [样式铁律] 组件内部不写任何内联样式，全部走 objectName + 主题 QSS。
 
 [阶段 D · 双态折叠] rail 支持 **252px 展开 ↔ 56px 折叠图标栏**：
 :meth:`KYNavRail.set_expanded` 切换；折叠时视图项清空文字（原文保留在 tooltip）
 并置动态属性 ``collapsed=True``（unpolish/polish 让 ``#NavItem[collapsed="true"]``
-生效），工具卡区（10 个工具项 + 分组标题 + 品牌/命令面板按钮）隐藏。
+生效），工具卡区（12 个工具项 + 分组标题 + 品牌/命令面板按钮）隐藏。
 **不做动画** —— QSS 无 transition，QPropertyAnimation 在离屏测试与 GC 时序下
 有崩溃风险。折叠开关按钮（``#NavToggle``）与 QSettings 持久化见
 ``views/nav_rail.build``。
@@ -194,7 +195,7 @@ class KYNavRail(QFrame):
         1. **视图项**：清空文字（原文保留在 tooltip 里，悬停仍可辨名）并置
            动态属性 ``collapsed=True``；改属性后必须 ``unpolish/polish``，
            QSS 的 ``#NavItem[collapsed="true"]`` 才会重新求值（居中 + 对称点区）。
-        2. **工具卡区隐藏**：10 个工具项 + 两个分组标题 + 品牌/命令面板按钮
+        2. **工具卡区隐藏**：全部工具项 + 两个分组标题 + 品牌/命令面板按钮
            ``setVisible(False)``（56px 放不下文字；命令面板仍可用 Ctrl+K）。
         3. **宽度**：``setFixedWidth(RAIL_COLLAPSED_WIDTH)``。
 

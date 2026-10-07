@@ -619,10 +619,12 @@ def _print_grading_result(res: Dict[str, Any]) -> None:
           f"（{res['alert_threshold']:.0%}，**探索性、非正式达标线**）")
 
 
-def _run_grading_capture() -> int:
+def _run_grading_capture(prompt_version: str = "") -> int:
     """``--grading-live``：真实调用 LLM 采集判分快照（**一次性计费**）。
 
     增量采集（已有快照的题目跳过，可中断续跑），采集完成后由调用方立即回放。
+    ``prompt_version`` 写入每条快照并注入判分配置（``""``=latest）——回放侧
+    ``check_prompt_version_match`` 据此校验版本匹配（ky grade-regress）。
     """
     try:
         from benchmarks.grading_judge import CASES_FILE, SNAPSHOTS_FILE, capture_snapshots
@@ -650,9 +652,11 @@ def _run_grading_capture() -> int:
     cases, _invalid = load_cases(CASES_FILE)
     print(f"  数据源: {CASES_FILE}（{len(cases)} 份）")
     print(f"  模型  : {model} @ {base_url}")
+    print(f"  prompt: {prompt_version or 'latest（默认）'}")
     print("  说明  : 增量采集（已有快照的题目跳过）；每题约 4 次调用，**会产生计费**")
     stats = capture_snapshots(cases, SNAPSHOTS_FILE, base_url=base_url,
                               api_key=api_key, model=model,
+                              prompt_version=prompt_version,
                               progress=lambda msg: print("  " + msg))
     print(f"  采集完成: 新增 {stats['captured']} / 跳过 {stats['skipped']} / "
           f"契约失败 {len(stats['invalid_cases'])} / 全失败 {len(stats['failed_cases'])}"
@@ -678,6 +682,9 @@ def main() -> int:
                         help="运行开放题判分评测（C4 pilot：快照回放，零网络零成本；不进 CI）")
     parser.add_argument("--grading-live", action="store_true",
                         help="[计费] 真实调用 LLM 采集判分快照（一次性），随后立即回放评测")
+    parser.add_argument("--grading-prompt-version", type=str, default="",
+                        help="[--grading-live] 采集时使用的判卷 prompt 版本（默认 latest；"
+                             "写入快照供 ky grade-regress 校验版本匹配）")
     parser.add_argument("--log", type=str, default="", help="[--srs] 指定复测事件日志路径")
     parser.add_argument("--min-samples", type=int, default=MIN_SRS_SAMPLES,
                         help=f"[--srs] 可信评测所需最小样本量 (默认 {MIN_SRS_SAMPLES})")
@@ -692,7 +699,7 @@ def main() -> int:
     failed = False
 
     if args.grading_live:
-        if _run_grading_capture() != 0:
+        if _run_grading_capture(args.grading_prompt_version) != 0:
             failed = True
         args.grading = True   # 采集后立即回放
 

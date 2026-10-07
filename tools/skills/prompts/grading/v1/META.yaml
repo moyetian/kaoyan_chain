@@ -1,0 +1,8 @@
+# 判卷提示词版本元数据（D1 外置版本化）
+# 单一事实源：本目录四个 .md 的正文文本与 open_grader.py 内置回退文本逐字节一致。
+version: "v1"
+date: "2026-10-06"
+changelog: |
+  初始外置版本：从 tools/skills/open_grader.py 的内联提示词逐字节提取，
+  行为零变化（动态插值处改为 {{...}} 占位符，渲染后与改动前完全一致）。
+author: "kaoyan-chain"

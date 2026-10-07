@@ -250,7 +250,11 @@ def collect_review_events(
     p = Path(path)
     if not p.exists():
         return events, invalid
-    for lineno, raw in enumerate(p.read_text(encoding="utf-8").splitlines(), start=1):
+    # [修复 2026-10-05·坏字节崩溃] 日志可能含损坏字节（断电写一半/外部工具
+    # 追加过非 UTF-8 内容）：errors="replace" 保证「坏行跳过」承诺成立 ——
+    # 解码层不再抛 UnicodeDecodeError 让整个报告崩溃（与下方错题本读取同口径）。
+    for lineno, raw in enumerate(
+            p.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
         line = raw.strip()
         if not line:
             continue

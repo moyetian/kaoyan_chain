@@ -26,6 +26,7 @@ import random
 import re
 import socket
 import ssl
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -50,6 +51,16 @@ except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
         UnsafeURLError,
         safe_urlopen,
         zlib_limited,
+    )
+
+# [退避/节流单一真源] 仓库此前只有本模块的「指数+加性抖动」与 fetcher 的 full jitter
+# 两套节奏；同机不同步的重试在反爬站点上等于惊群，会加重封禁。统一到 http_backoff。
+try:  # 源码脚本式（``py tools/xxx.py``）
+    from http_backoff import TokenBucket, retry_after_or_jitter
+except ImportError:  # pragma: no cover - 包式导入
+    from tools.http_backoff import (  # type: ignore
+        TokenBucket,
+        retry_after_or_jitter,
     )
 
 _LOG = logging.getLogger(__name__)
@@ -129,6 +140,95 @@ ANTI_BOT_MARKERS = (
 
 #: 瞬时可重试 HTTP 状态码
 RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
+
+# ── [节流] 按 host 的最小请求间隔（单一真源：tools/http_backoff.TokenBucket）──
+# [为什么要节流] bing/ddg/sogou/tavily 四源共用 ``get_text`` 一个出口，而仓库此前
+# **全无请求间隔控制**：多路检索（search_planned 默认 4 路）× 多轮追问会把请求数
+# 放大数倍，实测 DDG 约 20 次密集请求后即返回验证页。节流是唯一能在「不减少结果」
+# 的前提下降低封禁概率的手段（丢弃结果由 serve-stale 负责）。
+#: 各源的放行速率（请求/秒）与突发容量。默认保守 1 req/s、burst=1；反爬更严的源
+#: （sogou 微信、bing）单独放慢。**刻意不配 tavily 更高**——它与 bing/ddg 共享
+#: 同一批院校站点，放快等于自己踩自己。
+THROTTLE_RATES: Dict[str, Tuple[float, int]] = {
+    "default": (1.0, 1),
+    "www.bing.com": (0.5, 1),
+    "weixin.sogou.com": (0.5, 1),
+    "html.duckduckgo.com": (1.0, 1),
+}
+
+#: host → TokenBucket（进程内单例；跨进程不做持久化——节流是「本进程请求节奏」，
+#: 落盘反而会让重启后的第一轮请求凭陈旧节奏排队，语义混乱）。
+_THROTTLE_LOCK = threading.Lock()
+_THROTTLE_BUCKETS: Dict[str, TokenBucket] = {}
+
+#: 节流等待上限（秒）。宁可偶尔放过一次，也不让调用方的整体时间预算被节流吃掉
+#: ——「晚点返回」比「不返回」对考生更有用。
+THROTTLE_MAX_WAIT = 5.0
+
+
+def _throttle_for(host: str) -> TokenBucket:
+    """取（或惰性建）该 host 的令牌桶。"""
+    key = (host or "").lower()
+    rate, burst = THROTTLE_RATES["default"]
+    for domain, conf in THROTTLE_RATES.items():
+        if domain != "default" and key.endswith(domain):
+            rate, burst = conf
+            break
+    with _THROTTLE_LOCK:
+        bucket = _THROTTLE_BUCKETS.get(key)
+        if bucket is None:
+            bucket = TokenBucket(rate_per_sec=rate, burst=burst)
+            _THROTTLE_BUCKETS[key] = bucket
+        return bucket
+
+
+def respect_rate_limit(url: str, *, max_wait: float = THROTTLE_MAX_WAIT) -> float:
+    """按 host 施加最小请求间隔，返回实际等待秒数（0 表示无需等待）。
+
+    只在**真正发请求前**调用；不改变任何失败语义与返回结构（超时/重试/异常一律
+    原样上抛）。等待超过 ``max_wait`` 时放弃等待并放行——节流是保护措施，不该
+    成为新的超时来源。
+    """
+    host = urllib.parse.urlparse(str(url or "")).netloc
+    if not host:
+        return 0.0
+    bucket = _throttle_for(host)
+    if bucket.try_acquire(host):
+        return 0.0
+    delay = min(bucket.reserve(host), float(max_wait))
+    if delay > 0:
+        _LOG.debug("节流：%s 请求过快，等待 %.2f 秒", host, delay)
+        time.sleep(delay)
+        bucket.try_acquire(host)
+    return delay
+
+
+def reset_rate_limit() -> None:
+    """清空节流桶（测试用；避免真实等待）。"""
+    with _THROTTLE_LOCK:
+        _THROTTLE_BUCKETS.clear()
+
+
+def _retry_after_seconds(headers: Any) -> Optional[float]:
+    """读取 ``Retry-After``（仅整数秒形态）；非法时返回 ``None`` 交退避公式处理。
+
+    与 ``intelligence/fetcher._retry_after_seconds`` 同口径（HTTP-date 形态不解析：
+    抓取场景不值得为它引入时钟偏差处理）。**保留本模块既有的 Retry-After 解析**，
+    只是把它交给单一真源的 ``retry_after_or_jitter`` 统一决策。
+    """
+    if not headers:
+        return None
+    try:
+        raw = headers.get("Retry-After") or headers.get("retry-after")
+    except AttributeError:
+        return None
+    if raw is None:
+        return None
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    return value if value >= 0 else None
 
 
 def looks_like_anti_bot(html_text: str) -> str:
@@ -318,18 +418,29 @@ def get_text(
         ssl_status["ssl_verified"] = True
 
     last_error: Optional[Exception] = None
+    #: 上一次失败响应携带的 ``Retry-After``（秒）。反爬站点常用 429/503 告知
+    #: 「多久后再来」，忽略它会立刻重试并再被拒 —— 故传给退避公式优先采用。
+    _pending_retry_after: Optional[float] = None
 
     for attempt in range(max_retries + 1):
         if attempt > 0:
-            # 指数退避 + 随机抖动 (Jitter)
-            jitter = random.uniform(0.05, 0.25)
-            delay = min(backoff_max, backoff_base * (2 ** (attempt - 1))) + jitter
+            # [退避单一真源] 改为 full jitter（AWS）：``U(0, min(cap, base·2^n))``。
+            # [为什么改] 本模块原用「min(cap, base·2^(n-1)) + U(0.05,0.25)」
+            # ——**加性抖动**让所有客户端的等待区间高度重叠，同机多路检索几乎齐步
+            # 重试，对反爬站点而言等价于惊群，恰好加重封禁。full jitter 把等待打散
+            # 到整个区间，是 AWS 论证过的更优口径。Retry-After 仍优先。
+            delay = retry_after_or_jitter(attempt - 1, _pending_retry_after,
+                                         base=backoff_base, cap=backoff_max)
             _LOG.warning("第 %d 次重试抓取 %s，退避等待 %.2f 秒 (原因: %s)",
                          attempt, url, delay, last_error)
             time.sleep(delay)
+            _pending_retry_after = None
 
         req_headers = get_browser_headers(headers)
         req = urllib.request.Request(url, headers=req_headers)
+
+        # [节流] 真正发请求前按 host 限速。只影响「何时发」，不影响成败语义。
+        respect_rate_limit(url)
 
         try:
             # [审计 2026-09-30 P1-7 出站收敛] 经 net_guard.safe_urlopen 发送：
@@ -347,6 +458,8 @@ def get_text(
             last_error = e
             status = e.code
             if status in RETRYABLE_STATUS_CODES and attempt < max_retries:
+                _pending_retry_after = _retry_after_seconds(
+                    getattr(e, "headers", None))
                 continue
             raise ProviderError(f"抓取失败（HTTP {status}）") from e
 
@@ -368,6 +481,7 @@ def get_text(
                     "TLS 证书校验失败，按调用方显式 opt-in 降级为**未验证**连接"
                     "重试（ssl_verified=False）: %s (%s)", url, e)
                 try:
+                    respect_rate_limit(url)
                     with safe_urlopen(req, timeout=timeout, context=ssl_fallback_ctx) as resp:
                         resp_headers = dict(resp.headers)
                         raw_data = _read_capped(resp)
@@ -486,6 +600,8 @@ __all__ = [
     "ANTI_BOT_MARKERS",
     "BROWSER_HEADERS",
     "RETRYABLE_STATUS_CODES",
+    "THROTTLE_MAX_WAIT",
+    "THROTTLE_RATES",
     "USER_AGENT",
     "USER_AGENTS",
     "absolute",
@@ -499,4 +615,6 @@ __all__ = [
     "get_random_user_agent",
     "get_text",
     "looks_like_anti_bot",
+    "reset_rate_limit",
+    "respect_rate_limit",
 ]

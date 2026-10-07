@@ -63,8 +63,12 @@ except ImportError:  # pragma: no cover
 
 # [W12 P0-3] 模板扫描排除目录：打包产物（dist/build）与缓存目录内可能存有
 # .template.md 的副本，扫描时必须排除，否则会在产物目录内原地生成 .md。
+# [审查修复·pytest_tmp 漏排] 此前漏掉 pytest 的 basetemp（``.pytest_tmp``，
+# 本机因默认 basetemp ACL 损坏而常在仓库根出现），rglob 会把测试临时副本里的
+# 模板当源模板，在临时目录内生成 162 个散落 .md；补入排除集合。
 _TEMPLATE_SCAN_EXCLUDE = {".git", "dist", "build", "node_modules",
-                          "__pycache__", ".pytest_cache", ".venv", "venv"}
+                          "__pycache__", ".pytest_cache", ".pytest_tmp",
+                          ".venv", "venv"}
 
 STYLES = {
     "1": ("1. 严格把关·保姆提分型 (Strict & Disciplined)", "以真题阅卷人严苛视角分步赋分，计算失误与跳步零容忍，强制错因五分类归因"),
@@ -99,7 +103,11 @@ def copy_templates():
     count = 0
     skipped = 0
     for p in ROOT.rglob("*.template.md"):
-        if _TEMPLATE_SCAN_EXCLUDE & set(p.parts):
+        try:
+            rel_parts = p.relative_to(ROOT).parts
+            if _TEMPLATE_SCAN_EXCLUDE & set(rel_parts[:-1]):
+                continue
+        except ValueError:
             continue
         target = p.with_name(p.name.replace(".template.md", ".md"))
         if not target.exists():
@@ -186,19 +194,34 @@ def choose_exam_subjects_and_syllabi(interactive=True):
     # 命题范围各校有差异，须按目标院校官网核验）
     print("    [4] 全国统考/自命题 308 护理综合 (载入模块骨架，须按目标院校官网核验)")
     print("    [5] 全国统考 312 心理学专业基础综合 (载入模块索引，须按当年大纲核验)")
-    p_c = input("  请选择专业课类别 (1~5) [默认 1]: ").strip() or "1"
-    pro_type = ("408" if p_c == "2" else ("199" if p_c == "3" else
-                ("308" if p_c == "4" else ("312" if p_c == "5" else "custom"))))
-    if pro_type == "408":
-        pro_name = "408 计算机学科专业基础"
-    elif pro_type == "199":
-        pro_name = "199 管理类综合能力"
-    elif pro_type == "308":
-        pro_name = "308 护理综合"
-    elif pro_type == "312":
-        pro_name = "312 心理学专业基础综合"
+    # [2026-10-06 批次·内置统考/联考/自命题大纲] 注册表入口：306/307/311/313/333/
+    # 314/315/414/415/396/397/398/497/498/211/346/347/348/349/354/357/
+    # 431/432/433/434/435/436/445/448 与自命题 811/813/814/816 等按科目代码载入
+    # （清单动态生成；自命题条目为参考框架，以院校官方大纲为准）
+    _builtin_codes = syllabus_manager.builtin_pro_syllabus_codes()
+    print(f"    [6] 更多内置统考/联考/自命题大纲 (按科目代码载入，共 {len(_builtin_codes)} 科；"
+          f"自命题为参考框架，以院校官方大纲为准)")
+    p_c = input("  请选择专业课类别 (1~6) [默认 1]: ").strip() or "1"
+    if p_c == "6":
+        _sel = syllabus_manager.prompt_builtin_pro_selection()
+        if _sel:
+            pro_type, pro_name = _sel
+        else:
+            pro_type = "custom"
+            pro_name = input("  请输入您的专业课代码与名称 [如 801 信号与系统]: ").strip() or "专业课"
     else:
-        pro_name = input("  请输入您的专业课代码与名称 [如 801 信号与系统]: ").strip() or "专业课"
+        pro_type = ("408" if p_c == "2" else ("199" if p_c == "3" else
+                    ("308" if p_c == "4" else ("312" if p_c == "5" else "custom"))))
+        if pro_type == "408":
+            pro_name = "408 计算机学科专业基础"
+        elif pro_type == "199":
+            pro_name = "199 管理类综合能力"
+        elif pro_type == "308":
+            pro_name = "308 护理综合"
+        elif pro_type == "312":
+            pro_name = "312 心理学专业基础综合"
+        else:
+            pro_name = input("  请输入您的专业课代码与名称 [如 801 信号与系统]: ").strip() or "专业课"
 
     return math_key, eng_key, pro_type, pro_name
 

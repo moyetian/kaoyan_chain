@@ -57,6 +57,21 @@ def build(win) -> QWidget:
         pill.clicked.connect(lambda checked=False, c=cmd: win._on_quick_command(c))
         quick_bar.addWidget(pill)
     quick_bar.addStretch()
+    # [修复④·会话管理] 行尾两个会话操作按钮：查看/恢复历史、开始新对话。
+    # 样式走 #SessionBtn（主题 token），逻辑在 MainWindow。
+    sessions_btn = QPushButton("🕘 历史")
+    sessions_btn.setObjectName("SessionBtn")
+    sessions_btn.setCursor(Qt.PointingHandCursor)
+    sessions_btn.setToolTip("查看/恢复历史会话")
+    sessions_btn.clicked.connect(win._on_open_sessions)
+    quick_bar.addWidget(sessions_btn)
+
+    new_session_btn = QPushButton("＋ 新建")
+    new_session_btn.setObjectName("SessionBtn")
+    new_session_btn.setCursor(Qt.PointingHandCursor)
+    new_session_btn.setToolTip("开始一段新对话")
+    new_session_btn.clicked.connect(win._on_new_session)
+    quick_bar.addWidget(new_session_btn)
     layout.addLayout(quick_bar)
 
     input_bar = QHBoxLayout()
@@ -84,6 +99,19 @@ def build(win) -> QWidget:
         "输入口令 (如：英语长难句拆解 / 帽子词秒杀 / 交作业) 或向私教提问...")
     win.input_box.returnPressed.connect(win._on_send_message)
     input_bar.addWidget(win.input_box, stretch=1)
+
+    # [缺陷修复·无法中断进行中的回答] 停止按钮：点击调 agent_worker.cancel()，
+    # 取消检查回调会在 AgentRunner 的下一个步骤边界终止本轮 run，界面立即
+    # 恢复可输入（见 MainWindow._on_stop_agent）。
+    stop_btn = QPushButton("停止")
+    stop_btn.setObjectName("SecondaryBtn")
+    stop_btn.setMinimumHeight(40)
+    stop_btn.setFixedWidth(64)
+    stop_btn.setCursor(Qt.PointingHandCursor)
+    stop_btn.setToolTip("停止当前正在生成的本轮回答（随后可直接发送新消息）")
+    stop_btn.clicked.connect(win._on_stop_agent)
+    win.stop_btn = stop_btn
+    input_bar.addWidget(stop_btn)
 
     send_btn = QPushButton("发送")
     send_btn.setObjectName("SendBtn")        # 主色渐变 + 圆角三态样式来自主题 QSS

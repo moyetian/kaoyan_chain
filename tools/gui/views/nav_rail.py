@@ -3,14 +3,17 @@
 
 rail 分组（用户拍板）：
   * ``视图`` —— 原 4 个页签（私教对话 / 今日任务 / 错题本 / 研招情报）
-  * ``工具`` —— 原 10 张功能卡的动作（清单唯一来源：``function_cards.CARD_ITEMS``）
+  * ``工具`` —— ``function_cards.CARD_ITEMS`` 的功能卡动作（[2026-10-06] 由 10 条
+    增至 12 条：新增 ``ky rag`` 本地知识库检索与 ``ky index`` 建索引的 GUI 入口，
+    此前二者在命令面板完全搜不到）
 
 命令面板分组（W13-7）：``PALETTE_ENTRIES`` 的 ``group`` 字段按
 ``日常 / 自测 / 情报 / 系统`` 四桶分桶（面板按桶渲染标题行，见
 ``widgets/command_palette.py``）；桶顺序即 ``PALETTE_GROUP_ORDER``。
 
 [契约] 工具项同时登记为 ``win.feature_cards`` / ``win._feature_buttons``：
-既有测试与自检脚本按这两个名字取「10 个功能卡控件」并读取 ``_icon_label``。
+既有测试与自检脚本按这两个名字取「全部功能卡控件」（2026-10-06 起 12 个：
+新增 rag/index）并读取 ``_icon_label``。
 """
 
 from __future__ import annotations
@@ -44,7 +47,7 @@ PALETTE_GROUP_ORDER = ("日常", "自测", "情报", "系统")
 #: 视图条目（与 ``NAV_VIEWS`` 同序）的分组桶
 VIEW_GROUPS = ("日常", "日常", "自测", "情报")
 
-#: 工具别名 → 分组桶（必须覆盖全部 10 条 ``CARD_ITEMS``，audit 测试对账）
+#: 工具别名 → 分组桶（必须覆盖全部 12 条 ``CARD_ITEMS``，audit 测试对账）
 TOOL_GROUPS = {
     "today": "日常",          # 任务打卡
     "compose": "自测",        # 靶向组卷
@@ -56,6 +59,10 @@ TOOL_GROUPS = {
     "watch": "情报",          # 简章监控
     "build": "系统",          # 看板更新
     "wechat_search": "情报",  # 公众号检索
+    # [2026-10-06] 本地检索/建索引归「系统」：两者都是对本地知识库的操作，
+    # 与同为本地库操作的「切片入库/看板更新」同桶，而非内容型情报。
+    "rag": "系统",            # 本地知识库检索
+    "index": "系统",          # 本地知识库建索引
 }
 
 #: 视图条目的口语别名（W13 验收修复 R3-2）：按 ``NAV_VIEWS`` 的图标 key 索引。
@@ -69,7 +76,7 @@ VIEW_KEYWORDS = {
 }
 
 #: 工具条目的口语别名（W13 验收修复 R3-2）：统一含「工具」+ 按语义补充，
-#: 覆盖全部 10 条 ``CARD_ITEMS`` 别名（audit 测试对账）。
+#: 覆盖全部 12 条 ``CARD_ITEMS`` 别名（audit 测试对账）。
 TOOL_KEYWORDS = {
     "today": "工具 打卡 今日",
     "compose": "工具 试卷 刷题 模拟卷 考试",
@@ -81,11 +88,16 @@ TOOL_KEYWORDS = {
     "watch": "工具 监控 简章 考情",
     "build": "工具 看板 更新 刷新",
     "wechat_search": "工具 公众号 微信 文章 经验",
+    # [2026-10-06] 仿真探查实测「rag」「index」「索引」「检索」四词全 0 命中，
+    # 故把 CLI 名与口语词都收进词表；「检索」此前只命中 variant/wechat_search，
+    # 现在会额外命中 rag（更贴近「查本地知识库」的语义）。
+    "rag": "工具 rag 检索 搜索 查知识库 本地知识库 知识点",
+    "index": "工具 index 索引 建索引 切片入库 知识库",
 }
 
 
 def _grouped_entries() -> tuple:
-    """14 条面板条目按四桶稳定排序（同桶连续 → 标题行每组只出现一次）。"""
+    """16 条面板条目按四桶稳定排序（同桶连续 → 标题行每组只出现一次）。"""
     entries = (
         [PaletteEntry(f"{VIEW_PREFIX}{i}", title, VIEW_GROUPS[i], "切换到该页面",
                       VIEW_KEYWORDS[icon])
@@ -97,7 +109,7 @@ def _grouped_entries() -> tuple:
     return tuple(sorted(entries, key=lambda e: PALETTE_GROUP_ORDER.index(e.group)))
 
 
-#: 命令面板条目（4 个页面 + 10 个工具动作，按四桶分组）
+#: 命令面板条目（4 个页面 + 12 个工具动作，按四桶分组）
 PALETTE_ENTRIES = _grouped_entries()
 
 
@@ -122,8 +134,8 @@ def _on_rail_toggle(rail: KYNavRail) -> None:
 # ════════════════════════════════════════════════════════════════
 # [W13-7 · CLI 主命令覆盖边界声明] GUI 可执行面 vs ``ky`` CLI 主命令全集
 # ════════════════════════════════════════════════════════════════
-# GUI（rail「工具」组 + Ctrl+K 命令面板）的可执行面 = ``CARD_ITEMS`` 的 10 个别名，
-# 它们是 ``tui_navigator.execute_action`` 支持的 11 个别名的子集（不含 ``exit``：
+# GUI（rail「工具」组 + Ctrl+K 命令面板）的可执行面 = ``CARD_ITEMS`` 的 12 个别名，
+# 它们是 ``tui_navigator.execute_action`` 支持的 13 个别名的子集（不含 ``exit``：
 # GUI 关闭走窗口自身）。本批**不承诺** CLI 主命令全部在 GUI 可达——完整
 # 命令请见 ``ky commands``。下面把「可达 / 不可达」显式列全，audit 测试与 CLI
 # 注册表逐一对账（防未来新增命令时静默漏声明）。
@@ -143,21 +155,39 @@ GUI_ACTION_TO_COMMAND = {
     "watch": "watch",
     "build": "build",
     "wechat_search": "wechat",
+    # [2026-10-06] rag / index 由「不可达」移入「可达」：两者在 CLI 注册表里
+    # 的规范名就是别名本身（``ky rag`` / ``ky index``），且已接上 GUI 动作分发
+    # （见 main_window._on_card_clicked 与 gui.services.rag_search/build_index）。
+    "rag": "rag",
+    "index": "index",
 }
 
 #: GUI 可执行的动作别名（唯一来源：``CARD_ITEMS``）
 GUI_ACTION_ALIASES = tuple(alias for _icon, _title, _desc, alias in CARD_ITEMS)
 
-#: GUI 可达的 CLI 主命令（10 个）
+#: 「不经 TUI 分发器、直接走 GUI 服务层」的动作别名。
+#:
+#: [为什么需要显式声明] 其余 10 个别名都由 ``gui.services.run_action_capture`` →
+#: ``tui_navigator.execute_action`` 执行（单实现）。但 ``rag`` / ``index`` 需要
+#: GUI 侧先收集入参（检索词）或干脆换一套执行器（建索引走 build_index 而非
+#: execute_action），硬塞进 TUI 会为了两条命令改动 TUI 菜单——而 TUI 菜单编号
+#: 契约（1-12）刚因另一批次扩容，不宜再动。此处把差异显式登记，audit 测试按
+#: 「TUI 分发集 ∪ 服务层直调集 = 全部 GUI 别名」三方对账，而不是靠放宽断言掩盖。
+GUI_SERVICE_ONLY_ALIASES = frozenset({"rag", "index"})
+
+#: GUI 可达的 CLI 主命令（12 个）
 GUI_REACHABLE_COMMANDS = frozenset(GUI_ACTION_TO_COMMAND.values())
 
-#: GUI 无分发路径的 CLI 主命令（43 − 10 = 33 个）——完整命令见 ``ky commands``
+#: GUI 无分发路径的 CLI 主命令（46 − 12 = 34 个）——完整命令见 ``ky commands``
 GUI_UNREACHABLE_COMMANDS = frozenset({
     "version", "help", "commands", "config", "doctor", "status", "subject",
     "plan", "done", "map", "calc", "exam-submit", "review", "diagnose",
     "admission", "mount", "key", "notify", "rollback", "memory", "fatigue",
     "relieve", "style", "clawbot", "gui", "menu", "bridge", "serve", "view",
-    "session", "rag", "gain", "tools",
+    "session", "gain", "tools", "audit", "grade-regress",
+    # [2026-10-06] 新增 ``ky budget``（输出预算档位）—— 纯 CLI 侧配置入口，
+    # GUI 暂未接入（考生可先用命令切换），故列入不可达。
+    "budget",
 })
 
 
@@ -200,6 +230,7 @@ __all__ = [
     "GUI_ACTION_ALIASES",
     "GUI_ACTION_TO_COMMAND",
     "GUI_REACHABLE_COMMANDS",
+    "GUI_SERVICE_ONLY_ALIASES",
     "GUI_UNREACHABLE_COMMANDS",
     "NAV_VIEWS",
     "PALETTE_ENTRIES",

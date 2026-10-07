@@ -48,6 +48,19 @@ def test_literal_data_placeholder_in_notes_is_not_replaced(build_mod, monkeypatc
         return original(md, kw)
 
     monkeypatch.setattr(build_mod, "get_section", fake_get_section)
+    # [2026-10-07 跨环境修复] 本用例不应依赖真实工作区存在四科「今日任务.md」：
+    # build() 在源文件缺失（完整模式禁止回落模板）时于 read 层提前跳过，
+    # get_section 桩根本不被执行 → 假正文进不了 html → fresh clone / CI /
+    # 发布副本上必红（本机因工作区恰有文件而假绿）。此处让「今日任务.md」
+    # 的读取自供内容，把用例收敛到「模板占位符替换」这一被测性质本身。
+    original_read = build_mod.read
+
+    def fake_read(p, allow_fallback=True):
+        if Path(p).name == "今日任务.md":
+            return "# 今日任务 (自供夹具)\n\n占位正文，仅用于让 today 章节进入渲染链。\n"
+        return original_read(p, allow_fallback=allow_fallback)
+
+    monkeypatch.setattr(build_mod, "read", fake_read)
     html, data, _warns, _secs = build_mod.build(offline=True)
 
     assert "{{DATA}}" in html, "字面量 {{DATA}} 被吞掉了"

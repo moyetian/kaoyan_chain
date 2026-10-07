@@ -21,6 +21,9 @@ except ImportError:  # pragma: no cover
 
 try:  # [K4] 统一 LLM 出口（双导入路径兼容）
     from llm_client import (
+        DEFAULT_LLM_TIMEOUT,
+        DEFAULT_MAX_TOKENS,
+        DIALOGUE_TEMPERATURE,
         ChatRequest,
         LLMEmptyStreamError,
         LLMError,
@@ -28,8 +31,12 @@ try:  # [K4] 统一 LLM 出口（双导入路径兼容）
         normalize_openai_url,
         request_chat,
     )
+    import output_budget
 except ImportError:  # pragma: no cover
     from tools.llm_client import (  # type: ignore
+        DEFAULT_LLM_TIMEOUT,
+        DEFAULT_MAX_TOKENS,
+        DIALOGUE_TEMPERATURE,
         ChatRequest,
         LLMEmptyStreamError,
         LLMError,
@@ -37,6 +44,7 @@ except ImportError:  # pragma: no cover
         normalize_openai_url,
         request_chat,
     )
+    from tools import output_budget  # type: ignore
 
 try:
     from tools.cli.shared import ROOT, SUBJECT_DIRS, load_config, read_text_safe
@@ -305,6 +313,36 @@ def build_demo_syllabus_text(base_text: str, year_label: str) -> str:
 # [K4] ``normalize_openai_url`` 已收敛为 ``llm_client`` 单一实现，此处 re-export
 # 保住既有导入路径（``ky_cli`` / ``cli.agent.__init__`` / ``study_planner`` 等）。
 
+def _resolve_temperature(config: Optional[Dict[str, Any]]) -> float:
+    """解析请求温度：配置项优先，缺失/非法一律回落到对话链路口径。
+
+    [R3 波动收敛] 存在的意义是**显式化**：原先 ``config.get("temperature", 0.3)``
+    把「对话链路用 0.3」这个口径藏在一个字面量里，稳定性优先的调用点无从
+    区分自己该不该关采样。现统一走具名常量，需要收紧时改一处即可。
+    """
+    try:
+        val = float((config or {}).get("temperature"))
+    except (TypeError, ValueError):
+        return DIALOGUE_TEMPERATURE
+    return val if 0.0 <= val <= 2.0 else DIALOGUE_TEMPERATURE
+
+
+def _resolve_max_tokens(config: Optional[Dict[str, Any]]) -> int:
+    """解析输出上界：**按输出预算档位**取值（缺省 ``standard`` = 2048）。
+
+    [R3 波动收敛·根因 1] 关键在于**不允许缺省成 None**：``max_tokens=None`` 时
+    ``_build_payload`` 会整个省略该字段，输出长度由上游默认值决定——这正是
+    R3 观测到的 8998 → 4927 字符收缩的机制。
+
+    [2026-10-06 输出预算分档] 原实现固定回落 :data:`DEFAULT_MAX_TOKENS`（4096），
+    对「查个概念」太贵（真机实测 60s+ 才拿到一大段），对「模拟考详解」又太紧。
+    现改为按 :mod:`output_budget` 档位取值：**显式 ``config["max_tokens"]`` 仍优先**
+    （向后兼容：已写死该值的既有配置行为不变），否则查档位表、缺省 standard。
+    真机实测（各 3 次）：standard 档字符 CV 9.38% / 耗时 CV 13.45%，均 ≤15%。
+    """
+    return output_budget.max_tokens_for(config)
+
+
 def stream_chat(messages: List[Dict[str, Any]], config: Dict[str, Any]) -> str:
     """向 OpenAI 兼容 API 发起流式请求并打字机式打印
 
@@ -339,9 +377,17 @@ def stream_chat(messages: List[Dict[str, Any]], config: Dict[str, Any]) -> str:
     req = ChatRequest(
         messages=messages,
         model=model,
-        temperature=config.get("temperature", 0.3),
+        # [R3 波动收敛·根因 1] 本函数（CLI 非 Agent 路径）此前**既不传
+        # max_tokens、也不显式传 temperature**：输出长度完全由上游默认决定，
+        # 而 Agent 路径固定 4096 → 同一操作在两条路径上的输出长度行为**结构性
+        # 不同**（R3 全矩阵实测 8998 → 4927 字符，−45%）。此处与 Agent 路径对齐：
+        #   * max_tokens：取 llm_client.DEFAULT_MAX_TOKENS（与 loop.py 同一真源）；
+        #   * temperature：讲题属对话链路，显式取 DIALOGUE_TEMPERATURE 而非
+        #     依赖 config 缺省时的隐式 0.3——显式声明才能在需要收紧时一处改全。
+        max_tokens=_resolve_max_tokens(config),
+        temperature=_resolve_temperature(config),
         stream=True,
-        timeout=120.0,
+        timeout=DEFAULT_LLM_TIMEOUT,
         api_key=api_key,
         base_url=raw_base_url,
         headers_extra={
@@ -377,10 +423,15 @@ def stream_chat(messages: List[Dict[str, Any]], config: Dict[str, Any]) -> str:
             stop_spinner.set()
             print()
             choices = data.get("choices") or [{}]
-            message = (choices[0] or {}).get("message") or {}
+            choice0 = choices[0] or {}
+            message = choice0.get("message") or {}
             content = message.get("content") or ""
             if content:
-                return content
+                # [输出预算分档] 触达本档硬上界时**显式标注**（判据用上游上报的
+                # finish_reason=="length"，不用「长度接近上界」的启发式——后者会在
+                # 正常长回答上误报）。静默截断会让考生以为那就是完整答案。
+                return content + output_budget.truncation_notice(
+                    choice0.get("finish_reason"), config)
             if _attempt < _MAX_ATTEMPTS:
                 print(colorize(_retry_hint, C.YELLOW))
                 continue
@@ -458,19 +509,30 @@ def query_llm_reply(user_msg: str, cfg: Optional[Dict[str, Any]] = None) -> str:
         return f"🎓【考研私教】收到提问: \"{user_msg}\"\n⚠️ 尚未配置大模型 API Key，请在电脑端终端运行 `ky config` 设置密钥后即可畅享网页端与群聊对话讲题！"
 
     try:
-        _inner_timeout = 55.0
+        # [R3 波动收敛·根因 3] 超时口径收敛为单一真源
+        # ``llm_client.DEFAULT_LLM_TIMEOUT``（90s），与 CLI 流式讲题
+        # (``stream_chat``) 和 GUI 侧（AgentRunner ``_stream_timeout()``）
+        # 同值。收敛前此处的 55s 与另两处的 120s / 90s 互不一致：同一操作
+        # 在不同入口有不同的等待上限，网关/群聊比桌面端先放弃，而调用方
+        # 无法区分「模型慢」与「超时口径不同」→ 多轮耗时差异无法归因。
+        # ``KY_LLM_TIMEOUT`` 环境变量仍可临时覆盖（运维/排障用）；未设置或非法
+        # 时一律回落到单一真源（不存在「先赋一个值再立刻覆盖」的中间态）。
         try:
-            _inner_timeout = float(os.environ.get("KY_LLM_TIMEOUT", "55"))
+            _inner_timeout = float(os.environ.get("KY_LLM_TIMEOUT",
+                                                  str(DEFAULT_LLM_TIMEOUT)))
         except (TypeError, ValueError):
-            _inner_timeout = 55.0
+            _inner_timeout = DEFAULT_LLM_TIMEOUT
         # [K9] 网关/网页对话也必须经过统一客户端：SSRF、重定向鉴权剥离、
         # 响应体上限、结构化错误和退避不能只在 AgentRunner 路径生效。
+        # [R3 根因 1] 显式补 max_tokens：与 stream_chat / Agent 路径对齐，
+        # 避免同一操作因入口不同而输出长度差一截。
         answer = chat_completion(
             messages,
             config=cfg,
             workspace_root=ROOT,
-            temperature=float(cfg.get("temperature", 0.3)),
+            temperature=_resolve_temperature(cfg),
             timeout=_inner_timeout,
+            max_tokens=_resolve_max_tokens(cfg),
             urlopen_fn=safe_urlopen,
         )
         if answer:

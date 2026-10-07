@@ -19,6 +19,31 @@ for p in (str(ROOT), str(TOOLS)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+# [R3 波动收敛] 超时单一真源；导入失败时回落90.0（= DEFAULT_LLM_TIMEOUT 的
+# 当前值），保证 GUI 侧永不因常量导入失败而崩在构造期。
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from llm_client import DEFAULT_LLM_TIMEOUT
+except ImportError:  # pragma: no cover
+    try:
+        from tools.llm_client import DEFAULT_LLM_TIMEOUT  # type: ignore
+    except ImportError:
+        DEFAULT_LLM_TIMEOUT = 90.0
+
+
+class AgentCancelled(BaseException):
+    """用户主动停止本轮回答（由取消检查回调抛出，AgentWorker.run 显式捕获）。
+
+    [为什么继承 BaseException 而不是 Exception]
+    ``AgentRunner``（tools/agent/loop.py，本批只读不改）的「交付物闸门」分支里
+    有 ``except Exception: break`` —— 若继承 Exception，取消信号会在该分支被
+    吞掉、退化为「跑完再说」。已核实 loop.py 全文件没有 ``except BaseException``
+    也没有裸 ``except:``（grep 0 命中），BaseException 子类能穿过所有
+    ``except Exception`` 处理器直达 AgentWorker.run 的捕获点。
+    会话日志不受影响：run() 外层的 finally 仍会执行 runner.close() 写
+    session_end；resume 重建（session_log.rebuild_history）只消费
+    user/assistant 事件，忽略 tool 事件，不存在「半截工具调用」污染。
+    """
+
 
 class AgentWorker(QThread):
     finished_signal = Signal(str)
@@ -55,21 +80,42 @@ class AgentWorker(QThread):
         return AgentWorker._shared_session_id or None
 
     def __init__(self, config: dict, user_input: str, timeout: float = None,
-                 workspace_root=None):
+                 workspace_root=None, session_allowed_tools=None,
+                 session_id: Optional[str] = None):
         super().__init__()
         self.config = config or {}
         # [缺陷修复·工作区双根] 显式接收调用方工作区（MainWindow.workspace_root）；
         # 未传时才回落模块级 ROOT。杜绝 exe 下"GUI 写 A、agent 读 B"的分裂。
         self.workspace_root = Path(workspace_root).resolve() if workspace_root else ROOT
         self.user_input = user_input
-        self._session_id = self._resolve_session_id()
+        # [修复④·GUI 会话管理] 显式 session_id = 恢复既有会话：AgentRunner 构造
+        # 收到非空 id 且日志有事件时自动重建 history（loop.py._restore_history_from_log）。
+        # 未显式传入时沿用进程内共享 id 的既有逻辑（首次发消息生成一次）。
+        self._session_id = session_id or self._resolve_session_id()
         if timeout is None:
+            # [R3 波动收敛·根因 3] 超时口径收敛为单一真源
+            # ``llm_client.DEFAULT_LLM_TIMEOUT``（90s），与 CLI 流式讲题
+            # (``engine.stream_chat``) 和网关问答 (``engine.query_llm_reply``)
+            # 同值。收敛前这里是 120s、CLI 是 120s、网关是 55s，三处各写各的；
+            # GUI 之所以「看起来是 90s」只是因为 ``_stream_timeout()`` 会取
+            # ``min(request_timeout, _STREAM_STALL_TIMEOUT)`` 把 120 压到 90 ——
+            # 口径靠隐式 min 收敛而非显式声明。现直接引用真源，并保留
+            # ``request_timeout`` 配置项与显式 ``timeout`` 实参的优先级
+            # （用户显式调低时从严，与 ``_stream_timeout()`` 语义一致）。
             try:
-                self.timeout = float(self.config.get("request_timeout") or 120.0)
+                self.timeout = float(self.config.get("request_timeout")
+                                     or DEFAULT_LLM_TIMEOUT)
             except (TypeError, ValueError):
-                self.timeout = 120.0
+                self.timeout = DEFAULT_LLM_TIMEOUT
         else:
             self.timeout = float(timeout)
+        # [缺陷修复·审批"本会话记住"跨消息失效] GUI 每条消息都新建 AgentWorker →
+        # 新建 GuiApproval；若各自新建信任集，勾选"本会话记住"只在本条消息内生效，
+        # 下一条消息又会弹卡。现由 MainWindow 持进程级 set 并透传到这里，原样
+        # （不拷贝）转给 GuiApproval —— PermissionManager 消费的是同一个 set 对象
+        # （permissions.py 的共享语义），"本会话"因此覆盖整个 GUI 进程。
+        self._session_allowed_tools = (session_allowed_tools
+                                       if isinstance(session_allowed_tools, set) else None)
         self._is_cancelled = False
         # [A3b 修复·GUI 审批通道] 桌面端里有人在场：Level 4（网络）/ Level 5
         # （破坏性）此前走 headless 默认策略被静默拒绝，用户只看到
@@ -86,13 +132,31 @@ class AgentWorker(QThread):
                 from gui.approval_bridge import GuiApproval, resolve_approval_timeout
             except ImportError:
                 from tools.gui.approval_bridge import GuiApproval, resolve_approval_timeout
-            return GuiApproval(timeout=resolve_approval_timeout(self.config))
+            return GuiApproval(session_allowed_tools=self._session_allowed_tools,
+                               timeout=resolve_approval_timeout(self.config))
         except Exception:
             return None
 
     def cancel(self):
         """中止任务"""
         self._is_cancelled = True
+
+    def _guarded_callback(self, callback):
+        """把 AgentRunner 回调包一层取消检查：已取消则抛 ``AgentCancelled``。
+
+        [缺陷修复·无法中断进行中的回答] 旧实现只在 ``runner.run`` 返回后检查
+        ``_is_cancelled`` —— 用户点「停止」后，最长要等满一轮 LLM 请求（流式
+        单次读超时可达 90s）才有任何反应。包装后，AgentRunner 在**每个步骤
+        边界**都会调用回调（步骤开始 / 工具调用前 / 工具执行后 / 最终答案流式
+        输出），取消检查因此落在这些边界上：抛出 AgentCancelled 直接终止 run
+        主循环，后续工具调用不会再执行。LLM 请求在途期间仍无法打断（不改
+        tools/agent/** 的前提下无解），但请求一返回就会在下一边界终止。
+        """
+        def _guarded(text):
+            if self._is_cancelled:
+                raise AgentCancelled("用户主动停止了本轮回答")
+            return callback(text)
+        return _guarded
 
     def _emit_step(self, text: str) -> None:
         """把私教动作/思考事件实时发送到 GUI 界面。"""
@@ -416,8 +480,10 @@ class AgentWorker(QThread):
                 approval_channel=self._approval_channel,
                 max_steps=8,
                 request_timeout=self.timeout,
-                stream_callback=self._emit_chunk,
-                step_callback=self._emit_step,
+                # [缺陷修复·无法中断] 回调外面包一层取消检查：停止后在下一次
+                # 回调边界抛 AgentCancelled 终止 run（见 _guarded_callback）。
+                stream_callback=self._guarded_callback(self._emit_chunk),
+                step_callback=self._guarded_callback(self._emit_step),
                 quiet=True,
                 # [B3b] 同一 GUI 会话的所有消息复用同一个 .jsonl（跨消息保持
                 # 上下文可追溯），而不是每问一句新建一个会话文件。
@@ -441,6 +507,10 @@ class AgentWorker(QThread):
                 )
             else:
                 self.finished_signal.emit(reply)
+        except AgentCancelled:
+            # [缺陷修复·无法中断] 用户主动停止：不是执行异常，走可辨识的
+            # 取消文案；runner.close() 由下方 finally 照常收尾会话日志。
+            self.finished_signal.emit("[已取消]: 已停止本轮回答。")
         except Exception as e:
             # 超时会有明确提示，而不是静默转圈
             self.finished_signal.emit(

@@ -274,6 +274,14 @@ def build_knowledge_map(subject="math", root=None):
             if line_s.startswith("### ") or line_s.startswith("## "):
                 in_table_data = False
                 c_title = re.sub(r"^#+\s*", "", line_s)
+                # [F6 修复·参考书目计为考点] 「## 附：参考书目」等附录章节此前被
+                # 建为正式章节，其下 4 条书目兜底成「未标注」考点（B 实测 106 条
+                # 含 4 条书目）。附录/书目不属考纲考查范围：跳过该章节并阻断其下
+                # 条目/表格行进入考点。
+                if (c_title.startswith("附") or "参考书目" in c_title
+                        or "参考文献" in c_title):
+                    cur_chap = None
+                    continue
                 if any(kw in c_title for kw in ("最高红线", "绝不超纲", "AI 私教")):
                     continue
                 cur_chap = {"title": c_title, "points": []}

@@ -15,9 +15,19 @@ from pathlib import Path
 
 from .config import INDEX_HEADERS, SUBJECTS
 
-def read(p):
+def read(p, allow_fallback: bool = True):
+    """读取 Markdown 源文件；文件不存在时可按需回落到同目录骨架模板。
+
+    [缺陷修复·缺文件静默回落模板] ``*.template.md`` / ``*.example.md`` 回落
+    是**演示/骨架部署**（公开副本 Pages 构建）的能力：让未初始化的看板也有
+    示例内容。但真实工作区（本地完整模式）里真实文件缺失时，静默回落到模板
+    会把「示例任务 / 示例雷达」当成考生自己的数据展示（实测：薄弱点雷达.md
+    缺失 → 看板显示模板里的假章节雷达）。故调用方（build.py）按构建模式显式
+    传 ``allow_fallback``：本地完整模式 False（缺文件走空态 + 解析告警），
+    脱敏发布模式 True（保留公开演示内容）。
+    """
     path_obj = pathlib.Path(p)
-    if not path_obj.exists() and path_obj.suffix == ".md":
+    if allow_fallback and not path_obj.exists() and path_obj.suffix == ".md":
         for ext in (".template.md", ".example.md"):
             cand = path_obj.with_name(path_obj.stem + ext)
             if cand.exists():

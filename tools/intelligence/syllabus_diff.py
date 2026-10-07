@@ -413,6 +413,30 @@ class SyllabusDiffGenerator:
             "new_points": new_points
         }
 
+        # [F13 修复·占位基准不设防] 基准文本为【待自填】占位模板时如实标注
+        # baseline_warning（消费方：CLI/REPL 渲染器 render_syllabus_diff、
+        # format_diff_markdown 头部 blockquote、TUI）。检测放在 compare_texts，
+        # 使无文件路径的直调方（ky fetch diff 无参、REPL /diff、Agent
+        # diff_syllabus 工具）同样受警示；同文件自我对照需路径信息，仍由
+        # compare_files 检测（其警示语义更具体，覆盖优先级更高）。
+        baseline_warning = ""
+        _placeholder_marker = ""
+        try:
+            try:
+                from tools.syllabus_manager import PRO_PLACEHOLDER_MARKER as _pm
+            except ImportError:  # pragma: no cover - 直接脚本上下文
+                from syllabus_manager import PRO_PLACEHOLDER_MARKER as _pm
+            _placeholder_marker = str(_pm or "")
+        except Exception:  # pragma: no cover - 兜底不阻断比对
+            _placeholder_marker = ""
+        if "【待自填" in old_text or (
+                _placeholder_marker and _placeholder_marker in old_text):
+            baseline_warning = (
+                "基准（旧）大纲为【待自填】占位模板，比对不代表真实考纲变动；"
+                "请先导入真实旧版大纲")
+        if baseline_warning:
+            report_data["baseline_warning"] = baseline_warning
+
         return report_data
 
     def compare_files(
@@ -437,7 +461,19 @@ class SyllabusDiffGenerator:
         text_old = p_old.read_text(encoding="utf-8", errors="ignore")
         text_new = p_new.read_text(encoding="utf-8", errors="ignore")
 
-        return self.compare_texts(
+        # [F13 修复·自我对照不设防] 同文件自我对照照常产出「0.0% 稳定」报告，
+        # 看似真实比对结论（C-P6 观察；map 侧有 D9 占位识别，diff 此前没有）。
+        # 此处如实标注 baseline_warning；【待自填】占位基准的检测已下沉
+        # compare_texts（覆盖无路径直调方），此处警示语义更具体、优先级更高。
+        baseline_warning = ""
+        try:
+            if p_old.resolve() == p_new.resolve():
+                baseline_warning = (
+                    f"新旧大纲为同一文件（{p_new.name}），自我对照无考纲变动意义")
+        except OSError:  # pragma: no cover - 极端文件系统错误
+            pass
+
+        report = self.compare_texts(
             text_old,
             text_new,
             school=school or "目标院校",
@@ -445,6 +481,9 @@ class SyllabusDiffGenerator:
             year_old=year_old,
             year_new=year_new
         )
+        if baseline_warning:
+            report["baseline_warning"] = baseline_warning
+        return report
 
     def format_diff_markdown(self, report_data: Dict[str, Any]) -> str:
         """
@@ -492,6 +531,12 @@ class SyllabusDiffGenerator:
             "## 二、高危必看：新增考点清单与专项突破处方 (Added Points)",
             ""
         ]
+
+        # [F13 修复·占位/自我对照不设防] 基准警示以 blockquote 置于头部元信息行
+        # 之后，避免考生把「0.0% 稳定」当成真实考纲结论（insert(3) 即元信息行后）。
+        _baseline_warning = str(report_data.get("baseline_warning") or "").strip()
+        if _baseline_warning:
+            lines.insert(3, f"> ⚠️ {_baseline_warning}")
 
         if added_items:
             lines.append("| 序号 | 所属模块 | 章节定位 | 考查级别 | 新增考点内容 | 私教应试处方与真题变式要求 |")

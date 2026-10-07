@@ -42,6 +42,19 @@ DEFAULT_LIMIT = 10
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
 
+def _stale_note(result: SearchResult) -> str:
+    """[serve-stale] 该结果是否为陈旧缓存兜底；是则给出人类可读的标注。"""
+    extra = result.extra or {}
+    if not extra.get("stale"):
+        return ""
+    age = int(extra.get("stale_age_seconds") or 0)
+    if age >= 3600:
+        return f"陈旧缓存（{age // 3600} 小时前）"
+    if age >= 60:
+        return f"陈旧缓存（{age // 60} 分钟前）"
+    return f"陈旧缓存（{age} 秒前）"
+
+
 def _domain_matches(host: str, pattern: str) -> bool:
     """判断 host 是否属于 pattern（含子域），用于 site: 语义。"""
     host = (host or "").lower().strip().lstrip(".")
@@ -140,6 +153,15 @@ class SearchService:
         active = self.providers(q.providers)
         if not active:
             reasons = cooling or [("*", "没有可用的检索源（未安装可选依赖或被网络策略拦截）")]
+            # [serve-stale] 全源冷却 → 先用过期缓存兜底，别让检索能力直接归零。
+            # 冷却事实仍如实上报（冷却没解除），但把陈旧结果交给上层并标注陈旧度。
+            stale = self._stale_for([n for n, _ in cooling], q)
+            if stale:
+                return SearchResponse(
+                    query=q.text, results=tuple(stale),
+                    providers_used=tuple(f"{r.engine or '*'}(缓存·陈旧)" for r in stale),
+                    providers_failed=tuple(reasons), providers_cooling=tuple(cooling),
+                    candidates=len(stale), queries_run=0, year=q.year)
             return SearchResponse(query=q.text, providers_failed=tuple(reasons),
                                   providers_cooling=tuple(cooling), year=q.year)
 
@@ -162,10 +184,19 @@ class SearchService:
             except ProviderError as exc:
                 failed.append((provider.name, str(exc)))
                 self._maybe_cooldown(provider, str(exc))
+                # [serve-stale] 该源本轮失败（多半是被反爬）→ 用过期缓存兜底。
+                # 失败事实照实留在 providers_failed 里，只是额外给出可用的旧结果。
+                stale = self._stale_for([provider.name], q)
+                if stale:
+                    used.append(f"{provider.name}(缓存·陈旧)")
+                    collected.extend(stale)
                 continue
             except Exception as exc:              # pragma: no cover - 实现内部错误
                 failed.append((provider.name, f"未预期异常: {exc}"))
                 continue
+
+            # 本轮成功 →清零该源的失败计数（半开探测成功后必须做，否则冷却永不解除）
+            health.mark_healthy(provider.name)
 
             # [防「200 但内容是垃圾」] 逐条过相关性守门；全部不相关时按失败处理。
             # 实测 Bing 对裸 urllib 请求会返回 200 + 完全无关的内容（软性反爬），
@@ -179,6 +210,10 @@ class SearchService:
                     # warning 刷屏（此前 ky doctor 每次联网检查都打印"丢弃 N 条"）。
                     _LOG.info("provider %s 的结果与查询无关，已丢弃 %d 条",
                               provider.name, len(raw))
+                    stale = self._stale_for([provider.name], q)
+                    if stale:
+                        used.append(f"{provider.name}(缓存·陈旧)")
+                        collected.extend(stale)
                     continue
                 if dropped:
                     _LOG.info("provider %s 丢弃 %d 条无关结果", provider.name, dropped)
@@ -296,15 +331,55 @@ class SearchService:
 
     # ── 内部 ────────────────────────────────────────────────
 
-    def _cache_get(self, provider: SearchProvider, q: SearchQuery) -> Optional[List[SearchResult]]:
+    def _cache_get(self, provider: SearchProvider, q: SearchQuery, *,
+                   allow_stale: bool = False) -> Optional[List[SearchResult]]:
+        """读该provider 的缓存；``allow_stale=True`` 时允许返回过期条目（带标注）。"""
         if self._cache is None:
             return None
         try:
+            return self._cache.get(provider.name, q.text, max(q.limit, DEFAULT_LIMIT),
+                                   q.time_range, allow_stale=allow_stale)
+        except TypeError:
+            # 旧缓存实现无 ``allow_stale`` 形参（双导入/旧副本场景）→ 退回严格语义。
             return self._cache.get(provider.name, q.text, max(q.limit, DEFAULT_LIMIT),
                                    q.time_range)
         except Exception as exc:                  # pragma: no cover
             _LOG.debug("缓存读取失败（按未命中处理）: %s", exc)
             return None
+
+    def _stale_for(self, names: Sequence[str], q: SearchQuery) -> List[SearchResult]:
+        """[serve-stale] 给指定的若干源用过期缓存兜底，返回标注了陈旧度的结果。
+
+        [为什么] R3 全矩阵仿真实测到「全源冷却 → 检索能力归零 → 模型空转」：
+        早跑的 CLI 抓了 5 篇，10 分钟内后跑的 GUI 却抓 0 篇。招生简章 / 复试线
+        在冷却的这 10 分钟里并**不会变化**，拿一份标了陈旧度的旧结果，远好过
+        告诉用户「未找到结果」（后者会让模型在死路上反复重试）。
+
+        每条结果带 ``extra["stale"]=True`` 与 ``extra["stale_age_seconds"]``，
+        上层据此在输出里如实标注陈旧度。
+        """
+        if self._cache is None:
+            return []
+        out: List[SearchResult] = []
+        for name in names:
+            provider = self._by_name(name)
+            if provider is None:
+                continue
+            cached = self._cache_get(provider, q, allow_stale=True)
+            if cached:
+                _LOG.info("源 %s 处于不可用状态，改用陈旧缓存兜底 %d 条（最陈旧 %ds）",
+                          name, len(cached),
+                          max(int((r.extra or {}).get("stale_age_seconds") or 0)
+                              for r in cached))
+                out.extend(self._annotate(cached))
+        return out
+
+    def _by_name(self, name: str) -> Optional[SearchProvider]:
+        candidates = self._providers or available_providers(())
+        for p in candidates:
+            if p.name.lower() == str(name or "").lower():
+                return p
+        return None
 
     def _cache_put(self, provider: SearchProvider, q: SearchQuery,
                    results: Sequence[SearchResult]) -> None:
@@ -436,6 +511,11 @@ def format_results(response: SearchResponse, *, show_scores: bool = False) -> st
     for i, r in enumerate(response.results, 1):
         tag = "官方" if r.is_official else r.source_type
         score = f" score={r.score:.2f}" if show_scores else ""
+        # [serve-stale] 陈旧结果必须**在输出里说清**，否则模型会把10 分钟前的
+        # 简章当成刚发布的口径去引用。
+        stale = _stale_note(r)
+        if stale:
+            tag = f"{tag}·{stale}"
         out.append(f"[{i}] {r.title}  <{tag}{score}>")
         out.append(f"    {r.url}")
         if r.snippet:

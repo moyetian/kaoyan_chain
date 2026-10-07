@@ -70,6 +70,19 @@ def test_build_today_cards_countdown_matches_hero(monkeypatch):
         return original(md, kw)
 
     monkeypatch.setattr(build, "get_section", fake_get_section)
+    # [2026-10-07 跨环境修复] 同 test_dashboard_build_placeholders：fresh clone /
+    # CI / 发布副本里四科「今日任务.md」不存在，build() 在 read 层提前跳过
+    # （get_section 桩不被执行）→ 今日任务卡进不了产物 → 断言必红（本机因
+    # 工作区恰有文件而假绿）。让「今日任务.md」的读取自供内容，把用例收敛到
+    # 「内嵌卡倒计时按构建当日重算」这一被测性质本身。
+    original_read = build.read
+
+    def fake_read(p, allow_fallback=True):
+        if Path(p).name == "今日任务.md":
+            return "# 今日任务 (自供夹具)\n\n占位正文，仅用于让 today 章节进入渲染链。\n"
+        return original_read(p, allow_fallback=allow_fallback)
+
+    monkeypatch.setattr(build, "read", fake_read)
     html, _data, _warns, _secs = build.build(offline=True)
 
     assert "研考倒计时：100 天" in html, "内嵌今日任务卡倒计时未按构建当日重算"

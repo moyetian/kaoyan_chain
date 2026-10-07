@@ -63,6 +63,17 @@ RATING_MAP = {
 # 快进历史时使用的评级：错题「已通过 stage 次」按 good 还原最保守的历史轨迹
 _BUILD_UP_RATING = Rating.Good
 
+#: [修复 2026-10-05·超大 stage 卡死] 快进档位上限。``stage`` 来自错题卡片
+#: Markdown 的整数字段（外部数据）：损坏或被篡改成极大值（如 10**9）时，
+#: ``compute_next_interval`` 的逐档快进循环会长时间卡死（每次 review_card
+#: 都是完整 FSRS 计算）。
+#: 上限取 50（而非 100）：实测 stage>=90 时 FSRS 内部
+#: ``card.due = review_datetime + next_interval`` 会抛 OverflowError（日期越界），
+#: 而本函数承诺「不抛异常、错题沉淀主链路永不被中断」；50 档已远超真实考研
+#: 周期（校准表 stage 0→5 间隔到 1346 天），且留足安全余量。
+#: 返回值 ``new_stage`` 仍按原始 stage 递推，保证「可复算」不变式成立。
+_MAX_STAGE = 50
+
 _SCHEDULER: Scheduler | None = None
 
 
@@ -150,6 +161,9 @@ def compute_next_interval(
     # 否则会出现 `stage=0` 却写着 `下次到期 +7 天` 的自相矛盾记录
     # （该组合无法由 compute_next_interval(0, "good") 复现，回写不可追溯）。
     effective_stage = 0 if target is Rating.Again else stage
+    # [修复 2026-10-05] 钳到 _MAX_STAGE：防止外部损坏/被篡改的超大 stage
+    # 让下方逐档快进循环卡死（见 _MAX_STAGE 说明）。
+    effective_stage = min(effective_stage, _MAX_STAGE)
 
     sched = _scheduler()
     # 以基准日零点(UTC)为时间轴原点，逐次快进重建记忆稳定性

@@ -22,9 +22,9 @@ except ImportError:  # pragma: no cover
 from datetime import datetime
 
 try:  # 双导入路径兼容（项目同时存在 tools.X 与 X 两种导入方式）
-    from ky_io import atomic_write_text, read_text_fallback  # noqa: E402
+    from ky_io import atomic_write_text, read_text_fallback, safe_filename  # noqa: E402
 except ImportError:  # pragma: no cover
-    from tools.ky_io import atomic_write_text, read_text_fallback  # noqa: E402
+    from tools.ky_io import atomic_write_text, read_text_fallback, safe_filename  # noqa: E402
 
 try:  # [C3 题源溯源] 渲染侧与解析侧共用同一题干提取口径（见 question_source 模块）
     from skills.question_source import backfill_markdown_text  # noqa: E402
@@ -51,6 +51,39 @@ except ImportError:
 #: 三沙箱实测：17 题 → 3m04s、≈17 次 API 尝试且学员毫无感知。默认封顶 10 次，
 #: 调用前显式提示次数，可用 --llm-budget=N 调整 / --no-llm 全部跳过。
 DEFAULT_LLM_ENRICH_BUDGET = 10
+
+# ════════════════════════════════════════════════════════════════
+# 考点来源标识（[R3 仿真缺口 2 · 2026-10-06 B 批次]）
+# ════════════════════════════════════════════════════════════════
+# 问题：``_fallback_points`` 有三档来源（LLM 补全 / 题面学科名推断 / 通用占位
+# 「核心综合考点」），但 ``format_question_card`` 把它们拼成同一种形态。仿真实测
+# 两份切片产物 ``grep -c 降级`` = 0/0 —— 考生看到「【考查考点】核心综合考点」
+# 无法分辨这是 LLM 认真分析出来的，还是本地兜底凭空填的。后者等于用噪声冒充
+# 考点信息，还会污染 knowledge_map 的考点-掌握度图谱（兜底考点同样参与匹配）。
+#
+# 口径：**只有真正落到``chunk.points`` 的考点（LLM 补全 / 从材料正文提取的
+# 关键词）才算有来源**；凡是展示层本地推断出来的（学科名兜底与通用占位）一律
+# 标「本地兜底」。这是唯一可判定的分界 —— ``_fallback_points`` 只在
+# ``chunk.points`` 为空时才做本地推断，所以判据就是「渲染时 points 是否为空」。
+POINTS_SOURCE_LLM = "llm"
+POINTS_SOURCE_FALLBACK = "fallback"
+
+#: 兜底考点的显式标记（写在【考查考点】行末、反引号**外**）。
+#: 放反引号外是刻意的：``【考查考点】`生理学`（本地兜底）`` 里考点名本身仍是
+#: 干净的 ``生理学``，将来任何按考点名做匹配的消费者都不会把标记吃进去；
+#: 而考生一眼就能看到这句降级说明。
+POINTS_FALLBACK_MARK = "本地兜底"
+
+#: 【考点来源】元信息行（机器可读）。考生看标记、程序看这行—— 组卷/图谱侧
+#: 可据此把兜底考点排除在考点匹配之外。
+POINTS_SOURCE_FIELD = "考点来源"
+POINTS_SOURCE_LINE_PREFIX = f"- **【{POINTS_SOURCE_FIELD}】**："
+
+#: 【考点来源】行的取值文案
+_POINTS_SOURCE_LABEL = {
+    POINTS_SOURCE_LLM: "已补全（LLM 采分点分析 / 材料正文关键词）",
+    POINTS_SOURCE_FALLBACK: f"{POINTS_FALLBACK_MARK} · 本地推断，非官方考点，请以考纲/真题核验",
+}
 
 
 @dataclass
@@ -111,7 +144,11 @@ _SUBJECT_HINT_KEYWORDS = (
     ("信号与系统", ("傅里叶", "拉普拉斯", "卷积", "奈奎斯特", "频谱",
                     "冲激函数", "冲激响应", "采样", "抽样")),
     ("马克思主义基本原理", ("唯物辩证", "对立统一", "实践是检验真理", "真理的相对性")),
-    ("数据结构", ("二叉树", "图的遍历", "快速排序", "哈夫曼")),
+    # [仿真 F5 修复] 数据结构词表增补（仿真实测「邻接矩阵」等题干未命中任何
+    # 特征词 → 兜底「核心综合考点」，无信息量）
+    ("数据结构", ("二叉树", "平衡二叉树", "二叉排序树", "图的遍历", "邻接矩阵", "邻接表",
+                  "最小生成树", "最短路径", "拓扑排序", "哈希", "快速排序", "哈夫曼",
+                  "Prim", "Kruskal", "Dijkstra")),
     ("操作系统", ("虚拟内存", "分页存储", "进程调度", "死锁")),
     ("计算机网络", ("三次握手", "TCP", "路由", "子网掩码")),
 )
@@ -140,6 +177,55 @@ def _strip_md_heading(text: str) -> str:
             continue
         out.append(cleaned)
     return "\n".join(out)
+
+
+# [审查修复·选项边界泄漏] Markdown 标题行（`#` 起首，允许前置空白）。
+_MD_HEADING_LINE_RE = re.compile(r"^[ \t]*#{1,6}[ \t]", re.MULTILINE)
+
+#: [审查修复·选项边界泄漏] 「宽选项」模式：与 Rust 加速路径同口径 ——
+#: 字母前是行首/空白、字母后跟点号或空白、正文不含 A-D 字母。它会把行内
+#: 任意「空格 + 单个 A-D 字母 + 空格」当选项（`## Part C 英译汉` → `C. 英译汉`），
+#: 故只用于**标题行**上枚举伪选项，不用于正常选项抽取。
+_LOOSE_OPT_RE = re.compile(r"(?:\n|^|\s)([A-D])[\.、\s]+([^\n\rA-D]+)")
+
+#: 选项条目形如 `A. 内容` / `A、内容` / `A）内容`（切片产物统一为 `字母. 内容`）。
+_OPT_ITEM_RE = re.compile(r"^([A-D])[\.、．)）]?\s*(.+)$", re.S)
+
+#: [审查修复·选项正文被截断] Rust 加速路径的选项正则正文段为 `([^\n\rA-D]+)`
+#: （正文不得含 A-D 字母），实测 `A. DNA 是遗传物质` 被截成 `A. `、
+#: `B. RNA 只存在于细胞质` 截成 `B. RN` —— 选项内容静默丢失（西医/生物卷
+#: 的 DNA/RNA/ATP 类选项高频命中）。行首选项行正文含 A-D 字母即路由 Python
+#: 参考实现（与题目标记/答案区同属「加速器可滞后、产物必须正确」）。
+#: [OCR 审查修复·多 token] 正文段须跨空白（`[^\n\r]*?`）：旧写法 `\S*[A-D]`
+#: 只看第一个非空白 token，`A. 酶是 ATP 酶` 的 A-D 在第二 token 不触发路由，
+#: 旧二进制环境仍会截断成 `A. 酶是`。
+_OPT_CONTENT_AD_RE = re.compile(r"^[ \t]*[A-D][\.、．)）][ \t]*[^\n\r]*?[A-D]", re.MULTILINE)
+
+#: [OCR 审查修复·行内标点式回归] Rust 行首锚定（见 chunker.rs opt_pattern）
+#: 后不再识别「题干与首选项同行」的标点式选项，而旧宽正则识别（行为回归）：
+#: `1. 下列说法正确的是 A. 甲` 的 A 选项并入题干、题卡选项不全。命中即路由
+#: Python 参考实现（其选项正则第一支保留行内标点式匹配）。判据精确锚定
+#: 「非换行字符 + 非换行空白 + 选项字母 + 标点」：行首/跨行选项不命中（Rust
+#: 已覆盖，避免全量路由），`## Part C 英译汉`（行内裸式）亦不命中（防误吃）。
+_INLINE_OPT_RE = re.compile(r"[^\n\r][^\S\n\r]+[A-D][\.、．)）]")
+
+
+def _heading_pseudo_options(raw_text: str) -> set:
+    """枚举 Markdown 标题行里「长得像选项」的伪选项文本（用于切片出口剔除）。
+
+    实测：选择题块与下一题之间的大题标题「## Part C 英译汉」被 Rust 加速路径
+    抽成第 5 个选项 `C. 英译汉` 并渲染进题卡（题 21 选项 4→5 个）。标题行里
+    的 A-D 字母是章节序号（Part A/B/C/D），不可能是题目选项。
+    """
+    out = set()
+    for ln in (raw_text or "").splitlines():
+        if not _MD_HEADING_LINE_RE.match(ln):
+            continue
+        for om in _LOOSE_OPT_RE.finditer(ln):
+            content = om.group(2).strip()
+            if content:
+                out.add(f"{om.group(1).strip()}. {content}")
+    return out
 
 
 def _detect_wenke_type(hint_text: str):
@@ -250,6 +336,14 @@ class MaterialIngestionPipeline:
         # 处置：先剔除表格行再交给常规分块器（表格交由下面的专用抽取器处理），
         # 从源头杜绝碎片，避免事后用启发式去猜哪些是垃圾。
         raw_text = raw_text or ""
+        # [数据正确性修复·答案串题] 入口无条件清空上一份文档遗留的答案区暂存。
+        # 旧实现只在 _chunk_text_python 内部重置（见该函数内 `self._last_answer_section = ""`），
+        # 而走 Rust 路径的文档（无答案区/无标记结构）根本不经过那里 ——
+        # 同进程连续 ingest 两份材料时，上一份的「## 参考答案」会被
+        # _apply_answer_section 按题号回填进**本篇**题卡（实测：A 文档答案
+        # 串进 B 文档题 1），把答案张冠李戴到别的题目上。答案区文本只在
+        # 单次调用内有效，跨调用必须清零。
+        self._last_answer_section = ""
         text_for_regex = "\n".join(
             ln for ln in raw_text.splitlines() if not self._TABLE_ROW.match(ln))
         if len(text_for_regex.strip()) < 40:      # 整篇几乎都是表格时退回原文
@@ -275,6 +369,13 @@ class MaterialIngestionPipeline:
             # [UT4 修复·INGEST-4] B 型题「6-10. 备选答案」题组结构 Rust 不识别，
             # 命中即路由 Python 参考实现（与题目标记/答案区同原则）。
             or self._SHARED_OPT_HEAD_RE.search(text_for_regex)
+            # [审查修复·选项正文被截断] 选项行正文含 A-D 字母（DNA/RNA/ATP…）
+            # 时 Rust 会把正文截断，路由 Python 参考实现。
+            or _OPT_CONTENT_AD_RE.search(text_for_regex)
+            # [OCR 审查修复·行内标点式回归] 题干与首选项同行（`…正确的是
+            # A. 甲`）时 Rust 行首锚定漏识别 A 选项（旧宽正则识别），
+            # 路由 Python 参考实现。
+            or _INLINE_OPT_RE.search(text_for_regex)
             or any(_detect_wenke_type(m.group("sec_title"))[0]
                    for m in self._SEC_LINE_PATTERN.finditer(text_for_regex)))
         if getattr(self, "_force_python", False) or not _HAS_RUST_EXT or _py_only_structure:
@@ -291,6 +392,9 @@ class MaterialIngestionPipeline:
         table_chunks = self._extract_table_chunks(raw_text, default_source)
         chunks = self._merge_table_chunks(chunks, table_chunks)
         chunks = self._reclassify_by_sections(chunks, raw_text)
+        # [审查修复·选项边界泄漏] 标题行/下一段串入的伪选项在统一出口剔除，
+        # Rust 与 Python 两条路径同口径（与题干标题清洗同一出口原则）。
+        chunks = self._sanitize_option_boundaries(chunks, raw_text)
         # [UT4 修复·INGEST-3] 尾部「## 参考答案」区按题号回填各题 standard_answer
         # （答案区文本由 _chunk_text_python 截断时暂存于 _last_answer_section）。
         self._apply_answer_section(chunks)
@@ -329,6 +433,33 @@ class MaterialIngestionPipeline:
     _COMPACT_OPT_MARK = re.compile(r"(?:^|[ \t]|[）)])([A-D][\.、．)）])(?=\s*\S)")
     _COMPACT_OPT_BOUNDARY = re.compile(r"[ \t]+(?=[A-D][\.、．)）]\s*\S)")
     _COMPACT_OPT_TIGHT = re.compile(r"(?<=[）)])(?=[A-D][\.、．)）]\s*\S)")
+
+    #: [审查修复·选项边界泄漏] 选项抽取单源模式（`_parse_single_block` 与
+    #: `_extract_shared_options` 共用；Rust 源码 rust_ext/src/chunker.rs 同口径）。
+    #: 旧式的 `(?:\s*[\.、．)）]\s*|\s+)` 第二个分支把行内任意「空白 + 单个 A-D
+    #: 字母 + 空白」当选项：实测选择题块与下一题之间的大题标题「## Part C 英译汉」
+    #: 被抽成第 5 个选项「C. 英译汉」（题 21 选项 4→5，随题卡进组卷）。
+    #: 现拆两支：
+    #:   ① 标点式（A. / A、/ A) / A））—— 保留行内匹配（紧凑单行选项已由
+    #:      `_split_compact_options` 预拆行，此处兼容未规范化的输入）；
+    #:   ② 裸字母式（`A 内容`）—— 仅认行首（可带列表符号 / 引用符 / 缩进），
+    #:      行中的「Part C」「Section B」不再误吃；正文以「型题」开头的
+    #:      是 A/B/X 型题分段标题（非选项），显式排除。
+    _OPT_MATCH_RE = re.compile(
+        r"(?:\n|^|\s)([A-D])\s*[\.、．)）]\s*([^\n\r]+?)"
+        r"(?=\s+[A-D][\.、．)）]|\n|$)"
+        r"|^[ \t]*(?:[-*+>][ \t]*)?([A-D])[ \t]+(?!型题)([^\n\r]+?)[ \t]*(?=\n|$)",
+        re.MULTILINE,
+    )
+
+    @classmethod
+    def _iter_option_matches(cls, text: str):
+        """按位置顺序产出 ``(字母, 正文, 起始下标)``（兼容标点式与行首裸字母式）。"""
+        for om in cls._OPT_MATCH_RE.finditer(text or ""):
+            letter = (om.group(1) or om.group(3) or "").strip()
+            content = (om.group(2) or om.group(4) or "").strip()
+            if letter and content:
+                yield letter, content, om.start()
 
     def _split_compact_options(self, text: str) -> str:
         """把「同一行多个选项」的行拆成每选项一行；其余行原样保留。"""
@@ -372,6 +503,42 @@ class MaterialIngestionPipeline:
         for idx, c in enumerate(kept, 1):
             c.number = idx
         return kept
+
+    def _sanitize_option_boundaries(self, chunks: List[QuestionChunk],
+                                    raw_text: str) -> List[QuestionChunk]:
+        """[审查修复·选项边界泄漏] 剔除从标题行/下一段串入的伪选项。
+
+        根因：Rust 加速路径的选项正则为
+        ``(?:\\n|^|\\s+)([A-D])[\\.、\\s]+([^\\n\\rA-D]+)``，把行内「空格 + 单个
+        A-D 字母 + 空格」一律当选项。实测选择题块与下一题之间的大题标题
+        「## Part C 英译汉」被抽成第 5 个选项 `C. 英译汉`（题 21 选项 4→5，
+        并随题卡进组卷）。Python 参考路径同源问题表现为标题被并进上一选项
+        正文（再由 `_strip_md_heading` 洗掉），两条路径统一在此兜底。
+
+        两条判据（满足其一即剔除，均为「结构性错误」而非猜测）：
+          1. 选项正文命中 `_heading_pseudo_options`（该文本来自 Markdown
+             标题行，标题里的 A-D 是 Part 序号，不可能是选项）；
+          2. 选项字母在本题内重复 —— 单选题同一字母只应有一个选项，重复者
+             必为串入的下一段内容；标题位于选项块之后（实测形态）时保留首次
+             出现即可。
+        """
+        pseudo = _heading_pseudo_options(raw_text)
+        for c in chunks:
+            if not c.options:
+                continue
+            seen = set()
+            kept = []
+            for opt in c.options:
+                m = _OPT_ITEM_RE.match(opt.strip())
+                letter = m.group(1) if m else ""
+                if opt in pseudo or (letter and letter in seen):
+                    continue
+                if letter:
+                    seen.add(letter)
+                kept.append(opt)
+            if len(kept) != len(c.options):
+                c.options = kept
+        return chunks
 
     def _extract_table_chunks(self, raw_text: str, default_source: str) -> List[QuestionChunk]:
         """从 Markdown 表格行中抽取题目。
@@ -445,7 +612,9 @@ class MaterialIngestionPipeline:
     # else 分支被判为"综合应用与解答题（10 分）"（名词解释 6 题变 10 分大题）。
     # [UT4 修复·INGEST-1] 「分析题」放宽为「分析(?:计算)?题」（覆盖「分析计算题」，
     # 该段名此前整段漏配）；追加「[ABX] 型题」（西医综合 A/B/X 型选择题分段）。
-    _WENKE_SEC_ALTS = r"名词解释|论述题|材料分析题|辨析题"
+    # [仿真 F1 修复] 「论述题」放宽为「(?:分析)?论述题」（覆盖 311 等「分析论述题」
+    # 分段，该段名此前不识别 → 段内题目继承上一分段题型/分值）。
+    _WENKE_SEC_ALTS = r"名词解释|(?:分析)?论述题|材料分析题|辨析题"
     _SEC_LINE_PATTERN = re.compile(
         r'^[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?'
         r'(?P<sec_title>(?:单[项]?选择题|多[项]?选择题|不定项选择题|选择题|填空题|判断题|解答题|'
@@ -593,8 +762,9 @@ class MaterialIngestionPipeline:
 
         # 识别大题分段 (Sections, 如 一、单项选择题；文科如 一、名词解释)
         # [UT4 修复·INGEST-1] 词表与 _SEC_LINE_PATTERN 同步：分析(?:计算)?题 + A/B/X 型题
+        # [仿真 F1 修复] 词表同步放宽「(?:分析)?论述题」
         sec_pattern = re.compile(
-            r'^[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?(?P<sec_title>(?:单[项]?选择题|多[项]?选择题|不定项选择题|选择题|填空题|判断题|解答题|综合(?:应用|计算|分析|论述)?题|计算(?:分析)?题|证明题|算法(?:设计)?题|简(?:答|述)题|分析(?:计算)?题|应用题|大题|[ABX]\s*型题|名词解释|论述题|材料分析题|辨析题)[^\n]*)$',
+            r'^[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?(?P<sec_title>(?:单[项]?选择题|多[项]?选择题|不定项选择题|选择题|填空题|判断题|解答题|综合(?:应用|计算|分析|论述)?题|计算(?:分析)?题|证明题|算法(?:设计)?题|简(?:答|述)题|分析(?:计算)?题|应用题|大题|[ABX]\s*型题|名词解释|(?:分析)?论述题|材料分析题|辨析题)[^\n]*)$',
             re.MULTILINE
         )
 
@@ -733,13 +903,13 @@ class MaterialIngestionPipeline:
         return chunks
 
     def _extract_shared_options(self, block: str) -> List[str]:
-        """[UT4 修复·INGEST-4] 从「N-M. 备选答案」题组块提取 A-D 共享备选项。"""
-        opts: List[str] = []
-        for om in re.finditer(
-                r"(?:\n|^|\s)([A-D])(?:\s*[\.、．)）]\s*|\s+)([^\n\r]+?)(?=\s+[A-D][\.、．)）]|\n|$)",
-                block):
-            opts.append(f"{om.group(1).strip()}. {om.group(2).strip()}")
-        return opts
+        """[UT4 修复·INGEST-4] 从「N-M. 备选答案」题组块提取 A-D 共享备选项。
+
+        [审查修复·选项边界泄漏] 抽取走单源 `_OPT_MATCH_RE`（此前本处另有一份
+        宽正则副本，与题干侧各自漂移）。
+        """
+        return [f"{letter}. {content}"
+                for letter, content, _pos in self._iter_option_matches(block)]
 
     def _apply_answer_section(self, chunks: List[QuestionChunk]) -> None:
         """[UT4 修复·INGEST-3] 把摘除的「## 参考答案」区按**原文题号**回填各题答案。
@@ -768,7 +938,8 @@ class MaterialIngestionPipeline:
         """解析单个题块"""
         # 剥离题块末尾可能粘连的下一个大题标题
         # [UT4 修复·INGEST-1] 剥离词表与分段词表同步（分析(?:计算)?题 + A/B/X 型题）
-        block = re.sub(r"\n+[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?(?:单[项]?选择题|多[项]?选择题|不定项选择题|选择题|填空题|判断题|解答题|综合(?:应用|计算|分析|论述)?题|计算(?:分析)?题|证明题|算法(?:设计)?题|简(?:答|述)题|分析(?:计算)?题|应用题|大题|[ABX]\s*型题|名词解释|论述题|材料分析题|辨析题)[^\n]*$", "", block).strip()
+        # [仿真 F1 修复] 词表同步放宽「(?:分析)?论述题」
+        block = re.sub(r"\n+[#*\s]*(?:第?[一二三四五六七八九十]+[部分题大题]*[、\.\s]*)?(?:单[项]?选择题|多[项]?选择题|不定项选择题|选择题|填空题|判断题|解答题|综合(?:应用|计算|分析|论述)?题|计算(?:分析)?题|证明题|算法(?:设计)?题|简(?:答|述)题|分析(?:计算)?题|应用题|大题|[ABX]\s*型题|名词解释|(?:分析)?论述题|材料分析题|辨析题)[^\n]*$", "", block).strip()
         # [P1 修复·回忆版] 块尾若粘连下一个大节标题（如「## 真题回忆 2：…」），
         # 同样剥离，避免混入上一题答案正文（连续 ≥2 个 # 才算标题，单 # 是正文）。
         block = re.sub(r"(?:\n+#{2,}\s[^\n]*)+$", "", block).strip()
@@ -844,9 +1015,9 @@ class MaterialIngestionPipeline:
         # 改为「内容 + 前瞻边界」分割：内容不跨行，遇到下一个「空白 + 选项字母 +
         # 标点」边界即停；多行格式（每选项一行）行为不变。
         options: List[str] = []
-        opt_matches = list(re.finditer(
-            r"(?:\n|^|\s)([A-D])(?:\s*[\.、．)）]\s*|\s+)([^\n\r]+?)(?=\s+[A-D][\.、．)）]|\n|$)",
-            stem_clean))
+        # [审查修复·选项边界泄漏] 走单源 _OPT_MATCH_RE（与 _extract_shared_options、
+        # Rust 源码同口径），不再在本处维护第二份选项正则。
+        opt_matches = list(self._iter_option_matches(stem_clean))
         is_essay_sec = any(k in sec_hint for k in ["综合", "解答", "计算", "应用", "简答", "证明", "设计", "算法"])
         # [UT4 修复·INGEST-1/2] 选择题型分段判定走单源 _CHOICE_SEC_RE（含 A/B/X 型题）
         is_choice_sec = bool(self._CHOICE_SEC_RE.search(sec_hint))
@@ -856,14 +1027,11 @@ class MaterialIngestionPipeline:
             q_type = "choice"
             if not score:
                 score = 2 if is_choice_sec else (5 if "408" in source or "专业" in source else 2)
-            for om in opt_matches:
-                opt_letter = om.group(1).strip()
-                opt_content = om.group(2).strip()
+            for opt_letter, opt_content, _pos in opt_matches:
                 options.append(f"{opt_letter}. {opt_content}")
             # 提取题干主体（去掉末尾选项行）
-            if opt_matches:
-                first_opt_idx = opt_matches[0].start()
-                stem_clean = stem_clean[:first_opt_idx].strip()
+            first_opt_idx = opt_matches[0][2]
+            stem_clean = stem_clean[:first_opt_idx].strip()
         elif is_choice_sec:
             # [UT4 修复·INGEST-4] B 型题题干无自身选项（共享备选项在「6-10. 备选答案」
             # 题组头，由外层挂接），按题型分段直接定 choice，不再落到大题兜底
@@ -958,46 +1126,82 @@ class MaterialIngestionPipeline:
         except Exception:
             return False
 
-    def enrich_rubric_with_llm(self, chunk: QuestionChunk, subject: str = "pro") -> None:
-        """若配置了 LLM 且试题缺失详细采分点或考点时，调用大模型推演采分点与核心考点"""
+    def enrich_rubric_with_llm(self, chunk: QuestionChunk, subject: str = "pro") -> bool:
+        """若配置了 LLM 且试题缺失详细采分点或考点时，调用大模型推演采分点与核心考点。
+
+        返回补全是否可用：True = 无需补全，或成功填充至少一个字段；
+        False = 未配置 LLM / 调用异常 / 响应为空 / JSON 不可解析 / 未填充任何字段。
+        [仿真 F5 修复] 旧实现返回 None 且 ``except Exception: pass`` 静默吞错 ——
+        API 超时或响应不可解析时调用方无从知晓（实测试卷整卷补全静默退化，
+        用户只看到「未补全」的兜底考点）。
+        """
         if chunk.rubric and chunk.points and chunk.analysis:
-            return
+            return True
         try:
             try:
-                from tools.llm_client import is_llm_configured, chat_completion
-            except ImportError:
-                from llm_client import is_llm_configured, chat_completion
-
-            if is_llm_configured(workspace_root=self.workspace_root):
-                stem = chunk.stem[:300]
-                ans = (chunk.answer or "")[:300]
-                prompt = (
-                    f"你是一位考研阅卷专家。请针对以下试题（满分 {chunk.score} 分）分析并补充步骤采分点与核心考点：\n"
-                    f"【试题】：{stem}\n"
-                    f"【参考解答】：{ans}\n\n"
-                    f"请以合法 JSON 格式输出：\n"
-                    f'{{\n  "rubric": ["[+2分] 步骤1", "[+3分] 步骤2"],\n  "points": ["考点1", "考点2"],\n  "analysis": "简明解析"\n}}'
+                from tools.llm_client import (
+                    STABLE_TEMPERATURE,
+                    is_llm_configured,
+                    chat_completion,
                 )
-                res = chat_completion(prompt, workspace_root=self.workspace_root, timeout=10.0)
-                if res:
-                    raw_json = re.sub(r"^```(?:json)?\s*", "", res.strip(), flags=re.IGNORECASE)
-                    raw_json = re.sub(r"\s*```$", "", raw_json)
-                    import json
-                    data = json.loads(raw_json)
-                    if isinstance(data, dict):
-                        if not chunk.rubric and isinstance(data.get("rubric"), list):
-                            chunk.rubric = [str(x) for x in data["rubric"] if x]
-                        if not chunk.points and isinstance(data.get("points"), list):
-                            chunk.points = [str(x) for x in data["points"] if x]
-                        if not chunk.analysis and data.get("analysis"):
-                            chunk.analysis = str(data["analysis"])
+            except ImportError:
+                from llm_client import (  # type: ignore
+                    STABLE_TEMPERATURE,
+                    is_llm_configured,
+                    chat_completion,
+                )
+
+            if not is_llm_configured(workspace_root=self.workspace_root):
+                return False
+            stem = chunk.stem[:300]
+            ans = (chunk.answer or "")[:300]
+            prompt = (
+                f"你是一位考研阅卷专家。请针对以下试题（满分 {chunk.score} 分）分析并补充步骤采分点与核心考点：\n"
+                f"【试题】：{stem}\n"
+                f"【参考解答】：{ans}\n\n"
+                f"请以合法 JSON 格式输出：\n"
+                f'{{\n  "rubric": ["[+2分] 步骤1", "[+3分] 步骤2"],\n  "points": ["考点1", "考点2"],\n  "analysis": "简明解析"\n}}'
+            )
+            # [仿真 F5 修复] timeout 10.0 → 90.0：对照实验实测该 API 对长提示词
+            # 延迟 26-45s+（timeout=90 时 25.9s 成功返回），10s 必然超时 →
+            # 补全静默失效。90s 为对照实验的成功配置。
+            # [R3 波动收敛·根因 3] temperature=0（STABLE_TEMPERATURE）：采分点
+            # 补全是**抽取**任务（同一道题每次都应得到同一份 rubric/points），
+            # 关采样才能让判分口径稳定；此前走 chat_completion 的 0.3 缺省，
+            # 同一份试题两次入库会得到措辞不同、条目数不同的采分点。
+            res = chat_completion(prompt, workspace_root=self.workspace_root,
+                                  timeout=90.0, temperature=STABLE_TEMPERATURE)
+            if not res:
+                return False
+            raw_json = re.sub(r"^```(?:json)?\s*", "", res.strip(), flags=re.IGNORECASE)
+            raw_json = re.sub(r"\s*```$", "", raw_json)
+            import json
+            data = json.loads(raw_json)
+            applied = False
+            if isinstance(data, dict):
+                if not chunk.rubric and isinstance(data.get("rubric"), list):
+                    chunk.rubric = [str(x) for x in data["rubric"] if x]
+                    applied = applied or bool(chunk.rubric)
+                if not chunk.points and isinstance(data.get("points"), list):
+                    chunk.points = [str(x) for x in data["points"] if x]
+                    applied = applied or bool(chunk.points)
+                if not chunk.analysis and data.get("analysis"):
+                    chunk.analysis = str(data["analysis"])
+                    applied = True
+            return applied
         except Exception:
-            pass
+            return False
 
     def _fallback_points(self, chunk: QuestionChunk) -> List[str]:
         """[UT4 修复·INGEST-6] 考点字段兜底：LLM/题面关键词均未命中时，
         按学科特征词表从题干推断；无法判定才回落通用占位。只影响展示，
-        不写入 chunk.points（避免占住 LLM 补全的判定槽）。"""
+        不写入 chunk.points（避免占住 LLM 补全的判定槽）。
+
+        [R3 缺口 2] 返回值**不带**降级标记 —— 标记由 :meth:`points_source`
+        统一判定后由渲染层拼接。刻意不在这里拼：``_fallback_points`` 也被
+        测试直接调用（断言纯学科名），把标记混进返回值会让"考点名"与
+        "展示串"两个概念纠缠不清，且四档文案要改就得改四处。
+        """
         if chunk.points:
             return list(chunk.points)
         stem = chunk.stem or ""
@@ -1005,6 +1209,16 @@ class MaterialIngestionPipeline:
             if any(kw in stem for kw in kws):
                 return [subject]
         return ["核心综合考点"]
+
+    @staticmethod
+    def points_source(chunk: QuestionChunk) -> str:
+        """[R3 缺口 2] 该题考点的来源：``llm`` / ``fallback``。
+
+        判据 =渲染时 ``chunk.points`` 是否为空（见模块级口径说明）。
+        LLM 补全成功或材料正文已含关键词 → ``llm``（来源可信，不标降级）；
+        空→ 本地学科名推断或通用占位 → ``fallback``（必须让考生看见）。
+        """
+        return POINTS_SOURCE_LLM if chunk.points else POINTS_SOURCE_FALLBACK
 
     def format_question_card(self, chunk: QuestionChunk, subject: str = "pro",
                              *, llm_enrich: Optional[bool] = None) -> str:
@@ -1039,7 +1253,16 @@ class MaterialIngestionPipeline:
         # [UT4 修复·INGEST-6] 考点展示兜底：points 为空时按题面学科关键词推断
         # （不占 LLM 补全槽 —— 兜底只影响展示，enrich 仍按 points 为空判定），
         # 无法判定才用通用占位。
+        # [R3 缺口 2] 兜底来源必须让考生看得见：兜底点在行末显式标注
+        # 「（本地兜底）」，并另起一行【考点来源】元信息给程序读。两条都只
+        # 落在**元数据区**（题干段之前），因此 extract_card_stem 的提取范围、
+        # 题源 ID 与校验和三者逐字节不变 —— 这是 F12 踩坑点（题干提取含卡尾
+        # §3/§4，身份两行须一并归一化）的直接约束：新增行不得挤进题干段。
+        _points_source = self.points_source(chunk)
         points_str = "、".join(self._fallback_points(chunk))
+        points_field = f"`{points_str}`"
+        if _points_source == POINTS_SOURCE_FALLBACK:
+            points_field += f"（{POINTS_FALLBACK_MARK}）"
 
         # [K3] 元信息区补充「科目归属」标记：科目键 → 归档目录（未知键原样展示），
         # 便于人工核对入库位置与下游按科目筛查；不参与题干/题源身份校验。
@@ -1048,7 +1271,9 @@ class MaterialIngestionPipeline:
         lines = [
             f"### 【题号 {chunk.number}】{t_name}（满分: {_fmt_score(chunk.score)} 分）",
             f"- **【题源出处】**：`{chunk.source or '外部导入题库'}`",
-            f"- **【考查考点】**：`{points_str}`",
+            f"- **【考查考点】**：{points_field}",
+            # [R3 缺口 2] 机器可读的来源行；取值见 _POINTS_SOURCE_LABEL
+            f"{POINTS_SOURCE_LINE_PREFIX}`{_POINTS_SOURCE_LABEL[_points_source]}`",
             f"- **【白名单认证】**：{auth_status}",
             f"- **【科目归属】**：`{_subj_label}`（来源: {chunk.subject_provenance or 'unknown'}）",
             "",
@@ -1127,6 +1352,25 @@ class MaterialIngestionPipeline:
                 "count": 0
             }
 
+        # 选择题缺少完整 A-D 选项时无法可靠作答或判分。此前这类残缺题
+        # 仍会进入白名单，组卷把标准答案 B 与只有 A/C 的题面一起展示，
+        # 直接破坏考生对题源的信任。阻止残缺选择题入库，并给出可操作的
+        # 数据修复提示；其他题型继续正常入库。
+        invalid_choices = [
+            c for c in chunks
+            if c.q_type == "choice" and len({opt[:1].upper() for opt in c.options}) < 4
+        ]
+        if invalid_choices:
+            chunks = [c for c in chunks if c not in invalid_choices]
+            if not chunks:
+                return {
+                    "success": False,
+                    "msg": (f"检测到 {len(invalid_choices)} 道选择题缺少完整 A-D 选项，"
+                            "已拒绝入库。请补齐原题选项后重新导入，避免标准答案与题面不一致。"),
+                    "count": 0,
+                    "invalid_choices": len(invalid_choices),
+                }
+
         try:
             sub_dir = self._resolve_subject_dir(subject)
         except ValueError as e:
@@ -1146,8 +1390,22 @@ class MaterialIngestionPipeline:
         paper_id = paper_id_for_content(text_content)
         registry = PaperRegistry(self.workspace_root)
 
-        safe_src = re.sub(r'[\\/:*?"<>|]+', '_', source_name)
+        # [数据正确性修复·文件名越界] 旧实现只替换非法字符、**无长度截断** ——
+        # 超长 source_name（实测 400 字符）会生成超长切片文件名，逼近/超过
+        # 路径长度上限导致写出失败或名实不符。改用 ky_io.safe_filename 的
+        # 统一净化（120 上限 + Windows 保留名 + 首尾点/空白防护，与错题本
+        # 等其他落盘点同一闸门）。
+        safe_src = safe_filename(source_name, fallback="导入真题集")
         now_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # [去重生效范围·勿误读] 指纹去重**仅在「target_path 未由调用方指定」或
+        # 「该文件尚不存在」时生效**（判据见下方 `if`）。调用方既显式给了
+        # ``target_path`` 又要求写入一个已存在的文件时，本流程按**覆写该文件**
+        # 处理，去重整段被跳过——此处的代码读起来像「总是有去重」，实际不是。
+        # 当前全部生产调用方（CLI ``material`` / GUI ``actions`` / Agent
+        # ``tools_impl`` / TUI ``tui_navigator`` / ``intel_worker``）**无一**
+        # 传 ``target_path``，故该旁路目前无生产路径；保留它是因为这个参数本
+        # 就是「指定输出路径」的预留接口。若将来新增该入口，必须重新评估去重
+        # 语义（否则同一份材料会落两份、且第二次抽取的内容变化会直接覆写）。
         caller_supplied_target = target_path is not None
         if not target_path:
             target_path = ref_dir / f"题库切片_{safe_src}_{now_tag}.md"
@@ -1178,6 +1436,7 @@ class MaterialIngestionPipeline:
         _candidates = [c for c in chunks
                        if c.score >= 5 and (not c.rubric or not c.points)]
         _llm_attempted = 0
+        _llm_failed = 0
         if _candidates:
             if not llm_enrich:
                 print(f"  [i] {len(_candidates)} 道题缺少步骤采分点；已按 --no-llm 跳过 LLM 补全。")
@@ -1190,10 +1449,19 @@ class MaterialIngestionPipeline:
                 _tail = (f"；其余 {len(_candidates) - _cap} 道未补全（可用 --llm-budget=N 调整上限）"
                          if len(_candidates) > _cap else "")
                 print(f"  [i] {len(_candidates)} 道题缺少步骤采分点，本次补全前 {_cap} 道"
-                      f"（每题最长约 10s，按 API 调用计费）{_tail}...")
+                      f"（单题最长等待约 90s，按 API 调用计费）{_tail}...")
                 for _c in _candidates[:_cap]:
-                    self.enrich_rubric_with_llm(_c, subject=subject)
+                    # [仿真 F5 修复] 判据 `is False`：None 视为兼容成功
+                    # （既有 monkeypatch / 旧调用方可能返回 None，不误伤）
+                    _ok = self.enrich_rubric_with_llm(_c, subject=subject)
+                    if _ok is False:
+                        _llm_failed += 1
                     _llm_attempted += 1
+        # [仿真 F5 修复] 补全失败不再静默：调用方（考生）能看到实际失败题数，
+        # 失败题保留 _fallback_points 的本地兜底考点。
+        if _llm_attempted:
+            print(f"  [i] 采分点补全结果：成功 {_llm_attempted - _llm_failed} / 失败 {_llm_failed} 道"
+                  f"（失败题保留本地兜底考点）。")
 
         for c in chunks:
             card_mds.append(self.format_question_card(c, subject=subject, llm_enrich=False))
@@ -1203,16 +1471,74 @@ class MaterialIngestionPipeline:
         # [P3 修复·D11] 幂等去重：同一份真题经不同入口重复入库时，旧实现每次都
         # 以「题库切片_<源名>_<时间戳>.md」新增一份完全重复的切片文件。
         # 现按正文指纹（忽略入库时间行）判重：命中则直接复用既有文件，不再重复落盘。
+        #
+        # [仿真 F12 修复] LLM 补全内容（【考查考点】行 / §3 采分点表 / §4 解析）
+        # 每次生成可能不同，旧实现对其直接取 sha256 → 同源文本重复入库时指纹
+        # 不一致、去重失效（「补全成功反而破坏幂等」，B 轮补全失败兜底确定反而
+        # 去重生效）。现归一化：enrich 尾部段（自 §3 或 §4 起至下一题卡/文末）
+        # 整体以固定标记替代，考点行值与卡尾分隔线一并以固定占位替代；其余
+        # 确定性内容（题干/答案/选项/认证/科目，checksum=题干 sha256）保留。
+        # 新旧两侧经同一函数处理，比较语义不变。
+        #
+        # [R3 缺口 2 补充·F12 同类缺陷] 卡尾标记必须**位置与取值都稳定**。
+        # 此前只在遇到 §3/§4 头时才 append ``<ENRICH-TAIL>``，无 enrich 段的卡
+        # 完全没有这一行；而卡尾分隔线 ``---`` 又在「有 enrich 段」时被 in_tail
+        # 跳过、在「无 enrich 段」时被原样保留。于是「补全成功」与「补全失败走
+        # 兜底」两份文本的行数与内容都不同 —— 指纹不同 → 去重失效 → 同一份材料
+        # 被反复入库。该症状与 F12 同源，只是当时的参数化只覆盖「两轮都补全」，
+        # 没测「补全结果在两轮之间翻转」。现按「每张卡的 §3/§4 及其之后整段 =
+        # 一枚固定标记」处理：进入 in_tail 时不记行，离开时（下一个题号 / 文本
+        # 结束）统一记一次；卡尾分隔线与末尾收尾用**同一枚**标记，保证两轮
+        # 逐行相同。
+        _TAIL_MARK = "<ENRICH-TAIL>"
+
         def _ingest_fingerprint(text: str) -> str:
             keep = []
+            in_tail = False
+            # 归一化字段：值随补全输出变化，不参与指纹
+            # [仿真 F12 补充] 题源ID/校验和两行由题干摘要派生，而 question_source
+            # 的「题干」提取范围自 §1 直至卡尾 `---`（实测含 §3/§4 补全内容，
+            # 见 extract_card_stem/_STEM_RE）—— 补全输出不同会连带这两行变化，
+            # 必须一并归一化，否则去重仍失效。
+            # 【考点来源】行（R3 缺口 2 新增）同属补全侧产物 —— 取值随
+            # 「LLM 是否成功」翻转，漏掉它同样会让两轮指纹不同。
+            _norm_prefixes = (
+                "- **【考查考点】**",
+                POINTS_SOURCE_LINE_PREFIX.rstrip("："),
+                "- **【题源ID】**",
+                "- **【题源校验和】**",
+            )
             for ln in str(text or "").splitlines():
                 s = ln.strip()
                 if not s or "入库时间" in s:
                     continue
-                keep.append(s)
+                if s.startswith("### 【题号"):
+                    if in_tail:
+                        keep.append(_TAIL_MARK)
+                    in_tail = False
+                if in_tail:
+                    continue
+                if s.startswith("#### 3. 步骤级采分点标注") \
+                        or s.startswith("#### 4. 命题人逻辑与私教解析"):
+                    in_tail = True
+                    continue
+                if s == "---":
+                    # 纯结构行，与末尾收尾共用同一标记（见上方说明）
+                    keep.append(_TAIL_MARK)
+                    continue
+                for _p in _norm_prefixes:
+                    if s.startswith(_p):
+                        keep.append(f"{_p}：`<NORMALIZED>`")
+                        break
+                else:
+                    keep.append(s)
+            # 末卡收尾（无下一个「### 【题号」触发）：与上面同一枚标记
+            if in_tail:
+                keep.append(_TAIL_MARK)
             return hashlib.sha256("\n".join(keep).encode("utf-8")).hexdigest()
 
         if not caller_supplied_target or not Path(target_path).exists():
+            # 见上方「去重生效范围」：显式 target_path 且文件已存在时**整段跳过**。
             _fp_new = _ingest_fingerprint(full_output)
             for _cand in sorted(ref_dir.glob(f"题库切片_{safe_src}_*.md")):
                 try:

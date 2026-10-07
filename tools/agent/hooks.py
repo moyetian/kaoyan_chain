@@ -486,8 +486,8 @@ class HookManager:
                          f"浪费步数并可能导致任务超时。请立即停止命令试探，"
                          f"改用内置工具完成任务：读文件 read_file"
                          f"（PDF 自动提取文本）、搜索 grep / search_files、"
-                         f"写产物 write_file / edit_file、真题抽题"
-                         f"read_exam_paper。")
+                         f"联网检索 web_search、写产物 write_file / edit_file、"
+                         f"真题抽题 read_exam_paper。")
                 decisions.append((guide, "safety_guard_escalation"))
             return ""
 
@@ -545,8 +545,17 @@ class HookManager:
                     print(f"[warn] 今日任务统计失败 ({t_file.name}): "
                           f"{type(e).__name__}: {e}", file=sys.stderr)
 
-            rate = round(done_tasks / total_tasks * 100, 1) if total_tasks > 0 else 0.0
-            summary_lines.append(f"📋 今日任务达成率: **{rate}%** ({done_tasks}/{total_tasks} 项完成)")
+            # [修复 2026-10-05·零任务假疲劳警报] total_tasks == 0 时不得写 0%
+            # 完成率：下游 study_planner.check_fatigue_alert 连续 2 天 <60% 即弹
+            # 「防疲劳减负」面板（建议 /relieve 降 25% 任务量）——空会话（未产生
+            # 任何任务记录）会被误判为「任务全线未完成」。无任务 = 无数据。
+            if total_tasks > 0:
+                rate = round(done_tasks / total_tasks * 100, 1)
+                summary_lines.append(
+                    f"📋 今日任务达成率: **{rate}%** ({done_tasks}/{total_tasks} 项完成)")
+            else:
+                rate = 0.0
+                summary_lines.append("📋 今日任务记录: 今日无任务记录（未产生完成率数据）")
 
             # 2. 统计到期待复测错题
             due_total = 0
@@ -561,23 +570,27 @@ class HookManager:
             summary_lines.append(f"🎯 明日待复测错题: **{due_total}** 道 (FSRS 队列自动监控中)")
 
             # 3. 记录到 daily completion
-            try:
-                import study_planner
-                study_planner.record_daily_completion(rate=rate, total=total_tasks, completed=done_tasks, date_str=today_str)
-            except Exception as e:
-                # [R2-D1] 严格只读模式下被权限闸门拒绝是**正确行为**，但绝不能
-                # 静默跳过 —— 静默跳过正是 P6 当初的病根（用户以为存了、其实没存）。
-                # 这里只做「异常类型 -> 可读中文提示」的翻译，权限判定仍由
-                # study_planner.record_daily_completion 内部的 ky_io 闸门负责。
-                if type(e).__name__ == "PermissionDeniedError":
-                    print(f"\033[93m[i] 严格只读模式 (--permission=safe)：已跳过「今日完成度」"
-                          f"写入，ky_config.json 保持原样。\033[0m")
-                else:
-                    print(f"[warn] 今日完成度写入失败: {type(e).__name__}: {e}", file=sys.stderr)
+            # [修复 2026-10-05] 零任务会话不落盘：total=0 的 0% 记录是假疲劳
+            # 警报的燃料（见上方达成率守卫），且无任何学习事实可记。
+            if total_tasks > 0:
+                try:
+                    import study_planner
+                    study_planner.record_daily_completion(rate=rate, total=total_tasks, completed=done_tasks, date_str=today_str)
+                except Exception as e:
+                    # [R2-D1] 严格只读模式下被权限闸门拒绝是**正确行为**，但绝不能
+                    # 静默跳过 —— 静默跳过正是 P6 当初的病根（用户以为存了、其实没存）。
+                    # 这里只做「异常类型 -> 可读中文提示」的翻译，权限判定仍由
+                    # study_planner.record_daily_completion 内部的 ky_io 闸门负责。
+                    if type(e).__name__ == "PermissionDeniedError":
+                        print(f"\033[93m[i] 严格只读模式 (--permission=safe)：已跳过「今日完成度」"
+                              f"写入，ky_config.json 保持原样。\033[0m")
+                    else:
+                        print(f"[warn] 今日完成度写入失败: {type(e).__name__}: {e}", file=sys.stderr)
 
             # 4. 尝试向已配置的 IM 推送日终简报
+            # [修复 2026-10-05] 零任务会话不推送：避免「今日复习圆满收工」骚扰。
             cfg_path = self.workspace_root / "ky_config.json"
-            if cfg_path.exists():
+            if total_tasks > 0 and cfg_path.exists():
                 try:
                     import json
                     cfg = json.loads(cfg_path.read_text(encoding="utf-8"))

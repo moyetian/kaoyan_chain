@@ -491,11 +491,32 @@ class OnboardingWizard(QDialog):
         self.pro_type_combo.addItem("管科综合 / 管理科学自命题 (如 803/842 运筹与管理)", "mgmt_sci")
         self.pro_type_combo.addItem("408 计算机学科专业基础综合 (全国统考)", "408")
         self.pro_type_combo.addItem("199 管理类联考综合能力 (统考)", "199")
-        self.pro_type_combo.addItem("396 经济类综合能力 (统考)", "396")
-        self.pro_type_combo.addItem("333 教育综合 (全国统考/自命题)", "333")
         # [P2-12 修复·护理考生无预设] 308 护理综合：载入模块骨架（需按目标院校官网核验）
         self.pro_type_combo.addItem("308 护理综合 (统考/自命题，载入模块骨架)", "308")
-        self.pro_type_combo.addItem("法律硕士联考专业基础 (397/398 统考)", "law")
+        # [2026-10-06 批次·内置统考/联考/自命题大纲] 注册表科目数据驱动追加（含 396/333/
+        # 311/313/306/307/314/315/414/415/397/398/497/498/211/346/347/348/349/
+        # 354/357/431/432/433/434/435/436/445/448 与自命题811/813/814/816；
+        # 按 PRO_GROUP_ORDER 分组排序，自命题组恒排末位）。
+        # 此前 396/333/law 三个悬空选项（选了落占位）由本批注册表接管；law 由
+        # 397/398/497/498 四个精确科目取代。
+        # [2026-10-06 B 批次] 自命题条目（811 等）此前完全缺席，考生只能手填科目名；
+        # 且展示名必须经 syllabus_manager.pro_syllabus_label 带上
+        # 「自命题·以院校官方大纲为准」—— 分类标签已含该信息，这里不再重复拼，
+        # 避免出现「…（自命题·以院校官方大纲为准）（自命题·以院校官方大纲为准）」。
+        try:
+            try:
+                from tools import syllabus_manager as _sm
+            except ImportError:
+                import syllabus_manager as _sm
+            _cat_label = {"unified": "全国统考", "joint": "联考·招生单位选用",
+                          "self_defined": "自命题·以院校官方大纲为准"}
+            for _code, _info in _sm.builtin_pro_syllabi_grouped():
+                _label = _sm.pro_syllabus_label(_info)
+                self.pro_type_combo.addItem(
+                    f"{_label}（{_cat_label.get(_info['category'], '')}）"
+                    if _info["category"] != "self_defined" else _label, _code)
+        except Exception:
+            pass  # 注册表缺失时仅保留基础选项（降级不报错）
         self.pro_type_combo.currentIndexChanged.connect(self._on_pro_type_changed)
         form.addRow("专业课类别:", self.pro_type_combo)
 
@@ -1199,7 +1220,22 @@ class OnboardingWizard(QDialog):
 
     def _on_pro_type_changed(self, index: int):
         val = self.pro_type_combo.currentData()
-        if val == "408":
+        # [2026-10-06 批次·内置统考/联考大纲] 注册表科目优先按注册表 name 预填
+        _hit = None
+        try:
+            try:
+                from tools import syllabus_manager as _sm
+            except ImportError:
+                import syllabus_manager as _sm
+            _hit = _sm.builtin_pro_syllabus(val, "")
+        except Exception:
+            _hit = None
+        if _hit:
+            # [2026-10-06 B 批次] 经 pro_syllabus_label 取展示名：自命题条目
+            # 必须带「自命题·以院校官方大纲为准」，否则预填进输入框的科目名
+            # 会与统考科目长得一样，考生以为拿到了官方考纲。
+            self.pro_name_edit.setText(_sm.pro_syllabus_label(_hit))
+        elif val == "408":
             self.pro_name_edit.setText("408 计算机学科专业基础综合")
         elif val == "199":
             self.pro_name_edit.setText("199 管理类综合能力")

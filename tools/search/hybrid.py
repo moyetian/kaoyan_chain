@@ -30,6 +30,16 @@ class VectorUnavailable(RuntimeError):
     """向量分支不可用（异常消息即人话降级原因，可直接展示给用户）。"""
 
 
+class LexicalUnavailable(RuntimeError):
+    """词法分支不可用（异常消息即人话降级原因，可直接展示给用户）。
+
+    [R4 #207 修复] 此前词法遍历异常被吞成 warning 后返回空列表 ——
+    「检索坏了」与「没搜到」在调用方看来完全一样（GUI 曾据此提示
+    「知识库是空的」）。现改为显式抛出，由 :func:`_run_hybrid` 记入
+    ``SearchOutcome.degrade_reason``。
+    """
+
+
 @dataclass
 class SearchResult:
     """一条**本地知识库片段**命中。
@@ -44,7 +54,7 @@ class SearchResult:
     source: str             # 来源
     lexical_rank: int = -1  # 词法排名（-1 表示未命中）
     vector_rank: int = -1   # 向量排名（-1 表示未命中）
-    #: 本次检索是否降级（向量分支未参与，结果全部来自词法分支）。
+    #: 本次检索是否降级（有分支未参与本次检索：向量不可用，或词法分支失败）。
     #: 降级是「一次检索」的属性，这里逐条冗余一份，便于只拿到结果列表的
     #: 调用方也能感知；**0 条结果**的场景请改用 search_with_diagnostics()。
     degraded: bool = False
@@ -65,6 +75,10 @@ class SearchOutcome:
     degrade_reason: str = ""
     lexical_count: int = 0   # 词法分支召回条数（融合前）
     vector_count: int = 0    # 向量分支召回条数（融合前）
+    #: 词法分支本次是否**失败**（区别于「正常执行但 0 命中」）。0 条结果时
+    #: 渲染层据此区分「真的没搜到」与「检索未完成」——不得把前者的话术
+    #: （「知识库是空的」）用到后者头上。
+    lexical_failed: bool = False
 
 
 def rrf_score(ranks: List[int], k: int = 60) -> float:
@@ -149,43 +163,78 @@ def _run_hybrid(
             作为 ``degrade_reason`` 原样上报 —— 避免把「扩展缺失」笼统说成
             「调用方关闭了向量分支」。
     """
+    # [修复 2026-10-05·只读检索不得建库] KnowledgeStore() 一构造就会
+    # mkdir + 建表（knowledge_store.py:86），而「检索」是只读语义：库文件
+    # 不存在时不得凭空造一个空库。此守卫覆盖 hybrid_search / search /
+    # search_with_diagnostics 的全部调用方（含 cli_integration 与 ky rag）。
+    from .knowledge_store import DEFAULT_DB_PATH
+    if not DEFAULT_DB_PATH.exists():
+        return SearchOutcome(
+            results=[],
+            degraded=True,
+            degrade_reason=(f"本地知识库尚未建立（{DEFAULT_DB_PATH}）："
+                            "先运行 ky index 建索引后再检索"),
+        )
+
     # Step 1: 词法检索分支
-    lexical_results = _lexical_search(query, top_k=lexical_top_k,
-                                      source_filter=source_filter)
+    # [R4 #207 修复] 失败必须显式上报（LexicalUnavailable），不得静默返回
+    # 空列表 —— 否则「检索坏了」会被伪装成「没搜到」。
+    lexical_error = ""
+    try:
+        lexical_results = _lexical_search(query, top_k=lexical_top_k,
+                                          source_filter=source_filter)
+    except LexicalUnavailable as e:
+        lexical_results = []
+        lexical_error = str(e)
+        logger.warning("词法检索不可用，降级: %s", e)
 
     # Step 2: 向量检索分支（如果启用）
     vector_results: List[Tuple[str, float]] = []
-    degraded = False
-    degrade_reason = ""
+    vector_reason = ""   # 正文：向量分支为什么没参与
+    vector_tail = ""     # 尾注：本次结果的性质（词法失败时换如实口径）
 
     if forced_reason:
-        degraded = True
-        degrade_reason = forced_reason
+        vector_reason = forced_reason
     elif not enable_vector:
-        degraded = True
-        degrade_reason = "未启用向量分支（enable_vector=False）；本次为纯词法检索"
+        vector_reason = "未启用向量分支（enable_vector=False）"
+        vector_tail = "本次为纯词法检索"
     else:
         try:
             vector_results = _vector_search(query, top_k=vector_top_k,
                                             source_filter=source_filter)
         except VectorUnavailable as e:
-            degraded = True
-            degrade_reason = f"{e}；本次为纯词法检索"
+            vector_reason = str(e)
+            vector_tail = "本次为纯词法检索"
             logger.warning("向量检索不可用，降级到纯词法: %s", e)
         except Exception as e:
-            degraded = True
-            degrade_reason = (f"向量检索异常（{type(e).__name__}: {e}）；"
-                              "本次已回退纯词法检索")
+            vector_reason = f"向量检索异常（{type(e).__name__}: {e}）"
+            vector_tail = "本次已回退纯词法检索"
             logger.warning("向量检索异常，降级到纯词法: %s", e)
 
-    # Step 3: RRF 融合
+    # Step 3: 汇总降级诊断（词法失败与向量降级可同时存在）
+    reasons: List[str] = []
+    if lexical_error:
+        reasons.append(lexical_error)
+    if vector_reason:
+        reasons.append(vector_reason)
+    degraded = bool(reasons)
+    degrade_reason = ""
+    if degraded:
+        degrade_reason = "；".join(reasons)
+        if lexical_error:
+            # 词法已失败时「纯词法检索」类尾注不再成立，换如实口径
+            degrade_reason += "；本次检索结果不完整"
+        elif vector_tail:
+            degrade_reason += f"；{vector_tail}"
+
+    # Step 4: RRF 融合
     fused_results = _rrf_fusion(
         lexical_results=lexical_results,
         vector_results=vector_results,
         rrf_k=rrf_k
     )
 
-    # Step 4: 逐条打上本次检索的降级标记 + 返回 top_k
+    # Step 5: 逐条打上本次检索的降级标记 + 返回 top_k
     results = fused_results[:top_k]
     if degraded:
         for r in results:
@@ -198,6 +247,7 @@ def _run_hybrid(
         degrade_reason=degrade_reason,
         lexical_count=len(lexical_results),
         vector_count=len(vector_results),
+        lexical_failed=bool(lexical_error),
     )
 
 
@@ -212,6 +262,11 @@ def _lexical_search(query: str, top_k: int = 20,
 
     Returns:
         [(chunk_id, score), ...] 按得分降序
+
+    Raises:
+        LexicalUnavailable: 词法分支不可用（消息即人话原因，供上层拼装
+            用户可见提示）。[R4 #207 修复] 此前一切异常被吞成 warning 后
+            返回空列表，「检索坏了」与「没搜到」在调用方看来完全一样。
     """
     try:
         # 复用现有的搜索模块
@@ -230,9 +285,10 @@ def _lexical_search(query: str, top_k: int = 20,
 
         # 遍历所有片段进行匹配
         # TODO: 优化为使用 SQLite FTS5 全文索引
-        # [G7 修复] 旧实现 LIMIT 1000 使超千片段的库永久丢召回，且异常被
-        # 裸 except: pass 吞掉（表缺失也报"无结果"）。现去掉 LIMIT（游标流式
-        # 遍历，内存仍只保留命中项），异常记 warning 携带上下文。
+        # [G7 修复] 旧实现 LIMIT 1000 使超千片段的库永久丢召回。现去掉
+        # LIMIT（游标流式遍历，内存仍只保留命中项）。
+        # [R4 #207 修复] 遍历失败不再吞成空结果：抛 LexicalUnavailable，
+        # 由 _run_hybrid 记入 degrade_reason（用户可见）。
         try:
             if source_filter:
                 cursor = store.conn.execute(
@@ -255,16 +311,19 @@ def _lexical_search(query: str, top_k: int = 20,
                 if score > 0:
                     results.append((chunk_id, score))
         except Exception as e:
-            logger.warning(f"词法检索片段遍历失败（source_filter={source_filter!r}）: {e}")
+            raise LexicalUnavailable(
+                f"词法检索失败（{type(e).__name__}: {e}）") from e
 
         # 按得分降序排序
         results.sort(key=lambda x: x[1], reverse=True)
 
         return results[:top_k]
 
+    except LexicalUnavailable:
+        raise
     except Exception as e:
-        logger.error(f"词法检索失败: {e}")
-        return []
+        raise LexicalUnavailable(
+            f"词法检索失败（{type(e).__name__}: {e}）") from e
 
 
 def _vector_search(query: str, top_k: int = 20,
@@ -407,6 +466,17 @@ def search_with_diagnostics(
     Returns:
         SearchOutcome(results=..., degraded=..., degrade_reason=...)
     """
+    # [修复 2026-10-05] 库不存在时提前返回诊断：下面的 has_vector 探测会先
+    # get_knowledge_store()（构造即建库），必须放在探测之前拦截。
+    from .knowledge_store import DEFAULT_DB_PATH
+    if not DEFAULT_DB_PATH.exists():
+        return SearchOutcome(
+            results=[],
+            degraded=True,
+            degrade_reason=(f"本地知识库尚未建立（{DEFAULT_DB_PATH}）："
+                            "先运行 ky index 建索引后再检索"),
+        )
+
     forced_reason = ""
     if enable_vector:
         from .knowledge_store import get_knowledge_store

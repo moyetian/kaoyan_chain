@@ -215,13 +215,45 @@ _STEM_MARK = r"####\s*\d+\s*[.、]?\s*试题原题"
 
 #: 题干提取：与 ``exam_composer._load_whitelist_cards`` 的解析口径**同一正则**
 #: （单一事实源 —— 两处若各自维护，渲染侧算出的 checksum 会在解析侧校验失败）。
-_STEM_RE = re.compile(_STEM_MARK + r"\s*\n(.*?)(?=\n-{3,}|\Z)", re.DOTALL)
+#: [数据正确性修复·题干 --- 截断] 终止锚旧为 ``(?=\n-{3,}|\Z)``：题干内含
+#: Markdown 水平线（材料题常见：材料正文用 ``---`` 分段）时在**内部**那条线
+#: 提前截断（实测 ``阅读以下材料：\n---\n材料正文`` → 只剩 ``阅读以下材料：``），
+#: 组卷题面残缺、checksum 却仍自洽不报警。现要求水平线后**直到卡片末尾**都是
+#: 空白才算终止线（``\n-{3,}\s*\Z``）—— 普通卡（唯一 ``---`` 在卡尾）提取结果
+#: 逐字节不变（checksum 兼容红线），含内部 ``---`` 的卡改为吃到卡尾分隔线。
+_STEM_RE = re.compile(_STEM_MARK + r"\s*\n(.*?)(?=\n-{3,}\s*\Z|\Z)", re.DOTALL)
 
 #: 错题记录题干段标记（```text 围栏，error_logger 的卡片模板）
 _MISTAKE_MARK = r"-\s*\*\*题干设问\*\*[：:]"
 
-#: 错题记录的题干提取
-_MISTAKE_STEM_RE = re.compile(_MISTAKE_MARK + r"\s*\n```text\n(.*?)\n```", re.DOTALL)
+#: ```text 围栏的最小反引号数量（CommonMark 缺省）
+_FENCE_MIN_LEN = 3
+
+
+def fence_for_text(text: str) -> str:
+    """返回包裹 ``text`` 所需的围栏串（反引号数量自适应）。
+
+    [数据正确性修复·围栏提前闭合] 题干本身含 ``` 时（代码题 / Markdown 摘录，
+    如 ``print('hi')`` 包在 ```python 块里），固定 3 反引号围栏会在内容里的
+    ``` 处提前闭合：卡片结构损坏、题干被截断、题源指纹失配并触发重复归档。
+    按 CommonMark 规则取 ``max(3, 内容中最长连续反引号数 + 1)``。
+
+    写入侧（``error_logger.log_error_record`` / ``exam_composer`` 试卷渲染）
+    与解析侧（``_MISTAKE_STEM_RE`` 的反向引用）共用本函数的产物口径 ——
+    旧格式（3 反引号、内容不含 ```）解析结果逐字节不变。
+    """
+    longest = 0
+    for m in re.finditer(r"`+", str(text or "")):
+        longest = max(longest, len(m.group(0)))
+    return "`" * max(_FENCE_MIN_LEN, longest + 1)
+
+
+#: 错题记录的题干提取。围栏长度用反向引用绑定 —— 写侧自适应加长后
+#: （``fence_for_text``）解析侧必须用**同长度**的结束围栏闭合，
+#: 否则内容里的 ``` 会被误当结束标记。
+_MISTAKE_STEM_RE = re.compile(
+    _MISTAKE_MARK + r"\s*\n(?P<fence>`{3,})text[ \t]*\n(.*?)\n(?P=fence)",
+    re.DOTALL)
 
 #: 题源ID 行解析（容忍全角/半角冒号与反引号包裹）
 _SOURCE_ID_LINE_RE = re.compile(
@@ -241,9 +273,13 @@ def extract_card_stem(card_text: str) -> str:
 
 
 def extract_mistake_stem(card_text: str) -> str:
-    """从错题记录卡片提取题干（```text 围栏格式）。"""
+    """从错题记录卡片提取题干（```text 围栏格式）。
+
+    围栏长度自适应（``fence_for_text``）：内容含 ``` 的卡片用更长的
+    结束围栏闭合，group(2) 为围栏内正文。
+    """
     m = _MISTAKE_STEM_RE.search(str(card_text or ""))
-    return m.group(1).strip() if m else ""
+    return m.group(2).strip() if m else ""
 
 
 def find_source_id(card_text: str) -> str:
@@ -523,6 +559,7 @@ __all__ = [
     "QuestionSource",
     "normalize_stem", "compute_checksum", "build_source_id", "parse_source_id",
     "extract_card_stem", "extract_mistake_stem", "find_source_id", "find_checksum",
+    "fence_for_text",
     "source_from_card", "backfill_markdown_text", "backfill_file", "backfill_workspace",
     "split_card_blocks", "CARD_SPLIT_RE", "has_declared_identity",
     "SOURCE_ID_FIELD", "CHECKSUM_FIELD", "SOURCE_ID_LINE_PREFIX",

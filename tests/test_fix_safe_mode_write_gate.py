@@ -50,12 +50,14 @@ from tools.cli import shared  # noqa: E402
 #: 其 --apply 粒度拦截见 _SAFE_MODE_WRITE_FLAGS 与 test_gate_blocks_write_escalations。
 WRITE_COMMAND_SAMPLES = {
     "build":       ["build"],
+    "budget":      ["budget", "deep"],
     "clawbot":     ["clawbot"],
     "config":      ["config"],
     "done":        ["done", "背单词"],
     "exam":        ["exam"],
     "exam-submit": ["exam-submit", "paper.md", "A B C"],
     "gui":         ["gui"],
+    "index":       ["index"],
     "ingest":      ["ingest", "paper.md"],
     "key":         ["key", "set", "PAPER-1", "1", "答案：B"],
     "memory":      ["memory", "prune"],
