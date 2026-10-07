@@ -432,6 +432,9 @@ def test_read_radar_rows_math_4col_unchanged(tmp_path, monkeypatch):
 
 def test_safe_filename_helper_caps_length():
     assert len(mi.safe_filename("真题汇编" * 100)) <= 120
+    # [POSIX 字节上限] CJK 每字 3 字节：仅字符数达标不够 —— 120 字 = 360 字节
+    # 在 Linux NAME_MAX(255 字节) 下写不出（ubuntu CI 实测 Errno 36）。
+    assert len(mi.safe_filename("真题汇编" * 100).encode("utf-8")) <= 180
 
 
 def test_ingest_long_source_name_truncated(tmp_path, monkeypatch):
@@ -448,3 +451,7 @@ def test_ingest_long_source_name_truncated(tmp_path, monkeypatch):
     m = re.match(r"题库切片_(.+)_\d{8}_\d{6}\.md$", files[0].name)
     assert m, f"文件名结构不符: {files[0].name}"
     assert len(m.group(1)) <= 120, f"safe_src 未截断: {len(m.group(1))} 字符"
+    # [POSIX 字节上限] 文件名上限在 POSIX 是 **字节制**（NAME_MAX=255 字节）：
+    # 120 个汉字 = 360 字节在 Linux 上直接 ENAMETOOLONG（ubuntu CI 实测红）。
+    assert len(m.group(1).encode("utf-8")) <= 180, \
+        f"safe_src 字节超限: {len(m.group(1).encode('utf-8'))} 字节"

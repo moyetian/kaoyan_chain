@@ -42,6 +42,28 @@ PathLike = Union[str, "os.PathLike[str]", Path]
 #: Windows 文件名非法字符 + 各类换行/制表符（换行会让文件名被截断或产生诡异文件）
 _ILLEGAL_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|\r\n\t\x00-\x1f]')
 
+#: ``safe_filename`` 结果的 UTF-8 字节预算。POSIX 的 NAME_MAX 是 255 **字节**
+#: （Windows 才是 255 字符/UTF-16 单元），CJK 每字 3 字节 —— 仅按字符截断
+#: （120 字 = 360 字节）会产出 Linux 上根本写不出的「安全文件名」。
+#: 取 180 字节（60 个汉字）为下游拼接留余量：实测最重的调用点是
+#: 「题库切片_{safe_src}_{时间戳}.md」（+31 字节）与「双校对标_{校1}_VS_{校2}_
+#: {专业}.md」（最坏 +69 字节），180 + 69 = 249 ≤ 255。
+_MAX_SAFE_FILENAME_BYTES = 180
+
+
+def _truncate_utf8(text: str, max_bytes: int) -> str:
+    """按 UTF-8 **字节**预算截断文本，绝不切出半个多字节字符。
+
+    多字节字符被预算切到时整个丢弃（``errors="ignore"``），因此结果的
+    字节数保证 ≤ ``max_bytes``（对 CJK 通常略小于预算，最多差 3 字节）。
+    """
+    if max_bytes <= 0:
+        return ""
+    raw = text.encode("utf-8")
+    if len(raw) <= max_bytes:
+        return text
+    return raw[:max_bytes].decode("utf-8", errors="ignore")
+
 
 # ── 严格只读模式（--permission=safe）全局闸门 ──────────────────────────────
 # [D2 修复] 此前 safe 模式只在 PermissionManager.check_permission 里判定，而
@@ -395,12 +417,20 @@ def atomic_write_text(path: PathLike, text: str, *, encoding: str = "utf-8",
             # 越界，_os.open 报 FileNotFoundError 写出失败（用例随 basetemp 长度
             # 翻转：tests/test_fix_20261005_data.py::test_ingest_long_source_name_truncated）。
             # 对长目标名截断前缀，保证临时名不长于目标名（目标名可写 ⇒ 临时名必
-            # 可写）；短名（≤76）保持原名便于残留排障 —— 既知局限：名字 62~76 ×
-            # 目录 169+ 字符的窄带内仍可能越界（双巧合、报可见异常非静默），正常
-            # 工作区目录远短于此。
+            # 可写）；短名（≤76 字节）保持原名便于残留排障 —— 既知局限：名字
+            # 62~76 × 目录 169+ 字符的窄带内仍可能越界（双巧合、报可见异常非静默），
+            # 正常工作区目录远短于此。
+            # [POSIX 字节上限修复 2026-10-07] 截断预算必须按 **UTF-8 字节**度量：
+            # POSIX 的 NAME_MAX 是 255 字节（Windows 才是 255 字符/UTF-16 单元），
+            # CJK 每字 3 字节 —— 130 个「深」的字符制前缀在 Linux 上达 393 字节，
+            # mkstemp 直接 Errno 36 (ENAMETOOLONG)（ubuntu CI 实测红，Windows 掩盖）。
+            # 截到「目标名字节数 - 12」（tmp 尾部固定 8 随机 + ".tmp" = 12 字节），
+            # 保证 tmp 名 ≤ 目标名字节数 —— 维持「目标名可写 ⇒ 临时名必可写」的
+            # 原契约，只是度量单位从字符换成字节。
             _tmp_prefix = f".{target.name}."
-            if len(target.name) > 76:
-                _tmp_prefix = _tmp_prefix[:len(target.name) - 12]
+            _name_bytes = len(target.name.encode("utf-8"))
+            if _name_bytes > 76:
+                _tmp_prefix = _truncate_utf8(_tmp_prefix, _name_bytes - 12)
             fd, tmp_name = tempfile.mkstemp(
                 prefix=_tmp_prefix, suffix=".tmp", dir=str(parent))
             tmp_path = Path(tmp_name)
@@ -454,13 +484,20 @@ def safe_filename(name: str, fallback: str = "未命名", max_length: int = 120)
     # 保留名判定要去掉扩展名，因为 Windows 下 "CON.txt" 同样非法
     if s.split(".")[0].upper() in _WINDOWS_RESERVED_NAMES:
         s = f"_{s}"
-    if len(s) > max_length:
+    if len(s) > max_length or len(s.encode("utf-8")) > _MAX_SAFE_FILENAME_BYTES:
+        # [POSIX 字节上限修复 2026-10-07] 双预算截断：字符数（max_length）之外
+        # 还要满足 UTF-8 字节预算 —— POSIX 的 NAME_MAX 是 255 字节，CJK 每字
+        # 3 字节，「120 字」= 360 字节在 Linux 上根本写不出（ubuntu CI 实测
+        # Errno 36 ENAMETOOLONG）。字节预算见 _MAX_SAFE_FILENAME_BYTES。
         # 尽量保留扩展名，便于下游按后缀判断类型
         stem, dot, ext = s.rpartition(".")
         if dot and len(ext) <= 10:
-            s = stem[:max_length - len(ext) - 1] + "." + ext
+            suffix, head = "." + ext, stem
         else:
-            s = s[:max_length]
+            suffix, head = "", s
+        head = head[:max_length - len(suffix)]
+        head = _truncate_utf8(head, _MAX_SAFE_FILENAME_BYTES - len(suffix.encode("utf-8")))
+        s = head + suffix
     return s or fallback
 
 

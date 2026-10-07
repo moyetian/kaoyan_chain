@@ -258,7 +258,16 @@ def test_cooldown_state_survives_process_restart(tmp_path):
     health._POLICY = None                     # 模拟进程重启
     assert health.policy().is_cooling("sogou-weixin"), (
         "重启后应记得仍在冷却（否则换个端点就再撞一次墙）")
-    assert health.policy().remaining("sogou-weixin") <= saved["sogou-weixin"] + 1e-6
+    # [POSIX 时钟粒度修复 2026-10-07] 不能对 saved 用 1e-6 精确上界：落盘发生在
+    # mark_blocked 内部（较早时刻），saved 是测试稍后读的内存快照 —— 恢复以
+    # 「落盘值 + 续算」为准，remaining 允许比 saved 大一个「persist→snapshot
+    # 调用间隙」（Linux μs 级单调时钟下实测 ~93μs 致红：599.999971036 <=
+    # 599.999878266 + 1e-6 为假；Windows 15.6ms 时钟粒度掩盖该差，故仅 POSIX
+    # 翻车）。改「量级窗口」断言：下界 590 钉住「确实续算出接近 600s 的剩余」
+    # （抓 0/小值/符号错误），上界 saved+1s 钉住「没有凭空增多」（抓指数翻倍
+    # 等秒级回归；亚毫秒级的观测间隙无实际影响，不设防）。
+    remaining = health.policy().remaining("sogou-weixin")
+    assert 590.0 <= remaining <= saved["sogou-weixin"] + 1.0
 
 
 def test_half_open_allows_only_one_probe(monkeypatch):
