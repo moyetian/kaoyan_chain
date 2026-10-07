@@ -154,6 +154,20 @@ def built_html() -> str:
     return html
 
 
+@pytest.fixture()
+def no_today_refresh(monkeypatch):
+    """[tripwire 修复 2026-10-07] 打桩 build() 本地完整模式（``KY_SNAPSHOT_OPT_IN=0``）
+    的今日任务刷新——否则 ``build()`` 会调 ``refresh_stale_today_tasks(
+    workspace_root=真实仓库根)`` 改写四科「今日任务.md」（conftest tripwire
+    硬失败）。打桩 study_planner 模块属性：build.py 函数内 import 每次重新取。
+    """
+    try:
+        import tools.study_planner as _sp
+    except ImportError:  # pragma: no cover
+        import study_planner as _sp
+    monkeypatch.setattr(_sp, "refresh_stale_today_tasks", lambda **k: None)
+
+
 # ── ① 侧栏无 emoji ─────────────────────────────────────────────
 
 def test_sidebar_has_no_emoji(template_text):
@@ -338,7 +352,7 @@ def test_sidebar_brand_block_present(template_text, built_html):
 
 # ── ⑥ 空状态三件套 ─────────────────────────────────────────────
 
-def test_empty_today_state_is_three_piece(monkeypatch):
+def test_empty_today_state_is_three_piece(no_today_refresh, monkeypatch):
     """今日任务为空时必须渲染「图标 + 说明 + CTA」三件套，不得裸奔。
 
     用 ``get_section`` 打桩模拟「今日任务尚未生成」（today 章节 kw 为 None），
@@ -491,7 +505,7 @@ def test_radar_empty_states_use_sprite():
 
 # ── ⑨ [W13 验收修复·F6] 「错题」页签默认 deck ──────────────────
 
-def test_weak_default_deck_prefers_error_queue(tmp_path, monkeypatch):
+def test_weak_default_deck_prefers_error_queue(no_today_refresh, tmp_path, monkeypatch):
     """「错题」页签的第一个 deck 必须是错题相关卡片组（错题重做队列）。
 
     [F6] 此前 weak 页签的默认 deck 由「科目遍历顺序 + 章节声明顺序」决定，

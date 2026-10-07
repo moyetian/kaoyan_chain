@@ -54,7 +54,8 @@ def test_jsonl_line_counts_are_stable():
 def test_readme_counts_match_data():
     """``README.md`` 的条数文案必须等于数据文件实际行数。
 
-    定位：README「v3.1.0 亮点」段内写「考纲守卫 <N> 条 / 引文忠实度 <N> 条」。
+    定位：README「🧪 自动化质量工程」段内写「考纲守卫 <N> 条 / 引文忠实度 <N> 条」
+    （2026-10-07 README 精简后从「v3.1.0 亮点」段迁移至此；断言只做全文包含匹配）。
     """
     text = README_FILE.read_text(encoding="utf-8")
     c1 = _count_data_lines(SYLLABUS_FILE)

@@ -87,8 +87,17 @@ def app():
 
 
 @pytest.fixture()
-def win(app):
-    w = MainWindow()
+def win(app, tmp_path, monkeypatch):
+    # [tripwire 修复 2026-10-07] 隔离姿势同 test_gui_smoke：workspace_root=
+    # tmp_path 防改写真实「今日任务.md」；is_unconfigured 必须打在
+    # **_mw.services**（main_window 实际引用的对象，双导入下可能与
+    # ``tools.gui.services`` 不是同一个模块）——否则空 tmp 工作区判未配置 →
+    # singleShot(150ms) 弹建档向导 → 离屏下 wizard.exec() 永久阻塞。
+    import tools.gui.main_window as _mw
+
+    monkeypatch.setattr(_mw.services, "is_unconfigured",
+                        lambda *a, **k: False, raising=False)
+    w = MainWindow(workspace_root=tmp_path)
     w.show()
     w.adjustSize()
     app.processEvents()
@@ -841,7 +850,9 @@ def test_nav_rail_toggle_persists_and_restores(win, app):
     assert _collapsed_pref(), "折叠态应写入 QSettings（ui/rail_collapsed）"
 
     # 端到端：新窗口构建时按 QSettings 恢复折叠态
-    win2 = MainWindow()
+    # [tripwire 修复 2026-10-07] 复用 win 的 tmp 工作区（is_unconfigured 已由
+    # fixture 打桩），避免裸构造写真实仓库。
+    win2 = MainWindow(workspace_root=win.workspace_root)
     win2.show()
     app.processEvents()
     try:

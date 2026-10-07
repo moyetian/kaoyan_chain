@@ -31,8 +31,15 @@ def app():
 
 
 @pytest.fixture()
-def win(app):
-    w = MainWindow()
+def win(app, tmp_path, monkeypatch):
+    # [tripwire 修复 2026-10-07] 隔离姿势同 test_gui_smoke：workspace_root=
+    # tmp_path 防改写真实「今日任务.md」；is_unconfigured 必须打在
+    # **_mw.services**（main_window 实际引用的对象）防 150ms 建档向导阻塞。
+    import tools.gui.main_window as _mw
+
+    monkeypatch.setattr(_mw.services, "is_unconfigured",
+                        lambda *a, **k: False, raising=False)
+    w = MainWindow(workspace_root=tmp_path)
     w.show()
     w.adjustSize()
     app.processEvents()

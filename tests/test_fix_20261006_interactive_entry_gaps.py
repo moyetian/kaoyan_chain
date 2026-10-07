@@ -294,9 +294,19 @@ def gui_app():
 
 
 @pytest.fixture()
-def gui_win(gui_app):
+def gui_win(gui_app, tmp_path, monkeypatch):
+    import tools.gui.main_window as _mw
     from tools.gui.main_window import MainWindow
-    w = MainWindow()
+    # [tripwire 修复 2026-10-07] workspace_root=tmp_path：MainWindow 初始化会写
+    # 四科「今日任务.md」，不传时回落真实仓库根 → conftest tripwire 硬失败。
+    # is_unconfigured 必须打在 **_mw.services**（main_window 实际引用的对象）上：
+    # main_window 内部走 ``from gui import services``（tools/ 在 sys.path 上时），
+    # 与 ``tools.gui.services`` 是**两个模块对象**，打错对象则向导照弹 ——
+    # 离屏下 wizard.exec() 无用户可交互，永久阻塞整批测试。
+    # 打桩目的：tmp_path 无 ky_config，防初始化弹引导向导。
+    monkeypatch.setattr(_mw.services, "is_unconfigured",
+                        lambda *a, **k: False, raising=False)
+    w = MainWindow(workspace_root=tmp_path)
     w.show()
     gui_app.processEvents()
     yield w

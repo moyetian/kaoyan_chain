@@ -245,15 +245,33 @@ python tools/test_ky_suite.py
 ```bash
 python tools/test_new_features.py
 ```
-独立运行 v2.6.0 新增模块的专项测试（A–H 8 组，共 **131 测试点**，0 跳过；与是否 Git 工作区无关），可选依赖缺失时自动 `[SKIP]`：
+独立运行 v2.6.0 新增模块的专项测试（A–H 8 组，共 **132 项断言**，0 跳过；与是否 Git 工作区无关），可选依赖缺失时自动 `[SKIP]`：
 - **组 A**：微信公众号经验贴检索、HTML→Markdown 清洗、院校档案联动
 - **组 B**：Rust PyO3 扩展与纯 Python 双模一致性校验（需 `ky_rust_ext`，否则跳过）
 - **组 C**：PySide6 GUI 离屏实例化与 QSS 主题完整性（需 `PySide6`，否则跳过）
 - **组 D**：CLI 子命令路由（`ky gui`/`ky wechat`/`ky wx`）与 TUI 菜单挂载
 - **组 E–H**：TUI/GUI 后端契约守卫、开放题多模型判分引擎、判分引擎打磨项回归与代码审查修复项回归
 
-> **计数是环境相关的**（2026-09-22 实测）：上述数字随是否 Git 工作区、是否构建 `dist/`、
-> 是否配置 `study_plan.school` 而变。改文档计数时请连同环境前提一起写。
+> **测试计数与环境的对应关系**（2026-10-07 实测；改计数时请连同环境前提一起写）：
+>
+> - `test_ky_suite.py`：26 组共 **307 项断言**。Git 工作区内为 307 通过 / 0 跳过；
+>   干净检出（`git archive` 导出、无 `.git`）为 **302 通过 + 5 跳过 = 307** ——
+>   「测试组 7 Git 隐私隔离」的 5 条断言需 `.git`，无 `.git` 时逐条记为跳过，故**两种环境总数恒为 307**。
+> - `test_new_features.py`：**132 项断言**（0 跳过），与是否 Git 工作区无关。
+> - `pytest tests/`：共 **3457 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
+>   **含** `dist/` 构建产物，实测 3452 通过 + 5 跳过）。跳过项为联网测试未设
+>   `KY_LIVE_TEST=1`（2 条）、一条需特定 registry 探测串的守卫（1 条）、一条 POSIX
+>   权限位断言（Windows 不适用，1 条）与一条 prompt 外置迁移后的设计性跳过
+>   （1 条，迁移完成后由 golden 固化用例持续覆盖该不变量）。
+>   在**无** `dist/` 的副本里跑，6 条打包断言会转为跳过 —— 收集总数不变，通过数下降。
+>   在**无 `cat` 的 Windows 裸机**（Git usrin 未加入 PATH）上，2 条沙箱阴性对照会转为
+>   跳过 —— 收集总数不变，通过数下降（该路径由 CI 的 Linux/macOS 作业与 Git 自带 coreutils 覆盖）。
+>   在**公开副本**里跑还会少一整份 `tests/test_fix_publish_privacy.py`（私有工作区收集 139 项）：
+>   它测的 `tools/sync_publish.py` / `tools/build_package.py` 在公开副本里是刻意保留的占位文件，
+>   该测试只对私有工作区有意义，导出时按 `privacy_policy.PRIVATE_WORKSPACE_ONLY_PATHS` 剔除。
+>   ⚠️ 造副本时排除目录**必须锚定根级路径**（如 `--exclude=./dist`）：写成裸 `dist` 会连
+>   `docs/assets/vendor/katex/0.16.9/dist/` 一起排掉（KaTeX npm 包内部结构），导致 vendor 资产假缺失、
+>   `test_web_assets.py` 假失败 —— robocopy 的 `/XD "dist"` 与 tar 的 `--exclude=dist` 同样会踩。
 
 **准入标准**：测试结果必须为 `失败 0 项`（100% 通过或跳过），不允许任何断言失败。
 

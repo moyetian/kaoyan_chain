@@ -1106,6 +1106,16 @@ class MainWindow(QMainWindow):
             self._load_today_task_progress()
 
     def closeEvent(self, event):
+        # [tripwire 修复 2026-10-07] 关窗先停 UI 刷新定时器：QTimer 随窗口对象
+        # 存活，close 不停表时其 60s timeout 会在**后续任何 processEvents**（其他
+        # 窗口/测试的事件泵）中触发 `_on_timer_tick` → 刷新 header/tasks → 经
+        # `refresh_stale_today_tasks` 写「今日任务.md」。实测：测试 A 关闭的窗口
+        # 在测试 B 的 `app.processEvents()` 里写真实工作区（tripwire 硬失败且
+        # 归属测试 B，排查极绕；CI fresh clone 无此文件所以只在本地复现）。
+        # 语义上主窗口 close = 退出应用，停表无副作用。
+        _timer = getattr(self, "timer", None)
+        if _timer is not None:
+            _timer.stop()
         # [B5 修复·关窗 abort] IntelTaskWorker/AgentWorker 均为无 parent 的
         # QThread，仅靠 _worker_refs 持有。任务进行中关窗会触发
         # "QThread: Destroyed while thread is still running" 导致进程 abort。

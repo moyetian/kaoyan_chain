@@ -45,8 +45,19 @@ def app():
 
 
 @pytest.fixture()
-def win(app):
-    w = MainWindow()
+def win(app, tmp_path, monkeypatch):
+    # [tripwire 修复 2026-10-07] workspace_root=tmp_path：裸构造默认 ROOT=真实
+    # 仓库根，窗口刷新链路（header/tasks → refresh_stale_today_tasks）会改写
+    # 真实四科「今日任务.md」（conftest tripwire 硬失败）。
+    # is_unconfigured 必须打在 **_mw.services**（main_window 实际引用的对象；
+    # 双导入下 ``gui.services`` 与 ``tools.gui.services`` 可能不是同一个模块
+    # 对象）——否则空 tmp 工作区被判未配置 → singleShot(150ms) 弹建档向导 →
+    # 离屏下 wizard.exec() 无用户可交互，永久阻塞整批测试。
+    import tools.gui.main_window as _mw
+
+    monkeypatch.setattr(_mw.services, "is_unconfigured",
+                        lambda *a, **k: False, raising=False)
+    w = MainWindow(workspace_root=tmp_path)
     yield w
     w.close()
 
@@ -569,7 +580,7 @@ def test_quit_hook_terminates_thread_that_ignores_interruption(app):
 
 # ── 检索对话框实例持有与退出钩子位置（收尾修复） ────────────────
 
-def test_main_window_installs_search_quit_hook_at_startup(app, monkeypatch):
+def test_main_window_installs_search_quit_hook_at_startup(app, monkeypatch, tmp_path):
     """[收尾修复·钩子位置] 退出收尾钩子必须在主窗口**启动时**装好一次。
 
     修复前只有 ``WeChatSearchDialog._on_search`` 会调 ``_install_quit_hook()``，
@@ -585,7 +596,12 @@ def test_main_window_installs_search_quit_hook_at_startup(app, monkeypatch):
     calls: list = []
     monkeypatch.setattr(mod, "_install_quit_hook", lambda: calls.append(1))
 
-    w = MainWindow()
+    # [tripwire 修复 2026-10-07] 隔离姿势同 win fixture：tmp 工作区 + 防向导。
+    import tools.gui.main_window as _mw
+
+    monkeypatch.setattr(_mw.services, "is_unconfigured",
+                        lambda *a, **k: False, raising=False)
+    w = MainWindow(workspace_root=tmp_path)
     try:
         assert calls == [1], f"主窗口启动应恰好装一次退出钩子，实际 {len(calls)} 次"
     finally:

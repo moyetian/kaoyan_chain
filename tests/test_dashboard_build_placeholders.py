@@ -31,8 +31,21 @@ import build  # noqa: E402
 
 
 @pytest.fixture()
-def build_mod():
-    """导入 build 模块并确保测试不会污染其全局日期。"""
+def build_mod(monkeypatch):
+    """导入 build 模块，并隔离其「本地完整模式刷新今日任务」的落盘副作用。
+
+    [tripwire 修复 2026-10-07] 本文件声明「只读仓库数据、不落盘」，但
+    build() 在 ``KY_SNAPSHOT_OPT_IN=0`` 时会调 ``refresh_stale_today_tasks(
+    workspace_root=真实仓库根)`` 改写四科「今日任务.md」（conftest tripwire
+    硬失败）。打桩 study_planner 模块属性：build.py 在函数内 import，每次
+    调用都从 sys.modules 取最新属性（先 ``tools.study_planner`` 后裸名，
+    与 build.py 的 try 顺序一致）。
+    """
+    try:
+        import tools.study_planner as _sp
+    except ImportError:  # pragma: no cover
+        import study_planner as _sp
+    monkeypatch.setattr(_sp, "refresh_stale_today_tasks", lambda **k: None)
     return build
 
 

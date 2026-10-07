@@ -476,7 +476,11 @@ def test_a6_renderer_hook_triggers_refresh(tmp_path, monkeypatch, capsys):
 
     ws = tmp_path / "ws"
     tf = _seed_stale_pro(ws)
-    monkeypatch.setattr(sp, "ROOT", ws)
+    # [2026-10-07 双根修复同步] 刷新已改走 renderer.ROOT（与任务读取同源，见
+    # renderer.print_today_tasks_summary 的「根一致性修复」注释），隔离对象
+    # 同步从 sp.ROOT 改为 renderer.ROOT：若实现回退为无参回落 sp.ROOT，本用例
+    # 会改写真实仓库（tripwire）且 ws 下文件不刷新（断言失败），双重拦截。
+    monkeypatch.setattr(renderer, "ROOT", ws)
     monkeypatch.setattr(renderer, "get_today_tasks_data", lambda: {})
     renderer.print_today_tasks_summary(as_json=True)
     today = sp.datetime.now().strftime("%Y-%m-%d")

@@ -279,12 +279,33 @@ def gui_env(monkeypatch):
     yield inst
 
 
-def test_gui_close_triggers_session_end_once(gui_env, monkeypatch):
-    """真实会话过 → 关窗触发 SessionEnd 恰一次；再次 close 不重复。"""
-    from tools.gui.main_window import MainWindow
+@pytest.fixture()
+def make_win(gui_env, tmp_path, monkeypatch):
+    """[tripwire 修复 2026-10-07] 隔离版 MainWindow 工厂。
 
+    裸构造默认 ROOT=真实仓库根，关窗刷新链路会改写真实四科「今日任务.md」
+    （conftest tripwire 硬失败）→ 统一 workspace_root=tmp_path。
+    is_unconfigured 必须打在 **_mw.services**（main_window 实际引用的对象，
+    双导入下与 ``tools.gui.services`` 可能不是同一个模块）——否则空 tmp
+    工作区判未配置 → singleShot(150ms) 弹建档向导 → 离屏下 wizard.exec()
+    永久阻塞。
+    """
+    import tools.gui.main_window as _mw
+
+    monkeypatch.setattr(_mw.services, "is_unconfigured",
+                        lambda *a, **k: False, raising=False)
+
+    def _make():
+        from tools.gui.main_window import MainWindow
+        return MainWindow(workspace_root=tmp_path)
+
+    return _make
+
+
+def test_gui_close_triggers_session_end_once(make_win, monkeypatch):
+    """真实会话过 → 关窗触发 SessionEnd 恰一次；再次 close 不重复。"""
     calls = _patch_gui_session_end(monkeypatch)
-    win = MainWindow()
+    win = make_win()
     win._mark_agent_session_ran()      # 模拟 AgentWorker.session_ran_signal 槽
     win.close()
     assert len(calls) == 1
@@ -294,28 +315,24 @@ def test_gui_close_triggers_session_end_once(gui_env, monkeypatch):
     assert len(calls) == 1, "SessionEnd 必须幂等（只触发一次）"
 
 
-def test_gui_close_skips_session_end_without_session(gui_env, monkeypatch):
+def test_gui_close_skips_session_end_without_session(make_win, monkeypatch):
     """空窗（从未发过消息）→ 关窗零触发（不写盘、不推送）。"""
-    from tools.gui.main_window import MainWindow
-
     calls = _patch_gui_session_end(monkeypatch)
-    win = MainWindow()
+    win = make_win()
     win.close()
     assert calls == []
     assert win._session_end_fired is False
 
 
-def test_gui_session_end_hook_failure_never_blocks_close(gui_env, monkeypatch):
+def test_gui_session_end_hook_failure_never_blocks_close(make_win, monkeypatch):
     """钩子抛异常 → 关窗流程照常完成（静默降级）。"""
-    from tools.gui.main_window import MainWindow
-
     try:
         from agent.hooks import HookManager as _HM
     except ImportError:  # pragma: no cover
         from tools.agent.hooks import HookManager as _HM
     monkeypatch.setattr(_HM, "trigger_session_end",
                         lambda self, context: (_ for _ in ()).throw(RuntimeError("boom")))
-    win = MainWindow()
+    win = make_win()
     win._mark_agent_session_ran()
     win.close()                        # 不抛
     assert win._session_end_fired is True

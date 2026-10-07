@@ -271,6 +271,65 @@ def test_scan_residual_identity_flags_pii_only_when_enabled(tmp_path):
 
 
 # ══════════════════════════════════════════════════════════════════════════
+# [2026-10-07 修复] 公开联系邮箱豁免（学员主动公开，不得被当 PII 改写）
+# ══════════════════════════════════════════════════════════════════════════
+
+def test_public_contact_email_survives_sanitizing(tmp_path):
+    """学员**有意公开**的联系邮箱必须原样保留（公开副本 README 实测被误伤）。
+
+    修复前：通用邮箱 PII 规则把公开副本 README 联系方式段的邮箱改写成
+    ``[邮箱]`` —— 与静态表「联系方式（QQ / 邮箱）按学员要求随仓库公开」的
+    注释直接矛盾（学员实测反馈「邮箱被删」）。
+
+    阴性对照：删掉邮箱规则开头的 ``_public_email_guard()`` 负向断言，
+    本用例变红。
+    """
+    root = _make_root(tmp_path, PLAN_FULL)
+    rules = pp.build_substitutions(root)
+    # 样本用**字符串拼接**构造而不是写成字面量：与 P2-5 段同一约定
+    # （test_tests_dir_is_immune_to_py_sanitization 钉住本目录对脱敏免疫）。
+    public_email = "moyetian" + "@foxmail.com"
+    other_email = "someone" + "@example.com"
+    # 形态对齐 README 实际写法：反引号包裹 + 独立成行
+    text = f"电子邮箱：`{public_email}`\n其它邮箱：{other_email}\n"
+    expected = f"电子邮箱：`{public_email}`\n其它邮箱：[邮箱]\n"
+    assert pp.sanitize_text(text, rules) == expected
+    # 同一豁免在 .py 侧（build_py_substitutions）与纯 PII 表下同样生效
+    for pats in (pp.build_py_substitutions(root), pp.PII_SUBSTITUTIONS):
+        assert pp.sanitize_text(public_email, pats) == public_email
+        assert pp.sanitize_text(other_email, pats) == "[邮箱]"
+    # 大写形态等价豁免（邮箱规则整体带 (?i)，豁免随之一致）
+    assert pp.sanitize_text(public_email.upper(), pp.PII_SUBSTITUTIONS) == public_email.upper()
+    # 残留自检同源放行：公开邮箱不得被导出后自检误报成「残留身份」；
+    # 反向确认模式是「活的」——普通邮箱仍被残留自检命中。
+    assert not any(p.search(public_email) for p in pp.PII_RESIDUAL_PATTERNS)
+    assert any(p.search(other_email) for p in pp.PII_RESIDUAL_PATTERNS)
+
+
+def test_readme_contact_email_matches_public_whitelist():
+    """README 联系方式段的邮箱必须与 ``PUBLIC_CONTACT_EMAILS`` **完全一致**。
+
+    「README 写什么」与「豁免名单里写什么」必须同源 —— 防止只改一侧：
+    名单改了 README 没改（豁免空转），或 README 换了邮箱名单没换（又会被
+    误删）。断言用集合相等：两侧任何一侧漂移都变红，强迫同批更新。
+    公开副本里 README 与 privacy_policy.py 同批导出，本用例照常成立。
+    """
+    import pathlib
+    import re as _re
+
+    root = pathlib.Path(__file__).resolve().parent.parent
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    emails = set(_re.findall(r"(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+", readme))
+    assert emails == set(pp.PUBLIC_CONTACT_EMAILS), (
+        f"README 邮箱 {sorted(emails)} 与豁免名单 {sorted(pp.PUBLIC_CONTACT_EMAILS)} 不一致")
+    # 端到端：经真实导出的全量规则脱敏后，README 邮箱必须原样保留
+    rules = pp.build_substitutions(root)
+    for email in sorted(emails):
+        assert pp.sanitize_text(email, rules) == email, \
+            f"README 邮箱 {email} 会被导出脱敏改写"
+
+
+# ══════════════════════════════════════════════════════════════════════════
 # [P6 回归] tests/ 必须对导出脱敏「免疫」
 # ══════════════════════════════════════════════════════════════════════════
 

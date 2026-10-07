@@ -843,7 +843,13 @@ def print_today_tasks_summary(as_json: bool = False, show_flash: bool = True) ->
             from tools.study_planner import refresh_stale_today_tasks
         except ImportError:
             from study_planner import refresh_stale_today_tasks
-        refresh_stale_today_tasks()
+        # [根一致性修复 2026-10-07] 必须显式传本模块的 ROOT：此前无参调用回落
+        # ``study_planner.ROOT``，与下方读取用的 ``renderer.ROOT`` 是**两套根**
+        # —— 真实使用两者恰好同源所以无感，但测试隔离（monkeypatch
+        # ``renderer.ROOT``）与 KY_WORKSPACE_ROOT 副本场景下，刷新会写错工作区
+        # （实测：测试 seed 了 tmp 工作区，刷新却改写真实仓库的「今日任务.md」，
+        # conftest tripwire 硬失败）。
+        refresh_stale_today_tasks(workspace_root=ROOT)
     except Exception:
         pass
     if as_json:

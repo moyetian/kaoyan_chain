@@ -31,6 +31,20 @@ for _p in (str(ROOT), str(DASHBOARD)):
 import build  # noqa: E402
 
 
+@pytest.fixture()
+def no_today_refresh(monkeypatch):
+    """[tripwire 修复 2026-10-07] 打桩 build() 本地完整模式（``KY_SNAPSHOT_OPT_IN=0``）
+    的今日任务刷新——否则 build() 会调 ``refresh_stale_today_tasks(
+    workspace_root=真实仓库根)`` 改写四科「今日任务.md」（conftest tripwire
+    硬失败）。打桩 study_planner 模块属性：build.py 函数内 import 每次重新取。
+    """
+    try:
+        import tools.study_planner as _sp
+    except ImportError:  # pragma: no cover
+        import study_planner as _sp
+    monkeypatch.setattr(_sp, "refresh_stale_today_tasks", lambda **k: None)
+
+
 # ── WEB-1：内嵌今日任务卡倒计时同口径 ────────────────────────────────
 
 def test_sync_today_countdown_replaces_static_text():
@@ -50,7 +64,7 @@ def test_sync_today_countdown_handles_plain_and_absent():
     assert build.sync_today_countdown(plain, 79) == plain
 
 
-def test_build_today_cards_countdown_matches_hero(monkeypatch):
+def test_build_today_cards_countdown_matches_hero(no_today_refresh, monkeypatch):
     """端到端：内嵌今日任务卡里的倒计时必须与 hero 同口径（按当日重算）。
 
     把初试日钉到「今天 + 100 天」，今日任务正文埋「研考倒计时：80 天」静态残留；
@@ -118,7 +132,7 @@ def test_config_numeric_target_keeps_first_integer():
                 f"{s['target']} vs {s['target_text']}")
 
 
-def test_build_subjects_include_target_text_and_ui_consumes(monkeypatch):
+def test_build_subjects_include_target_text_and_ui_consumes(no_today_refresh, monkeypatch):
     """构建层：subj_meta 携带 target_text，页面 JS 存在目标分渲染消费点。"""
     monkeypatch.setenv("KY_SNAPSHOT_OPT_IN", "0")
     _html, data, _warns, _secs = build.build(offline=True)
