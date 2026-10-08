@@ -120,9 +120,9 @@ rem 检查 PySide6 环境自检与自愈 (核心图形中枢: tools\ky_gui.py)
 if !errorlevel! neq 0 (
     echo [*] 正在为考研学习链安装图形界面依赖 PySide6...
     echo [*] 正在安装图形依赖（约 1-3 分钟，请耐心等待，期间无进度输出属正常现象）...
-    %PY% -m pip install -q PySide6
+    %PY% -m pip install -q "PySide6>=6.6.0,<6.12"
     if !errorlevel! neq 0 (
-        echo [^^!] 自动安装 PySide6 失败，请在终端手动运行: pip install PySide6
+        echo [^^!] 自动安装 PySide6 失败，请在终端手动运行: pip install "PySide6>=6.6.0,<6.12"
     )
 )
 
