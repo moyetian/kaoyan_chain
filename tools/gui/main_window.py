@@ -78,6 +78,11 @@ class MainWindow(QMainWindow):
         # 再次发送时被覆盖会导致运行中线程对象被 GC 销毁、进程直接崩溃。
         self.agent_worker = None
         self._worker_refs = []
+        # [P2 修复·2026-10-08] 工具动作重入守卫：正在执行的同类工具动作 key 集合
+        # （watch/build/compare/scout/ingest/diff/rag_search/index_build/error_quiz…）。
+        # 此前连点卡片按钮会并发起多个 IntelTaskWorker —— 重复联网/重复计费，
+        # 落盘类动作还会互相覆盖。同名动作未完成时拒绝再次触发，完成后自动出集。
+        self._running_tool_actions: set = set()
         # [缺陷修复·审批"本会话记住"跨消息失效] 进程级审批信任集：GUI 每条
         # 消息新建 AgentWorker → 新建 GuiApproval，信任集必须由窗口持有并
         # 透传（AgentWorker → GuiApproval → PermissionManager 共享同一 set），
@@ -208,7 +213,9 @@ class MainWindow(QMainWindow):
 
     def _on_example_prompt(self, prompt: str):
         """对话页空状态示例：只填入输入框（不直接发送，避免误触发起计费调用）。"""
-        self.input_box.setText(prompt)
+        # [P1 修复·2026-10-08] 输入框已从 QLineEdit 换为多行 ChatInput，
+        # 读写统一走 QPlainTextEdit 的 setPlainText/toPlainText。
+        self.input_box.setPlainText(prompt)
         self.input_box.setFocus()
 
     # ════════════════════════════════════════════════════════════
@@ -456,11 +463,11 @@ class MainWindow(QMainWindow):
         if not path:
             return
         norm_path = path.replace("\\", "/")
-        cur = self.input_box.text().strip()
+        cur = self.input_box.toPlainText().strip()
         if cur:
-            self.input_box.setText(f"{cur} /img \"{norm_path}\"")
+            self.input_box.setPlainText(f"{cur} /img \"{norm_path}\"")
         else:
-            self.input_box.setText(f"/img \"{norm_path}\" 请私教审阅批改我的推导过程，按考研大纲指出采分点与失分漏洞")
+            self.input_box.setPlainText(f"/img \"{norm_path}\" 请私教审阅批改我的推导过程，按考研大纲指出采分点与失分漏洞")
         self.input_box.setFocus()
         self.chat_display.append(f"\n[📷 图片已挂载]: {Path(path).name}\n    可直接点击「发送」或补充具体疑问后开始批改。")
 
@@ -473,16 +480,73 @@ class MainWindow(QMainWindow):
         if not path:
             return
         norm_path = path.replace("\\", "/")
-        cur = self.input_box.text().strip()
+        cur = self.input_box.toPlainText().strip()
         if cur:
-            self.input_box.setText(f"{cur} /file \"{norm_path}\"")
+            self.input_box.setPlainText(f"{cur} /file \"{norm_path}\"")
         else:
-            self.input_box.setText(f"/file \"{norm_path}\" 请私教精读分析该资料的核心考点与复习建议")
+            self.input_box.setPlainText(f"/file \"{norm_path}\" 请私教精读分析该资料的核心考点与复习建议")
         self.input_box.setFocus()
         self.chat_display.append(f"\n[📎 文件已挂载]: {Path(path).name}\n    可直接点击「发送」或补充提问，私教将读取内容并针对性指导。")
 
+    def _append_error(self, display_widget, label: str, err) -> None:
+        """[P1 修复·2026-10-08] 错误统一上屏：中文映射 + 去双重 [×] + GUI 内恢复指引。
+
+        为什么：后端失败此前会被三处叠加放大 —— ``services`` 侧返回
+        ``[×] … 异常: {exc}`` 字符串、IntelTaskWorker 对含失败标记的输出走
+        error_signal、本窗口再补一个 ``[×] {label}:`` 前缀，于是聊天区出现
+        「[×] 组卷异常: [×] 组卷异常: ConnectionError(...)」这类双层前缀 +
+        Python 英文异常原文，考生既看不懂也不知道下一步做什么。
+        现统一走 ``services.humanize_error``（按异常类型映射中文，提示里给
+        「设置中心 / 重新选文件 / 稍后重试」等 GUI 内恢复路径）；err 已是
+        带 [×] 前缀的失败行时不再重复加前缀。
+        """
+        try:
+            # services/__init__ 未导出 humanize_error 时直取同源 actions 模块
+            # （纯函数无状态，不受双导入影响；不改 __init__ 收敛改动面）
+            humanize = getattr(services, "humanize_error", None)
+            if humanize is None:
+                try:
+                    from gui.services.actions import humanize_error as humanize
+                except ImportError:  # pragma: no cover
+                    from tools.gui.services.actions import humanize_error as humanize  # type: ignore
+            msg = humanize(err)
+        except Exception:  # pragma: no cover - 映射器自身异常不得吞掉错误
+            msg = str(err)
+        if not msg.lstrip().startswith(("[×]", "[x]", "[X]", "❌")):
+            msg = f"[×] {label}: {msg}"
+        display_widget.append(f"\n{msg}\n")
+
+    def _tool_action_busy(self, key: str) -> bool:
+        """[P2 修复·2026-10-08] 工具动作重入守卫：同名动作未完成时拒绝重复触发。
+
+        返回 True 表示「忙，已拒绝」（会给出提示）。连点卡片/按钮此前会并发起
+        多个 IntelTaskWorker（重复联网、重复计费；组卷/落盘类动作还会互相覆盖），
+        现按 key 互斥。注意 key 是**动作标识**而非按钮：同一动作的不同入口
+        （卡片 rail / 命令面板）共用一把锁。
+
+        与 ``_tool_action_start`` 分离是刻意的：带输入框/文件选择的动作先查
+        （忙则早退、不弹输入框），用户取消对话框时不登记，故无死锁路径。
+        """
+        if key in self._running_tool_actions:
+            self.chat_display.append(
+                f"\n[!] 上一个同类工具动作仍在执行中（{key}），"
+                "请等待完成后再试（同类动作不会并发执行）。")
+            return True
+        return False
+
+    def _tool_action_start(self, key: str) -> None:
+        """登记工具动作开始（与 ``_tool_action_busy`` 配对：先查后登）。"""
+        self._running_tool_actions.add(key)
+
+    def _tool_action_done(self, key: str) -> None:
+        """工具动作线程结束（无论成败）：从在跑集合出集。"""
+        self._running_tool_actions.discard(key)
+
     def _run_action_to_display(self, alias: str, display_widget, brief_to_chat: bool = True):
         """异步执行后端模块并把输出回显到指定文本框（绝不阻塞 GUI 主线程）。"""
+        if self._tool_action_busy(f"action:{alias}"):
+            return
+        self._tool_action_start(f"action:{alias}")
         display_widget.append(f"\n▶ 正在启动模块 [{alias}] ...")
 
         try:
@@ -502,11 +566,12 @@ class MainWindow(QMainWindow):
                 self.chat_display.append(f"\n[√] 模块 [{alias}] 已在对应页面执行完毕，详见上方分页。")
 
         def _on_err(err):
-            display_widget.append(f"\n[×] 模块 [{alias}] 执行异常: {err}\n")
+            self._append_error(display_widget, f"模块 [{alias}] 执行异常", err)
 
         worker.finished_signal.connect(_on_done)
         worker.error_signal.connect(_on_err)
         worker.finished.connect(lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.finished.connect(lambda a=alias: self._tool_action_done(f"action:{a}"))
         worker.start()
 
     def _on_card_clicked(self, alias: str):
@@ -548,6 +613,10 @@ class MainWindow(QMainWindow):
         # [隐私] 举例一律用**通用学科词**（如「剩余价值」），不得写入考生真实
         # 专业代码/校名——注释同样会被编译进发布包 exe 的 PYZ 层，且
         # tests/test_privacy_identity_rules.py 会为此报红。
+        # [P2 修复·2026-10-08] 重入守卫（弹输入框前早退）：检索未完成时连点
+        # 不再并发起第二个 worker。
+        if self._tool_action_busy("rag_search"):
+            return
         query, ok = QInputDialog.getText(
             self, "本地知识库检索",
             "请输入要检索的考点关键词（如：剩余价值 / 矛盾的普遍性）:"
@@ -555,6 +624,7 @@ class MainWindow(QMainWindow):
         if not ok or not query.strip():
             self.chat_display.append("\n[i] 本地检索已取消：未输入检索关键词。")
             return
+        self._tool_action_start("rag_search")
         self.tabs.setCurrentIndex(0)
         self.chat_display.append(
             f"\n▶ 正在检索本地知识库 [{query.strip()}] ...（只读本地索引，不联网）")
@@ -571,9 +641,10 @@ class MainWindow(QMainWindow):
         worker.finished_signal.connect(
             lambda out, saved: self.chat_display.append(out if out else "（无输出）"))
         worker.error_signal.connect(
-            lambda err: self.chat_display.append(f"\n[×] 本地检索异常: {err}\n"))
+            lambda err: self._append_error(self.chat_display, "本地检索异常", err))
         worker.finished.connect(
             lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.finished.connect(lambda: self._tool_action_done("rag_search"))
         worker.start()
 
     def _run_index_action(self):
@@ -583,6 +654,10 @@ class MainWindow(QMainWindow):
         不预建空库、不联网、不代造资料——资料为空时后端如实提示「没有找到
         可索引的文档」，此处原样透出，不美化。
         """
+        # [P2 修复·2026-10-08] 重入守卫：建索引未完成时连点不再并发第二个 worker
+        if self._tool_action_busy("index_build"):
+            return
+        self._tool_action_start("index_build")
         self.tabs.setCurrentIndex(0)
         self.chat_display.append(
             "\n▶ 正在后台构建本地知识库索引（只读本地院校库与各科 参考资料/，不联网）...")
@@ -598,13 +673,18 @@ class MainWindow(QMainWindow):
         worker.finished_signal.connect(
             lambda out, saved: self.chat_display.append(out if out else "（无输出）"))
         worker.error_signal.connect(
-            lambda err: self.chat_display.append(f"\n[×] 建索引异常: {err}\n"))
+            lambda err: self._append_error(self.chat_display, "建索引异常", err))
         worker.finished.connect(
             lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.finished.connect(lambda: self._tool_action_done("index_build"))
         worker.start()
 
     def _run_scout_from_dialog(self):
         """院校侦察：显式确认或输入目标高校，后台异步执行，绝不卡死界面。"""
+        # [P2 修复·2026-10-08] 重入守卫（弹输入框前早退）：侦察未完成时连点
+        # 不再并发起第二个 worker。查/登分离：取消输入框时不登记，无死锁。
+        if self._tool_action_busy("scout"):
+            return
         info = self.config.get("study_plan", {})
         default_sch = info.get("school") or self.config.get("target_school") or ""
         if default_sch in ("未指定", "目标院校"):
@@ -624,6 +704,7 @@ class MainWindow(QMainWindow):
             self.intel_display.append("\n[i] 院校侦察已取消：未指定专业关键词。")
             return
         major = mj.strip() or info.get("major") or self.config.get("target_major") or ""
+        self._tool_action_start("scout")
 
         self.tabs.setCurrentIndex(3)
         self.intel_display.append(f"\n▶ 正在启动【{sch}】深度考情与社媒口碑侦察 (专业: {major or '统考科目'})...\n")
@@ -646,20 +727,25 @@ class MainWindow(QMainWindow):
             self.chat_display.append(f"\n[√] 目标院校【{sch}】深度侦察已在研招情报页完成。")
 
         def _on_scout_err(err):
-            self.intel_display.append(f"\n[×] 院校侦察执行异常: {err}\n")
+            self._append_error(self.intel_display, "院校侦察执行异常", err)
 
         worker.finished_signal.connect(_on_scout_done)
         worker.error_signal.connect(_on_scout_err)
         worker.finished.connect(lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.finished.connect(lambda: self._tool_action_done("scout"))
         worker.start()
 
     def _run_ingest_from_dialog(self):
+        # [P2 修复·2026-10-08] 重入守卫（弹文件选择前早退）
+        if self._tool_action_busy("ingest"):
+            return
         path, _ = QFileDialog.getOpenFileName(
             self, "选择要切片的真题 / 讲义文件", str(self.workspace_root),
             "题库文件 (*.md *.txt *.pdf);;所有文件 (*.*)")
         if not path:
             self.chat_display.append("\n[i] 切片入库已取消：未选择待切片文件。")
             return
+        self._tool_action_start("ingest")
         self.tabs.setCurrentIndex(0)
         self.chat_display.append(f"\n▶ 正在切片入库 [{path}] ...")
         try:
@@ -671,12 +757,16 @@ class MainWindow(QMainWindow):
         self._worker_refs.append(worker)
         worker.log_signal.connect(lambda text: self.chat_display.append(text))
         worker.finished_signal.connect(lambda out, saved: self.chat_display.append(out))
-        worker.error_signal.connect(lambda err: self.chat_display.append(f"\n[×] 切片入库异常: {err}\n"))
+        worker.error_signal.connect(lambda err: self._append_error(self.chat_display, "切片入库异常", err))
         worker.finished.connect(lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.finished.connect(lambda: self._tool_action_done("ingest"))
         worker.start()
 
     def _run_diff_from_dialog(self):
         """考纲 Diff：必须选到两个真实文件，严禁伪造变动。"""
+        # [P2 修复·2026-10-08] 重入守卫（弹文件选择前早退）
+        if self._tool_action_busy("diff"):
+            return
         old_path, _ = QFileDialog.getOpenFileName(
             self, "选择【基准(旧)】考纲文件", str(self.workspace_root / "04-专业课"),
             "Markdown (*.md *.txt);;所有文件 (*.*)")
@@ -689,6 +779,7 @@ class MainWindow(QMainWindow):
         if not new_path:
             self.chat_display.append("\n[i] 考纲 Diff 已取消：未选择最新考纲。")
             return
+        self._tool_action_start("diff")
         self.tabs.setCurrentIndex(0)
         self.chat_display.append(
             f"\n▶ 正在比对考纲：\n   基准: {old_path}\n   最新: {new_path} ...")
@@ -702,12 +793,17 @@ class MainWindow(QMainWindow):
         self._worker_refs.append(worker)
         worker.log_signal.connect(lambda text: self.chat_display.append(text))
         worker.finished_signal.connect(lambda out, saved: self.chat_display.append(out))
-        worker.error_signal.connect(lambda err: self.chat_display.append(f"\n[×] 考纲比对异常: {err}\n"))
+        worker.error_signal.connect(lambda err: self._append_error(self.chat_display, "考纲比对异常", err))
         worker.finished.connect(lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.finished.connect(lambda: self._tool_action_done("diff"))
         worker.start()
 
     def _run_compare_from_dialog(self):
         """双校对标：显式询问第一所与第二所高校及专业，后台异步执行，绝不卡死界面。"""
+        # [P2 修复·2026-10-08] 重入守卫（弹输入框前早退）：对标耗时且走 LLM，
+        # 连点两次会重复计费。查/登分离：取消输入框时不登记，无死锁。
+        if self._tool_action_busy("compare"):
+            return
         info = self.config.get("study_plan", {})
         default_s1 = info.get("school") or self.config.get("target_school") or ""
         if default_s1 in ("未指定", "目标院校"):
@@ -747,6 +843,7 @@ class MainWindow(QMainWindow):
             self.chat_display.append("\n[i] 双校对标已取消：未指定专业关键词。")
             return
         major = mj.strip() or info.get("major") or self.config.get("target_major") or ""
+        self._tool_action_start("compare")
 
         self.tabs.setCurrentIndex(3)
         self.intel_display.append(f"\n▶ 正在启动双校考情深度对标：【{s1}】 vs 【{s2}】({major or '统考科目'})...\n")
@@ -770,11 +867,12 @@ class MainWindow(QMainWindow):
             self.intel_display.append("[√] 双校深度对标完成。\n" + "-" * 40)
 
         def _on_compare_err(err):
-            self.intel_display.append(f"\n[×] 双校对标执行失败: {err}\n")
+            self._append_error(self.intel_display, "双校对标执行失败", err)
 
         worker.finished_signal.connect(_on_compare_done)
         worker.error_signal.connect(_on_compare_err)
         worker.finished.connect(lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.finished.connect(lambda: self._tool_action_done("compare"))
         worker.start()
 
     def _open_wechat_search_dialog(self):
@@ -827,6 +925,9 @@ class MainWindow(QMainWindow):
         return out
 
     def _generate_error_quiz(self):
+        # [P2 修复·2026-10-08] 重入守卫：组卷未完成时连点不再并发起第二个 worker
+        if self._tool_action_busy("error_quiz"):
+            return
         try:
             from tools.gui.workers.intel_worker import IntelTaskWorker
         except ImportError:  # pragma: no cover
@@ -840,6 +941,7 @@ class MainWindow(QMainWindow):
             self.chat_display.append("\n[i] 错题盲盒组卷已取消：未选择科目。")
             return
         subject = next(key for key, name in options if name == chosen)
+        self._tool_action_start("error_quiz")
 
         worker = IntelTaskWorker("error_quiz", self.workspace_root, {"subject": subject})
         self._worker_refs.append(worker)
@@ -850,11 +952,17 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "提示", display)
                 return
             self.error_info.setPlainText(self.error_info.toPlainText() + display)
+            # [P1 修复·2026-10-08] 卷面同步上屏聊天区：此前自测卷只写入默认
+            # 隐藏的「原始档案」控件（error_info 在 error_tab 里 setVisible(False)），
+            # 考生在对话页只能看到一行落盘路径、看不到任何题目。现生成即把
+            # 整卷追加到聊天区；error_info 原文与「原始档案」开关保持既有契约不变。
+            self.chat_display.append(display)
             self.chat_display.append(f"\n[√] 错题盲盒自测卷已生成: {saved}\n")
 
         worker.finished_signal.connect(_on_done)
-        worker.error_signal.connect(lambda err: self.chat_display.append(f"\n[×] 组卷异常: {err}\n"))
+        worker.error_signal.connect(lambda err: self._append_error(self.chat_display, "组卷异常", err))
         worker.finished.connect(lambda w=worker: self._worker_refs.remove(w) if w in self._worker_refs else None)
+        worker.finished.connect(lambda: self._tool_action_done("error_quiz"))
         worker.start()
 
     # ════════════════════════════════════════════════════════════
@@ -863,11 +971,11 @@ class MainWindow(QMainWindow):
 
     def _on_quick_command(self, cmd: str):
         """响应私教快捷药丸点击（如：英语报到、政治报到、专业课报到、交作业等）。"""
-        self.input_box.setText(cmd)
+        self.input_box.setPlainText(cmd)
         self._on_send_message()
 
     def _on_send_message(self):
-        text = self.input_box.text().strip()
+        text = self.input_box.toPlainText().strip()
         if not text:
             return
 
@@ -904,6 +1012,8 @@ class MainWindow(QMainWindow):
         # [K7-U1] 记录「真实 Agent 会话发生过」（关窗时据此触发 SessionEnd）
         self.agent_worker.session_ran_signal.connect(self._mark_agent_session_ran)
         self._streamed = False
+        # [P2 修复·2026-10-08] 流式开始：停止按钮亮起、发送置灰（状态联动）
+        self._set_agent_ui_running(True)
         self.agent_worker.start()
 
     def _mark_agent_session_ran(self):
@@ -922,6 +1032,7 @@ class MainWindow(QMainWindow):
         """
         worker = getattr(self, "agent_worker", None)
         if worker is None:
+            self._set_agent_ui_running(False)
             self.chat_display.append("\n[i] 当前没有正在进行的回答。")
             return
         try:
@@ -930,6 +1041,7 @@ class MainWindow(QMainWindow):
             running = False
         if not running:
             self.agent_worker = None
+            self._set_agent_ui_running(False)
             self.chat_display.append("\n[i] 当前没有正在进行的回答。")
             return
         try:
@@ -937,6 +1049,8 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         self.agent_worker = None
+        # [P2 修复·2026-10-08] 停止即恢复「发送」可点、「停止」置灰
+        self._set_agent_ui_running(False)
         self.chat_display.append(
             "\n[i] 已停止本轮回答；私教将在当前请求返回后终止，可直接发送下一条消息。")
 
@@ -1037,14 +1151,33 @@ class MainWindow(QMainWindow):
             "\n[+] 已开始新对话（上一段对话已自动保存，可在「历史会话」中找回）。")
 
     def _on_agent_step(self, step_text: str):
-        """私教动作/思考链实时上屏（收进默认收起的思考折叠块，不再占满页面）。"""
+        """私教动作/思考链实时上屏（收进默认收起的思考折叠块，不再占满页面）。
+
+        [P0-1 修复·2026-10-08] 停止后迟到步骤必须丢弃：点「停止」会把
+        ``agent_worker`` 置 None 并允许立即发下一条消息，而旧 worker 取消前
+        已 emit 的步骤是跨线程排队信号，必在停止后被主线程消费 —— 不校验
+        发送者会把旧步骤续进新对话的思考折叠块。判据与 _on_agent_reply 同口径
+        = 发送者是否为当前活跃 worker。
+        """
         if not step_text:
+            return
+        w = self.sender()
+        if w is not None and w is not getattr(self, "agent_worker", None):
             return
         self.chat_display.append_step(step_text.strip())
 
     def _on_agent_chunk(self, chunk: str):
-        """流式片段：续写当前私教气泡（不另起一条，保持一段话连续）。"""
+        """流式片段：续写当前私教气泡（不另起一条，保持一段话连续）。
+
+        [P0-1 修复·2026-10-08] 停止后迟到片段必须丢弃：旧 worker 已排队的
+        chunk 若被消费，聊天区会继续蹦字；若紧接着发了新消息，旧片段还会先
+        建出 streaming 气泡、让新答案续写进同一条造成内容混排。判据同
+        _on_agent_reply = 发送者是否为当前活跃 worker。
+        """
         if not chunk:
+            return
+        w = self.sender()
+        if w is not None and w is not getattr(self, "agent_worker", None):
             return
         # 答案开始即封口思考折叠块：后续步骤会新起一块（区分「思考」与「作答」）
         self.chat_display.finish_step_group()
@@ -1060,6 +1193,25 @@ class MainWindow(QMainWindow):
             self._worker_refs.remove(w)
         if getattr(self, "agent_worker", None) is w:
             self.agent_worker = None
+            # [P2 修复·2026-10-08] 本轮收尾：发送恢复可点、停止置灰。
+            # 仅当结束的是**当前活跃** worker 才复位 —— 被停止的旧 worker
+            # 迟到 finished 时不得把新回合的 running 态错误复位（同发送者判据）。
+            self._set_agent_ui_running(False)
+
+    def _set_agent_ui_running(self, running: bool) -> None:
+        """[P2 修复·2026-10-08] 停止/发送按钮随流式状态联动。
+
+        此前两按钮状态恒定：空闲时「停止」可点（点了才提示无进行中回答）、
+        生成中「发送」可点（点了才被守卫拒绝）。现生成中「停止」可点、
+        「发送」置灰，收尾/停止后复原。纯视觉指示 —— 输入框 Enter 与快捷
+        药丸仍走 _on_send_message 的既有守卫，按钮态与守卫互为双保险。
+        """
+        stop = getattr(self, "stop_btn", None)
+        if stop is not None:
+            stop.setEnabled(bool(running))
+        send = getattr(self, "send_btn", None)
+        if send is not None:
+            send.setEnabled(not running)
 
     def _on_agent_reply(self, reply: str):
         """收尾：已流式输出过就只封口当前气泡；未流式（本地兜底路径）才整条补上。

@@ -523,23 +523,33 @@ class HookManager:
             ]
 
             # 1. 读取今日任务完成情况
+            # [P1 修复·2026-10-08 K3 完成率双实现] 此前本钩子自带一套「含竖线即计数」的
+            # 表格行统计，与 task_parser.parse_task_lines 口径分歧：少格/单格行
+            # 被虚计为任务、列表式任务（- [ ] …）被漏计、[x] 出现在非状态列也
+            # 计完成 —— 同一份任务文件实测 hooks 33.3% vs task_parser 50%
+            # （前者还会进疲劳检测/增益趋势）。现改调解析单一真源
+            # tools/state/task_parser.parse_task_lines，与 CLI/TUI/GUI/看板同源。
+            try:
+                try:
+                    from state.task_parser import parse_task_lines
+                except ImportError:  # pragma: no cover - 包式导入上下文
+                    from tools.state.task_parser import parse_task_lines
+            except Exception:  # pragma: no cover - 解析器不可用时按「无数据」处理
+                # 宁可无完成率数据（零任务守卫会跳过落盘），也不写错数据
+                parse_task_lines = None
+                print("[warn] task_parser 不可用，本次会话不统计今日完成率",
+                      file=sys.stderr)
             total_tasks = 0
             done_tasks = 0
             for d_name in ("01-数学", "02-英语", "03-思想政治理论", "04-专业课"):
                 t_file = self.workspace_root / d_name / "_状态" / "今日任务.md"
-                if not t_file.exists():
+                if not t_file.exists() or parse_task_lines is None:
                     continue
                 try:
                     text = t_file.read_text(encoding="utf-8", errors="replace")
-                    # [修复] 此前这里漏掉了本行 splitlines 循环，导致下方 l 未定义、
-                    # 抛 NameError 被 except 静默吞掉，达成率恒为 0.0% (0/0)。
-                    for l in text.splitlines():
-                        # 去除空格后判定是否为 Markdown 表格分隔符，避免虚增任务总量
-                        if ("|" in l and not l.replace(" ", "").startswith("|---|")
-                                and "完成状态" not in l and "模块" not in l):
-                            total_tasks += 1
-                            if "[x]" in l.lower():
-                                done_tasks += 1
+                    items = parse_task_lines(text)
+                    total_tasks += len(items)
+                    done_tasks += sum(1 for it in items if it.done)
                 except Exception as e:
                     # 不再静默吞错：统计失败会让达成率失真，必须让用户/日志看得见
                     print(f"[warn] 今日任务统计失败 ({t_file.name}): "

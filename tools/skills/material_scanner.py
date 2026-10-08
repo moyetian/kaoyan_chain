@@ -384,3 +384,75 @@ def scan_and_mount_materials(
         "scout_report": scout_report,
         "target_school": target_school,
     }
+
+
+#: [B3 自描述契约] 桥接为 Agent 工具（skill_bridge.build_self_described_specs 消费）
+TOOL_SPEC = {
+    "name": "mount_materials",
+    "description": (
+        "盘点学员四科「参考资料/」目录（递归）：返回各科真实资料清单，以及将写入"
+        "ky_config.json / AGENTS.md 白名单与研招监控的变更预览。apply=false（默认）"
+        "只读盘点；apply=true 才真正写回。学员说「挂载资料」「扫描资料库」「盘点"
+        "参考资料」时调用。"),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "auto_scout_school": {
+                "type": "boolean",
+                "description": "资料就绪时是否自动侦察目标院校（默认 true）",
+            },
+            "apply": {
+                "type": "boolean",
+                "description": "是否写回配置与白名单（默认 false：只读预览不落盘）",
+            },
+        },
+    },
+    # 动态定级：apply=true 写 ky_config.json / AGENTS.md（SAFE_EDIT）；
+    # 缺省/false 为纯只读盘点（READ_ONLY，safe 模式也放行）。
+    "level": lambda a: "safe_edit" if (a or {}).get("apply") else "read_only",
+}
+
+
+def execute(args, ctx=None):
+    """[B3] 桥接入口：盘点（可选写回）四科参考资料，输出模型可读摘要。"""
+    args = args or {}
+    ws = (ctx or {}).get("workspace_root")
+    apply_ = bool(args.get("apply"))
+    auto_scout = bool(args.get("auto_scout_school", True))
+    try:
+        res = scan_and_mount_materials(workspace_root=ws, auto_scout_school=auto_scout,
+                                       apply=apply_)
+    except Exception as e:  # noqa: BLE001 - 工具失败必须转可读文案
+        return f"Error 资料盘点失败: {e}"
+    if not isinstance(res, dict):
+        return f"Error 资料盘点返回异常: {type(res).__name__}"
+    if not res.get("success"):
+        return f"Error 资料盘点失败: {res.get('msg') or '未知错误'}"
+    applied = bool(res.get("applied"))
+    lines = [f"【参考资料盘点 · {'已写回配置' if applied else '只读预览'}】"
+             f"四科共发现 {res.get('total_files', 0)} 份真实资料"]
+    details = res.get("details") or {}
+    for key, (folder, _cfg, label) in SUBJECT_FOLDER_MAP.items():
+        files = details.get(key) or []
+        if files:
+            shown = ", ".join(str(f) for f in files[:8])
+            more = f" …等 {len(files)} 份" if len(files) > 8 else ""
+            lines.append(f"- {label}（{folder}）: {shown}{more}")
+        else:
+            lines.append(f"- {label}（{folder}）: 暂无资料")
+    changes = res.get("changes") or []
+    if changes:
+        head = "已写回变更" if applied else "将发生的变更预览"
+        lines.append(f"{head} {len(changes)} 项:")
+        for c in changes[:10]:
+            if not isinstance(c, dict):
+                continue
+            lines.append(f"  · {c.get('target', '')} {c.get('field', '')}: "
+                         f"{c.get('old')} → {c.get('new')}")
+    if res.get("would_watch"):
+        lines.append("研招简章监控: " + ", ".join(map(str, res["would_watch"])))
+    if res.get("would_scout"):
+        lines.append("院校侦察: " + ", ".join(map(str, res["would_scout"])))
+    if not applied:
+        lines.append("（只读预览未落盘；确认无误后可 apply=true 写回）")
+    return "\n".join(lines)

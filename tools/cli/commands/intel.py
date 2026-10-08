@@ -234,9 +234,14 @@ def render_syllabus_diff(res, school, major, y1, y2) -> None:
     _baseline_warning = str(res.get("baseline_warning") or "").strip()
     if _baseline_warning:
         print(colorize(f"[⚠️ 基准警示] {_baseline_warning}\n", C.YELLOW))
+    # [P0-10 修复·0 点谎报] 解析到 0 考点的警示（与基准警示同通道，红色更醒目）
+    _parse_warning = str(res.get("parse_warning") or "").strip()
+    if _parse_warning:
+        print(colorize(f"[⚠️ 解析警示] {_parse_warning}\n", C.RED))
     m = res["metrics"]
     print(colorize(f"=== 考纲变动全景看板 · {school} ({y1} vs {y2}) ===", C.BOLD))
-    print(f"  • 变动等级: {colorize(m['stability_grade'], C.GREEN if m['volatility_percentage'] < 10 else C.YELLOW)} (波动率: {m['volatility_percentage']}%)")
+    _grade_color = C.RED if _parse_warning else (C.GREEN if m['volatility_percentage'] < 10 else C.YELLOW)
+    print(f"  • 变动等级: {colorize(m['stability_grade'], _grade_color)} (波动率: {m['volatility_percentage']}%)")
     print(f"  • 考点统计: 基准 {m['total_old']} 项 ➔ 最新 {m['total_new']} 项 ({m['total_new'] - m['total_old']:+d})")
     print(f"  • 🚨 新增考点: {colorize(str(m['added_count']) + ' 处 (当年高危必考点)', C.RED)}")
     print(f"  • 🍃 剔除考点: {colorize(str(m['removed_count']) + ' 处 (已彻底移出考纲，减负止损)', C.GREEN)}")
@@ -274,12 +279,17 @@ def run_syllabus_diff(arg: str = "") -> bool:
 
     tokens = str(arg or "").split()
     old_path, new_path = "", ""
+    # [P1 修复·2026-10-08] 落盘改为显式 --save：旧版无条件 save_diff_report，
+    # 同名研报会被静默覆盖（对齐 CLI `ky fetch diff` 的「默认预览、显式归档」）。
+    save_flag = False
     free = []
     for t in tokens:
         if t.startswith("--old="):
             old_path = t.split("=", 1)[1].strip()
         elif t.startswith("--new="):
             new_path = t.split("=", 1)[1].strip()
+        elif t in ("--save", "-s"):
+            save_flag = True
         elif t.startswith("--subject=") or t.startswith("-s="):
             continue
         else:
@@ -299,7 +309,9 @@ def run_syllabus_diff(arg: str = "") -> bool:
     y1 = y2 - 1
 
     diff_gen = intel.get_syllabus_diff_generator()
-    print(colorize(f"\n[📊 KaoYan Intelligence: 正在比对【{school}】{major} 大纲考点版本异动 ({y1} vs {y2})...]\n", C.CYAN))
+    # [P1 修复·2026-10-08] 原「正在比对」播报在此打印，但命名推导要等
+    # 新旧路径解析完成后才能做（否则播报的仍是张冠李戴的 config 志愿名），
+    # 故播报下移至命名推导之后。
 
     base_text = ""
     if old_path and Path(old_path).exists():
@@ -316,6 +328,7 @@ def run_syllabus_diff(arg: str = "") -> bool:
 
     demo_mode = False
     new_text = base_text
+    cand = None
     if new_path and Path(new_path).exists():
         new_text = Path(new_path).read_text(encoding="utf-8", errors="ignore")
     else:
@@ -340,11 +353,38 @@ def run_syllabus_diff(arg: str = "") -> bool:
             new_text = build_demo_syllabus_text(base_text, demo_year)
             demo_mode = True
 
+    # [P1 修复·2026-10-08] 命名随实（infer_diff_naming）：旧版直接用 config
+    # 志愿命名 —— 对公共课考纲（01-数学/02-英语/03-思想政治理论）比对却落盘
+    # 「考纲变动分析_<志愿校>_<志愿专业>_<年>.md」，张冠李戴。按路径推导出的
+    # 「全国统考 + 科目名」优先，推导不出（专业课路径/无路径）再回落 config；
+    # 与 CLI `ky fetch diff` 的「推导 > config 回退」口径一致。
+    try:
+        try:
+            from intelligence.syllabus_diff import infer_diff_naming
+        except ImportError:
+            from tools.intelligence.syllabus_diff import infer_diff_naming
+        _eff_new = (new_path if (new_path and Path(new_path).exists())
+                    else (str(cand) if cand else ""))
+        _s_inf, _m_inf = infer_diff_naming(old_path or "", _eff_new)
+        if _s_inf:
+            school = _s_inf
+        if _m_inf:
+            major = _m_inf
+    except Exception:
+        pass  # 推导失败不阻断比对，保持 config 命名
+
+    print(colorize(f"\n[📊 KaoYan Intelligence: 正在比对【{school}】{major} 大纲考点版本异动 ({y1} vs {y2})...]\n", C.CYAN))
+
     res = diff_gen.compare_texts(old_text=base_text, new_text=new_text, school=school, major=major, year_old=y1, year_new=y2)
     res["is_demo"] = demo_mode
     render_syllabus_diff(res, school, major, y1, y2)
-    saved_p = diff_gen.save_diff_report(res)
-    print(colorize(f"[√ 考纲异动深度研报已生成并归档至]: {saved_p}\n", C.GREEN))
+    # [P1 修复·2026-10-08] 显式 --save 才落盘（旧版无条件覆盖同名研报）；
+    # 未指定时给出与 CLI 一致的「仅预览」提示。
+    if save_flag:
+        saved_p = diff_gen.save_diff_report(res)
+        print(colorize(f"[√ 考纲异动深度研报已生成并归档至]: {saved_p}\n", C.GREEN))
+    else:
+        print(colorize("[i] 未指定 --save：本次仅预览，未落盘研报（加 --save 归档）。\n", C.DIM))
     return True
 
 

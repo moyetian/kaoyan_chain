@@ -91,7 +91,10 @@ def open_provider_console_and_get_key(provider_name: str, console_url: str, curr
     is_key_like = bool(clip_text and (clip_text.startswith("sk-") or len(clip_text) >= 20) and "\n" not in clip_text and " " not in clip_text)
 
     if is_key_like and clip_text != current_key:
-        masked = clip_text[:6] + "..." + clip_text[-4:]
+        # [P2 修复·2026-10-08 绕过下限保护] 此前直接 `clip_text[:6] + "..." + clip_text[-4:]`：
+        # 12 字符以内的短密钥（如 "sk-abc123"）会被几乎整体回显 —— _mask_secret
+        # 的「≤12 只报已设置」下限被绕过。统一走 _mask_secret 打码口径。
+        masked = _mask_secret(clip_text)
         print(colorize(f"📋 检测到剪贴板中已有密钥: {masked}", C.GREEN))
         choice = input(f"👉 直接回车(Enter)立即套用剪贴板密钥，或手动粘贴新密钥: ").strip()
         if not choice:

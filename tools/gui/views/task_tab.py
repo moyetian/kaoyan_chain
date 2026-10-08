@@ -91,6 +91,10 @@ def build(win) -> QWidget:
         win.task_count_labels[key] = pct_label
 
     refresh_btn = QPushButton("刷新今日进度")
+    # [P2 修复·2026-10-08] 补 SecondaryBtn 对象名：同页签区的其它工具条按钮
+    # （错题页 / 情报页 / 对话页）都走 #SecondaryBtn 主题 QSS，唯本按钮漏设 ——
+    # 无对象名时落回 QSS 默认 QPushButton 样式，与相邻按钮观感不一致。
+    refresh_btn.setObjectName("SecondaryBtn")
     refresh_btn.setMaximumWidth(160)
     refresh_btn.clicked.connect(win._load_today_task_progress)
     layout.addWidget(refresh_btn)

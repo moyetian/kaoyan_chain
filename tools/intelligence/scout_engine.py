@@ -13,6 +13,7 @@ KaoYan Intelligence · 招考情报调度中枢 (Scout & Intelligence Coordinato
 
 import json
 import logging
+import time
 import urllib.parse
 from pathlib import Path
 
@@ -41,6 +42,16 @@ except ImportError:  # pragma: no cover
 
 ROOT = resolve_workspace_root(__file__)
 
+#: [P2 修复·2026-10-08] ``query`` 的总墙钟预算（秒，单一真源）。
+#: 此前 query 无任何总时长预算：未收录校名走在线研究（内层自身 240s 默认）
+#: + 研招网基准抓取 + 官方站点抓取（每页最多 3 次尝试）+ 站内检索发现
+#: （最多 2 域名 × 2 查询 = 4 次联邦检索，每次多源）—— 弱网下总墙钟无界，
+#: CLI/REPL 直调可无限等待（agent 工具路径仅靠外层 daemon join 兜底，
+#: 后台线程本身仍在跑）。现与 comparator R3 同款口径：该预算是唯一真源，
+#: 剩余墙钟派生给内层在线研究（见 ``query``）；预算耗尽后跳过后续在线
+#: 补充并如实降级（已获取证据照常渲染）。``budget_s<=0`` 表示不熔断。
+_DEFAULT_SCOUT_BUDGET = 300.0
+
 
 class KaoYanIntelligenceEngine:
     """考研招考情报综合引擎"""
@@ -57,12 +68,21 @@ class KaoYanIntelligenceEngine:
         school_query: str,
         major_query: Optional[str] = None,
         exam_year: Optional[int] = None,
-        save_report: bool = False
+        save_report: bool = False,
+        budget_s: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         全流程执行高校招考情报检索与证据链聚合
+
+        :param budget_s: [P2 修复·2026-10-08] 本次侦察的总墙钟预算（秒）。
+            None 用默认 ``_DEFAULT_SCOUT_BUDGET``；<=0 不熔断（全量等待）。
+            该预算是唯一真源：内层在线研究收到「剩余墙钟」作为自身预算
+            （对照 comparator R3 的单源传递）；预算耗尽后跳过后续在线补充
+            （研招网抓取/官方站点抓取/站内检索发现），保留已获取证据渲染报告。
         """
         exam_year = exam_year or current_exam_year()
+        budget = _DEFAULT_SCOUT_BUDGET if budget_s is None else float(budget_s)
+        deadline = (time.monotonic() + budget) if budget > 0 else None
         # 1. 解析目标高校实体
         entity = resolve_university(school_query)
         school_name = entity.name if entity else school_query
@@ -72,7 +92,16 @@ class KaoYanIntelligenceEngine:
             site_graph = self.registry.build_site_graph(entity, major_query)
         else:
             from tools.intelligence.agentic_research import research_university_profile
-            prof = research_university_profile(school_name, major_query or "")
+            # [P2 修复·2026-10-08] 剩余墙钟单一真源传给内层在线研究（对照
+            # comparator R3 同款口径）：旧实现内层恒用自身 240s 默认预算，
+            # 与本次侦察的总预算完全脱钩。不熔断（deadline=None）时不传参，
+            # 内层沿用自身默认预算（保持旧行为，避免第二处硬编码 240）。
+            if deadline is None:
+                prof = research_university_profile(school_name, major_query or "")
+            else:
+                prof = research_university_profile(
+                    school_name, major_query or "",
+                    budget_s=max(0.0, deadline - time.monotonic()))
             site_graph = {
                 "university": school_name,
                 "chsi_code": prof.get("code") or prof.get("chsi_code") or f"UNLISTED_{school_name}",
@@ -90,7 +119,13 @@ class KaoYanIntelligenceEngine:
         all_evidences: List[EvidenceObject] = []
 
         # 3. 研招网 S 级基准证据提取
-        chsi_evidences = self.chsi.query_catalog(school_name, major_query, target_year=exam_year)
+        # [P2 修复·2026-10-08] 各在线阶段前检查总预算：耗尽即跳过并如实降级
+        # （报告仍渲染已获取证据，不丢已得结果）。
+        chsi_evidences: List[EvidenceObject] = []
+        if deadline is None or time.monotonic() <= deadline:
+            chsi_evidences = self.chsi.query_catalog(school_name, major_query, target_year=exam_year)
+        else:
+            logging.getLogger(__name__).info("侦察总预算耗尽，跳过研招网基准抓取")
         all_evidences.extend(chsi_evidences)
 
         # 4. 高校官方站点 A 级证据抽取
@@ -107,6 +142,11 @@ class KaoYanIntelligenceEngine:
                 target_domains.append(("college_official", college_url))
 
         for src_type, url in target_domains[:2]:
+            # [P2 修复·2026-10-08] 单页抓取最多 3 次尝试（≈3×timeout），逐页
+            # 前检查总预算，耗尽即停止后续在线补充。
+            if deadline is not None and time.monotonic() > deadline:
+                logging.getLogger(__name__).info("侦察总预算耗尽，跳过剩余官方站点抓取")
+                break
             fetch_res = self.fetcher.fetch(url)
             if fetch_res.is_valid and fetch_res.content:
                 extracted = self.extractor.extract_from_html(
@@ -128,8 +168,13 @@ class KaoYanIntelligenceEngine:
         #     用站内查询找到**官方招生页/专业目录页**，再抓取抽取证据。
         discovered = self._discover_official_pages(
             entity, school_name, major_query, exam_year,
-            already_fetched={u for _, u in target_domains[:2]})
+            already_fetched={u for _, u in target_domains[:2]},
+            deadline=deadline)
         for url in discovered[:2]:
+            # [P2 修复·2026-10-08] 发现页抓取同样受总预算约束（逐页检查）。
+            if deadline is not None and time.monotonic() > deadline:
+                logging.getLogger(__name__).info("侦察总预算耗尽，跳过剩余发现页抓取")
+                break
             fetch_res = self.fetcher.fetch(url)
             if fetch_res.is_valid and fetch_res.content:
                 all_evidences.extend(self.extractor.extract_from_html(
@@ -192,15 +237,22 @@ class KaoYanIntelligenceEngine:
 
     def _discover_official_pages(self, entity, school_name: str,
                                  major_query: str, exam_year: int,
-                                 already_fetched: set = None) -> List[str]:
+                                 already_fetched: set = None,
+                                 deadline: Optional[float] = None) -> List[str]:
         """用站内检索发现官方招生页 URL（注册表域名失效时的兜底发现路径）。
 
         这是 `OfficialDiscovery` 的**首次真实调用**：它此前只被实例化、从未被使用。
         检索命中后只保留**官方域名**的链接（研招网/研究生院/学校官网），
         避免把培训机构页面当成官方来源。
+
+        :param deadline: [P2 修复·2026-10-08] 侦察总预算的墙钟 deadline
+            （``query`` 的单一真源派生）；每次联邦检索（多源、可能带重试）前
+            检查，耗尽即返回已发现结果。None 表示不熔断。
         """
         already = set(already_fetched or set())
         found: List[str] = []
+        if deadline is not None and time.monotonic() > deadline:
+            return found
         domains = []
         if entity:
             for attr in ("admission_domain", "graduate_domain", "official_domain"):
@@ -223,6 +275,12 @@ class KaoYanIntelligenceEngine:
                 for query in self.discovery.build_targeted_queries(
                         school_name=school_name, domain=domain,
                         major_keyword=major_query or None, year=exam_year):
+                    # [P2 修复·2026-10-08] 每次联邦检索前检查总预算：此前该
+                    # 循环无任何时长预算（最多 2 域名 × 2 查询 = 4 次多源
+                    # 检索），弱网下可把总墙钟拖到分钟级。
+                    if deadline is not None and time.monotonic() > deadline:
+                        logging.getLogger(__name__).info("侦察总预算耗尽，停止站内检索发现")
+                        return found
                     resp = service.search(SearchQuery(text=query, limit=3))
                     for result in resp.results:
                         if result.url in already or result.url in found:

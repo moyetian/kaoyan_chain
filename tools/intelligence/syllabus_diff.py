@@ -88,21 +88,72 @@ class DiffItem:
     detail: str = ""        # 变更说明 (如: 考查要求由 [了解] 提高为 [掌握])
 
 
+#: [P1 修复·2026-10-08 K1 非登记要求词] 括号配对表：切分考点时必须跳过这些配对符号
+#: **内部**的分隔符。实测 math1 大纲 148 点中 24 个断片全部源于在
+#: 「（零点定理、介值定理、最值定理）」这类括号内按「、」切碎。
+_BRACKET_PAIRS = {
+    "（": "）", "(": ")", "【": "】", "[": "]", "｛": "｝", "{": "}",
+    "《": "》", "「": "」", "『": "』",
+}
+_BRACKET_CLOSERS = set(_BRACKET_PAIRS.values())
+
+#: [P1 修复·2026-10-08 K1 非登记要求词] 要求词前缀（未登记但形态明确的要求表述，如
+#: 「熟悉」）。命中者不得被静默记成「掌握」——如实把词本身作为考查要求；
+#: 未命中的冒号头（如「词汇基准」「进程与线程」）是考点名，维持既有行为。
+_REQ_LIKE_PREFIXES = ("熟练", "灵活", "熟悉", "运用", "会用")
+
+
+def _split_outside_brackets(text: str, separators: str) -> List[str]:
+    """按 ``separators`` 逐字符切分，但跳过括号配对内部的分隔符（K1 修复）。
+
+    修复前 ``re.split(r"[、,，]+", ...)`` 无括号感知：``闭区间上连续函数的性质
+    （零点定理、介值定理、最值定理）`` 被切成 3 个断片（含未配对括号），
+    math1 实测 24 个断片。本函数只在一层未闭合括号之外切分；未配对的左括号
+    保守地把其后内容视为括号内（宁可不切，不产出断片），孤立的右括号忽略。
+    """
+    parts: List[str] = []
+    buf: List[str] = []
+    depth = 0
+    for ch in text:
+        if ch in _BRACKET_PAIRS:
+            depth += 1
+        elif ch in _BRACKET_CLOSERS and depth > 0:
+            depth -= 1
+        if ch in separators and depth == 0:
+            parts.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    parts.append("".join(buf))
+    return parts
+
+
 class SyllabusDiffGenerator:
     """大纲考点版本比对引擎"""
 
     # 考查级别重要性排序
+    # [P1 修复·2026-10-08 K1 非登记要求词] 补登项目内置大纲实际使用的两个要求词：
+    # 「应用能力」（math1/math2）与「熟练计算」（math2）此前未登记，
+    # 其整行被 m_plain 分支记成「掌握」且不切分（实测 math1 两处）。
+    # 要求词识别一律以本表为单一真源（含下方正则片段的构造）。
     REQUIREMENT_LEVELS = {
         "掌握": 3,
         "熟练应用": 3,
         "熟练掌握": 3,
         "熟练求解": 3,
+        "熟练计算": 3,
+        "应用能力": 3,
         "灵活运用": 3,
         "理解": 2,
         "了解": 1,
         "会": 2,
         "能": 2,
     }
+
+    #: [P1 修复·2026-10-08 K1] 要求词正则片段（单一真源 = REQUIREMENT_LEVELS 键）。
+    #: 按长度降序排列，避免「掌握」先于「熟练掌握」命中的部分匹配。
+    _REQ_ALT = "|".join(
+        re.escape(_w) for _w in sorted(REQUIREMENT_LEVELS, key=len, reverse=True))
 
     def __init__(self):
         pass
@@ -117,8 +168,49 @@ class SyllabusDiffGenerator:
         # 剥离 Markdown 强调/代码符号
         t = t.replace("**", "").replace("`", "")
         # 剥离行尾掌握等级标签（如「…… [掌握]」），等级由 requirement 字段承载
-        t = re.sub(r"\s*[\[【](掌握|熟练应用|熟练掌握|熟练求解|灵活运用|理解|了解|会|能)[\]】]\s*$", "", t)
+        # [P1 修复·2026-10-08 K1] 等级词集合改为登记表驱动（新增「应用能力/熟练计算」自动生效）
+        t = re.sub(rf"\s*[\[【]({self._REQ_ALT})[\]】]\s*$", "", t)
         return t.strip()
+
+    def _append_atomic_points(self, points: List[SyllabusPoint], module: str,
+                              chapter: str, requirement: str, body: str,
+                              raw_line: str) -> None:
+        """把一条要求词行的正文切分为原子考点并追加（m_point / 非登记要求词共用）。
+
+        [P1 修复·2026-10-08 K1 断片] 切分改用 :func:`_split_outside_brackets`：只在括号
+        配对**之外**按「；;。」与「、,，」切分。修复前在「（零点定理、介值定理、
+        最值定理）」括号内切碎，math1 实测 148 点中 24 个断片。
+        """
+        for sub in _split_outside_brackets(body, "；;。"):
+            sub = sub.strip()
+            if not sub:
+                continue
+            # [说明文字误切] 修订说明不是考点
+            _sub_head = re.split(r"[：:]", sub, maxsplit=1)[0].strip()
+            if _sub_head in ("新增", "剔除", "调整", "变动", "修订", "删除", "变化"):
+                continue
+            if sub in ("无", "无。"):
+                continue
+            terms = _split_outside_brackets(sub, "、,，")
+            if len(terms) <= 1:
+                points.append(SyllabusPoint(
+                    module=module,
+                    chapter=chapter,
+                    requirement=requirement,
+                    text=self.clean_text(sub),
+                    raw_line=raw_line
+                ))
+            else:
+                for term in terms:
+                    term_clean = self.clean_text(term)
+                    if len(term_clean) >= 2:
+                        points.append(SyllabusPoint(
+                            module=module,
+                            chapter=chapter,
+                            requirement=requirement,
+                            text=term_clean,
+                            raw_line=raw_line
+                        ))
 
     def parse_syllabus(self, content: str) -> List[SyllabusPoint]:
         """
@@ -129,12 +221,18 @@ class SyllabusDiffGenerator:
         current_chapter = "未分类章节"
         # 负面清单章节（「绝不超纲」「不考 XXX」）不是正式考点，整段跳过
         skip_section = False
+        # [P0-10] 表格行状态：上一行是否为表格行（表格首行=表头，分隔行后为数据区）
+        _prev_in_table = False
 
         lines = content.splitlines()
         for line in lines:
             line_str = line.strip()
             if not line_str:
+                _prev_in_table = False
                 continue
+            _is_table_line = line_str.startswith("|") and line_str.count("|") >= 3
+            _was_in_table = _prev_in_table
+            _prev_in_table = _is_table_line
 
             # 匹配一级/二级模块标题: ## 一、高等数学 或 ## 线性代数
             m_module = re.match(r"^#{1,2}\s+(?:[一二三四五六七八九十]+[、\.\s]*)?([^#]+)$", line_str)
@@ -164,53 +262,72 @@ class SyllabusDiffGenerator:
                 current_chapter = candidate
                 continue
 
+            # ── [P0-10 修复·表格型大纲 0 考点] Markdown 表格行解析 ────────
+            # 此前解析器只认列表行，表格型大纲（如英语一官方大纲
+            # 「题型模块 | 考查形式 | 题量与分值 | 核心考查目标」整表）
+            # 解析 0 考点 → 0/0 谎报「保持平稳」。口径：表格首行（表头）
+            # 与分隔行跳过；每个数据行合成 1 个考点（单元格以「 · 」连接），
+            # 单元格内等级词（独立成格或「**掌握**：…」）提取为考查要求。
+            if _is_table_line:
+                if not _was_in_table:
+                    continue  # 表格首行 = 表头
+                if skip_section:
+                    continue
+                _cells = [c.strip() for c in line_str.strip("|").split("|")]
+                if all((not c) or re.fullmatch(r":?-+:?", c) for c in _cells):
+                    continue  # 分隔行 |---|---|
+                _req = "掌握"
+                _body_parts: List[str] = []
+                for _c in _cells:
+                    if not _c:
+                        continue
+                    _c_bare = _c.replace("**", "").strip()
+                    if _c_bare in self.REQUIREMENT_LEVELS:
+                        _req = _c_bare
+                        continue
+                    _m_cell = re.match(
+                        rf"^\*{{0,2}}({self._REQ_ALT})\*{{0,2}}\s*[：:]\s*(.+)$",
+                        _c)
+                    if _m_cell:
+                        _req = _m_cell.group(1)
+                        _body_parts.append(_m_cell.group(2).strip())
+                        continue
+                    _body_parts.append(_c)
+                _body = " · ".join(p for p in _body_parts if p)
+                if not _body:
+                    continue
+                _meta_head = re.split(r"[：:]", _body, maxsplit=1)[0].replace("*", "").strip()
+                if _meta_head in ("新增", "剔除", "调整", "变动", "修订", "删除", "变化"):
+                    continue
+                points.append(SyllabusPoint(
+                    module=current_module,
+                    chapter=current_chapter,
+                    requirement=_req,
+                    text=self.clean_text(_body),
+                    raw_line=line_str
+                ))
+                continue
+
             # 处于负面清单章节内：整行跳过
             if skip_section:
                 continue
 
             # 匹配考点行: - **掌握**：... 或 * **掌握**：... 或 1. 掌握：...
-            m_point = re.match(r"^[-*0-9\.\s]*\*{0,2}(掌握|熟练应用|熟练掌握|熟练求解|灵活运用|理解|了解|会|能)\*{0,2}\s*[：:]\s*(.+)$", line_str)
+            # [P1 修复·2026-10-08 K1] 要求词集合改为登记表驱动（不再硬编码清单）
+            m_point = re.match(rf"^[-*0-9\.\s]*\*{{0,2}}({self._REQ_ALT})\*{{0,2}}\s*[：:]\s*(.+)$", line_str)
             if m_point:
                 req = m_point.group(1).strip()
                 body = m_point.group(2).strip()
-
-                # 将逗号/分号/顿号分隔的多个子考点切开为原子考点
-                sub_items = re.split(r"[；;。]+", body)
-                for sub in sub_items:
-                    sub = sub.strip()
-                    if not sub:
-                        continue
-                    # [说明文字误切] 同 m_plain 分支：修订说明不是考点
-                    _sub_head = re.split(r"[：:]", sub, maxsplit=1)[0].strip()
-                    if _sub_head in ("新增", "剔除", "调整", "变动", "修订", "删除", "变化"):
-                        continue
-                    if sub in ("无", "无。"):
-                        continue
-                    terms = re.split(r"[、,，]+", sub)
-                    if len(terms) <= 1:
-                        p = SyllabusPoint(
-                            module=current_module,
-                            chapter=current_chapter,
-                            requirement=req,
-                            text=self.clean_text(sub),
-                            raw_line=line_str
-                        )
-                        points.append(p)
-                    else:
-                        for term in terms:
-                            term_clean = self.clean_text(term)
-                            if len(term_clean) >= 2:
-                                p = SyllabusPoint(
-                                    module=current_module,
-                                    chapter=current_chapter,
-                                    requirement=req,
-                                    text=term_clean,
-                                    raw_line=line_str
-                                )
-                                points.append(p)
+                # [P1 修复·2026-10-08 K1] 切分逻辑收敛到 _append_atomic_points：
+                # 分隔符切分改为括号配对保护（断片修复），本分支与新分支共用。
+                self._append_atomic_points(points, current_module, current_chapter,
+                                           req, body, line_str)
             else:
                 # 兼容普通无前缀但属于列表的知识点行
-                m_plain = re.match(r"^[-*]\s+(.+)$", line_str)
+                # [P0-10 修复·编号行 0 考点] 有序编号行（如英语一
+                # 「1. **词汇基准**：…」）此前只认 - / * 前缀被整行跳过；
+                # 现扩展编号前缀，后续处理链（元词过滤/等级标签/冒号头判定）完全复用。
+                m_plain = re.match(r"^(?:[-*]|\d+[\.、])\s+(.+)$", line_str)
                 if m_plain and not line_str.startswith("<!--"):
                     raw_text = m_plain.group(1).strip()
                     # [说明文字误切] "新增：现代新儒家…""剔除：无。"是修订说明，
@@ -223,7 +340,7 @@ class SyllabusDiffGenerator:
                         continue
                     # 行尾 [掌握]/[理解] 等等级标签优先作为考查要求
                     req_tag = None
-                    tag_m = re.search(r"[\[【](掌握|熟练应用|熟练掌握|熟练求解|灵活运用|理解|了解|会|能)[\]】]\s*$", raw_text)
+                    tag_m = re.search(rf"[\[【]({self._REQ_ALT})[\]】]\s*$", raw_text)
                     if tag_m:
                         req_tag = tag_m.group(1)
                         raw_text = raw_text[:tag_m.start()].strip()
@@ -232,14 +349,21 @@ class SyllabusDiffGenerator:
                         maybe_req = parts[0].replace("*", "").strip()
                         maybe_body = parts[1].strip()
                         if maybe_req in self.REQUIREMENT_LEVELS:
-                            p = SyllabusPoint(
-                                module=current_module,
-                                chapter=current_chapter,
-                                requirement=maybe_req,
-                                text=self.clean_text(maybe_body),
-                                raw_line=line_str
-                            )
-                            points.append(p)
+                            # [P1 修复·2026-10-08 K1] 与 m_point 分支同款原子切分（括号保护）
+                            self._append_atomic_points(
+                                points, current_module, current_chapter,
+                                maybe_req, maybe_body, line_str)
+                            continue
+                        # [P1 修复·2026-10-08 K1 非登记要求词] 「熟悉/运用」这类未登记但形态
+                        # 明确的要求词，旧实现一律记成「掌握」且整行不切分 —— 会
+                        # 掩盖新旧大纲的要求升降级（如 熟悉→掌握 本应报 MODIFIED）。
+                        # 现如实把词本身作为考查要求，正文按原子考点切分；
+                        # 未命中前缀的冒号头（「词汇基准」「进程与线程」）是考点名，
+                        # 维持既有行为（等级取行尾标签，文本保留「考点名：内容」）。
+                        if maybe_req.startswith(_REQ_LIKE_PREFIXES):
+                            self._append_atomic_points(
+                                points, current_module, current_chapter,
+                                maybe_req, maybe_body, line_str)
                             continue
                         # 加粗头是考点名而非等级：等级取行尾标签，文本保留「考点名：内容」
                         p = SyllabusPoint(
@@ -302,7 +426,16 @@ class SyllabusDiffGenerator:
                 new_level = self.REQUIREMENT_LEVELS.get(p_new.requirement, 2)
 
                 if p_old.requirement != p_new.requirement:
-                    direction = "提升" if new_level > old_level else "放宽"
+                    # [P2 修复·2026-10-08 同级误标放宽] 此前 `new_level > old_level`
+                    # 不成立一律标「放宽」—— 同级要求词变更（如 掌握→熟练掌握、
+                    # 理解→会，两侧登记级别相同）被方向性谎报为降级。现三向判定：
+                    # 提升 / 放宽 / 同级调整。
+                    if new_level > old_level:
+                        direction = "提升"
+                    elif new_level < old_level:
+                        direction = "放宽"
+                    else:
+                        direction = "同级调整"
                     diff_items.append(DiffItem(
                         change_type="MODIFIED",
                         point_new=p_new,
@@ -358,8 +491,15 @@ class SyllabusDiffGenerator:
         removed_count = sum(1 for d in diff_items if d.change_type == "REMOVED")
         modified_count = sum(1 for d in diff_items if d.change_type == "MODIFIED")
         unchanged_count = sum(1 for d in diff_items if d.change_type == "UNCHANGED")
-        total_old = len(old_points)
-        total_new = len(new_points)
+        # [P2 修复·2026-10-08 指标不守恒] 总数改用**去重后**的口径（与明细同源）：
+        # old_map/new_map 才是实际比对基准（同文本去重、空归一键剔除），此前
+        # total 取原始列表长度 —— 大纲里同一考点出现两次（或同文本分属两个
+        # 要求级别）时，看板「总考点数」大于 added+modified+unchanged，
+        # 学生看到的分类数对不上总数（实测 4 vs 3、3 vs 2）。
+        # 现恒守恒：total_new == added + modified + unchanged；
+        #           total_old == removed + modified + unchanged。
+        total_old = len(old_map)
+        total_new = len(new_map)
 
         if total_new == 0 and total_old == 0:
             volatility = 0.0
@@ -369,6 +509,15 @@ class SyllabusDiffGenerator:
             denominator = max(total_old, total_new, 1)
             volatility = min(100.0, round((added_count + removed_count + modified_count) / denominator * 100, 1))
 
+        # [P0-10 修复·0 点谎报] 任一侧解析到 0 个考点时，「稳健微调」/「重大重构」
+        # 都是把「无法解析」包装成确定性结论（实测：英语一官方大纲表格型
+        # 978 字符 → 0 考点 → 谎报「保持平稳」；0 vs 有内容 → 谎报「重大重构」）。
+        # 等级降级为「无法判定」，详细警示由 compare_texts 的 parse_warning 承载。
+        if total_old == 0 or total_new == 0:
+            stability_grade = "无法判定"
+        else:
+            stability_grade = "稳健微调" if volatility < 10 else ("中度改版" if volatility < 30 else "重大重构")
+
         metrics = {
             "total_old": total_old,
             "total_new": total_new,
@@ -377,7 +526,7 @@ class SyllabusDiffGenerator:
             "modified_count": modified_count,
             "unchanged_count": unchanged_count,
             "volatility_percentage": volatility,
-            "stability_grade": "稳健微调" if volatility < 10 else ("中度改版" if volatility < 30 else "重大重构")
+            "stability_grade": stability_grade
         }
 
         return diff_items, metrics
@@ -437,6 +586,22 @@ class SyllabusDiffGenerator:
         if baseline_warning:
             report_data["baseline_warning"] = baseline_warning
 
+        # [P0-10 修复·0 点谎报] 任一侧解析到 0 个考点 → 结果不可信警示
+        # （消费方：CLI/REPL 渲染器 render_syllabus_diff、format_diff_markdown、
+        # GUI/TUI、Agent diff_syllabus 工具；与 baseline_warning 同款通道）。
+        _total_old = metrics.get("total_old", 0)
+        _total_new = metrics.get("total_new", 0)
+        if _total_old == 0 or _total_new == 0:
+            _empty_sides = []
+            if _total_old == 0:
+                _empty_sides.append("基准（旧）大纲")
+            if _total_new == 0:
+                _empty_sides.append("最新（新）大纲")
+            report_data["parse_warning"] = (
+                "、".join(_empty_sides) + "解析到 0 个考点，比对结果不可信"
+                "（可能是表格/编号型大纲未解析成功或文本非大纲内容），"
+                "请检查文本格式。")
+
         return report_data
 
     def compare_files(
@@ -485,9 +650,85 @@ class SyllabusDiffGenerator:
             report["baseline_warning"] = baseline_warning
         return report
 
-    def format_diff_markdown(self, report_data: Dict[str, Any]) -> str:
+    @staticmethod
+    def added_prescription(requirement: str) -> str:
+        """[P2 修复·2026-10-08 处方列全量同一句] 新增考点的「私教应试处方」按
+        考查级别分层：高危（掌握类，3 级）/ 理解类（2 级）/ 了解类（1 级）。
+        修复前整列固定「首年新增大概率出选择或基础大题，严防概念漏洞」，
+        不同级别的新增考点拿到同一句处方，处方列失去区分度。
+        未登记要求词按「理解」档（与 compare_points 的缺省级别一致）。
+        """
+        level = SyllabusDiffGenerator.REQUIREMENT_LEVELS.get(requirement, 2)
+        if level >= 3:
+            return "**高危**：优先补 3 道基础变式，严防概念漏洞"
+        if level >= 2:
+            return "先抓定义与辨析要点，配 2 道客观题再认"
+        return "一轮速览记忆即可，不做深挖"
+
+    def generate_llm_advice(self, report_data: Dict[str, Any]) -> Optional[str]:
+        """LLM 战术建议生成（显式降级：失败打印告警并返回 None，不再静默）。
+
+        [P2 修复·2026-10-08 内嵌 LLM 调用] 从 :meth:`format_diff_markdown` 抽出
+        的独立入口：调用方可先调本方法、再把结果经 ``strategic_advice=`` 注入
+        格式化（纯离线场景注入 ``""`` 即可完全避免网络副作用）；默认路径仍调用
+        本方法以保持向后兼容。
+
+        边界（沿用 P0-10 口径）：``parse_warning``（任一侧 0 考点）直接返回
+        None —— 不给空数据编「战术建议」，也不产生真实计费调用。
+        LLM 未配置属正常离线态（静默走通用模板）；已配置但调用失败 / 返回过短
+        属异常降级，打印一次性黄色告警（修复前为 ``except: pass`` 静默）。
+        """
+        if str(report_data.get("parse_warning") or "").strip():
+            return None
+        try:
+            try:
+                from tools.llm_client import is_llm_configured, chat_completion
+            except ImportError:
+                from llm_client import is_llm_configured, chat_completion
+            if not is_llm_configured(workspace_root=ROOT):
+                return None
+            diff_items: List[DiffItem] = report_data.get("diff_items", []) or []
+            added_items = [d for d in diff_items if d.change_type == "ADDED"]
+            removed_items = [d for d in diff_items if d.change_type == "REMOVED"]
+            modified_items = [d for d in diff_items if d.change_type == "MODIFIED"]
+            added_summary = "、".join([it.point_new.text for it in added_items[:5]]) or "无新增"
+            removed_summary = "、".join([it.point_old.text for it in removed_items[:5]]) or "无剔除"
+            modified_summary = "、".join([f"{it.point_new.text}({it.detail})" for it in modified_items[:5]]) or "无微调"
+            school = report_data.get("school", "目标院校")
+            major = report_data.get("major", "专业")
+            prompt = (
+                f"你是一位考研命题研究总教练。\n"
+                f"目标院校专业：{school} - {major}。\n"
+                f"大纲变动情况：\n"
+                f"- 新增考点：{added_summary}\n"
+                f"- 剔除考点：{removed_summary}\n"
+                f"- 级别微调考点：{modified_summary}\n"
+                f"请结合以上具体的考点变动，为考生输出 3-4 条极具战术针对性的备考执行建议（包括时间分配、变式练兵、规避无谓消耗与题型防范）。\n"
+                f"以编号列表形式输出，每条标出加粗核心观点，语气严谨专业，直接返回列表文字。"
+            )
+            llm_advice = chat_completion(prompt, workspace_root=ROOT, timeout=12.0)
+            if llm_advice and len(llm_advice.strip()) > 30:
+                return llm_advice.strip()
+            print("\033[93m[考纲Diff] LLM 战术建议生成失败（返回为空或过短），"
+                  "本次研报已降级为通用模板建议\033[0m")
+            return None
+        except Exception as e:  # noqa: BLE001 - 建议生成失败绝不阻断研报
+            # 显式降级（修复前静默吞掉）：只报异常类型，不回显可能含响应体的消息。
+            print(f"\033[93m[考纲Diff] LLM 战术建议生成失败（{type(e).__name__}），"
+                  f"本次研报已降级为通用模板建议\033[0m")
+            return None
+
+    def format_diff_markdown(self, report_data: Dict[str, Any],
+                             strategic_advice: Optional[str] = None) -> str:
         """
         将比对结果格式化为高可读性的 Markdown 深度研报
+
+        [P2 修复·2026-10-08 内嵌 LLM 副作用] ``strategic_advice`` 为调用方注入的
+        战术建议（``""`` = 显式声明不生成、直接走通用模板，纯离线可用）。
+        默认 ``None`` 时向后兼容：内部经 :meth:`generate_llm_advice` 生成
+        （LLM 已配置且数据可信时），失败不再静默 —— 打印告警并如实回落通用模板。
+        生成成功的建议会缓存到 ``report_data["strategic_advice"]``，同一份报告
+        再次格式化（如 format 后紧跟 save）不会重复调用 LLM。
         """
         m = report_data.get("metrics") or {
             "stability_grade": report_data.get("summary", "稳定"),
@@ -537,15 +778,23 @@ class SyllabusDiffGenerator:
         _baseline_warning = str(report_data.get("baseline_warning") or "").strip()
         if _baseline_warning:
             lines.insert(3, f"> ⚠️ {_baseline_warning}")
+        # [P0-10 修复·0 点谎报] 解析到 0 考点的警示与基准警示同通道展示
+        _parse_warning = str(report_data.get("parse_warning") or "").strip()
+        if _parse_warning:
+            lines.insert(3, f"> ⚠️ {_parse_warning}")
 
         if added_items:
             lines.append("| 序号 | 所属模块 | 章节定位 | 考查级别 | 新增考点内容 | 私教应试处方与真题变式要求 |")
             lines.append("|---|---|---|---|---|---|")
             for idx, item in enumerate(added_items, 1):
                 p = item.point_new
-                lines.append(f"| {idx} | **{p.module}** | {p.chapter} | `<font color=red>**{p.requirement}**</font>` | **{p.text}** | 首年新增大概率出选择或基础大题，严防概念漏洞 |")
+                lines.append(f"| {idx} | **{p.module}** | {p.chapter} | `<font color=red>**{p.requirement}**</font>` | **{p.text}** | {self.added_prescription(p.requirement)} |")
         else:
-            lines.append("🎉 **本次考纲未见新增知识点，复习范围保持平稳！**")
+            if _parse_warning:
+                # [P0-10] 0 点输入时不得给「保持平稳」这类确定性结论
+                lines.append("⚠️ **比对结果不可信：解析到 0 个考点，无法判定是否存在新增。**")
+            else:
+                lines.append("🎉 **本次考纲未见新增知识点，复习范围保持平稳！**")
 
         lines.extend([
             "",
@@ -583,33 +832,22 @@ class SyllabusDiffGenerator:
             lines.append("📌 **无考查要求升降级变动。**")
 
         # 生成第五部分：指导建议（优先大模型动态深度研判）
+        # [P2 修复·2026-10-08 内嵌 LLM 副作用] 建议解析顺序：显式注入 >
+        # 报告内缓存 > LLM 生成（generate_llm_advice，失败显式降级）> 通用模板。
+        # 0 点数据（parse_warning）不给空数据编「战术建议」，也不调 LLM
+        # （P0-10 口径由 generate_llm_advice 内部兜底）。
         custom_advice = None
-        try:
-            try:
-                from tools.llm_client import is_llm_configured, chat_completion
-            except ImportError:
-                from llm_client import is_llm_configured, chat_completion
-            if is_llm_configured(workspace_root=ROOT):
-                added_summary = "、".join([it.point_new.text for it in added_items[:5]]) or "无新增"
-                removed_summary = "、".join([it.point_old.text for it in removed_items[:5]]) or "无剔除"
-                modified_summary = "、".join([f"{it.point_new.text}({it.detail})" for it in modified_items[:5]]) or "无微调"
-                school = report_data.get("school", "目标院校")
-                major = report_data.get("major", "专业")
-                prompt = (
-                    f"你是一位考研命题研究总教练。\n"
-                    f"目标院校专业：{school} - {major}。\n"
-                    f"大纲变动情况：\n"
-                    f"- 新增考点：{added_summary}\n"
-                    f"- 剔除考点：{removed_summary}\n"
-                    f"- 级别微调考点：{modified_summary}\n"
-                    f"请结合以上具体的考点变动，为考生输出 3-4 条极具战术针对性的备考执行建议（包括时间分配、变式练兵、规避无谓消耗与题型防范）。\n"
-                    f"以编号列表形式输出，每条标出加粗核心观点，语气严谨专业，直接返回列表文字。"
-                )
-                llm_advice = chat_completion(prompt, workspace_root=ROOT, timeout=12.0)
-                if llm_advice and len(llm_advice.strip()) > 30:
-                    custom_advice = llm_advice.strip()
-        except Exception:
-            pass
+        if strategic_advice is not None:
+            custom_advice = str(strategic_advice).strip() or None
+        else:
+            _cached_advice = report_data.get("strategic_advice")
+            if isinstance(_cached_advice, str):
+                custom_advice = _cached_advice.strip() or None
+            elif not _parse_warning:
+                custom_advice = self.generate_llm_advice(report_data)
+                if custom_advice:
+                    # 缓存进报告：同一报告后续 format/save 复用，杜绝重复 12s 调用
+                    report_data["strategic_advice"] = custom_advice
 
         lines.extend([
             "",

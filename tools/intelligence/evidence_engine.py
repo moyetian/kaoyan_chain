@@ -9,15 +9,24 @@ KaoYan Intelligence · 证据链与多源冲突仲裁引擎 (Evidence Engine)
   4. 统一生成标准合规的 EvidenceObject
 """
 
+import json
+import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from .models import EvidenceSource, EvidenceObject, current_exam_year
 from .citation_engine import verify_citation_excerpt
 
+_LOG = logging.getLogger(__name__)
+
 # 信源基础可信度打分表 (0~100)
 SOURCE_SCORES = {
     "chsi": 100,               # S 级：中国研招网 / 教育部全国研究生招生信息平台
     "graduate_school": 95,     # A 级：高校研究生院 / 研招办官方网站
+    # [P1 修复·2026-10-08] 补登记 scout_engine 实际会传入的两种信源类型。
+    # 此前未登记 → 走 50 分/D 级兜底，招生办官方证据被静默降级，产出
+    # 「VERIFIED + D级 + 0.5 置信」的自相矛盾证据（R5 实测）。
+    "admission_office": 95,    # A 级：高校硕士招生办公室官方域（与研究生院同级）
+    "official_discovered": 90, # A 级：站内检索发现的官方域招生页面（域名已校验）
     "college_official": 90,    # A 级：二级学院官方招生网/通知公告
     "official_wechat": 85,     # B 级：学校/研究生院官方认证微信公众号
     "education_platform": 60,  # C 级：中国教育在线、研招网合作平台
@@ -31,6 +40,8 @@ SOURCE_SCORES = {
 SOURCE_LEVELS = {
     "chsi": "S",
     "graduate_school": "A",
+    "admission_office": "A",
+    "official_discovered": "A",
     "college_official": "A",
     "official_wechat": "B",
     "education_platform": "C",
@@ -39,15 +50,43 @@ SOURCE_LEVELS = {
     "offline_baseline": "C",
 }
 
+#: 已警告过的未登记信源类型（每种 type 只警告一次，避免逐条证据刷屏日志）。
+_WARNED_UNKNOWN_SOURCE_TYPES: set = set()
+
+
+def _warn_unknown_source_type(source_type: str) -> None:
+    """未登记信源类型的 WARNING（每种 type 仅一次）。
+
+    [P1 修复·2026-10-08] 此前兜底完全静默：未登记 type 得 50 分/D 级，
+    证据以「VERIFIED + D级」的矛盾状态流出且无人察觉（admission_office /
+    official_discovered 实测）。兜底行为保持不变（fail-safe 仍按低可信
+    处理），但打 WARNING 让静默降级可被发现、可补登记。
+    """
+    key = str(source_type or "").strip().lower()
+    if key in _WARNED_UNKNOWN_SOURCE_TYPES:
+        return
+    _WARNED_UNKNOWN_SOURCE_TYPES.add(key)
+    _LOG.warning(
+        "未登记的信源类型 %r：按兜底 50 分/D 级处理；请在 evidence_engine."
+        "SOURCE_SCORES / SOURCE_LEVELS 中补登记，避免证据静默降级。",
+        source_type,
+    )
+
 
 def get_source_score(source_type: str) -> int:
     """获取信源基准得分"""
-    return SOURCE_SCORES.get(source_type.lower(), 50)
+    key = str(source_type or "").lower()
+    if key not in SOURCE_SCORES:
+        _warn_unknown_source_type(source_type)
+    return SOURCE_SCORES.get(key, 50)
 
 
 def get_source_level(source_type: str) -> str:
     """获取信源级别"""
-    return SOURCE_LEVELS.get(source_type.lower(), "D")
+    key = str(source_type or "").lower()
+    if key not in SOURCE_LEVELS:
+        _warn_unknown_source_type(source_type)
+    return SOURCE_LEVELS.get(key, "D")
 
 
 def build_evidence(
@@ -157,6 +196,38 @@ def build_evidence(
     )
 
 
+# ── [P1 修复·2026-10-08 R10 值归一] 冲突判等专用的保守值归一 ──
+# 实测差异：extractor 产出保留原文形态（如名称内全角括号「(204)英语（二）」），
+# chsi 离线标准模板为「(204)英语(二)」——语义相同、文本不等；field 名归一（R10
+# 前半）让两者进同一分组后，旧实现按原始文本比较即判 CONFLICT，产生噪音冲突。
+#
+# 归一范围刻意收窄为「零歧义兼容字符」：
+#   * 全角 ASCII 区 U+FF01–U+FF5E → 半角 U+0021–U+007E（Unicode 兼容区，
+#     与 ASCII 一一对应，转换语义零歧义）；
+#   * 全角空格 U+3000 → 半角空格。
+# 不用 NFKC：它还会做兼容分解（Ⅱ→II、①→1、²→2、㈠→(一)、半角片假名展开等），
+# 会把「形态不同但可能想区分」的值也一并合并，误伤面不可控；本场景实测差异
+# 全部落在全角 ASCII 区内，手工映射已足够且行为可预测（宁少合并、不错合并）。
+# 不做连续空白折叠（「计算机 408」vs「计算机408」有假同风险），仅 strip 首尾。
+_FULLWIDTH_ASCII_MAP = {cp: cp - 0xFEE0 for cp in range(0xFF01, 0xFF5F)}
+_FULLWIDTH_ASCII_MAP[0x3000] = 0x20
+
+
+def _normalize_evidence_value(value: Any) -> Any:
+    """证据值的保守归一，**仅用于冲突判等**，绝不写回/输出（输出保留原值）。
+
+    - 字符串：全角 ASCII → 半角、全角空格 → 半角空格、strip 首尾空白；
+    - list：递归归一每个元素（「初试科目」证据的 value 是科目清单 list of str，
+      真实差异就落在清单元素的名称括号上）；
+    - 其他（int/dict/None/…）：原样返回，判等路径与行为保持不变。
+    """
+    if isinstance(value, str):
+        return value.translate(_FULLWIDTH_ASCII_MAP).strip()
+    if isinstance(value, list):
+        return [_normalize_evidence_value(item) for item in value]
+    return value
+
+
 def resolve_conflicts(evidences: List[EvidenceObject]) -> List[EvidenceObject]:
     """
     多源冲突仲裁器 (Conflict Resolver)
@@ -183,14 +254,31 @@ def resolve_conflicts(evidences: List[EvidenceObject]) -> List[EvidenceObject]:
             continue
 
         # 检查值是否一致
+        # [P1 修复·2026-10-08 R10 值归一] 判等键用 _normalize_evidence_value
+        # 做保守归一（全角 ASCII→半角、strip），消除全角/半角同义值的噪音
+        # CONFLICT；归一仅作用于判等键，ev.value 原值不做任何改写，输出/渲染
+        # 仍是原形态（合并时保留 best_ev 自身携带的原值）。
         unique_values = set()
         for ev in ev_list:
             if isinstance(ev.value, list):
-                unique_values.add(tuple(ev.value))
+                # [P0-4 修复·list-of-dict 崩溃] 此前 tuple(ev.value) 直接入 set：
+                # 元素是 dict 时（PDF 附件证据 value=[{"name":…, "url":…}]，
+                # extractor._extract_pdf_links 的产出）→ TypeError: unhashable
+                # type: 'dict' → 整条 scout 证据链挂（官方简章页挂 PDF 附件是常态，
+                # 同一次 scout 两个页面都含 PDF 即触发）。
+                # 改 json 序列化后比较：可哈希、键序稳定（sort_keys 防同内容
+                # 不同键序误判冲突）、非 JSON 原生类型兜底（default=str）。
+                # 序列化前先对 list 内字符串元素归一（嵌套 dict 元素保持原样）。
+                try:
+                    unique_values.add(json.dumps(
+                        _normalize_evidence_value(ev.value), sort_keys=True,
+                        ensure_ascii=False, default=str))
+                except Exception:
+                    unique_values.add(_normalize_evidence_value(str(ev.value)))
             elif isinstance(ev.value, dict):
                 unique_values.add(str(ev.value))
             else:
-                unique_values.add(str(ev.value))
+                unique_values.add(_normalize_evidence_value(str(ev.value)))
 
         if len(unique_values) == 1:
             # 数据一致，按来源优先级保留最高置信度的证据，并提升置信度（多源佐证）

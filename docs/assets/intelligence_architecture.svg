@@ -81,9 +81,9 @@
       <rect x="12" y="12" width="68" height="20" rx="4" fill="#1e40af" />
       <text x="46" y="26" text-anchor="middle" fill="#60a5fa" class="badge">A 级官方</text>
       <text x="88" y="27" fill="#93c5fd" class="b-title">高校研究生院/招生网</text>
-      <text x="15" y="55" class="b-desc">• 探测 Robots.txt &amp; Sitemap.xml 简章链接</text>
+      <text x="15" y="55" class="b-desc">• 站内检索发现官方简章链接</text>
       <text x="15" y="75" class="b-desc">• 智能正则抽取拟招人数与自命题科目</text>
-      <text x="15" y="95" class="b-desc" fill="#38bdf8">• 📑 PDF 专业目录深度解析 (表格/代码)</text>
+      <text x="15" y="95" class="b-desc" fill="#38bdf8">• PDF 专业目录深度解析 (表格/代码)</text>
       <text x="15" y="115" class="b-desc" fill="#93c5fd">• 置信度: 90%~95% ｜ 官方一手事实</text>
     </g>
     <!-- C级 -->

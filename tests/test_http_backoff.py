@@ -164,13 +164,18 @@ def test_half_open_allows_exactly_one_probe():
 def test_snapshot_restore_survives_process_restart():
     """跨进程记忆：冷却状态可持久化（进程内 dict 的原缺陷是「重启即遗忘」）。"""
     clk = _Clock()
-    p = CooldownPolicy(base_seconds=300.0, failure_threshold=1, monotonic=clk)
+    wall = _Clock(1_700_000_000.0)   # 墙钟（快照 stored_at 用；P0-6 起 snapshot 带时间戳）
+    p = CooldownPolicy(base_seconds=300.0, failure_threshold=1, monotonic=clk,
+                       time_source=wall)
     p.record_failure("sogou")
     snap = p.snapshot()
-    assert "sogou" in snap and 0 < snap["sogou"] <= 300.0
+    # [P0-6 修复 2026-10-08] snapshot 结构升级为 {"stored_at", "cooling"}：
+    # stored_at 让 restore 按真实流逝折算，不再给旧冷却续满。
+    assert "sogou" in snap["cooling"] and 0 < snap["cooling"]["sogou"] <= 300.0
 
     clk2 = _Clock(1000.0)          # 新进程：单调整体前移，冷却仍在
-    p2 = CooldownPolicy(base_seconds=300.0, failure_threshold=1, monotonic=clk2)
+    p2 = CooldownPolicy(base_seconds=300.0, failure_threshold=1, monotonic=clk2,
+                        time_source=wall)
     p2.restore(snap)
     assert p2.is_cooling("sogou"), "重启后应记得仍在冷却（避免反复撞同一堵墙）"
-    assert p2.remaining("sogou") <= snap["sogou"] + 1e-6
+    assert p2.remaining("sogou") <= snap["cooling"]["sogou"] + 1e-6

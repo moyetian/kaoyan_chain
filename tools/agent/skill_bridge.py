@@ -23,6 +23,44 @@
 4. **路径过沙箱**：``solve_vision`` 的图片路径必须过
    ``registry._resolve_read_path``（工作区外读取授权闸门），与 read_file /
    read_exam_paper 同规则；``grade_exam_paper`` 的试卷**路径形态**参数同样过闸。
+
+[B3 自描述契约 · 2026-10-08] 在集中声明表之外，技能模块**可选**通过模块级
+``TOOL_SPEC`` + ``execute`` 自描述其可桥接工具（新增技能无需修改本文件的
+声明表，元数据单一真源留在技能模块内）：
+
+    TOOL_SPEC = {
+        "name": "dissect_english_sentence",    # 必填：工具名（全局唯一）
+        "description": "……",                    # 必填：模型可见的工具说明
+        "parameters": {"type": "object", …},    # 必填：OpenAI 风格 JSON Schema
+        "level": "read_only",                   # 选填：权限级别（见下）
+        "tier": "extended",                     # 选填：默认 extended
+    }
+
+    def execute(args: dict, ctx: dict) -> str:  # 必填：桥接调用入口
+        …
+
+契约细则（``build_self_described_specs`` 消费）：
+- 候选模块清单登记在 ``SELF_DESCRIBING_SKILLS``；模块不可用（裁剪安装）或
+  ``TOOL_SPEC`` 三要素不全 / schema 不合法 / 缺 ``execute`` 时**跳过注册**
+  （集中声明的 6 项不受影响，始终注册 —— 两者注册语义差异见各函数注释）；
+- ``level`` 取字符串名（read_only / safe_edit / low_risk_exec / shell_exec /
+  network / dangerous）、0-5 整数或 ``Callable[[dict], str|int]``（按调用参数
+  动态定级，如 apply=false 只读 / apply=true 写回）；**缺省或非法一律按
+  DANGEROUS 处理**（fail-closed：宁可多弹审批，绝不静默放行写操作）；
+- ``ctx`` 由桥接器注入：``{"workspace_root": Path, "registry": ToolRegistry,
+  "interactive": bool}`` —— 供工作区锚定与沙箱读取闸门使用；纯本地技能可忽略；
+- ``execute`` 返回字符串即工具输出；需读取工作区外路径的技能请过
+  ``ctx["registry"]._resolve_read_path(path, ctx["interactive"])`` 并把异常
+  转为以 ``SecurityError:`` 开头的文案返回（与内置工具同一约定）。
+
+[B4 桥接取舍 · 2026-10-08] 按「模型价值」排序桥接后，以下 6 个技能**有意不桥接**
+（均为纯库/内部组件，模型无需直接操作；能力已被其他入口覆盖）：
+  * ``exam_answers``    —— 答案解析纯函数（判卷链路内部，已由 grade_exam_paper 覆盖）；
+  * ``paper_registry``  —— 试卷注册表纯库（内部索引；入库入口已由 ingest_exam_material 覆盖）；
+  * ``question_source`` —— 题源 ID/校验和纯库（判卷/错题链路内部标识符处理）；
+  * ``grading_trace``   —— 判卷留痕纯库（内部审计，由判卷链路自行调用）；
+  * ``school_db``       —— 院校数据库（无公开函数，纯数据模块）；
+  * ``latex_beautifier``—— 公式渲染美化纯函数（三端展示层组件，非模型能力）。
 """
 
 import importlib
@@ -32,8 +70,10 @@ from typing import Any, Callable, Dict, List, Optional
 
 try:  # 双导入路径兼容（tools.agent.* / agent.*）
     from .permissions import PermissionLevel
+    from .sandbox import SecurityException
 except ImportError:  # pragma: no cover - 脚本式直跑兼容
     from permissions import PermissionLevel  # type: ignore
+    from sandbox import SecurityException  # type: ignore
 
 try:
     from .kaoyan_context import SUPPORTED_SUBJECTS, normalize_subject_key
@@ -48,6 +88,26 @@ SKILL_TOOL_SOURCE = "skill"
 #: 「路径形态」判定阈值：与 exam_grading 的 ``"\n" not in s and len(s) < 260``
 #: 同口径（同一字符串既可能是内联正文、也可能是文件路径时的判别线）。
 _PATH_FORM_MAX_CHARS = 260
+
+#: [B3] 自描述技能模块清单：这些模块通过模块级 ``TOOL_SPEC`` + ``execute`` 自行
+#: 声明桥接工具（元数据单一真源在技能模块内；新增自描述技能只需在此登记模块名）。
+SELF_DESCRIBING_SKILLS = (
+    "english_dissector",
+    "material_scanner",
+    "experience_dossier",
+    "pdf_extractor",
+)
+
+#: [B3] TOOL_SPEC["level"] 字符串名 → PermissionLevel 数值
+#: （技能模块因此无需依赖 agent 包，保持库层解耦）。
+_LEVEL_BY_NAME = {
+    "read_only": PermissionLevel.READ_ONLY,
+    "safe_edit": PermissionLevel.SAFE_EDIT,
+    "low_risk_exec": PermissionLevel.LOW_RISK_EXEC,
+    "shell_exec": PermissionLevel.SHELL_EXEC,
+    "network": PermissionLevel.NETWORK,
+    "dangerous": PermissionLevel.DANGEROUS,
+}
 
 
 def load_skill_module(module_name: str):
@@ -81,6 +141,113 @@ class SkillToolSpec:
     handler: Optional[Callable[..., str]] = None
     #: 模型参数 → handler 关键字参数的适配器（模型侧参数名与底层签名不同时才需要）
     arg_adapter: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None
+
+
+def _resolve_self_level(value) -> int:
+    """[B3] TOOL_SPEC.level 单值归一：字符串名 / 0-5 整数；其余 → DANGEROUS。"""
+    if isinstance(value, bool):  # bool 是 int 子类：True/False 不是合法级别
+        return PermissionLevel.DANGEROUS
+    if isinstance(value, int):
+        if PermissionLevel.READ_ONLY <= value <= PermissionLevel.DANGEROUS:
+            return value
+        return PermissionLevel.DANGEROUS
+    if isinstance(value, str):
+        return _LEVEL_BY_NAME.get(value.strip().lower(), PermissionLevel.DANGEROUS)
+    return PermissionLevel.DANGEROUS
+
+
+def _normalize_self_level(level):
+    """[B3] TOOL_SPEC.level → ToolDefinition.level 语义（int 或 Callable[[dict], int]）。
+
+    缺省（``None``）按 DANGEROUS 处理 —— fail-closed：漏写级别时宁可多弹审批，
+    绝不把写操作静默降级为只读放行。
+    """
+    if level is None:
+        return PermissionLevel.DANGEROUS
+    if callable(level):
+        def _dynamic(args):
+            try:
+                return _resolve_self_level(level(args))
+            except Exception:  # noqa: BLE001 - 动态定级失败按最严格处理
+                return PermissionLevel.DANGEROUS
+        return _dynamic
+    return _resolve_self_level(level)
+
+
+def _self_handler(module, registry):
+    """[B3] 把技能模块的 ``execute(args, ctx)`` 包装成 ToolRegistry 的 handler。
+
+    模型参数（**kwargs）原样进 ``args``；``interactive`` 由 execute_tool 透传
+    （见 tools_impl 的透传清单），弹出后并入 ``ctx``，不污染模型参数。
+    """
+    def _handler(**kwargs):
+        interactive = bool(kwargs.pop("interactive", True))
+        ctx = {
+            "workspace_root": registry.sandbox.workspace_root,
+            "registry": registry,
+            "interactive": interactive,
+        }
+        execute = getattr(module, "execute", None)
+        if not callable(execute):
+            return (f"Error: 技能模块 {getattr(module, '__name__', '?')} "
+                    "缺少 execute(args, ctx) 入口")
+        try:
+            out = execute(dict(kwargs), ctx)
+        except SecurityException:
+            raise  # 交 execute_tool 统一转 SecurityError 文案（与内置工具同约定）
+        except Exception as e:  # noqa: BLE001 - 工具失败必须转可读文案
+            return f"Error 技能工具执行失败: {e}"
+        return "" if out is None else str(out)
+    return _handler
+
+
+def build_self_described_specs(registry) -> List[SkillToolSpec]:
+    """[B3] 从自描述技能模块收集桥接声明（``TOOL_SPEC`` + ``execute``）。
+
+    跳过规则（任一命中即跳过该模块，绝不抛）：
+    * 模块不可用（裁剪安装 / 公开副本未发布）—— **注册随模块可用性**，与集中
+      声明表「始终注册」的语义差异是有意为之：自描述元数据只存在于技能模块内，
+      模块缺失时没有可注册的元数据（集中声明的 6 项有桥接侧元数据可兜底）；
+    * ``TOOL_SPEC`` 缺失 / 非 dict / 三要素（name/description/parameters）不全；
+    * ``parameters`` 非 object schema，或 ``required`` 越出 ``properties``；
+    * 模块缺 ``execute`` 入口。
+
+    返回顺序与 ``SELF_DESCRIBING_SKILLS`` 一致（注册顺序可预期）。
+    """
+    specs: List[SkillToolSpec] = []
+    for module_name in SELF_DESCRIBING_SKILLS:
+        mod = load_skill_module(module_name)
+        if mod is None:
+            continue
+        raw = getattr(mod, "TOOL_SPEC", None)
+        if not isinstance(raw, dict):
+            continue
+        name = str(raw.get("name") or "").strip()
+        desc = str(raw.get("description") or "").strip()
+        params = raw.get("parameters")
+        if not name or not desc or not isinstance(params, dict):
+            continue
+        if params.get("type") != "object" or not isinstance(params.get("properties"), dict):
+            continue
+        required = params.get("required", [])
+        if not isinstance(required, list) or \
+                not set(map(str, required)) <= set(params["properties"]):
+            continue
+        if not callable(getattr(mod, "execute", None)):
+            continue
+        tier = str(raw.get("tier") or SKILL_TOOL_TIER).strip().lower()
+        if tier not in ("essential", "extended"):
+            tier = SKILL_TOOL_TIER
+        specs.append(SkillToolSpec(
+            name=name,
+            skill_id=module_name,
+            desc=desc,
+            params_schema=params,
+            level=_normalize_self_level(raw.get("level")),
+            tier=tier,
+            handler=_self_handler(mod, registry),
+        ))
+    return specs
 
 
 def _llm_config(workspace_root) -> Dict[str, Any]:
@@ -409,11 +576,14 @@ def build_skill_specs(registry) -> List[SkillToolSpec]:
 def register_skill_tools(registry) -> List[str]:
     """把技能桥接工具注册进 ``ToolRegistry``（幂等：已存在的名字跳过）。
 
-    返回本次**新增**的工具名清单（重复调用返回空列表）。技能模块是否可用不影响
-    注册：缺失时 handler 返回「Error: 未加载 xxx 技能」，注册表始终可审计。
+    返回本次**新增**的工具名清单（重复调用返回空列表）。注册来源 = 集中声明表
+    （6 项，技能模块是否可用不影响注册：缺失时 handler 返回「Error: 未加载 xxx
+    技能」，注册表始终可审计）+ [B3] 自描述技能（随模块可用性注册，见
+    ``build_self_described_specs``）。
     """
     added: List[str] = []
-    for spec in build_skill_specs(registry):
+    specs = build_skill_specs(registry) + build_self_described_specs(registry)
+    for spec in specs:
         if spec.name in registry.tools:
             continue
         handler = spec.handler

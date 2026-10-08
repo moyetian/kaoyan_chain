@@ -191,11 +191,11 @@ def _cmd_tools(args: List[str]) -> int:
         return 1
 
     try:
-        from tools.agent.permissions import LEVEL_NAMES, PermissionManager
+        from tools.agent.permissions import PermissionManager
         from tools.agent.sandbox import Sandbox
         from tools.agent.tools_impl import ToolRegistry
     except ImportError:
-        from agent.permissions import LEVEL_NAMES, PermissionManager
+        from agent.permissions import PermissionManager
         from agent.sandbox import Sandbox
         from agent.tools_impl import ToolRegistry
 
@@ -217,30 +217,20 @@ def _cmd_tools(args: List[str]) -> int:
         registry.register_mcp_tools(mcp_mgr)
 
     try:
-        rows = []
-        for name, td in registry.tools.items():
-            if not with_mcp and td.source == "mcp":
-                continue
-            if tier != "all" and td.tier != tier:
-                continue
-            rows.append((name, td))
+        # [B2 动态发现] 行数据（level 展示口径/字段结构）走 registry.describe_tools
+        # 单一真源（与模型侧 list_tools 工具同源）；「默认跳过 MCP」是审计命令的
+        # 呈现策略，保留在本层。
+        rows = [r for r in registry.describe_tools(tier=tier)
+                if with_mcp or r["source"] != "mcp"]
         _rank = {"essential": 0, "extended": 1}
-        rows.sort(key=lambda r: (_rank.get(r[1].tier, 2), r[0]))
-
-        def _level_cell(td):
-            """(level 值, 展示文案)；动态定级（callable）显示为"动态"。"""
-            if isinstance(td.level, int):
-                return td.level, LEVEL_NAMES.get(td.level, str(td.level))
-            return "dynamic", "动态（按调用参数定级）"
+        rows.sort(key=lambda r: (_rank.get(r["tier"], 2), r["name"]))
 
         if as_json:
-            tools_payload = []
-            for name, td in rows:
-                lv, lv_name = _level_cell(td)
-                tools_payload.append({
-                    "name": name, "tier": td.tier, "level": lv, "level_name": lv_name,
-                    "source": td.source, "desc": td.desc,
-                })
+            tools_payload = [
+                {"name": r["name"], "tier": r["tier"], "level": r["level"],
+                 "level_name": r["level_name"], "source": r["source"], "desc": r["desc"]}
+                for r in rows
+            ]
             print(json.dumps({"tier": tier, "count": len(tools_payload),
                               "tools": tools_payload}, ensure_ascii=False, indent=2))
             return 0
@@ -248,12 +238,11 @@ def _cmd_tools(args: List[str]) -> int:
         title = f"Agent 工具注册表（{len(rows)} 项 · tier={tier}"
         title += " · 含 MCP）" if with_mcp else "）"
         print(colorize(f"\n=== 🧰 {title} ===", C.BOLD))
-        width = max((len(n) for n, _ in rows), default=4) + 2
-        for name, td in rows:
-            _, lv_name = _level_cell(td)
-            desc = td.desc if len(td.desc) <= 60 else td.desc[:59] + "…"
-            print(f"  {name.ljust(width)}| {td.tier.ljust(9)} | {lv_name.ljust(22)} | "
-                  f"{td.source.ljust(7)} | {desc}")
+        width = max((len(r["name"]) for r in rows), default=4) + 2
+        for r in rows:
+            desc = r["desc"] if len(r["desc"]) <= 60 else r["desc"][:59] + "…"
+            print(f"  {r['name'].ljust(width)}| {r['tier'].ljust(9)} | {r['level_name'].ljust(22)} | "
+                  f"{r['source'].ljust(7)} | {desc}")
         print(colorize("\n  MCP 工具默认跳过（--with-mcp 现场加载）；"
                        "tier 过滤: --tier=essential|extended|all", C.DIM))
         return 0

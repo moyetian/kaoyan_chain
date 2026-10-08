@@ -130,6 +130,36 @@ def filter_subjects(subjects: List[str]) -> List[str]:
     return [s for s in subjects if _is_plausible_subject(s)]
 
 
+def _locate_subject_span(source_candidates, item: str) -> Optional[str]:
+    """在来源原文候选中定位科目条目的**原文片段**（引文锚点，group(0) 语义）。
+
+    [P1 修复·2026-10-08 R4] 旧实现把重组格式 ``(code)name``（恒为半角括号）
+    直接当引文：官方页大量使用全角「（101）」写法时，引文在来源原文中逐字
+    命中失败，**真证据被引文闸门误杀**。这里用宽松正则重新定位原文片段：
+    括号全/半角皆可、代码与名称之间允许空白（含换行），返回命中的 group(0)。
+    对 Rust 快路径输出的条目同样有效（其格式与 Python 路径一致）。
+
+    定位失败返回 None —— 调用方据此剔除「无原文出处」的条目，实现逐科目
+    引文校验（旧实现只校验第一条科目，闸门覆盖率仅 25%）。
+    """
+    text = str(item or "").strip()
+    if not text:
+        return None
+    m = re.match(r"^[（(]?(\d{3})[）)]?\s*(.+)$", text)
+    if m and m.group(2).strip():
+        code = m.group(1)
+        name = m.group(2).strip()
+        # (?<!\d) 防止把「1204」这类更长数字串中的「204」当科目代码定位
+        pattern = re.compile(
+            r"(?<!\d)[（(]?" + re.escape(code) + r"[）)]?\s*" + re.escape(name))
+    else:
+        pattern = re.compile(re.escape(text))
+    for candidate in source_candidates or ():
+        found = pattern.search(str(candidate))
+        if found:
+            return found.group(0)
+    return None
+
 
 class DocumentExtractor:
     """招考文档与网页内容抽取器"""
@@ -204,23 +234,41 @@ class DocumentExtractor:
         # [UT2 修复·地址被当科目] 消费侧后置过滤：门牌号/楼栋名（实测
         # `(500)号办公楼`）不得作为科目进入证据；过滤为空则本条证据不生成
         # （渲染层如实显示「暂未提取到细分指标」，不输出空列表冒充成功）。
+        # [P1 修复·2026-10-08 R4] 逐科目引文校验：旧实现只把第一条科目当引文
+        # （闸门覆盖 25%），且引文用半角重组格式，官方页全角「（101）」原文
+        # 逐字命中失败致真证据被误杀。现对每条科目重新定位原文片段，定位失败
+        # 的条目剔除，quote 取首个原文片段（group(0)）。
+        # [P1 修复·2026-10-08 R10] field 名归一「初试科目」：与 PDF/研招网/
+        # 离线基准三处同语义字段统一，来源细分由 source（type/name）承载，
+        # 否则同语义证据因 field 名各异永不进 resolve_conflicts 同一分组。
         subjects = filter_subjects(self._extract_subjects(html_text))
         if subjects:
-            ev_sub = build_evidence(
-                field_name="初试科目配置",
-                value=subjects,
-                unit="门",
-                exam_year=detected_year,
-                source_type=source_type,
-                source_name=self._source_label(page_url, school_name, "官方大纲/目录"),
-                source_url=page_url,
-                published_at=pub_date,
-                target_year=target_year,
-                ssl_verified=ssl_verified,
-                quote=(subjects[0] if subjects else None),
-                source_text=[html_text, html.unescape(html_text)],
-            )
-            evidences.append(ev_sub)
+            _candidates = [html_text, html.unescape(html_text)]
+            _anchored: List[str] = []
+            _anchor = None
+            for _item in subjects:
+                _span = _locate_subject_span(_candidates, _item)
+                if _span is None:
+                    continue
+                _anchored.append(_item)
+                if _anchor is None:
+                    _anchor = _span
+            if _anchored:
+                ev_sub = build_evidence(
+                    field_name="初试科目",
+                    value=_anchored,
+                    unit="门",
+                    exam_year=detected_year,
+                    source_type=source_type,
+                    source_name=self._source_label(page_url, school_name, "官方大纲/目录"),
+                    source_url=page_url,
+                    published_at=pub_date,
+                    target_year=target_year,
+                    ssl_verified=ssl_verified,
+                    quote=_anchor,
+                    source_text=_candidates,
+                )
+                evidences.append(ev_sub)
 
         # 5. 发现 PDF 附件
         pdf_links = self._extract_pdf_links(html_text, page_url)
@@ -465,22 +513,35 @@ class DocumentExtractor:
 
         # 抽取初试科目 (408、政治、英语等)
         # [UT2 修复·地址被当科目] 与 HTML 链同口径：消费侧后置过滤伪科目。
+        # [P1 修复·2026-10-08 R4/R10] 与 HTML 链同口径：逐科目原文定位 +
+        # quote 用原文片段 group(0)，field 名归一「初试科目」（PDF 文本常由
+        # pypdf 抽取，全角括号与空白差异更常见，旧半角重组引文更易误杀）。
         subjects = filter_subjects(self._extract_subjects(text))
         if subjects:
-            ev_sub = build_evidence(
-                field_name="PDF大纲/目录初试科目",
-                value=subjects,
-                unit="门",
-                exam_year=target_year,
-                source_type="graduate_school",
-                source_name=self._source_label(source_url, school_name, "官方初试大纲 (PDF文件)"),
-                source_url=source_url,
-                target_year=target_year,
-                ssl_verified=ssl_verified,
-                quote=(subjects[0] if subjects else None),
-                source_text=[text],
-            )
-            evidences.append(ev_sub)
+            _anchored: List[str] = []
+            _anchor = None
+            for _item in subjects:
+                _span = _locate_subject_span([text], _item)
+                if _span is None:
+                    continue
+                _anchored.append(_item)
+                if _anchor is None:
+                    _anchor = _span
+            if _anchored:
+                ev_sub = build_evidence(
+                    field_name="初试科目",
+                    value=_anchored,
+                    unit="门",
+                    exam_year=target_year,
+                    source_type="graduate_school",
+                    source_name=self._source_label(source_url, school_name, "官方初试大纲 (PDF文件)"),
+                    source_url=source_url,
+                    target_year=target_year,
+                    ssl_verified=ssl_verified,
+                    quote=_anchor,
+                    source_text=[text],
+                )
+                evidences.append(ev_sub)
 
         # 抽取拟招生计划
         quota_match = QUOTA_PATTERN.search(text)

@@ -75,12 +75,17 @@ def list_materials():
     return result
 
 
-def search_text_in_materials(keyword):
-    """在参考资料文本或 Markdown 中进行关键词搜索。"""
+def search_text_in_materials(keyword, root=None):
+    """在参考资料文本或 Markdown 中进行关键词搜索。
+
+    ``root``：工作区根（可选）。缺省走模块级 ``ROOT``；桥接工具（B3）显式传
+    沙箱工作区根，保证检索锚定在 agent 的工作区内。
+    """
+    base = Path(root) if root else ROOT
     matches = []
     needle = str(keyword).lower()
     for subject_dir in SUBJECT_DIRS:
-        ref_dir = ROOT / subject_dir / "参考资料"
+        ref_dir = base / subject_dir / "参考资料"
         if not ref_dir.exists():
             continue
         for path in ref_dir.glob("*.*"):
@@ -202,7 +207,73 @@ def find_questions_by_keyword(pdf_path, keyword, max_results=3):
     return results
 
 
+#: [B3 自描述契约] 桥接为 Agent 工具（skill_bridge.build_self_described_specs 消费）
+TOOL_SPEC = {
+    "name": "search_in_materials",
+    "description": (
+        "在学员「参考资料/」资料库中检索：默认按关键词搜索四科资料库的 .txt/.md "
+        "文件（返回 科目/文件:行号 定位）；传 pdf_path 时改为在指定 PDF 内定位"
+        "关键词相关试题片段（适合大部头真题册）。"),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "keyword": {"type": "string", "description": "检索关键词（如「边际效用」「质变」）"},
+            "pdf_path": {"type": "string",
+                         "description": "可选：在指定 PDF 文件内检索（缺省=全资料库文本检索）"},
+            "max_results": {"type": "integer", "description": "PDF 内检索的最大片段数（默认 3，上限 20）"},
+        },
+        "required": ["keyword"],
+    },
+    "level": "read_only",
+}
+
+
+def execute(args, ctx=None):
+    """[B3] 桥接入口：资料库关键词检索 / 指定 PDF 内试题片段定位（纯只读）。"""
+    args = args or {}
+    keyword = str(args.get("keyword") or "").strip()
+    if not keyword:
+        return "Error: 缺少检索关键词（keyword）"
+    pdf_path = str(args.get("pdf_path") or "").strip()
+    if pdf_path:
+        # 路径过沙箱读取闸门（工作区外需授权；headless 拒绝）——与内置
+        # read_file / read_exam_paper 同一规则；异常转 SecurityError 文案。
+        registry = (ctx or {}).get("registry")
+        interactive = bool((ctx or {}).get("interactive", True))
+        if registry is not None:
+            try:
+                resolved = registry._resolve_read_path(pdf_path, interactive)
+            except Exception as exc:  # noqa: BLE001
+                return f"SecurityError: {exc}"
+        else:
+            resolved = Path(pdf_path)
+        try:
+            n = max(1, min(int(args.get("max_results") or 3), 20))
+        except (TypeError, ValueError):
+            n = 3
+        snippets = find_questions_by_keyword(resolved, keyword, n)
+        if not snippets:
+            return (f"【PDF 内检索「{keyword}」】未命中：关键词不在该 PDF 中，"
+                    "或该 PDF 为扫描版无法抽取文本（pypdf 未安装时同样无结果）。")
+        lines = [f"【PDF 内检索「{keyword}」· {getattr(resolved, 'name', pdf_path)}】"
+                 f"命中 {len(snippets)} 段:"]
+        lines.extend(str(s) for s in snippets)
+        return "\n\n".join(lines)
+    matches = search_text_in_materials(keyword, root=(ctx or {}).get("workspace_root"))
+    if not matches:
+        return (f"【资料库检索「{keyword}」】未命中。说明：文本检索覆盖四科「参考资料/」"
+                "下的 .txt/.md 文件；PDF 内容请改用 pdf_path 参数指定 PDF 后再检索。")
+    shown = matches[:20]
+    lines = [f"【资料库检索「{keyword}」】命中 {len(matches)} 行"
+             + (f"（展示前 {len(shown)} 行）" if len(matches) > len(shown) else "")
+             + ":"]
+    lines.extend(shown)
+    return "\n".join(lines)
+
+
 __all__ = [
+    "TOOL_SPEC",
+    "execute",
     "extract_pdf_page",
     "extract_pdf_pages",
     "find_questions_by_keyword",

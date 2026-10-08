@@ -1,16 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-KaoYan Intelligence · 官方站点发现器 (Official Discovery & Sitemap / Search)
+KaoYan Intelligence · 官方站点发现器 (Official Discovery & Search)
 
 职责：
-  1. 通过 robots.txt 探测高校官方 Sitemap.xml 并匹配招考关键词
-  2. 生成并执行 site: 域名限定搜索（Search as Discovery，仅用于发掘候选页面）
-  3. 解密与清洗搜索引擎的跳转链接
+  生成 site: 域名限定搜索词（Search as Discovery，仅用于发掘候选页面）
+
+[P2 清理·2026-10-08] 原「robots.txt/Sitemap 探测」与「搜索引擎跳转链接解密」
+两个方法全仓零引用（死代码，含字符串/动态引用穷举核验），已删除；
+实际在用的只有 ``build_targeted_queries``（scout_engine 与 search/rewrite 消费）。
 """
 
-import re
-import base64
-import time
 import urllib.parse
 from typing import List, Optional
 from .fetcher import HTTPFetcher
@@ -28,56 +27,6 @@ class OfficialDiscovery:
 
     def __init__(self, fetcher: Optional[HTTPFetcher] = None):
         self.fetcher = fetcher or HTTPFetcher(timeout=5)
-        self._robots_rules = {}
-
-    def discover_from_sitemap(self, base_domain: str) -> List[str]:
-        """
-        探测 robots.txt 并解析 sitemap.xml 中的招考相关链接
-        """
-        if not base_domain:
-            return []
-
-        parsed = urllib.parse.urlparse(base_domain)
-        root_url = f"{parsed.scheme}://{parsed.netloc}"
-        robots_url = f"{root_url}/robots.txt"
-
-        res = self.fetcher.fetch(robots_url)
-        if not res.is_valid:
-            return []
-
-        disallow = []
-        crawl_delay = 0.0
-        for line in res.content.splitlines():
-            key, _, value = line.partition(":")
-            key = key.strip().lower()
-            value = value.strip()
-            if key == "disallow" and value:
-                disallow.append(value)
-            elif key == "crawl-delay":
-                try:
-                    crawl_delay = max(crawl_delay, float(value))
-                except ValueError:
-                    pass
-        self._robots_rules[root_url] = (disallow, crawl_delay)
-        if crawl_delay:
-            time.sleep(min(crawl_delay, 5.0))
-        sitemap_urls = re.findall(r"^Sitemap:\s*(https?://\S+)", res.content, re.MULTILINE | re.IGNORECASE)
-        candidate_urls: List[str] = []
-
-        for sm_url in sitemap_urls[:2]:
-            sm_res = self.fetcher.fetch(sm_url)
-            if sm_res.is_valid:
-                # 从 sitemap xml 中提取 <loc>
-                locs = re.findall(r"<loc>(https?://[^<]+)</loc>", sm_res.content, re.IGNORECASE)
-                for loc in locs:
-                    path = urllib.parse.urlparse(loc).path or "/"
-                    if any(path.startswith(rule) for rule in disallow if rule != "/"):
-                        continue
-                    loc_lower = loc.lower()
-                    if any(kw in loc_lower for kw in ["yjs", "zs", "master", "grad", "admission", "2026", "2027"]):
-                        candidate_urls.append(loc)
-
-        return candidate_urls[:10]
 
     def build_targeted_queries(
         self,
@@ -103,24 +52,3 @@ class OfficialDiscovery:
             queries.append(f"site:{clean_domain} {year} 硕士研究生 招生专业目录")
 
         return queries
-
-    def clean_search_url(self, raw_url: str) -> str:
-        """
-        清洗搜索引擎跳转链接（如必应 Base64 清洗）
-        """
-        if "bing.com/ck/a?" in raw_url:
-            match = re.search(r"[?&]u=a1([A-Za-z0-9+/=_-]+)", raw_url)
-            if match:
-                encoded = match.group(1)
-                # 处理 URL safe base64
-                encoded = encoded.replace("-", "+").replace("_", "/")
-                rem = len(encoded) % 4
-                if rem:
-                    encoded += "=" * (4 - rem)
-                try:
-                    decoded = base64.b64decode(encoded).decode("utf-8", errors="ignore")
-                    if decoded.startswith("http://") or decoded.startswith("https://"):
-                        return decoded
-                except Exception:
-                    pass
-        return raw_url

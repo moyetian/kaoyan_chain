@@ -133,19 +133,5 @@ def theme_rhythm_json(days_left: int) -> str:
         return '{"p":"dark","label":"","days":0}'
 
 
-def theme_preset_gallery() -> str:
-    """主题预设一览（供看板的主题选择器预览；取不到时返回空串）。"""
-    try:
-        try:
-            from theme import render_preset_gallery
-        except ImportError:                # pragma: no cover
-            from tools.theme import render_preset_gallery  # type: ignore
-
-        return render_preset_gallery()
-    except Exception as exc:               # pragma: no cover
-        _LOG.debug("预设一览生成失败（忽略）: %s", exc)
-        return ""
-
-
 if __name__ == "__main__":                 # pragma: no cover - 手工排查用
     print(build_theme_css()[:400])

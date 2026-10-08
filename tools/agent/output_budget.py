@@ -8,8 +8,9 @@ r"""
    run_command / read_file 的 PDF 与文本分页）—— 数值与此前散落在
    ``tools_impl`` 各工具实现里的字面量逐字一致（K8 只搬家、不改值）。
 2. ``apply_output_budget``：``execute_tool`` 出口的统一兜底 —— 结果超过
-   ``ToolDefinition.budget``（默认 400k 字符，远大于各工具自带截断，
-   **默认零行为变化**）时：截断返回值 + 把完整原文落盘到
+   ``ToolDefinition.budget``（默认 ``DEFAULT_TOOL_OUTPUT_BUDGET``，当前
+   50 KB = 51200 字符，远大于各工具自带截断，**默认零行为变化**）时：
+   截断返回值 + 把完整原文落盘到
    ``.memory/tool_outputs/<日期>/<工具>_<call_id>.txt``（原子写）。
 
 失败语义（刻意保守）：
@@ -44,8 +45,10 @@ TOOL_OUTPUT_LIMITS = {
     "read_file_text_lines": 2000,
 }
 
-#: execute_tool 后置兜底预算（字符）。默认 400k —— 远大于所有工具自带截断，
-#: 默认路径零行为变化；只兜住「漏截断」的新工具/新路径（如 MCP 工具）。
+#: execute_tool 后置兜底预算（字符）。当前 50 KB（51200 字符）—— 远大于所有
+#: 工具自带截断，默认路径零行为变化；只兜住「漏截断」的新工具/新路径
+#: （如 MCP 工具）。下方常量是唯一真源，注释只引名不复制数值口径。
+#: [三审修复·2026-10-08 注释对齐] 此前注释写死的旧值与实际不符，已改为引用常量名。
 DEFAULT_TOOL_OUTPUT_BUDGET = 50 * 1024
 DEFAULT_TOOL_OUTPUT_MAX_LINES = 2_000
 

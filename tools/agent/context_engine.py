@@ -8,7 +8,7 @@
 """
 
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 from .compaction import (
     build_structured_summary,
@@ -36,6 +36,26 @@ try:
         from tools.syllabus_manager import PRO_PLACEHOLDER_MARKER as _SYLLABUS_PLACEHOLDER_MARKER
 except Exception:  # pragma: no cover - 极端环境下不阻断上下文组装
     _SYLLABUS_PLACEHOLDER_MARKER = "【待自填"
+
+
+#: [P2 修复·2026-10-08 系统提示组装无预算/优先级] 系统提示总长预算（字符）。
+#: 超预算时按优先级从低到高截断「数据类」段落（保留头部并插入显式截断标记），
+#: 「规范类」关键段（总控/科目协议、工具与作答契约）永不截断 —— 这是**软上限**：
+#: 仅关键段本身超预算时允许整体超出（宁可超长，不可静默丢行为契约）。
+#: 40k 字符按本仓启发式系数（0.5–1.5 token/字符）≈ 20–60k token，低于默认
+#: 128k 窗口的压缩水位 84k；实测常规工作区整段约 14k 字符（约 3 倍余量）。
+SYSTEM_PROMPT_CHAR_BUDGET = 40000
+
+#: 非关键段被截断时的最少保留字符数（保头部；尾部内容可由 read_file 按需现读）。
+_MIN_KEEP_CHARS = 2000
+
+#: 段落优先级（build_system_prompt 组装标签）：
+#:   0 = 规范类关键段（行为契约，永不截断）
+#:   1 = 重要数据段（超预算时保头部 + 截断标记）
+#:   2 = 辅助数据段（超预算时整段让位 + 省略标记）
+_PRIORITY_CRITICAL = 0
+_PRIORITY_IMPORTANT = 1
+_PRIORITY_AUXILIARY = 2
 
 
 class ContextEngine:
@@ -72,19 +92,24 @@ class ContextEngine:
         [K6] ``kaoyan_ctx``（KaoyanContext / 鸭子类型对象）：非 None 时
         ``target_school`` 直接取 ctx（不再读盘 ky_config.json），保证 Agent
         提示与 hook 判定使用**同一份**目标校；None 保持旧行为（读工作区配置）。
-        """
-        sys_parts = []
 
-        # 0. 三级分层记忆挂载
+        [P2 修复·2026-10-08 无预算/优先级] 各段带优先级标签（0 规范类关键段 /
+        1 重要数据 / 2 辅助数据），统一经 :meth:`_assemble_system_prompt` 组装
+        并执行总长预算（见 ``SYSTEM_PROMPT_CHAR_BUDGET``）。
+        """
+        sys_parts: List[Tuple[int, str]] = []
+
+        # 0. 三级分层记忆挂载（数据类：重要）
         if self.memory_manager:
             mem_text = self.memory_manager.load_all_memory()
             if mem_text:
-                sys_parts.append(mem_text)
+                sys_parts.append((_PRIORITY_IMPORTANT, mem_text))
 
-        # 1. 顶层总控协议 AGENTS.md
+        # 1. 顶层总控协议 AGENTS.md（规范类：关键，不截断）
         root_agents = self.workspace_root / "AGENTS.md"
         if root_agents.exists():
-            sys_parts.append("=== 【顶层最高总控协议 AGENTS.md】 ===\n" + self._read_safe(root_agents))
+            sys_parts.append((_PRIORITY_CRITICAL,
+                              "=== 【顶层最高总控协议 AGENTS.md】 ===\n" + self._read_safe(root_agents)))
 
         # 2. 科目子协议
         subj_map = {
@@ -98,7 +123,8 @@ class ContextEngine:
 
         subj_agents = s_dir / "AGENTS.md"
         if subj_agents.exists():
-            sys_parts.append(f"\n=== 【当前学科专项协议：{name}】 ===\n" + self._read_safe(subj_agents))
+            sys_parts.append((_PRIORITY_CRITICAL,
+                              f"\n=== 【当前学科专项协议：{name}】 ===\n" + self._read_safe(subj_agents)))
 
         # 3. 学情档案与记忆状态
         state_files = [
@@ -119,7 +145,16 @@ class ContextEngine:
                     state_snippets.append(f"--- [{label}] ({p.name}) ---\n{txt}")
 
         if state_snippets:
-            sys_parts.append(f"\n=== 【当前学员学情档案与记忆状态 ({name})】 ===\n" + "\n\n".join(state_snippets))
+            sys_parts.append((_PRIORITY_IMPORTANT,
+                              f"\n=== 【当前学员学情档案与记忆状态 ({name})】 ===\n" + "\n\n".join(state_snippets)))
+
+        # 3.5 [P1 修复·2026-10-08 K5 学情不进上下文] 学情速览：完成率 / 到期复测 / 错因分布
+        # 实时统计注入。修复前这些统计从不进 agent 上下文，私教完全看不到
+        # 「学得怎么样」的数据（完成率、到期复测、错因分布均无），无法回答
+        # 学情类问题。数据源全部为现成单一真源（见 _build_study_overview）。
+        overview = self._build_study_overview()
+        if overview:
+            sys_parts.append((_PRIORITY_IMPORTANT, overview))
 
         # 4. 扫描参考资料白名单（递归含子目录；与 material_scanner 同源实现）
         # [问题5 根因修复·子目录资料不识别] 旧实现只 iterdir() 单层：学员把
@@ -138,20 +173,22 @@ class ContextEngine:
             mat_files = []
 
         if mat_files:
-            sys_parts.append(
+            sys_parts.append((
+                _PRIORITY_IMPORTANT,
                 f"\n=== 📚【本地真题与资料白名单清单 ({name})】===\n"
                 f"本地「参考资料/」目录下实际存放的文件为：{', '.join(mat_files)}。\n"
                 "【重要能力指令】：当学员要求从上述参考资料中抽题或查阅试卷时，你拥有真正的外部工具 (read_exam_paper / read_file)！"
                 "严禁回答“由于技术限制我无法读取本地文件”，你必须直接调用 read_exam_paper 或 read_file 工具提取真题原题，然后展示给学员并批改！"
-            )
+            ))
         else:
-            sys_parts.append(
+            sys_parts.append((
+                _PRIORITY_IMPORTANT,
                 f"\n=== 【本地暂未放入参考资料】===\n"
                 f"当前「参考资料/」暂无本地文件。若任务不依赖本地资料（如生成计划、"
                 f"整理内容、直接作答），请直接完成，不要因缺少参考资料而拒绝作答或"
                 f"输出空回复；若学员指定真题题目或从外部输入，严格针对学员输入解答，"
                 f"绝不虚构题目来自未核验的书籍！"
-            )
+            ))
 
         # 4.5 目标院校招考情报、考纲变动与社媒真实经验档案动态挂载
         intel_snippets = []
@@ -195,18 +232,20 @@ class ContextEngine:
                         intel_snippets.append(f"--- [最新专业课考纲动荡与变动分析 ({latest_diff.name})] ---\n{diff_txt[:1500]}")
 
         if intel_snippets:
-            sys_parts.append(
+            sys_parts.append((
+                _PRIORITY_AUXILIARY,
                 f"\n=== 🎯【目标院校考情与社媒口碑实证档案 ({target_school})】===\n"
                 "以下为系统通过研招情报与社媒降噪过滤算法沉淀的真实考情与考纲变动分析，请在向学员做院校分析、答疑和制定复习策略时充分应用：\n"
                 + "\n\n".join(intel_snippets)
-            )
+            ))
 
         # 5. Agent Loop 工具调用行为规范：真实工作区用考研教练版；评测/空
         # workspace 用通用版（避免 read_exam_paper / log_mistake 等考研术语
         # 干扰无关任务作答——评测实测模型因此类干扰对生成类任务空回复）。
         if (self.workspace_root / "AGENTS.md").exists():
-            # 5. Agent Loop 工具调用行为规范
-            sys_parts.append(
+            # 5. Agent Loop 工具调用行为规范（规范类：关键，不截断）
+            sys_parts.append((
+                _PRIORITY_CRITICAL,
                 "\n=== 🤖【Agent 智能体工具调用行为规范 (Claude Code / Codex 标准)】 ===\n"
                 "你不是被动的普通聊天机器人，你拥有自主规划与执行工具链的能力：\n"
                 "1. 当需要获取真题题干、阅读本地考研文件时，立即调用 read_exam_paper 或 read_file；\n"
@@ -218,10 +257,11 @@ class ContextEngine:
                 "不要为了“确认”而反复浏览目录或搜索文件；\n"
                 "6. 任务完成后，必须在最终回复中给出完整结果——不能为空、不能只说"
                 "“已完成”或“文件已写入”。"
-            )
+            ))
 
         else:
-            sys_parts.append(
+            sys_parts.append((
+                _PRIORITY_CRITICAL,
                 "\n=== 【工具使用与作答规范】 ===\n"
                 "你是一个具备工具调用能力的 AI 助手，请高效完成任务：\n"
                 "1. 优先直接作答：若任务不依赖外部信息（如生成计划、整理内容、"
@@ -231,11 +271,13 @@ class ContextEngine:
                 "真正写出文件；\n"
                 "4. 任务完成后，必须在最终回复中给出完整结果——不能为空、不能只说"
                 "“已完成”或“文件已写入”。"
-            )
+            ))
 
         if (self.workspace_root / "AGENTS.md").exists():
             # 6. 学员报到与会话启动交互规范 (Onboarding & Daily Greeting Protocol)
-            sys_parts.append(
+            # （规范类：关键，不截断）
+            sys_parts.append((
+                _PRIORITY_CRITICAL,
                 "\n=== 📋【学员“报到”口令核心响应规范 (必读必遵)】 ===\n"
                 "当学员输入“报到”、“<科目>报到”（如“英语报到”“政治报到”“专业课报到”，"
                 "不考数学的方案不出现“数学报到”）或会话首次启动时：\n"
@@ -247,17 +289,18 @@ class ContextEngine:
                 "4. 汇报完规划后，主动从本地真题或对应考点库中派发今日第 1 道针对性真题或自测题（展示清晰题干、分值、考查重点）；\n"
                 "5. 提示学员在草稿纸上动笔演算，完成后直接在输入框提交作答或拍照上传（/img），由私教按考研采分点逐步赋分并归因错题！\n"
                 "严禁一上来完全不汇报学员信息与整体规划就自说自话地去调特定冷门题！"
-            )
+            ))
 
         if (self.workspace_root / "AGENTS.md").exists():
-            # 7. 学员作答与“交作业”批改规范
-            sys_parts.append(
+            # 7. 学员作答与“交作业”批改规范（规范类：关键，不截断）
+            sys_parts.append((
+                _PRIORITY_CRITICAL,
                 "\n=== 📝【学员作答与“交作业”批改规范】 ===\n"
                 "当学员提交了题目答案、推导草稿或输入“交作业”时：\n"
                 "1. 严格按照考研阅卷人标准分步骤批改：在推导每个关键步骤明确标注采分点（如 [+2分]、[-1分]）；\n"
                 "2. 若有失误，坚决指出错因五分类（概念漏洞/审题偏差/公式记错/计算失误/书写丢分），并给出针对性改进处方；\n"
                 "3. 若学员答错或部分失误，必须主动调用 log_mistake 工具，将本题题干、失误点、错因、正确解答记录到错题本，并纳入 FSRS 复测队列！"
-            )
+            ))
 
         # 8. [W4/W5 作答契约] 引用规范与结构化产出规范 —— 无条件注入（教练版与
         # 通用版均适用）。评测实测：引用维度 0 分（引用链路断）、json_schema
@@ -269,7 +312,9 @@ class ContextEngine:
         # （RES-001 答案全对但没写 analysis.json → 10 分）；③ 输出精简：服务端
         # 有 60s 生成时限，超长输出（撞墙即整请求失败）应主动约束；④ 长 PDF
         # 续读提示（PDF-003 只读了前 7 页就作答）。
-        sys_parts.append(
+        # （规范类：关键，不截断）
+        sys_parts.append((
+            _PRIORITY_CRITICAL,
             "\n=== 📎【作答契约与引用规范（硬性要求）】 ===\n"
             "1. 【引用】当你的回答引用了检索结果、网页或工具获取的资料时，"
             "必须在该论断处或文末给出**完整 URL**（每条一行，形如 `来源：https://…`）；"
@@ -307,9 +352,54 @@ class ContextEngine:
             "9. 【JSON 语法自查】输出 JSON 前自查语法：括号/引号配对、逗号位置、"
             "**每个对象元素必须有键名与冒号**（不得混入无键名的裸字符串）；"
             "确认结构完整后再提交。"
-        )
+        ))
 
-        return "\n\n".join(sys_parts)
+        return self._assemble_system_prompt(sys_parts)
+
+    def _assemble_system_prompt(self, parts: List[Tuple[int, str]]) -> str:
+        """[P2 修复·2026-10-08 系统提示组装无预算/优先级] 按优先级组装并执行总长预算。
+
+        预算内：与旧实现逐字节一致（``"\\n\\n".join``，本修复不改变常规输出）。
+        超预算：把非关键段按「优先级低 → 高、同优先级长 → 短」的顺序截断 ——
+        优先级 2（辅助数据）整段让位，优先级 1（重要数据）至少保头部
+        ``_MIN_KEEP_CHARS`` 字符；被截/被省段落插入显式标记（说明完整内容可
+        用 read_file 读取），优先级 0（规范类行为契约）永不截断。
+        关键段本身超预算时允许整体超出（软上限：宁可超长，不可静默丢契约）。
+        """
+        total = sum(len(t) for _p, t in parts) + 2 * max(0, len(parts) - 1)
+        if total <= SYSTEM_PROMPT_CHAR_BUDGET:
+            return "\n\n".join(t for _p, t in parts)
+
+        keep = [len(t) for _p, t in parts]
+        order = sorted(
+            (i for i, (prio, _t) in enumerate(parts) if prio > 0),
+            key=lambda i: (-parts[i][0], -len(parts[i][1])))
+        for i in order:
+            if total <= SYSTEM_PROMPT_CHAR_BUDGET:
+                break
+            over = total - SYSTEM_PROMPT_CHAR_BUDGET
+            prio, _text = parts[i]
+            cur = keep[i]
+            if prio >= _PRIORITY_AUXILIARY:
+                target = 0
+            else:
+                target = max(_MIN_KEEP_CHARS, cur - over)
+            target = min(target, cur)
+            if target < cur:
+                keep[i] = target
+                total -= (cur - target)
+
+        out: List[str] = []
+        for i, (_prio, text) in enumerate(parts):
+            k = keep[i]
+            if k >= len(text):
+                out.append(text)
+            elif k <= 0:
+                out.append("（本段因系统提示总长预算超限已省略）")
+            else:
+                out.append(text[:k] + "\n…（本段因系统提示总长预算超限已截断，"
+                                       "完整内容可在工作区对应文件中读取）")
+        return "\n\n".join(out)
 
     def estimate_tokens(self, messages: List[Dict[str, Any]]) -> int:
         """估算消息 Token 量（tiktoken 精确 > Rust 极速启发式 > Python 启发式）。
@@ -459,6 +549,92 @@ class ContextEngine:
                 + txt
             )
         return txt
+
+    #: [P1 修复·2026-10-08 K5] 学情速览用的科目短名（目录/显示名与四端一致）
+    _OVERVIEW_SUBJECTS = (
+        ("math", "01-数学", "数学"),
+        ("eng", "02-英语", "英语"),
+        ("pol", "03-思想政治理论", "政治"),
+        ("pro", "04-专业课", "专业课"),
+    )
+
+    def _build_study_overview(self) -> str:
+        """[P1 修复·2026-10-08 K5 学情不进上下文] 生成「学情速览」段：完成率 / 到期复测 / 错因分布。
+
+        数据源全部为现成单一真源：
+          - 完成率 ← ``state.task_parser.parse_task_lines``（与四端看板同源）；
+          - 到期复测 ← ``error_logger.get_due_reviews``（FSRS 推导的到期筛选）；
+          - 错因分布 ← ``error_logger.scan_error_records``（错题本累计）。
+
+        任一步失败只降级该行；无任何数据时返回空串（整段不输出）。学情统计
+        属增强信息，绝不允许阻断系统提示词组装。
+        """
+        lines: List[str] = []
+
+        # ① 今日任务完成率（四科；无任务文件/无任务的科目跳过）
+        try:
+            try:
+                from state.task_parser import parse_task_lines, pct
+            except ImportError:  # pragma: no cover - 包式导入上下文
+                from tools.state.task_parser import parse_task_lines, pct
+            _rate_parts = []
+            for _key, _folder, _label in self._OVERVIEW_SUBJECTS:
+                f = self.workspace_root / _folder / "_状态" / "今日任务.md"
+                if not f.exists():
+                    continue
+                items = parse_task_lines(self._read_safe(f))
+                if not items:
+                    continue
+                _done = sum(1 for it in items if it.done)
+                _rate_parts.append(f"{_label} {_done}/{len(items)}（{pct(_done, len(items))}%）")
+            if _rate_parts:
+                lines.append("今日任务完成率：" + " ｜ ".join(_rate_parts))
+        except Exception:
+            pass
+
+        # ② 到期复测 + ③ 错因分布（error_logger 单一真源；导入失败则两行都跳过）
+        try:
+            try:
+                from skills import error_logger
+            except ImportError:  # pragma: no cover - 包式导入上下文
+                from tools.skills import error_logger
+        except Exception:  # pragma: no cover
+            error_logger = None
+
+        if error_logger is not None:
+            _short = {k: lbl for k, _f, lbl in self._OVERVIEW_SUBJECTS}
+            try:
+                due_items = error_logger.get_due_reviews(None, max_count=999)
+                if due_items:
+                    _by_subj: Dict[str, int] = {}
+                    for it in due_items:
+                        k = str(it.get("subject") or "")
+                        _by_subj[k] = _by_subj.get(k, 0) + 1
+                    _detail = " ｜ ".join(
+                        f"{_short.get(k, k)} {v}" for k, v in sorted(_by_subj.items()))
+                    lines.append(f"到期复测错题：共 {len(due_items)} 道（{_detail}）")
+            except Exception:
+                pass
+            try:
+                _subj = self.active_subject if self.active_subject in _short else None
+                records = error_logger.scan_error_records(_subj)
+                _counts: Dict[str, int] = {}
+                for r in records:
+                    t = str(r.get("error_type") or "").strip() or "未知"
+                    _counts[t] = _counts.get(t, 0) + 1
+                if _counts:
+                    _scope = _short.get(_subj, "全科") if _subj else "全科"
+                    _top = sorted(_counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
+                    _detail = " · ".join(f"{t} {n}" for t, n in _top)
+                    lines.append(
+                        f"错因分布（{_scope}错题本累计 {sum(_counts.values())} 条）：{_detail}")
+            except Exception:
+                pass
+
+        if not lines:
+            return ""
+        return ("\n=== 【学情速览 · 实时统计（回答学员学情/进度问题时以此为准）】 ===\n"
+                + "\n".join(f"- {l}" for l in lines))
 
 
 # 别名兼容

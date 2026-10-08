@@ -296,6 +296,11 @@ def test_onboarding_wizard_navigation_and_validation(app, tmp_path):
         wizard._on_next_step()
         assert wizard._current_step == 1
 
+        # [P1 修复·2026-10-08 适配] Step 1 的专业课名不再预填占位文本
+        # （旧版默认「自命题专业课科目」且能通过校验 → 「建档成功」却无真实
+        # 科目名）。现必须显式填写真实科目名才能进入下一步。
+        wizard.pro_name_edit.setText("610 法学基础 810 法学综合")
+
         # Step 1 -> Step 2 -> Step 3 -> Step 4
         wizard._on_next_step()
         assert wizard._current_step == 2

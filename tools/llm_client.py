@@ -868,8 +868,28 @@ def request_chat(req: ChatRequest, *, max_retries: int = 2,
     raise LLMRetryExhausted("重试循环未能收敛")  # pragma: no cover
 
 
+def _pick_llm_config_value(data: Dict[str, Any], api: Dict[str, Any], key: str,
+                           aliases: Tuple[str, ...] = (), default: Any = "") -> Any:
+    """顶层平铺键优先；缺失（None）时回退 ``api`` 子对象（同名字段 → 别名 → 默认值）。"""
+    top = data.get(key)
+    if top is not None:
+        return top
+    for candidate in (key, *aliases):
+        value = api.get(candidate)
+        if value is not None:
+            return value
+    return default
+
+
 def get_llm_config(workspace_root: Optional[Path | str] = None) -> Dict[str, Any]:
-    """读取本地工作区 ky_config.json 中的 LLM 配置。"""
+    """读取本地工作区 ky_config.json 中的 LLM 配置。
+
+    [三审修复·2026-10-08 api 嵌套回退] 兼容把 LLM 配置写在 ``"api"`` 子对象下的
+    手写/迁移配置（如 ``{"api": {"key": "sk-...", "url": "https://..."}}``）：
+    顶层平铺键优先（向导 / GUI / CLI 写回均为平铺格式），顶层缺失（None）时
+    逐键回退嵌套 —— 同名字段（api_key/base_url/model/temperature）+ ``key``/``url``
+    短别名；``api`` 非对象（字符串/数组等）时按无嵌套处理，行为与旧版一致。
+    """
     ws = Path(workspace_root) if workspace_root else ROOT
     cfg_file = ws / "ky_config.json"
     if not cfg_file.exists():
@@ -877,11 +897,18 @@ def get_llm_config(workspace_root: Optional[Path | str] = None) -> Dict[str, Any
     try:
         data = json.loads(cfg_file.read_text(encoding="utf-8"))
         if isinstance(data, dict):
+            _api = data.get("api")
+            api: Dict[str, Any] = _api if isinstance(_api, dict) else {}
             return {
-                "api_key": str(data.get("api_key", "")).strip(),
-                "base_url": str(data.get("base_url", "https://api.deepseek.com/v1")).strip(),
-                "model": str(data.get("model", "deepseek-chat")).strip(),
-                "temperature": float(data.get("temperature", 0.3)),
+                "api_key": str(_pick_llm_config_value(
+                    data, api, "api_key", ("key",), "")).strip(),
+                "base_url": str(_pick_llm_config_value(
+                    data, api, "base_url", ("url",),
+                    "https://api.deepseek.com/v1")).strip(),
+                "model": str(_pick_llm_config_value(
+                    data, api, "model", (), "deepseek-chat")).strip(),
+                "temperature": float(_pick_llm_config_value(
+                    data, api, "temperature", (), 0.3)),
             }
     except Exception as e:
         _LOG.debug("读取 ky_config.json 失败: %s", e)

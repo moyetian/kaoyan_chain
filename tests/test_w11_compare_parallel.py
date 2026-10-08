@@ -38,7 +38,11 @@ def test_two_profiles_run_in_parallel(monkeypatch):
 
     intervals = {}
 
-    def fake_profile(self, school_name, entity, major_keyword, api_config=None):
+    # [P1 修复·2026-10-08 R3] _get_school_profile 新增 research_budget_s 参数
+    # （外层熔断剩余墙钟单一真源派生内层研究预算），fake 签名同步，避免
+    # TypeError 使测试静默落入降级路径（假绿）。
+    def fake_profile(self, school_name, entity, major_keyword, api_config=None,
+                     research_budget_s=None):
         t0 = time.monotonic()
         time.sleep(0.35)
         intervals[school_name] = (t0, time.monotonic())
@@ -62,7 +66,11 @@ def test_compare_output_order_is_fixed(monkeypatch):
     """并行不得打乱 school1/school2 的对应关系（即便第二校先完成）。"""
     from tools.intelligence.comparator import SchoolComparator
 
-    def fake_profile(self, school_name, entity, major_keyword, api_config=None):
+    # [P1 修复·2026-10-08 R3] _get_school_profile 新增 research_budget_s 参数
+    # （外层熔断剩余墙钟单一真源派生内层研究预算），fake 签名同步，避免
+    # TypeError 使测试静默落入降级路径（假绿）。
+    def fake_profile(self, school_name, entity, major_keyword, api_config=None,
+                     research_budget_s=None):
         if school_name == "甲校":
             time.sleep(0.25)          # 甲校慢、乙校快 —— 完成顺序与参数顺序相反
         return {"name": school_name}
@@ -81,7 +89,11 @@ def test_compare_output_order_is_fixed(monkeypatch):
 def test_single_school_failure_falls_back_to_local(monkeypatch):
     from tools.intelligence.comparator import SchoolComparator
 
-    def fake_profile(self, school_name, entity, major_keyword, api_config=None):
+    # [P1 修复·2026-10-08 R3] _get_school_profile 新增 research_budget_s 参数
+    # （外层熔断剩余墙钟单一真源派生内层研究预算），fake 签名同步，避免
+    # TypeError 使测试静默落入降级路径（假绿）。
+    def fake_profile(self, school_name, entity, major_keyword, api_config=None,
+                     research_budget_s=None):
         if school_name == "坏校":
             raise RuntimeError("模拟在线研究崩溃")
         return {"name": school_name, "catalog_source": "[RESEARCH_VERIFIED]"}
@@ -103,7 +115,11 @@ def test_fallback_engine_failure_returns_minimal_dict(monkeypatch):
     from tools.intelligence import comparator as cmp_mod
     from tools.intelligence.comparator import SchoolComparator
 
-    def fake_profile(self, school_name, entity, major_keyword, api_config=None):
+    # [P1 修复·2026-10-08 R3] _get_school_profile 新增 research_budget_s 参数
+    # （外层熔断剩余墙钟单一真源派生内层研究预算），fake 签名同步，避免
+    # TypeError 使测试静默落入降级路径（假绿）。
+    def fake_profile(self, school_name, entity, major_keyword, api_config=None,
+                     research_budget_s=None):
         raise RuntimeError("模拟在线研究崩溃")
 
     class _BoomEngine:
@@ -128,7 +144,11 @@ def test_fallback_engine_failure_returns_minimal_dict(monkeypatch):
 def test_compare_end_to_end_with_parallel_profiles(monkeypatch):
     from tools.intelligence.comparator import SchoolComparator
 
-    def fake_profile(self, school_name, entity, major_keyword, api_config=None):
+    # [P1 修复·2026-10-08 R3] _get_school_profile 新增 research_budget_s 参数
+    # （外层熔断剩余墙钟单一真源派生内层研究预算），fake 签名同步，避免
+    # TypeError 使测试静默落入降级路径（假绿）。
+    def fake_profile(self, school_name, entity, major_keyword, api_config=None,
+                     research_budget_s=None):
         return {"name": school_name, "majors": [], "catalog_source": ""}
 
     monkeypatch.setattr(SchoolComparator, "_get_school_profile", fake_profile)

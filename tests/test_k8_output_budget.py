@@ -5,7 +5,8 @@
   L1 各工具自带的截断上限收敛为 ``TOOL_OUTPUT_LIMITS`` 单一真源
      （数值与历史字面量逐字一致，本批只搬家、不改值）；
   L2 ``execute_tool`` 出口的统一兜底 ``apply_output_budget``：结果超过
-     ``ToolDefinition.budget``（默认 400k）→ 截断返回值 + 完整原文落盘
+     ``ToolDefinition.budget``（默认 ``DEFAULT_TOOL_OUTPUT_BUDGET``，当前
+     50 KB）→ 截断返回值 + 完整原文落盘
      ``.memory/tool_outputs/<日期>/``（原子写；失败静默降级「未落盘」）。
 
 本文件锁定（不得回退）：
@@ -15,8 +16,8 @@
 3. 超预算：前 budget 字符 + 截断说明；完整原文落盘逐字节（含被截断部分）；
 4. 落盘失败（IO 异常 / 无 workspace_root）→ 静默降级「未落盘」，
    截断照常返回（预算兜底绝不变成新的故障点）；
-5. 接线：ToolDefinition.budget 默认 400k；execute_tool 出口超预算被
-   截断 + 落盘（budget 改小端到端验证）。
+5. 接线：ToolDefinition.budget 默认取 ``DEFAULT_TOOL_OUTPUT_BUDGET``（当前
+   50 KB）；execute_tool 出口超预算被截断 + 落盘（budget 改小端到端验证）。
 
 全程离线、tmp_path 隔离，零网络。
 """

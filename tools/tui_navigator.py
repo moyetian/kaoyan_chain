@@ -180,10 +180,60 @@ def display_width(s: str) -> int:
     return _display_width(s)
 
 
+#: [P1 修复·2026-10-08] 逐段匹配 ANSI SGR 序列（截断时需保留完整转义段）
+_ANSI_AT_RE = re.compile(r"\033\[[0-9;]*m")
+
+
+def _truncate_display(text: str, max_w: int) -> str:
+    """[P1 修复·2026-10-08] 按**显示宽度**把超宽文本截断到 ``max_w`` 以内。
+
+    render_box_line 此前对超宽内容不做任何处理：``rem`` 被 clamp 到 0、右侧
+    填充消失，右边框被推出面板之外（实测菜单 [11]/[12] 整行达 86/90 列 vs
+    面板 84，边框破损）。逐字符截断（全角 / Emoji 记 2 列，与 display_width
+    同口径），保留完整 ANSI 转义段并在截断处补复位序列，避免色彩泄漏到边框。
+    """
+    if max_w <= 0:
+        return ""
+    out: list = []
+    width = 0
+    i = 0
+    n = len(text)
+    had_ansi = False
+    while i < n:
+        m = _ANSI_AT_RE.match(text, i)
+        if m:
+            out.append(m.group(0))
+            had_ansi = True
+            i = m.end()
+            continue
+        ch = text[i]
+        cw = display_width(ch)
+        if width + cw > max_w:
+            # 截断处补省略号（若还剩 1 列），明示内容被截
+            if out and width + 1 <= max_w:
+                out.append("…")
+            break
+        out.append(ch)
+        width += cw
+        i += 1
+    result = "".join(out)
+    if had_ansi:
+        result += Colors.RESET
+    return result
+
+
 def render_box_line(text: str, total_w: Optional[int] = None, align: str = 'left', border: str = '│', pad: int = 1) -> str:
-    """渲染带边框的单行，并严格校准右边框对其"""
+    """渲染带边框的单行，并严格校准右边框对其
+
+    [P1 修复·2026-10-08] 超宽内容先截断到可用宽度（total_w - 2 - pad）：
+    此前超宽时右侧填充被 clamp 成 0、右边框被推出面板（边框破损）；截断后
+    任何调用方传入超长文本，整行宽度都恒等于 total_w。
+    """
     if total_w is None:
         total_w = panel_width()
+    avail = max(1, total_w - 2 - pad)
+    if display_width(text) > avail:
+        text = _truncate_display(text, avail)
     w = display_width(text)
     rem = max(0, total_w - 2 - w)
     if align == 'center':
@@ -462,8 +512,11 @@ MENU_GROUPS = [
         "🎓 学科报到·作业批改与退出 (Check-in, Homework & Exit)",
         Colors.GREEN,
         [
-            ("11", "学科报到 (Subject Check-in)", "🎓", "选科目报到：调取学情档案、派发今日攻坚任务", "checkin"),
-            ("12", "交作业 (Homework Submit)", "📝", "三种提交方式指引：截图草稿 / 答题卡 / 推导文字", "homework"),
+            # [P1 修复·2026-10-08] [11]/[12] 描述缩短：原文案实测整行 86/90 列
+            # vs 面板 84，右边框被推出面板（渲染层已加截断保护兜底，这里同步
+            # 收敛文案，保证信息完整显示而非被截断）。
+            ("11", "学科报到 (Subject Check-in)", "🎓", "选科目报到：调取学情档案、派发攻坚任务", "checkin"),
+            ("12", "交作业 (Homework Submit)", "📝", "提交方式：截图草稿 / 答题卡 / 推导文字", "homework"),
             ("0", "安全退出 (Exit System)", "🚪", "保存状态并平稳退出终端导航器", "exit"),
         ]
     )
@@ -605,6 +658,11 @@ def render_menu() -> str:
 # 动作分发与业务执行器 (Action Dispatcher)
 # ════════════════════════════════════════════════════════════════
 
+#: [P2 修复·2026-10-08 q 防误触] 单键 ``q`` 的二次确认挂起位：交互模式下第一次输入 q 只提示，
+#: 再次输入 q 才退出。任何其它输入都会重置（见 execute_action 开头）。
+_q_exit_pending = False
+
+
 def execute_action(action_key: str, interactive: bool = True, extra: dict | None = None,
                    batch: bool = False) -> bool:
     """
@@ -616,9 +674,23 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
         必须保持 False：textual 的动作在线程里执行，SystemExit 会静默杀死工作
         线程并把界面卡在「正在执行」，单次动作失败不得踢出整个界面。
     """
+    global _q_exit_pending
     extra = extra or {}
     key = str(action_key).strip()
+    if key != "q":
+        _q_exit_pending = False
     if key in ("0", "exit", "quit", "q"):
+        # [P2 修复·2026-10-08 单键误触] 此前交互式输入单个 q 即整个 TUI 退出（丢失当前操作
+        # 上下文）。交互模式改为二次确认：第一次 q 只提示，再次输入 q（或
+        # 输入 0）才退出；批处理 / 非交互模式（textual、脚本、GUI 复用）
+        # 保持直接退出，既有自动化语义不变。
+        if key == "q" and interactive and not _q_exit_pending:
+            _q_exit_pending = True
+            print(colorize(
+                "\n[!] 已拦截单键 q 退出（防误触）：再输入一次 q 确认退出，"
+                "或输入 0 直接退出。\n", Colors.YELLOW))
+            return True
+        _q_exit_pending = False
         print(colorize("\n👋 祝备考顺利，金榜题名！下次会话再见。\n", Colors.BOLD + Colors.GREEN))
         return False
 
@@ -745,6 +817,9 @@ def execute_action(action_key: str, interactive: bool = True, extra: dict | None
                     # 缺失/为空不打，兼容旧版返回。
                     if rep.get("baseline_warning"):
                         print(colorize("  [!] " + str(rep["baseline_warning"]), Colors.YELLOW))
+                    # [P0-10 修复·0 点谎报] 解析到 0 考点的警示（结果不可信）
+                    if rep.get("parse_warning"):
+                        print(colorize("  [!] " + str(rep["parse_warning"]), Colors.RED))
                     print(f"    生成路径: {saved}")
         elif cmd_alias == "ingest":
             # [P3 修复·D7] 同上：非交互模式支持 --file= / --subject=，此前恒「未指定文件路径，已返回」。

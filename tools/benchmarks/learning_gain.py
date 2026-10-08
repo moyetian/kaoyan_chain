@@ -167,6 +167,11 @@ class GainReport:
                 continue
             lines.extend(renderers.get(m.kind, lambda _m: ["（无渲染器）"])(m))
             lines.append("")
+            # [P2 修复·2026-10-08] 纯数据表补判读建议（确定性规则，见 _advice_*）
+            _advice = str(m.data.get("advice") or "").strip()
+            if _advice:
+                lines.append(f"**判读建议**：{_advice}")
+                lines.append("")
         # [设计] 不在正文里写自身路径（``saved_to`` 页脚）：落盘时 ``save_report``
         # 先渲染后赋值，页脚永远进不了文件；stdout 的落盘提示由调用方（renderer）
         # 承担。去掉这半死分支，避免"文件里没有、打印时却有"的不一致。
@@ -234,6 +239,56 @@ def _md_completion_trend(m: GainMetric) -> List[str]:
             f"| {r['week']} | {r['days']} | {r['completed']} | {r['total']} | {r['rate']:.0%} |"
         )
     return out
+
+
+# ── 判读建议（[P2 修复·2026-10-08] /gain 此前是纯数据表，无任何判读） ────
+#: 建议由确定性规则生成：不联网、不调 LLM、不设达标线 —— 只把「数据本身说了
+#: 什么」翻译成下一步动作；数据不足的指标仍由 insufficient.reason 承担指引。
+#: 落点：GainMetric.data["advice"]，由 markdown 与终端两套渲染器展示。
+
+
+def _advice_review_trend(rows: List[Dict[str, Any]]) -> str:
+    """复测通过率判读：最近一周水平 + 与上周环比（±5 个百分点起报）。"""
+    last = rows[-1]
+    pct = float(last.get("pass_rate", 0.0) or 0.0)
+    trend = ""
+    if len(rows) >= 2:
+        delta = pct - float(rows[-2].get("pass_rate", 0.0) or 0.0)
+        if delta >= 0.05:
+            trend = f"，较上一周提升 {delta:.0%}"
+        elif delta <= -0.05:
+            trend = f"，较上一周下降 {abs(delta):.0%}"
+    if pct < 0.6:
+        return (f"最近一周（{last['week']}）复测通过率 {pct:.0%}{trend}，偏低；"
+                "建议把 again/hard 的错题优先排进下周复测，先重学再复测。")
+    if pct < 0.8:
+        return (f"最近一周（{last['week']}）复测通过率 {pct:.0%}{trend}；"
+                "建议对仍为 hard 的错题增加一轮隔日复测，稳住记忆。")
+    return (f"最近一周（{last['week']}）复测通过率 {pct:.0%}{trend}，记忆保持良好；"
+            "维持当前复测节奏即可。")
+
+
+def _advice_mistake_recurrence(recurring: List[str]) -> str:
+    """同类错因复发判读：有复发→专项变式；无复发→维持归档习惯。"""
+    if recurring:
+        _names = "、".join(str(x) for x in recurring)
+        return (f"存在 {len(recurring)} 类跨日复发错因（{_names}）；"
+                "建议针对复发错因做专项变式训练，避免同类错误反复丢分。")
+    return "暂无跨日复发错因；继续保持错因归档习惯，记录累积后判读更可靠。"
+
+
+def _advice_completion_trend(rows: List[Dict[str, Any]]) -> str:
+    """计划完成率判读：按最近一周完成率分档给执行建议。"""
+    last = rows[-1]
+    rate = float(last.get("rate", 0.0) or 0.0)
+    if rate < 0.5:
+        return (f"最近一周（{last['week']}）计划完成率 {rate:.0%} 偏低；"
+                "建议下调单日任务量、拆小任务，先保证核心项完成。")
+    if rate < 0.8:
+        return (f"最近一周（{last['week']}）计划完成率 {rate:.0%}；"
+                "建议核查未完成任务的难度与时间预算，调整后再排下周计划。")
+    return (f"最近一周（{last['week']}）计划完成率 {rate:.0%}，执行稳定；"
+            "可按当前强度继续推进。")
 
 
 def collect_review_events(
@@ -394,6 +449,7 @@ def compute_review_trend(
         "events": len(events),
         "pass_rule": "good/easy",
         "invalid": [{"line": c, "reason": r} for c, r in invalid],
+        "advice": _advice_review_trend(rows),
     }
     if len(rows) < 2:
         data["note"] = f"仅 {len(rows)} 周数据，趋势判读意义有限（继续记录后自然改善）"
@@ -454,6 +510,7 @@ def compute_mistake_recurrence(records: List[Dict[str, Any]]) -> GainMetric:
                 "statuses": g["statuses"],
             }
         )
+    _recurring = [r["error_type"] for r in rows if r["recurring"]]
     return GainMetric(
         kind="mistake_recurrence",
         name=name,
@@ -461,8 +518,9 @@ def compute_mistake_recurrence(records: List[Dict[str, Any]]) -> GainMetric:
         data={
             "rows": rows,
             "total_records": len(records) - skipped,
-            "recurring_types": [r["error_type"] for r in rows if r["recurring"]],
+            "recurring_types": _recurring,
             "skipped": skipped,
+            "advice": _advice_mistake_recurrence(_recurring),
         },
     )
 
@@ -535,7 +593,8 @@ def compute_completion_trend(history: Dict[str, Dict[str, Any]]) -> GainMetric:
         name=name,
         status="ok",
         weeks=len(rows),
-        data={"rows": rows, "days": len(history) - skipped, "skipped": skipped},
+        data={"rows": rows, "days": len(history) - skipped, "skipped": skipped,
+              "advice": _advice_completion_trend(rows)},
     )
 
 

@@ -44,6 +44,24 @@ try:
 except ImportError:  # pragma: no cover
     from tools.net_guard import MAX_HTTP_RESPONSE_BYTES, safe_urlopen  # type: ignore
 
+# [P0-7 修复·2026-10-08] 搜狗结果解析共享件单源化在 search 层 _http.py
+# （skills→search 是既有依赖方向；providers 层不得反向 import skills）。
+# 本模块的 URL 补编码与账号三级回退改为调用共享实现，两端不再各写一份。
+try:  # 双导入路径兼容（tools.X 包式 / tools 目录在 sys.path 的脚本式）
+    from tools.search.providers._http import (
+        ACCOUNT_PLACEHOLDERS,
+        guess_account_from_text,
+        normalize_search_url,
+        parse_sogou_account,
+    )
+except ImportError:  # pragma: no cover
+    from search.providers._http import (  # type: ignore
+        ACCOUNT_PLACEHOLDERS,
+        guess_account_from_text,
+        normalize_search_url,
+        parse_sogou_account,
+    )
+
 ROOT = resolve_workspace_root(__file__)
 
 _RATE_LOCK = threading.Lock()
@@ -187,11 +205,9 @@ class _AccountNameResolver:
     )
 
     # 账号名占位词/噪声词黑名单（命中即视为未识别，避免把「公众号」「获取更多」当成账号名）
-    _ACCOUNT_PLACEHOLDERS = (
-        "未知", "微信公众号", "公众号", "微信", "蓝字", "上方蓝字",
-        "关注", "获取更多", "更多", "阅读全文", "原文", "文章", "点击上方",
-        "投稿", "转载", "编辑", "责任编辑",
-    )
+    # [P0-7 修复·2026-10-08] 单源化：清单实体在 search 层
+    # _http.ACCOUNT_PLACEHOLDERS（与搜狗三级回退解析器共用同一份），此处仅引用。
+    _ACCOUNT_PLACEHOLDERS = ACCOUNT_PLACEHOLDERS
 
     def _extract_account_from_html(self, html_text: str) -> str:
         """按多选择器顺序提取公众号名称；全部未命中返回空串。"""
@@ -206,20 +222,14 @@ class _AccountNameResolver:
         return ""
 
     def _guess_account_from_text(self, text: str) -> str:
-        """从搜索结果摘要/标题中兜底猜测公众号名（如「来源：XXX」「公众号：XXX」）。"""
-        if not text:
-            return ""
-        # [P3 修复·D8] 补充「点击上方蓝字关注 XXX」「由 XXX 发布」等列表页常见句式。
-        # 采用 finditer 逐个候选校验：左端噪声命中（如「蓝字关注」）不再直接短路返回，
-        # 且标记词后必须跟分隔符，避免把「关注」本身捕成账号名。
-        for pat in (r'(?:公众号|来源|出品|作者)[：:\s|]*([\u4e00-\u9fa5A-Za-z0-9_·\-]{2,24})',
-                    r'(?:来自|由)[\s：:]*([\u4e00-\u9fa5A-Za-z0-9_·\-]{2,24})',
-                    r'(?:蓝字|关注)[\s：:]+([\u4e00-\u9fa5A-Za-z0-9_·\-]{2,24})'):
-            for m in re.finditer(pat, text):
-                cand = m.group(1).strip("，。,.|")
-                if cand and cand not in self._ACCOUNT_PLACEHOLDERS:
-                    return cand[:40]
-        return ""
+        """从搜索结果摘要/标题中兜底猜测公众号名（如「来源：XXX」「公众号：XXX」）。
+
+        [P0-7 修复·2026-10-08] 实现已单源化到 search 层
+        ``tools.search.providers._http.guess_account_from_text``（搜狗三级回退
+        链的兜底级与正文元数据解析共用同一实现）；此处保留薄委托，使既有
+        调用点（_parse_bing_results / _extract_metadata）零改动且行为等价。
+        """
+        return guess_account_from_text(text)
 
 
 class WeChatSearchEngine(_AccountNameResolver):
@@ -695,6 +705,10 @@ class WeChatSearchEngine(_AccountNameResolver):
             raw_url = html.unescape(title_m.group(1)).strip().replace("&amp;", "&")
             if not raw_url.startswith("http"):
                 raw_url = urllib.parse.urljoin(self.SOGOU_WX_URL, raw_url)
+            # [P0-7 修复·2026-10-08] 与 provider 层同源：真实 href 的 query 参数
+            # 含字面空格（实测 10/10），不补编码时任何消费方（safe_urlopen 等）
+            # 都会抛 InvalidURL——统一走共享 normalize_search_url。
+            raw_url = normalize_search_url(raw_url)
 
             title = html.unescape(re.sub(r'<[^>]+>', '', title_m.group(2)))
             title = re.sub(r'\s+', ' ', title).strip()
@@ -703,20 +717,11 @@ class WeChatSearchEngine(_AccountNameResolver):
             summary = html.unescape(re.sub(r'<[^>]+>', '', summary_m.group(1))).strip() if summary_m else ""
             summary = re.sub(r'\s+', ' ', summary).strip()
 
-            account_m = re.search(r'<a[^>]*class="[^"]*account[^"]*"[^>]*>(.*?)</a>', block, re.DOTALL | re.IGNORECASE)
-            account = re.sub(r'<[^>]+>', '', account_m.group(1)).strip() if account_m else ""
-            if not account:
-                span_m = re.search(r'<span[^>]*class="[^"]*all-time-y2[^"]*"[^>]*>(.*?)</span>',
-                                   block, re.DOTALL | re.IGNORECASE)
-                if span_m:
-                    account = html.unescape(re.sub(r'<[^>]+>', '', span_m.group(1))).strip()
-            if not account:
-                sp_m = re.search(r'<div[^>]*class="s-p"[^>]*>.*?<a[^>]*>(.*?)</a>', block, re.DOTALL | re.IGNORECASE)
-                if sp_m:
-                    account = html.unescape(re.sub(r'<[^>]+>', '', sp_m.group(1))).strip()
-            if not account:
-                account = self._guess_account_from_text(f"{summary} {title}")
-            account = html.unescape(re.sub(r'<[^>]+>', '', account)).strip()
+            # [P0-7 修复·2026-10-08] 原内联三级回退（L1 class=account → L2
+            # all-time-y2 → L3 s-p>a → 摘要/标题句式兜底 → unescape+strip）已
+            # 单源化到 search 层 _http.parse_sogou_account（provider 层同用），
+            # 此处调用共享实现；行为与内联版等价（逐级回退 + 兜底清洗）。
+            account = parse_sogou_account(block, guess_text=f"{summary} {title}")
 
             time_m = re.search(r"timeConvert\(['\"]?(\d+)['\"]?\)", block)
             pub_date = ""

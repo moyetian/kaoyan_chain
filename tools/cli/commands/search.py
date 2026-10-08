@@ -119,9 +119,11 @@ def _cmd_rag(args: List[str]) -> None:
 
     code = run_rag_search(" ".join(query_parts), top_k=top_k,
                           source_filter=source_filter)
-    if code == 1 and not query_parts:
-        sys.exit(1)
-    sys.exit(0 if code == 0 else 1)
+    # [P2 修复·2026-10-08 退出码透传] run_rag_search 约定 0=成功 / 1=参数缺失 / 2=知识库尚未建立。
+    # 此前此处把 code==2 折叠成 1（`sys.exit(0 if code == 0 else 1)`），脚本无法
+    # 区分「用法错误」与「未建库」；上一行 `if code == 1 and not query_parts`
+    # 还是与下一行等价的死分支（code==1 时无论如何都 exit 1）。现直接透传。
+    sys.exit(code)
 
 
 register(Command(

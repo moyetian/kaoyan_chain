@@ -286,19 +286,103 @@ class KnowledgeStore:
             return False
 
     def add_chunks(self, chunks: List[Chunk]) -> int:
-        """批量添加文本片段
+        """批量添加文本片段（单事务 + executemany）。
+
+        [P2 修复·2026-10-08] 旧实现是 ``for chunk in chunks: self.add_chunk(chunk)``
+        —— 每条片段一次 INSERT + 一次 commit（N+1 次事务提交）。全量建索引
+        （院校库 + 参考资料数百片段）时每条都要 fsync，是纯粹的写入放大。
+        现改为单事务批量写入：
+
+        * 主表 ``executemany``；向量行只对带 embedding 的片段批量写；
+        * 全部成功 → 一次 commit，返回写入条数；
+        * 任一条失败 → 整批 rollback，返回 0（调用方据此如实报告成功数，
+          不做「部分成功」的模糊语义）。
 
         Args:
             chunks: 文本片段列表
 
         Returns:
-            成功添加的数量
+            成功写入的片段数（0 = 整批失败/空输入）
         """
-        success_count = 0
-        for chunk in chunks:
-            if self.add_chunk(chunk):
-                success_count += 1
-        return success_count
+        if not chunks:
+            return 0
+        try:
+            cursor = self.conn.cursor()
+            cursor.executemany("""
+                INSERT OR REPLACE INTO chunks (id, text, source, metadata)
+                VALUES (?, ?, ?, ?)
+            """, [(c.id, c.text, c.source,
+                   json.dumps(c.metadata, ensure_ascii=False)) for c in chunks])
+
+            if self.has_vector:
+                if not HAS_NUMPY:
+                    logger.warning("numpy 不可用，无法存储向量（仅写入文本索引）")
+                else:
+                    vec_rows = [
+                        (c.id, np.array(c.embedding, dtype=np.float32).tobytes())
+                        for c in chunks if c.embedding
+                    ]
+                    if vec_rows:
+                        cursor.executemany("""
+                            INSERT OR REPLACE INTO vec_chunks (chunk_id, embedding)
+                            VALUES (?, ?)
+                        """, vec_rows)
+
+            self.conn.commit()
+            return len(chunks)
+
+        except Exception as e:
+            logger.error(f"批量添加文本片段失败（整批回滚）: {e}")
+            self.conn.rollback()
+            return 0
+
+    def prune_chunks(self, keep_ids, source_prefixes) -> int:
+        """删除「source 属于指定前缀、且 id 不在 keep_ids 中」的片段。
+
+        [P2 修复·2026-10-08] 建索引只做 INSERT OR REPLACE：源文件被删除、或
+        文件变短（切片数减少）后，旧片段永远留在库里 —— ``ky rag`` 会命中
+        已删除资料的内容。本方法给「增量建索引」补上收尾清理：
+
+        * 只清理 ``source_prefixes`` 圈定的来源（调用方只传自己的来源前缀，
+          不碰其它写入方的数据）；
+        * 分隔符归一后再比对（Windows 下 ``relative_to`` 产出反斜杠）；
+        * ``keep_ids`` 为空集即「该来源已整体消失」。
+
+        Args:
+            keep_ids: 本次重建仍有效的片段 id 集合
+            source_prefixes: 受管理的来源前缀（如 ``universities/``）
+
+        Returns:
+            清理掉的片段数
+        """
+        keep = {str(x) for x in (keep_ids or ())}
+        prefixes = [str(p).replace("\\", "/") for p in (source_prefixes or ()) if str(p)]
+        if not prefixes:
+            return 0
+        try:
+            stale = []
+            for row in self.conn.execute("SELECT id, source FROM chunks").fetchall():
+                src = str(row["source"] or "").replace("\\", "/")
+                if any(src.startswith(p) for p in prefixes) and row["id"] not in keep:
+                    stale.append(row["id"])
+            if not stale:
+                return 0
+            self.conn.executemany("DELETE FROM chunks WHERE id = ?",
+                                  [(chunk_id,) for chunk_id in stale])
+            if self.has_vector:
+                try:
+                    self.conn.executemany("DELETE FROM vec_chunks WHERE chunk_id = ?",
+                                          [(chunk_id,) for chunk_id in stale])
+                except sqlite3.Error as e:
+                    # 向量表清理失败不影响文本索引的正确性（检索侧按 chunk_id
+                    # JOIN 回主表，孤儿向量行取不到正文会被丢弃）；留痕即可。
+                    logger.warning(f"向量表失效片段清理失败（文本索引已清理）: {e}")
+            self.conn.commit()
+            return len(stale)
+        except Exception as e:
+            logger.error(f"清理失效片段失败: {e}")
+            self.conn.rollback()
+            return 0
 
     def search_by_vector(
         self,

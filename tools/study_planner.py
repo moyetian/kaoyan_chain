@@ -1257,6 +1257,55 @@ _CHECKIN_SUBJECT_SPECS = {
 }
 
 
+def _due_review_task_row(subject_key: str) -> str:
+    """[P1 修复·2026-10-08 K6 模板僵化] 生成「到期复测」任务行（无到期错题时返回空串）。
+
+    数据源 = ``error_logger.get_due_reviews``（到期筛选单一真源：到期日由
+    ``fsrs_scheduler.compute_next_interval`` 推导）。修复前今日任务模板
+    **零引用 FSRS**：到期待复测错题从不进入当日清单，复测被无限推迟。
+    查询异常（错题本缺失/解析失败/导入失败）一律按「无到期」处理 ——
+    今日任务生成绝不能因复测查询而中断。行格式为标准 4 列表格行，
+    与 task_parser.parse_task_lines 解析契约兼容。
+    """
+    try:
+        try:
+            from skills import error_logger
+        except ImportError:  # pragma: no cover - 包式导入上下文
+            from tools.skills import error_logger
+        due_n = len(error_logger.get_due_reviews(subject_key, max_count=99))
+    except Exception:
+        due_n = 0
+    if due_n <= 0:
+        return ""
+    due_min = min(30, max(10, due_n * 5))
+    return (f"| 到期复测 | FSRS 到期错题 {due_n} 道（输入 /review 开始盲盒复测） "
+            f"| {due_min} 分钟 | [ ] |\n")
+
+
+def _pacing_hint_line(days_left: int, minutes: int) -> str:
+    """[P1 修复·2026-10-08 K6 模板僵化] 配速提示行：剩余天数 / 日均量 / 剩余可投入总量。
+
+    修复前模板只有固定三行任务与倒计时快照，没有任何配速信息；考生无法
+    从今日任务感知「还剩多少天、每天要投多少、总共还能投多少」。
+    """
+    hours_per_day = minutes / 60.0
+    total_hours = max(0, int(days_left)) * hours_per_day
+    return (f"> 📊 配速提示：距初试还剩 {max(0, int(days_left))} 天 ｜ 日均量 {minutes} 分钟"
+            f"（{hours_per_day:g} 小时）｜ 按此配速剩余可投入约 {total_hours:.0f} 小时")
+
+
+def _count_task_rows(text: str) -> int:
+    """统计今日任务行数（单一真源 task_parser；解析不可用时回退 3 的既有常量）。"""
+    try:
+        try:
+            from state.task_parser import parse_task_lines
+        except ImportError:  # pragma: no cover - 包式导入上下文
+            from tools.state.task_parser import parse_task_lines
+        return len(parse_task_lines(text))
+    except Exception:  # pragma: no cover - 极端环境下不阻断报到
+        return 3
+
+
 def _canonical_roll_call(subject_key: str) -> str:
     """科目 key → 中文报到口令（单一真源：REPL 路由表 CHINESE_SUBJECT_MAP）。
 
@@ -1291,6 +1340,12 @@ def ensure_subject_today_task(plan, subject_key, workspace_root=None):
       - 只处理报到的那一个科目，不重写总规划与其他科目文件；
       - 文件已存在且为当日 → 原样保留（考生可能已勾选/编辑，绝不覆盖）；
       - 生成走纯模板（不调用 LLM），保证报到响应速度与确定性。
+
+    [P1 修复·2026-10-08 K6 模板僵化] 模板不再固定三行：
+      - 有 FSRS 到期错题时，「到期复测」任务行置于当日**第一行**（数据源
+        error_logger.get_due_reviews，间隔由 fsrs_scheduler 推导）；
+      - 倒计时行后新增「配速提示」行（剩余天数 / 日均量 / 剩余可投入总量）。
+      两处均保持 4 列表格与 blockquote 结构，与 task_parser 解析契约兼容。
 
     返回 ``{"status": created|overwritten|exists|refreshed|disabled, "path": str, "task_count": int}``。
     """
@@ -1361,13 +1416,18 @@ def ensure_subject_today_task(plan, subject_key, workspace_root=None):
     # 而非拼接科目显示名（详见 _canonical_roll_call 注释）。
     _roll_call = _canonical_roll_call(subject_key)
     r1, r2, r3 = ratios
+    # [P1 修复·2026-10-08 K6 模板僵化] 到期复测列为当日**第一行** + 配速提示行。
+    # 修复前模板是固定三行且零引用 FSRS：到期待复测错题不进清单、无配速信息。
+    _due_row = _due_review_task_row(subject_key)
+    _pacing_line = _pacing_hint_line(days_left, minutes)
     content = f"""# 今日{title_label}任务 ({today_str})
 
 > 研考倒计时：{days_left} 天 ｜ 当前阶段：{stage_name} ｜ 今日目标用时：{minutes} 分钟
+{_pacing_line}
 
 | 模块 | 任务内容 | 预计用时 | 完成状态 |
 |---|---|---|---|
-| 核心精讲 | {desc} | {int(minutes * r1)} 分钟 | [ ] |
+{_due_row}| 核心精讲 | {desc} | {int(minutes * r1)} 分钟 | [ ] |
 | 习题精练 | {drill} | {int(minutes * r2)} 分钟 | [ ] |
 | 订正归档 | 在终端输入「交作业」，AI 按步骤采分并自动录入错题队列 | {int(minutes * r3)} 分钟 | [ ] |
 
@@ -1396,13 +1456,15 @@ def ensure_subject_today_task(plan, subject_key, workspace_root=None):
                     try:
                         atomic_write_text(task_file, _patched)
                         return {"status": "refreshed", "path": str(task_file),
-                                "task_count": 3}
+                                "task_count": _count_task_rows(_patched)}
                     except Exception:
                         pass
-            return {"status": "exists", "path": str(task_file), "task_count": 3}
+            return {"status": "exists", "path": str(task_file),
+                    "task_count": _count_task_rows(old_text)}
     status_raw = _safe_write_today_task(task_file, today_str, content)
     status = "created" if status_raw == "已创建" else "overwritten"
-    return {"status": status, "path": str(task_file), "task_count": 3}
+    return {"status": status, "path": str(task_file),
+            "task_count": 3 + (1 if _due_row else 0)}
 
 
 def refresh_stale_today_tasks(plan=None, workspace_root=None) -> List[Dict]:
@@ -2431,10 +2493,33 @@ def record_daily_completion(rate: float, total: int = 0, completed: int = 0, dat
     cfg["completion_history"] = hist
     atomic_write_text(cfg_path, json.dumps(cfg, ensure_ascii=False, indent=2))
 
+def _day_has_learning_action(record) -> bool:
+    """[P1 修复·2026-10-08 K4 假疲劳警报] 该日记录是否含真实学习动作。
+
+    只把「显式记录 completed<=0」的日子判为无学习动作（打开会话但一道题
+    都没勾选，或全部任务未完成）并排除在疲劳判定之外 —— 这类 0% 记录是
+    空转快照，不是「任务全线未完成」。历史记录缺 completed 字段时无法
+    判定，保守视为有动作（保持既有行为，兼容只写 rate 的旧数据）。
+    """
+    if not isinstance(record, dict):
+        return True  # 结构未知：不排除（保守）
+    if "completed" not in record:
+        return True
+    try:
+        return int(record.get("completed") or 0) >= 1
+    except (TypeError, ValueError):
+        return True
+
+
 def check_fatigue_alert(cfg: dict = None) -> dict:
     """
     检查是否连续 2 天今日任务完成率低于 60%
     兑现 AGENTS.md 减负保障机制与豆包/阿福防疲劳设计
+
+    [P1 修复·2026-10-08 K4 假疲劳警报] 判定只在「有真实学习动作」的日子上进行：
+    只开会话、一道题都没勾选（completed=0）的日子整体排除 —— 它们既不
+    触发警报，也不参与「连续」判定。修复前连续 2 天 0% 即弹防疲劳减负
+    面板（建议 /relieve 降 25% 任务量），空转会话被误判为过度疲劳。
     """
     if cfg is None:
         cfg_path = ROOT / "ky_config.json"
@@ -2447,16 +2532,18 @@ def check_fatigue_alert(cfg: dict = None) -> dict:
             cfg = {}
 
     hist = cfg.get("completion_history", {})
-    sorted_dates = sorted(hist.keys())
-    if len(sorted_dates) < 2:
+    # 只保留有真实学习动作的日期（见 _day_has_learning_action 说明）
+    active_dates = [d for d in sorted(hist.keys())
+                    if _day_has_learning_action(hist.get(d))]
+    if len(active_dates) < 2:
         return {
             "alert": False,
             "consecutive_low_days": 0,
-            "recent_rates": [hist[d].get("rate", 0.0) for d in sorted_dates],
+            "recent_rates": [hist[d].get("rate", 0.0) for d in active_dates],
             "message": "暂无连续低完成率记录，复习节奏保持良好！"
         }
 
-    last_two_dates = sorted_dates[-2:]
+    last_two_dates = active_dates[-2:]
     # 校验日期连续性：两日期间隔必须严格为 1 天，跨周或非连续日期不应判定为连续疲劳
     try:
         d1 = datetime.strptime(last_two_dates[0], "%Y-%m-%d").date()

@@ -179,6 +179,17 @@ class SearchService:
                 collected.extend(self._annotate(cached))
                 continue
 
+            # [P1 修复·2026-10-08 S2] 即将真正发请求 → 消费半开探测名额。
+            # 此前 try_half_open 全仓零调用（死代码）：冷却期满 is_cooling 返回
+            # False，过滤链全量放行（惊群）。现在冷却期满只放行一次探测，探测
+            # 结果（成功清零 / 失败续冷）在同一轮内闭环。放在缓存检查**之后**：
+            # 缓存命中不需要探测，不该浪费名额。
+            if not health.try_half_open(provider.name):
+                failed.append((provider.name,
+                               health.cooldown_reason(provider.name)
+                               or "冷却中（暂不放行，稍后自动恢复）"))
+                continue
+
             try:
                 raw = provider.search(q.text, limit=want, time_range=q.time_range)
             except ProviderError as exc:
@@ -193,19 +204,34 @@ class SearchService:
                 continue
             except Exception as exc:              # pragma: no cover - 实现内部错误
                 failed.append((provider.name, f"未预期异常: {exc}"))
+                # [P1 修复·2026-10-08 S2] 未预期异常也必须落一次失败账：半开探测
+                # 在途时名额已被消费，若这里不落账，half_open 标志会悬空——源
+                # 既不在冷却也不再被放行（静默死锁）。note_failure 在半开在途时
+                # 强制重新冷却（见 CooldownPolicy.record_failure）。
+                health.note_failure(provider.name, f"未预期异常: {exc}")
                 continue
 
-            # 本轮成功 →清零该源的失败计数（半开探测成功后必须做，否则冷却永不解除）
-            health.mark_healthy(provider.name)
-
+            # [P1 修复·2026-10-08 S1] 守门**之前**不再无条件 mark_healthy：
+            # 旧顺序「先标记健康、再发现全是垃圾」会把软性反爬的失败计数每轮
+            # 清零，阈值冷却永远攒不够；且半开探测若拿到 200+垃圾，旧顺序会
+            # 直接清掉冷却——探测等于白放。现在只有「守门通过」或「真实无
+            # 结果（raw 为空）」才算本轮健康。
+            #
             # [防「200 但内容是垃圾」] 逐条过相关性守门；全部不相关时按失败处理。
             # 实测 Bing 对裸 urllib 请求会返回 200 + 完全无关的内容（软性反爬），
             # 结构正常、正则匹配得到 10 条「结果」——不加这道守门就会被当成素材。
             if raw:
                 relevant, dropped = relevance.filter_relevant(raw, q.text)
                 if not relevant:
-                    failed.append((provider.name,
-                                   relevance.anti_bot_reason(len(raw), 0)))
+                    reason = relevance.anti_bot_reason(len(raw), 0)
+                    failed.append((provider.name, reason))
+                    # [P1 修复·2026-10-08 S1] 软性反爬（200+全垃圾）丢弃后必须
+                    # 落账：此前该分支不触发任何冷却，Bing 每轮白试（对照
+                    # ProviderError 路径有冷却）。选择阈值型 note_failure 而非
+                    # mark_blocked：全垃圾是启发式判定（冷门查询的兜底推荐、
+                    # 页面 A/B 都可能命中），一次误判不该让源停摆 10 分钟；
+                    # 连续两轮全垃圾才冷却，与 R3「抵消单次抖动」口径一致。
+                    health.note_failure(provider.name, reason)
                     # [doctor 静噪] 全垃圾是反爬常态且已被失败原因记录，不再用
                     # warning 刷屏（此前 ky doctor 每次联网检查都打印"丢弃 N 条"）。
                     _LOG.info("provider %s 的结果与查询无关，已丢弃 %d 条",
@@ -218,6 +244,10 @@ class SearchService:
                 if dropped:
                     _LOG.info("provider %s 丢弃 %d 条无关结果", provider.name, dropped)
                 raw = relevant
+
+            # 本轮健康（守门通过或真实无结果）→ 清零失败计数
+            # （半开探测成功后必须做，否则冷却永不解除）
+            health.mark_healthy(provider.name)
 
             # 只缓存**守门通过**的结果：把反爬垃圾写进缓存会被后续请求原样重放
             self._cache_put(provider, q, raw)
@@ -408,11 +438,29 @@ class SearchService:
     # 现只保留下面这一组（也是实际一直生效的那组）。
     @staticmethod
     def _maybe_cooldown(provider: SearchProvider, reason: str) -> None:
-        """失败原因看起来像「被反爬/被挡」时，让该源冷却，避免继续硬试。"""
+        """按失败原因分流处置：反爬/限流立即冷却；改版/疑似抖动走阈值型。
+
+        [P1 修复·2026-10-08 S4] 此前凡命中标记词的原因一律 mark_blocked
+        （立即冷却）——「页面结构未匹配（可能改版）」这类确定性解析故障被反复
+        当反爬惩罚：force_cooldown 每次让 fails+1，冷却按指数增长却永远修不好
+        页面。现分三档：
+          * 改版/结构类文案 → note_failure（阈值型，不立即冷却）。**先判**：
+            这类文案常同时含「限流/改版」字样，「结构未匹配」是对页面形态的
+            确定性观察，优先级高于对「可能被限流」的猜测；
+          * 反爬/验证/限流类 → mark_blocked（确定性判定，首次即冷却 ≥600s）；
+          * 其余（网络超时等疑似抖动）→ note_failure（连续两次才冷却）——
+            这正是 health.note_failure 预留的语义（原搜索侧从未调用，普通
+            超时既不冷却也不落账，半开探测失败时会悬空名额）。
+        """
         lowered = str(reason or "").lower()
+        if any(marker in lowered for marker in ("改版", "结构未匹配", "结构不匹配")):
+            health.note_failure(provider.name, reason)
+            return
         if any(marker in lowered for marker in ("反爬", "验证", "captcha", "anomaly",
                                                 "频繁", "限流", "blocked")):
             health.mark_blocked(provider.name, reason)
+            return
+        health.note_failure(provider.name, reason)
 
     def _annotate(self, results: Sequence[SearchResult]) -> List[SearchResult]:
         """补齐来源类型与权威分（provider 可以不填，但上层必须拿得到）。"""

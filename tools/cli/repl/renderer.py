@@ -1173,6 +1173,11 @@ def print_learning_gain(report) -> None:
         if recurring:
             console.print(Text("   跨日复发错因：" + "、".join(str(x) for x in recurring),
                                style=st["muted"]))
+        # [P2 修复·2026-10-08 /gain 纯数据表无判读] 判读建议（确定性规则，
+        # 由 benchmarks.learning_gain 计算并随 data 下发；渲染层不反向依赖）。
+        advice = str(data.get("advice") or "").strip()
+        if advice:
+            console.print(Text(f"   💡 判读建议：{advice}", style=st["value"]))
 
     console.print()
     saved_to = str(getattr(report, "saved_to", "") or "")

@@ -7,13 +7,14 @@
 * ``ls``     —— 列出历史会话（短 id / 创建时间 / 事件数 / 首条消息 / fork 来源）；
 * ``resume`` —— 恢复指定会话（支持 id 前缀匹配）并进入 REPL；
 * ``fork``   —— 从既有会话分叉（安全边界对齐，源文件只读不动）；
-* ``rm``     —— 删除单个会话；
+* ``rm``     —— 删除单个会话（交互终端下先确认，``--yes`` 跳过）；
 * ``prune``  —— 清理较旧会话，**默认 dry-run**，加 ``--yes`` 才真删。
 
 底层实现全部在 ``tools/agent/session_log.py``（list_sessions / fork_session /
 remove_session / prune_sessions），本模块只做参数解析与展示。
 """
 
+import sys
 from typing import List, Optional, Tuple
 
 try:
@@ -25,6 +26,8 @@ try:
         prune_sessions,
         remove_session,
     )
+    # [P2 修复·2026-10-08 ls 对齐] 表格按显示宽度（CJK 双宽）对齐，与 TUI/看板同源实现
+    from tools.tui.terminal import pad_display
 except ImportError:
     from cli.dispatch import Command, register
     from cli.shared import ROOT
@@ -34,6 +37,7 @@ except ImportError:
         prune_sessions,
         remove_session,
     )
+    from tui.terminal import pad_display  # type: ignore
 
 _USAGE = "用法: ky session <ls|resume|fork|rm|prune> [id] [--at N] [--keep N] [--yes]"
 
@@ -63,7 +67,11 @@ def _session_ls() -> None:
         print("\n[i] 暂无历史会话（.memory/sessions/ 为空）。直接开始对话即可自动创建。\n")
         return
     print("\n=== 💬 历史会话 ===")
-    print(f"{'会话 id (时间戳)':<18} {'创建时间':<21} {'事件':<6} {'消息':<6} 首条消息 / 来源")
+    # [P2 修复·2026-10-08 ls 对齐] 表头此前用 f-string ``<N``（按字符数）对齐，含 CJK 的列
+    # （「会话 id (时间戳)」等）实际显示宽度超出列宽、整表逐列错位（实测列
+    # 起点偏差 2/6/8/10 列）。现表头与数据统一走 pad_display（显示宽度感知）。
+    print(pad_display('会话 id (时间戳)', 18) + " " + pad_display('创建时间', 21) + " "
+          + pad_display('事件', 6) + " " + pad_display('消息', 6) + " 首条消息 / 来源")
     print("-" * 88)
     for s in sessions:
         # 短 id 取「YYYYMMDD-HHMMSS」段：session_id 前 8 位只有日期，同一天的
@@ -76,7 +84,9 @@ def _session_ls() -> None:
         ff = s.get("forked_from")
         if isinstance(ff, dict) and ff.get("session_id"):
             mark = f"  [fork←{str(ff['session_id'])[:8]}]"
-        print(f"{short:<18} {created:<21} {s['event_count']:<6} {s['message_count']:<6} {preview}{mark}")
+        print(pad_display(short, 18) + " " + pad_display(created, 21) + " "
+              + pad_display(str(s['event_count']), 6) + " "
+              + pad_display(str(s['message_count']), 6) + " " + preview + mark)
     print(f"\n共 {len(sessions)} 个会话；恢复: ky session resume <id>（支持 id 前缀）")
     print("分叉: ky session fork <id> [--at N]；清理: ky session prune [--keep N] [--yes]\n")
 
@@ -129,11 +139,36 @@ def _session_fork(rest: List[str]) -> None:
     print(f"    恢复新会话: ky session resume {new_path.stem}")
 
 
-def _session_rm(token: str) -> None:
+def _session_rm(rest: List[str]) -> None:
+    """删除单个会话。
+
+    [P2 修复·2026-10-08 rm 确认] 此前无任何确认、敲下即删。现交互式终端（TTY）下先询问
+    ``y/N``，``--yes``/``-y`` 跳过确认；非 TTY（脚本/管道/既有自动化，
+    如批处理与测试）保持直接删除，不改变脚本语义。
+    """
+    assume_yes = False
+    token = ""
+    for tok in rest:
+        if tok in ("--yes", "-y"):
+            assume_yes = True
+        elif not token:
+            token = tok
+        else:
+            print(f"[!] 未识别的参数: {tok}")
+            print(_USAGE)
+            return
     sid, err = _resolve_session_id(token)
     if not sid:
         print(f"[!] {err}")
         return
+    if not assume_yes and sys.stdin.isatty():
+        try:
+            ans = input(f"确认删除会话 {sid}？此操作不可恢复 [y/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            ans = ""
+        if ans not in ("y", "yes"):
+            print("[i] 已取消删除（未做任何改动）。")
+            return
     if remove_session(ROOT, sid):
         print(f"[√] 已删除会话: {sid}")
     else:
@@ -202,7 +237,7 @@ def _cmd_session(args: List[str]) -> None:
     elif sub == "fork":
         _session_fork(rest)
     elif sub in ("rm", "remove", "delete"):
-        _session_rm(rest[0] if rest else "")
+        _session_rm(rest)
     elif sub in ("prune", "clean"):
         _session_prune(rest)
     else:

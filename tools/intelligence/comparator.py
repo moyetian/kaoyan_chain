@@ -177,6 +177,10 @@ def find_duplicate_report(directory: Path, report_text: str, prefix: str = "双�
 # 弱网下 60s 内必有结果（未完成的学校回落本地降级并标注），
 # 此前单校研究预算 240s（agentic_research budget_s）且无熔断，
 # CLI 实测 120s 被 shell 杀掉（弱网检索慢 + 无界等待）。
+# [P1 修复·2026-10-08 R3] 该预算是**唯一真源**：并行 worker 把它派生为
+# 「剩余墙钟」传给内层在线研究。此前内层硬编码 200s 研究预算，W11 并行化
+# 后永远不可达（外层 60s 到点即弃线程），且旧注释「两校串行最坏 6.7 分钟」
+# 已过时。现内层预算恒等于外层熔断剩余，双层预算不再自相矛盾。
 # compare(timeout=...) 可覆盖；timeout<=0 表示不熔断（等待全量研究）。
 _DEFAULT_COMPARE_TIMEOUT = 60.0
 
@@ -203,6 +207,8 @@ class SchoolComparator:
 
         :param timeout: [W12 P0-2] 单校在线研究墙钟预算（秒）。None 用默认 60s；
                         <=0 不熔断（全量等待）。超时学校回落本地降级并标注。
+                        [P1 修复·2026-10-08 R3] 该值同时是内层在线研究预算的
+                        唯一真源：每校收到「自身剩余墙钟」作为研究预算。
         :param quick: [W12 P0-2] 离线模式——跳过在线研究，两校直接取本地降级画像
                       （弱网/演示场景秒级返回；数据源属性如实标注本地库）。
         """
@@ -323,14 +329,26 @@ class SchoolComparator:
           ``future.result(timeout)`` 抛超时后进程仍会被未完成的检索线程拖住。
         - daemon 线程超时后结果丢弃、不阻止进程退出；已完成的学校结果照用。
         - ``timeout<=0`` 表示不熔断（等待全量研究）。
+        - [P1 修复·2026-10-08 R3] 单一真源预算传递：本函数的 deadline 是唯一
+          墙钟真源，worker 启动研究前计算自身剩余墙钟并传给 ``_get_school_profile``，
+          内层不再持有独立预算（旧实现内层硬编码 200s，被外层 60s 熔断永远
+          屏蔽，属双层预算矛盾）。
         """
         budget = _DEFAULT_COMPARE_TIMEOUT if timeout is None else float(timeout)
         slots: Dict[int, tuple] = {}
+        # budget>0 时共享同一 deadline；否则 None 表示不熔断
+        deadline = (time.monotonic() + budget) if budget > 0 else None
 
         def _worker(idx: int, school_name: str, entity) -> None:
+            # 剩余墙钟在 worker 内计算（线程实际调度时刻），确保「外层熔断
+            # 到点即弃」与「内层研究主动收尾」指向同一时间点。
+            research_budget = None
+            if deadline is not None:
+                research_budget = max(0.0, deadline - time.monotonic())
             try:
                 slots[idx] = ("ok", self._get_school_profile(
-                    school_name, entity, major_keyword, api_config))
+                    school_name, entity, major_keyword, api_config,
+                    research_budget_s=research_budget))
             except Exception as exc:  # pragma: no cover - 防御性
                 _LOG.warning("并行研究单校失败（%s）：%s，回落本地降级",
                              school_name, exc)
@@ -343,8 +361,7 @@ class SchoolComparator:
             threads.append(t)
             t.start()
 
-        if budget > 0:
-            deadline = time.monotonic() + budget
+        if deadline is not None:
             for t in threads:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -395,9 +412,15 @@ class SchoolComparator:
         school_name: str,
         entity: Optional[UniversityEntity],
         major_keyword: str,
-        api_config: Optional[Dict[str, Any]] = None
+        api_config: Optional[Dict[str, Any]] = None,
+        research_budget_s: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """提取高校综合考情画像"""
+        """提取高校综合考情画像
+
+        :param research_budget_s: [P1 修复·2026-10-08 R3] 由外层 compare 熔断
+            派生的剩余墙钟（秒），转发给内层在线研究作为其预算；None 表示
+            外层未设熔断，内层沿用 200s 研究上限（保持旧行为）。
+        """
         try:
             from skills.school_scout import TARGET_SCHOOLS_DB
         except ImportError:
@@ -412,7 +435,12 @@ class SchoolComparator:
         if db_item and "pro_departments" in db_item:
             for k, v in db_item["pro_departments"].items():
                 major_code = str(v.get("major_code") or "") if isinstance(v, dict) else ""
-                if (major_keyword in k or k in major_keyword or
+                # [P1 修复·2026-10-08 R6] 空专业关键词守卫：旧实现无守卫时
+                # ``"" in k`` 恒真，考生未指定专业（或关键词为空）会静默命中
+                # 该库首个部门，把别的专业考情（带「人工整理考情专栏」标签）
+                # 当成本次查询结果输出。
+                if major_keyword and (
+                        major_keyword in k or k in major_keyword or
                         (major_code and major_code in major_keyword)):
                     dept_info = v
                     break
@@ -467,11 +495,16 @@ class SchoolComparator:
             }
 
         # 未在内置 TARGET_SCHOOLS_DB 命中的高校/专业，调用 Agentic 深度研究引擎获取真实画像（绝不使用离线虚假数据）
-        # [多角色实测·卡死修复] 每校在线研究限 200s 预算：两校串行最坏约 6.7 分钟，
-        # 超预算自动走本地降级（原无预算实测 600s+ 卡死）。
+        # [多角色实测·卡死修复] 在线研究必须有界：原无预算实测 600s+ 卡死。
+        # [P1 修复·2026-10-08 R3] 预算单一真源：外层 compare 熔断（默认 60s，
+        # 两校并行共享 deadline）派生出的剩余墙钟经 research_budget_s 传入，
+        # 内层不再持独立 200s 预算（旧注释「两校串行最坏 6.7 分钟」已随 W11
+        # 并行化过时，且 200s 被外层 60s 永久屏蔽）。research_budget_s=None
+        # 表示外层不熔断（timeout<=0），沿用 200s 研究上限保持旧行为。
         from tools.intelligence.agentic_research import research_university_profile
+        _budget = 200.0 if research_budget_s is None else max(0.0, float(research_budget_s))
         profile = research_university_profile(school_name, major_keyword, api_config=api_config,
-                                              budget_s=200.0)
+                                              budget_s=_budget)
         return _apply_requested_subject_hint(profile, major_keyword)
 
     def _analyze_differences(

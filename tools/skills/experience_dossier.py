@@ -419,3 +419,61 @@ def append_experience_to_dossier(
             return True
     except Exception:
         return False
+
+
+#: [B3 自描述契约] 桥接为 Agent 工具（skill_bridge.build_self_described_specs 消费）
+TOOL_SPEC = {
+    "name": "archive_experience",
+    "description": (
+        "把一条考研经验/就读体验归档到目标院校经验档案（.memory/experiences/，"
+        "本地隐私目录，绝不上云）：适合把检索到的经验贴要点、学长学姐分享沉淀"
+        "下来供后续查阅。school_name 传院校名（通用经验传「通用院校」）；"
+        "content 传经验正文。"),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "school_name": {"type": "string",
+                            "description": "目标院校名称（如「某某大学」；通用经验传「通用院校」）"},
+            "content": {"type": "string", "description": "经验正文（要点摘录或完整内容）"},
+            "title": {"type": "string", "description": "可选：经验标题"},
+            "url": {"type": "string", "description": "可选：原文链接"},
+            "source": {"type": "string", "description": "可选：来源标签（默认「微信公众号」）"},
+            "author": {"type": "string", "description": "可选：作者/学长学姐信息"},
+        },
+        "required": ["school_name", "content"],
+    },
+    "level": "safe_edit",
+}
+
+#: 非法文件名字符（Windows/POSIX 双口径）——院校名会拼进档案文件名，防路径穿越
+_INVALID_SCHOOL_CHARS = set('/\\:*?"<>|')
+
+
+def execute(args, ctx=None):
+    """[B3] 桥接入口：把一条经验追加进院校经验档案（写 .memory/experiences/）。"""
+    args = args or {}
+    school = str(args.get("school_name") or "").strip()
+    content = str(args.get("content") or "").strip()
+    if not school or not content:
+        return "Error: 缺少院校名或经验正文（school_name / content）"
+    if ".." in school or any(ch in _INVALID_SCHOOL_CHARS for ch in school):
+        return f"Error: 院校名含非法路径字符，已拒绝 [{school}]"
+    dossier_path = None
+    ws = (ctx or {}).get("workspace_root")
+    if ws:
+        # 显式锚定到沙箱工作区根（不经模块级 ROOT）：写入必落在 agent 工作区内，
+        # 且测试可直接注入 tmp 工作区，无需打桩模块内部常量。
+        dossier_path = Path(ws) / ".memory" / "experiences" / f"{school}.md"
+    ok = append_experience_to_dossier(
+        school_name=school,
+        source_or_major=str(args.get("source") or "微信公众号"),
+        author_or_info=str(args.get("author") or ""),
+        content=content,
+        url=str(args.get("url") or ""),
+        title=str(args.get("title") or ""),
+        dossier_path=dossier_path,
+    )
+    if ok:
+        loc = str(dossier_path) if dossier_path else f".memory/experiences/{school}.md"
+        return f"Success: 经验已归档至 [{loc}]"
+    return "Error: 经验归档失败（档案写入异常，请检查 .memory/experiences/ 目录权限）"

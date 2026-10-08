@@ -175,7 +175,9 @@ class TestSubjectAddressFilter:
             html, "https://example.edu.cn/notice", "测试大学", target_year=2027)
         fields = [(e.to_dict() if hasattr(e, "to_dict") else e).get("field")
                   for e in evs]
-        assert "初试科目配置" not in fields, "地址文本不应产出科目证据"
+        # [P1 修复·2026-10-08 R10] field 名由「初试科目配置」归一为「初试科目」
+        # （四种同语义产出统一 field 名以进入冲突仲裁分组），断言同步。
+        assert "初试科目" not in fields, "地址文本不应产出科目证据"
 
     def test_filter_drops_address_like_items(self):
         """实测污染例（含数字恰为真实代码的 333）全部剔除。"""

@@ -23,12 +23,22 @@ from typing import Dict, List, Optional
 
 from ..models import SearchResult
 from . import register
-from ._http import BROWSER_HEADERS, USER_AGENT, clean_bing_url, clean_text, get_text, looks_like_anti_bot
+from ._http import (
+    clean_bing_url,
+    clean_text,
+    get_browser_headers,
+    get_text,
+    looks_like_anti_bot,
+)
 from .base import ProviderError, SearchProvider
 
 _LOG = logging.getLogger(__name__)
 
 _ENDPOINT = "https://www.bing.com/search"
+#: 备用端点（不同主机，限流桶独立；端点选择逻辑与 ddg.py 的双端点实现同思路）。
+#: [P1 修复·2026-10-08 S5] 此前只有单一端点：主端点被限流时整个源停摆。
+#: cn.bing.com 在国内网络下解析更稳，与主端点互为备份。
+_CN_ENDPOINT = "https://cn.bing.com/search"
 #: Bing 中文站点偏好 Cookie（缺失时更易被判定为爬虫）
 _BING_COOKIES = "SRCHHPGUSR=SRCHLANG=zh-Hans; _EDGE_S=mkt=zh-cn;"
 
@@ -56,30 +66,46 @@ class BingProvider(SearchProvider):
         params = {"q": str(query), "mkt": "zh-CN", "setlang": "zh-Hans"}
         if str(time_range or "").lower() == "year":
             params["filters"] = "ex1%3a\"ez1\""      # Bing 的「过去一年」过滤器
-        url = f"{_ENDPOINT}?{urllib.parse.urlencode(params)}"
+        query_str = urllib.parse.urlencode(params)
 
-        headers = dict(BROWSER_HEADERS)
-        headers["User-Agent"] = USER_AGENT
-        headers["Cookie"] = _BING_COOKIES
-        try:
-            html_text = get_text(url, headers=headers, timeout=12)
-        except Exception as exc:
-            if safe:
-                _LOG.warning("Bing 网络请求异常，优雅降级为空列表: %s", exc)
-                return []
-            raise ProviderError(f"Bing 网络请求失败: {exc}") from exc
+        # [P1 修复·2026-10-08 S5] 此前 UA 是单一固定常量（BROWSER_HEADERS 的
+        # USER_AGENT）——同一指纹反复请求会更快被软性反爬盯上。改用共享的
+        # get_browser_headers()（随机 UA 池 + 完整浏览器头，与 ddg/sogou 同源）；
+        # Cookie 作为 extra 合并进去。
+        headers = get_browser_headers({"Cookie": _BING_COOKIES})
 
-        anti_bot = looks_like_anti_bot(html_text)
-        if anti_bot:
-            if safe:
-                _LOG.warning("Bing 触发反爬验证 (%s)，优雅降级为空列表", anti_bot)
-                return []
-            raise ProviderError(f"Bing 返回反爬验证页（命中特征 {anti_bot}）")
+        # [P1 修复·2026-10-08 S5] 双端点轮询（参照 ddg.py 的实现）：主端点
+        # 网络异常或返回反爬验证页时自动换 cn.bing.com 再试一次，而不是直接
+        # 判整个源失败。两处都失败才如实报错。
+        last_anti_bot = ""
+        last_error: Optional[Exception] = None
+        blocks: List[str] = []
+        for endpoint in (_ENDPOINT, _CN_ENDPOINT):
+            try:
+                html_text = get_text(f"{endpoint}?{query_str}",
+                                     headers=headers, timeout=12)
+            except Exception as exc:
+                last_error = exc
+                _LOG.debug("Bing 端点 %s 请求异常: %s", endpoint, exc)
+                continue                      # 换端点再试
+            anti_bot = looks_like_anti_bot(html_text)
+            if anti_bot:
+                last_anti_bot = anti_bot
+                continue                      # 换端点再试
+            blocks = _BLOCK_RE.findall(html_text)
+            if blocks:
+                break
 
-        blocks = _BLOCK_RE.findall(html_text)
         if not blocks:
             if safe:
+                _LOG.warning("Bing 未获取到有效结果，优雅降级为空列表: 反爬=%s",
+                             last_anti_bot or "无结果")
                 return []
+            # 判定优先级：反爬（确定性信号）> 网络异常 > 结构未匹配。
+            if last_anti_bot:
+                raise ProviderError(f"Bing 返回反爬验证页（命中特征 {last_anti_bot}）")
+            if last_error is not None:
+                raise ProviderError(f"Bing 网络请求失败: {last_error}") from last_error
             raise ProviderError("页面结构未匹配到结果块（可能被限流或改版）")
 
         items: List[Dict[str, str]] = []

@@ -33,7 +33,7 @@ from __future__ import annotations
 import random
 import threading
 import time
-from typing import Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 __all__ = [
     "RETRY_BASE_DELAY", "RETRY_MAX_DELAY",
@@ -228,9 +228,14 @@ class CooldownPolicy:
                                               "half_open": False})
             fails = int(st.get("fails", 0)) + 1
             st["fails"] = fails
-            if fails < self.threshold:
+            # [P1 修复·2026-10-08 S2] 半开探测在途时的失败必须**强制**重新冷却：
+            # 探测结果回来了说明源仍不可用，若等它再凑满阈值，半开名额会悬空
+            # （调用方已消费名额却得不到冷却，源既不在冷却也不再被放行=静默死锁）。
+            # ``max(0, …)`` 保证强制冷却时 span 不低于 base（红线：首次 ≥ base）。
+            if fails < self.threshold and not st.get("half_open"):
                 return 0.0
-            span = min(self.max_seconds, self.base * (2 ** (fails - self.threshold)))
+            span = min(self.max_seconds,
+                       self.base * (2 ** max(0, fails - self.threshold)))
             st["until"] = self._mono() + span
             st["half_open"] = False
             return span
@@ -269,12 +274,20 @@ class CooldownPolicy:
 
         [为什么要「只放一次」] 半开若不限制次数，并发请求会同时全部放行 —— 那等于
         冷却从未生效（这正是「惊群」要避免的）。故 :attr:`half_open` 为真时直接拒绝。
+
+        [P1 修复·2026-10-08 S2] 从未进入冷却的键（``until`` 为 0，如
+        ``record_failure`` 记过一次但未达阈值的疑似抖动）直接放行且**不占用**
+        半开名额：它们没有「冷却期满」的语义，若一并消费，正常源在并发下会被
+        错误地限成单探测。
         """
         with self._lock:
             st = self._state.get(key)
             if not st:
                 return True
-            if self._mono() < float(st.get("until", 0.0)):
+            until = float(st.get("until", 0.0))
+            if until <= 0.0:
+                return True          # 从未进入冷却 → 正常放行，不占用半开名额
+            if self._mono() < until:
                 return False
             if st.get("half_open"):
                 return False   # 半开名额已用掉，等这次探测的结果
@@ -282,21 +295,46 @@ class CooldownPolicy:
             return True
 
     # ── 持久化（跨进程记忆冷却，避免重启即遗忘）────────────
-    def snapshot(self) -> Dict[str, float]:
-        """导出为可 JSON 序列化的 ``{key: 剩余秒数}``（仅含仍在冷却的键）。"""
+    def snapshot(self) -> Dict[str, Any]:
+        """导出为可 JSON 序列化的 ``{"stored_at": 墙钟, "cooling": {key: 剩余秒数}}``。
+
+        [P0-6 修复·冷却跨进程冻结] 此前只导出 ``{key: 剩余秒数}``（**无写入
+        时间**），:meth:`restore` 只能把剩余秒数当作「从当前时钟起算」——每次
+        新进程启动都给旧冷却**续满**（实测：11:11 写盘的 600 秒在 15:37 的新
+        进程里原样存活，4 小时流逝未被折算）。stored_at 让 restore 能按真实
+        流逝时间扣减。仅含仍在冷却的键。
+        """
         out: Dict[str, float] = {}
         for key in list(self._state):
             left = self.remaining(key)
             if left > 0:
                 out[key] = left
-        return out
+        return {"stored_at": self._wall(), "cooling": out}
 
-    def restore(self, data: Dict[str, float]) -> None:
-        """从 :meth:`snapshot` 的结果恢复（剩余秒数按当前单调时钟续算）。"""
+    def restore(self, data: Dict[str, Any]) -> None:
+        """从 :meth:`snapshot` 的结果恢复，**按快照写入时间折算**已流逝秒数。
+
+        新格式 ``{"stored_at": 墙钟, "cooling": {key: 剩余}}`` → 逐键
+        ``max(0, 剩余 - (now - stored_at))``；折算到 0 的键自然过期（不写入）。
+        旧格式（平铺 ``{key: 剩余}``，无写入时间）无法判断已流逝多久——
+        **整批丢弃**：宁可提前放行一次半开探测，也不让 600 秒冷却跨天存活
+        （这正是本修复要消灭的形态）。时钟回拨时 ``now < stored_at`` 按 0
+        折算（保守：冷却不因回拨而缩短）。
+        """
+        if not isinstance(data, dict):
+            return
+        cooling = data.get("cooling")
+        stored_at = data.get("stored_at")
+        if not isinstance(cooling, dict) or not cooling:
+            return
+        try:
+            elapsed = max(0.0, self._wall() - float(stored_at))
+        except (TypeError, ValueError):
+            return  # 无写入时间戳（旧格式）→ 无法折算，整批丢弃
         now = self._mono()
-        for key, left in (data or {}).items():
+        for key, left in cooling.items():
             try:
-                left_f = float(left)
+                left_f = float(left) - elapsed
             except (TypeError, ValueError):
                 continue
             if left_f > 0:

@@ -124,9 +124,9 @@ SUBJECT_NAMES = dict(_SUBJECT_NAME_FALLBACK)
 # 注：此处曾定义 FSRS_GOOD_INTERVALS / FSRS_EASY_INTERVALS 两个固定阶梯常量，
 # 且全项目零引用（死常量），同时与真实 FSRS 计算结果不一致，已删除。
 try:
-    from fsrs_scheduler import compute_next_interval
+    from fsrs_scheduler import compute_next_interval, load_review_history
 except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
-    from tools.fsrs_scheduler import compute_next_interval
+    from tools.fsrs_scheduler import compute_next_interval, load_review_history
 
 # [C3 题源溯源] 错题卡身份读取：backfill 补录过「题源ID / 题源校验和」的错题卡，
 # 在进组卷/复测队列前必须校验题干与身份是否一致（与白名单卡同一防篡改闸门）。
@@ -159,13 +159,16 @@ def _pad_box(text: str, width: int = _BOX_INNER_W) -> str:
     return text + (" " * pad if pad > 0 else "")
 
 
-def calc_fsrs_interval(stage: int = 0, rating: str = "good", today: date = None):
+def calc_fsrs_interval(stage: int = 0, rating: str = "good", today: date = None, history=None):
     """FSRS 自适应复测间隔计算（薄封装，实现见 fsrs_scheduler）。
 
     Args:
         stage: 该错题已完成的复测次数。
         rating: 本次评级 ``again`` / ``hard`` / ``good`` / ``easy``。
         today: 计算基准日，缺省为本地今天。
+        history: [P1 修复·2026-10-08 K2] 该卡当前周期的真实评级序列
+            （由 :func:`fsrs_scheduler.load_review_history` 提取）；缺省 None
+            时维持既有 good 快进行为。
 
     Returns:
         ``(new_stage, next_due_date, interval_days)``，语义详见
@@ -175,7 +178,7 @@ def calc_fsrs_interval(stage: int = 0, rating: str = "good", today: date = None)
     故此处对异常做兜底降级（回退为 1 天后复测）而非向上抛出。
     """
     try:
-        return compute_next_interval(stage=stage, rating=rating, today=today)
+        return compute_next_interval(stage=stage, rating=rating, today=today, history=history)
     except Exception as e:  # noqa: BLE001 - 主链路必须可降级
         import logging
         logging.warning(f"FSRS 间隔计算失败，降级为 1 天后复测: {e}")
@@ -724,8 +727,17 @@ def mark_error_status(subject, file_name, title_keyword=None, new_status="已掌
     else:
         rating = str(rating).strip().lower()
 
+    # [P1 修复·2026-10-08 K2] 读取该卡当前周期的真实评级序列做 FSRS 回放
+    # （数据源 .memory/review_log.jsonl；此前固定 good 快进会系统性高估间隔）。
+    # 日志缺失 / stage 链断链 / 读取异常一律降级 None，维持既有保守路径。
+    try:
+        _history = load_review_history(subject, title_keyword, cur_stage)
+    except Exception:  # noqa: BLE001 - 历史读取失败不得阻断回写主链路
+        _history = None
     # 计算新 stage 与到期日
-    new_stage, next_due_d, interval_days = calc_fsrs_interval(stage=cur_stage, rating=rating, today=today_d)
+    new_stage, next_due_d, interval_days = calc_fsrs_interval(
+        stage=cur_stage, rating=rating, today=today_d, history=_history
+    )
     next_due_str = next_due_d.strftime("%Y-%m-%d")
 
     actual_status = "待复测" if rating == "again" else new_status

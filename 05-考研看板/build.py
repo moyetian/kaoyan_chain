@@ -16,8 +16,16 @@
     web/template.html 页面模板（含 {{占位符}}）
 
 用法：
-    py 05-考研看板/build.py            常规构建（第三方资源走 CDN）
-    py 05-考研看板/build.py --offline  第三方资源本地化到 docs/assets/vendor/
+    py 05-考研看板/build.py            默认构建：本地 vendor 资源 + 脱敏快照
+    py 05-考研看板/build.py --cdn      第三方资源改走 CDN（KY_VENDOR_MODE=cdn 同效）
+
+    [P1 修复·2026-10-08 W3] 修正两处误导：① 第三方资源自 C7 起默认离线
+    （本地 docs/assets/vendor/），--offline 不再是有效开关、只有 --cdn 有效；
+    ② 快照默认脱敏（KY_SNAPSHOT_OPT_IN 默认=1），今日任务正文等私人学情
+    不进产物——裸跑看到的是「脱敏后的安全版」，不是数据丢失。需要本地完整
+    学情的手机看板时，显式置 KY_SNAPSHOT_OPT_IN=0 再构建：
+        KY_SNAPSHOT_OPT_IN=0 py 05-考研看板/build.py        (Git Bash/macOS/Linux)
+        set KY_SNAPSHOT_OPT_IN=0 && py 05-考研看板/build.py (cmd)
 """
 
 from __future__ import annotations
@@ -65,6 +73,7 @@ from web.markdown import (  # noqa: E402
     md2html,
     parse_tables,
     read,
+    resolve_source_path,
     strip_tables,
 )
 from web.radar import build_radar_html, count_notes  # noqa: E402
@@ -169,9 +178,13 @@ def build(offline: bool = False):
         key = str(path)
         if key in _read_memo:
             return _read_memo[key]
+        # [P1 修复·2026-10-08 W3] 回落判定与 read() 共用 resolve_source_path，
+        # 缓存 (内容, 是否模板回落) 二元组：内容照旧渲染（公开演示需要），
+        # 回落事实供下方 sections_status / 解析告警如实标注（不再静默当 ok）。
+        _src, _fell_back = resolve_source_path(path, allow_fallback=_allow_template_fallback)
         content = read(path, allow_fallback=_allow_template_fallback)
-        _read_memo[key] = content
-        return content
+        _read_memo[key] = (content, _fell_back)
+        return content, _fell_back
 
     for s in SUBJECTS:
         ok = s["dir"].is_dir()
@@ -193,7 +206,7 @@ def build(offline: bool = False):
             continue
 
         for rel, kw, tab, ov in SECTIONS.get(s["key"], []):
-            md = read_memo(s["dir"] / rel)
+            md, fell_back = read_memo(s["dir"] / rel)
             if md is None:
                 warn_msg = f"[{s['name']}] 源文件不存在或读取失败：{rel}（kw={kw!r}）"
                 parse_warnings.append({"severity": "error", "subject": s["key"], "kw": kw, "msg": warn_msg})
@@ -207,7 +220,19 @@ def build(offline: bool = False):
                 continue
             title = kw if kw else pathlib.Path(rel).stem
             title = re.sub(r"^\d+[-_.]?\s*", "", title)
-            sections_status.append({"subject": s["key"], "kw": kw, "status": "ok", "path": rel, "tab": tab})
+            if fell_back:
+                # [P1 修复·2026-10-08 W3] 模板回落不再静默当 ok：status 记为
+                # template_fallback（该键值在脱敏快照 sections_status 白名单
+                # 内，公开产物同样可诊断），并同步记一条解析告警——此前实测
+                # 21 条 sections_status 全 ok，诊断者完全看不出内容来自模板。
+                parse_warnings.append({
+                    "severity": "warn", "subject": s["key"], "kw": kw,
+                    "status": "template_fallback",
+                    "msg": f"[{s['name']}] 源文件缺失，回落到骨架模板示例：{rel}（kw={kw!r}）。当前展示的是演示内容，不是考生数据。",
+                })
+                sections_status.append({"subject": s["key"], "kw": kw, "status": "template_fallback", "path": rel, "tab": tab})
+            else:
+                sections_status.append({"subject": s["key"], "kw": kw, "status": "ok", "path": rel, "tab": tab})
 
             if tab == "today":
                 # [UT4 修复·WEB-1] md2html 前先重算倒计时（见 sync_today_countdown）
@@ -243,6 +268,16 @@ def build(offline: bool = False):
             else:
                 body = strip_tables(sec)
                 if len(body) > 40:
+                    # [P1 修复·2026-10-08 W2] body>40 分支此前只把内容降级进
+                    # notes_html（「补充说明」折叠区），既不记 parse_warnings 也
+                    # 不进快照 meta——实测「表格改列表」的章节（马原 13 张卡）
+                    # 静默消失且 0 告警，考生与诊断者都看不出卡片丢失；脱敏模式
+                    # 下 notes_html 根本不渲染，丢失更彻底。现记录降级告警。
+                    parse_warnings.append({
+                        "severity": "warn", "subject": s["key"], "kw": kw,
+                        "status": "cards_degraded",
+                        "msg": f"[{s['name']}] 章节未解析出卡片，已降级为「补充说明」正文（kw={kw!r}）。可能：表格被改写为列表、或表头不符合卡片列约定。",
+                    })
                     notes_html[tab].append((s, title, md2html(body)))
                 else:
                     parse_warnings.append({"severity": "warn", "subject": s["key"], "kw": kw, "msg": f"[{s['name']}] 章节存在但无可提取内容（kw={kw!r}）。可能：表格为空、或格式不被解析。"})
@@ -430,8 +465,26 @@ def build(offline: bool = False):
                    for k, v in render_theme_placeholders(offline=offline,
                                                          days_left=d_day1).items()})
 
-    html = load_template()
-    html = re.sub(r"\{\{([A-Z0-9_]+)\}\}", lambda m: values.get(m.group(1), m.group(0)), html)
+    html, missing_keys = substitute_placeholders(load_template(), values)
+    # [P2 修复·2026-10-08 未定义占位符静默残留] 未命中键不再静默：构建输出如实告警。
+    # 保留原样输出、不中断构建 —— 构建期缺数据不该让整份看板失败。
+    if missing_keys:
+        print(f"[!] 模板占位符未定义（已原样保留，请检查模板与 values 是否同步）: "
+              f"{', '.join(sorted(set(missing_keys)))}")
+
+    # [P1 修复·2026-10-08 W2] 页脚常驻解析告警计数：此前告警只打到 stdout 与
+    # 快照 meta，考生在页面（尤其脱敏产物——parse_warnings 的 msg 会被快照
+    # 白名单剥掉）看不到「卡片静默消失」这类解析降级。在页脚追加计数徽标，
+    # 让任何解析降级在页面上直接可见（本地/公开同）。
+    if parse_warnings:
+        _n_err = sum(1 for w in parse_warnings if w.get("severity") == "error")
+        _warn_label = (f"⚠ {len(parse_warnings)} 条解析告警"
+                       + (f"（含 {_n_err} 条错误）" if _n_err else ""))
+        html = html.replace(
+            "</footer>",
+            f" · <b style='color:var(--warn)'>{_warn_label}</b></footer>",
+            1,
+        )
     return html, data, parse_warnings, sections_status
 
 _DIR = pathlib.Path(__file__).resolve().parent
@@ -484,6 +537,27 @@ def load_template() -> str:
     return (_DIR / "web" / "template.html").read_text(encoding="utf-8")
 
 
+def substitute_placeholders(template: str, values: dict) -> tuple:
+    """单遍替换 ``{{NAME}}`` 占位符，返回 ``(html, 未命中键列表)``。
+
+    [P2 修复·2026-10-08 未定义占位符静默残留] 此前 ``re.sub`` 的兜底是
+    ``values.get(key, m.group(0))`` —— 未定义占位符被静默原样保留，
+    页面上出现字面量 ``{{XXX}}`` 而构建输出零告警（模板与 values 不同步
+    只能靠肉眼发现）。现把未命中键收集交调用方告警；仍保留原样输出，
+    不中断构建。单遍语义（注入内容不会被二次扫描）保持不变。
+    """
+    missing: list = []
+
+    def _sub(m: re.Match) -> str:
+        key = m.group(1)
+        if key in values:
+            return values[key]
+        missing.append(key)
+        return m.group(0)
+
+    return re.sub(r"\{\{([A-Z0-9_]+)\}\}", _sub, template), missing
+
+
 def render_theme_placeholders(offline: bool = False, days_left: int = 0) -> dict:
     """模板占位符 → 取值（主题变量 / 公式降级脚本 / 第三方资源地址）。
 
@@ -505,6 +579,22 @@ def render_theme_placeholders(offline: bool = False, days_left: int = 0) -> dict
     }
     mapping.update(asset_map(offline))
     return mapping
+
+
+def root_docs_sync_enabled() -> bool:
+    """是否把产物同步到仓库根 ``docs/``（Pages 发布的唯一真源）。
+
+    [P1 修复·2026-10-08 W4] 此前判据是
+    ``ROOT_DOCS.parent.parent == ROOT.parent and (ROOT.parent / "01-数学").exists()``
+    —— 用「01-数学 目录存在」代理「完整工作区」。不考数学的考生
+    （math_key=none）删除数学目录后判据恒假，docs/index.html 与
+    state_snapshot.json 静默不同步（Pages 停留在旧版本，考生以为看板已更新）。
+    现换用与考试模式无关的稳定锚点 ky_config.json（初始化向导必写、四端共用），
+    并保留「输出重定向」豁免（KY_DASHBOARD_OUTPUT_DIR 隔离输出时不回写根 docs）。
+    """
+    return (ROOT_DOCS.parent.parent == ROOT.parent
+            and (ROOT.parent / "ky_config.json").exists())
+
 
 if __name__ == "__main__":
     try:
@@ -532,12 +622,16 @@ if __name__ == "__main__":
     tmp_out.write_text(content, encoding="utf-8")
     tmp_out.replace(OUT)
     print(f"[OK] generated: {OUT}  ({OUT.stat().st_size/1024:.1f} KB)")
-    if ROOT_DOCS.parent.parent == ROOT.parent and (ROOT.parent / "01-数学").exists():
+    if root_docs_sync_enabled():
         ROOT_DOCS.parent.mkdir(parents=True, exist_ok=True)
         tmp_root_docs = ROOT_DOCS.with_suffix(".tmp")
         tmp_root_docs.write_text(content, encoding="utf-8")
         tmp_root_docs.replace(ROOT_DOCS)
         print(f"[OK] synced to root docs: {ROOT_DOCS}")
+    else:
+        # [P1 修复·2026-10-08 W4] 跳过根 docs 同步时不再静默：如实说明原因。
+        print("[i] 未同步到根 docs/：仓库根缺少 ky_config.json（工作区未初始化），"
+              "或输出已被 KY_DASHBOARD_OUTPUT_DIR 重定向")
 
     # ── 新增：生成 state_snapshot.json（Pages 部署的真相源）──
     snapshot_path = OUT.parent / "state_snapshot.json"
@@ -546,8 +640,9 @@ if __name__ == "__main__":
                                parse_warnings=parse_warnings,
                                sections_status=sections_status)
         print(f"[OK] state snapshot: {snapshot_path}  ({snapshot_path.stat().st_size/1024:.1f} KB)")
-        # 同步到根 docs/（与 index.html 同样的同步策略）
-        if ROOT_DOCS.parent.parent == ROOT.parent and (ROOT.parent / "01-数学").exists():
+        # 同步到根 docs/（与 index.html 同样的同步策略，判据同源见
+        # root_docs_sync_enabled：不考数学的考生删数学目录不再导致静默不同步）
+        if root_docs_sync_enabled():
             ROOT_DOCS_SNAPSHOT = ROOT_DOCS.parent / "state_snapshot.json"
             ROOT_DOCS_SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
             ROOT_DOCS_SNAPSHOT.write_text(snapshot_path.read_text(encoding="utf-8"), encoding="utf-8")
@@ -558,7 +653,10 @@ if __name__ == "__main__":
 
     if offline:
         from web import download_vendor_assets
-        for target_docs in (OUT.parent, ROOT_DOCS.parent):
+        # [P2 修复·2026-10-08 目录去重] OUT 与 ROOT_DOCS 同目录时（输出重定向到根 docs/）
+        # 此前对同一目录抓两遍：第二遍文件虽已存在会跳过，但字体清单仍会重读
+        # CSS、重跑一遍逐文件检查。dict.fromkeys 保序去重。
+        for target_docs in dict.fromkeys((OUT.parent, ROOT_DOCS.parent)):
             saved = download_vendor_assets(target_docs)
             if saved:
                 print(f"[OK] vendor 资源已本地化 {len(saved)} 个文件 -> {target_docs}")

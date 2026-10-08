@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 from PySide6.QtCore import QDate, Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QPalette
 from PySide6.QtWidgets import (
-    QButtonGroup, QComboBox, QCompleter, QDateEdit, QDialog,
+    QApplication, QButtonGroup, QComboBox, QCompleter, QDateEdit, QDialog,
     QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QGridLayout, QHBoxLayout,
     QLabel, QLineEdit, QMessageBox, QPushButton, QRadioButton,
     QScrollArea, QSizePolicy, QSpinBox, QStackedWidget, QTextBrowser,
@@ -34,6 +34,35 @@ except ImportError:
         save_onboarding_config,
         test_api_connectivity,
     )
+
+# [P1 修复·2026-10-08] 复用微信检索对话框的线程收尾三档兜底：向导的
+# 「探查模型 / 连通性自检」两个探测线程此前零收尾 —— 探测进行中关窗或
+# 直接退出应用，运行中的 QThread 会随对话框析构触发
+# "QThread: Destroyed while thread is still running" → 进程 abort。
+from .wechat_search_dialog import (
+    _ACTIVE_WORKERS,
+    _CLOSE_WAIT_MS,
+    _install_quit_hook,
+    _stop_worker,
+)
+
+try:  # 占位符单一真源在 privacy_policy（与 is_unconfigured 同源判定）
+    from privacy_policy import MAJOR_PLACEHOLDERS, SCHOOL_PLACEHOLDERS
+except ImportError:  # pragma: no cover
+    from tools.privacy_policy import MAJOR_PLACEHOLDERS, SCHOOL_PLACEHOLDERS  # type: ignore
+
+# [P2 修复·2026-10-08] 主题色派生工具：向导内多处曾写死 rgba/hex（深色主题的
+# teal/emerald 常量），浅色或自定义主色下不跟随主题。现统一由当前主题 token
+# 经 theme.contrast 派生（与主题编译器同源，不另写换算）。
+try:
+    from theme.contrast import rgba as _rgba
+except ImportError:  # pragma: no cover
+    from tools.theme.contrast import rgba as _rgba  # type: ignore
+
+#: [P1 修复·2026-10-08] 向导专业课输入框的示例占位文本：旧版把它们直接
+#: setText 回填进输入框且校验只拦空串 → 占位值一路通过并「建档成功」。
+#: 现校验层按名单拦截（与 school/major 占位符同款防线）。
+_PRO_NAME_PLACEHOLDERS = ("自命题专业课科目", "自命题科目1", "自命题科目2")
 
 try:
     # [审计 2026-09-30 · 中影响] 改用注册表单例入口：直接 UniversityRegistry()
@@ -212,6 +241,9 @@ class OnboardingWizard(QDialog):
                 "on_acc": t.color("on-acc") or ("#042f2e" if dark else "#ffffff"),
                 "acc_hover": t.color("acc-hover") or ("#52dbca" if dark else "#0f6562"),
                 "acc_press": t.color("acc-press") or ("#6ee0d3" if dark else "#0f5858"),
+                # [P2 修复·2026-10-08] 补 focus_ring：步骤指示器的「已完成」态
+                # 此前写死 #5eead4（深色 focus-ring），现随主题 token。
+                "focus_ring": t.color("focus-ring") or ("#5eead4" if dark else "#115e59"),
                 "ok": t.color("ok") or ("#34d399" if dark else "#059669"),
                 "warn": t.color("warn") or ("#fbbf24" if dark else "#b45309"),
                 "bad": t.color("bad") or ("#f87171" if dark else "#ef4444"),
@@ -223,7 +255,7 @@ class OnboardingWizard(QDialog):
         except Exception:
             return {
                 "fg": "#f8fafc", "mut": "#94a3b8", "acc": "#2dd4bf", "on_acc": "#042f2e",
-                "acc_hover": "#52dbca", "acc_press": "#6ee0d3",
+                "acc_hover": "#52dbca", "acc_press": "#6ee0d3", "focus_ring": "#5eead4",
                 "ok": "#34d399", "warn": "#fbbf24", "bad": "#f87171",
                 "surf": "#111827", "surf2": "#1e293b", "line": "#1e293b", "is_dark": True,
             }
@@ -360,10 +392,12 @@ class OnboardingWizard(QDialog):
         self.btn_next.clicked.connect(self._on_next_step)
 
         self.btn_finish = QPushButton("🚀 完成建档并即时生效")
+        # [P2 修复·2026-10-08] 原写死 emerald 四色（#059669/#10b981/#047857/#ffffff）：
+        # 改由当前主题「达标色 ok」派生（hover 用同色 rgba 加深，色值可溯源到 token）。
         self.btn_finish.setStyleSheet(
-            "QPushButton { background-color: #059669; color: #ffffff; border: 1px solid #10b981; "
-            "border-radius: 6px; padding: 7px 22px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #047857; color: #ffffff; }"
+            f"QPushButton {{ background-color: {c['ok']}; color: {c['on_acc']}; border: 1px solid {c['ok']}; "
+            f"border-radius: 6px; padding: 7px 22px; font-weight: bold; }}"
+            f"QPushButton:hover {{ background-color: {_rgba(c['ok'], 0.85)}; color: {c['on_acc']}; }}"
         )
         self.btn_finish.clicked.connect(self._on_finish)
 
@@ -543,7 +577,11 @@ class OnboardingWizard(QDialog):
         # ── 实体参考资料放置与入库卡片 ──
         mat_card = QFrame()
         mat_card.setFrameShape(QFrame.Shape.StyledPanel)
-        mat_card.setStyleSheet(f"background: rgba(45, 212, 191, 0.08); border: 1px solid rgba(45, 212, 191, 0.3); border-radius: 8px; padding: 10px;")
+        # [P2 修复·2026-10-08] 原写死 rgba(45, 212, 191, …)（深色主题 teal）：
+        # 浅色/自定义主色下不跟随主题。改由当前主题主色派生。
+        mat_card.setStyleSheet(
+            f"background: {_rgba(c['acc'], 0.08)}; border: 1px solid {_rgba(c['acc'], 0.3)}; "
+            f"border-radius: 8px; padding: 10px;")
         m_layout = QVBoxLayout(mat_card)
         m_layout.setSpacing(8)
 
@@ -626,7 +664,11 @@ class OnboardingWizard(QDialog):
         # 考纲绑定提示卡片
         syllabus_card = QFrame()
         syllabus_card.setFrameShape(QFrame.Shape.StyledPanel)
-        syllabus_card.setStyleSheet(f"background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 10px;")
+        # [P2 修复·2026-10-08] 原写死 rgba(16, 185, 129, …)（emerald 常量）：
+        # 改由当前主题「达标色 ok」派生。
+        syllabus_card.setStyleSheet(
+            f"background: {_rgba(c['ok'], 0.08)}; border: 1px solid {_rgba(c['ok'], 0.3)}; "
+            f"border-radius: 8px; padding: 10px;")
         s_layout = QVBoxLayout(syllabus_card)
         s_title = QLabel("📌 <b>考纲自动挂载机制</b>")
         s_desc = QLabel("向导完成后，工作区将自动写入教育部考试大纲至各科目录，并基于真实题源锁定出题门禁。")
@@ -834,7 +876,10 @@ class OnboardingWizard(QDialog):
         # 私教风格单选组
         style_box = QFrame()
         style_box.setFrameShape(QFrame.Shape.StyledPanel)
-        style_box.setStyleSheet(f"background: rgba(45, 212, 191, 0.08); border: 1px solid rgba(45, 212, 191, 0.3); border-radius: 8px; padding: 8px;")
+        # [P2 修复·2026-10-08] 同上：写死 teal rgba → 当前主题主色派生
+        style_box.setStyleSheet(
+            f"background: {_rgba(c['acc'], 0.08)}; border: 1px solid {_rgba(c['acc'], 0.3)}; "
+            f"border-radius: 8px; padding: 8px;")
         sb_layout = QVBoxLayout(style_box)
         sb_layout.setSpacing(6)
         sb_title = QLabel("🎓 <b>当前激活辅导风格选择：</b>")
@@ -876,8 +921,9 @@ class OnboardingWizard(QDialog):
         # 服务商预设 + 官方控制台快捷跳转按钮（配色取自主题 token）
         acc_text = c["acc"]
         border_col = c["acc"]
-        acc_soft_bg = ("rgba(45, 212, 191, 0.15)" if c.get("is_dark", True)
-                       else "rgba(15, 118, 110, 0.12)")
+        # [P2 修复·2026-10-08] 原按 is_dark 手写两套 teal rgba（深色 45,212,191 /
+        # 浅色 15,118,110）——自定义主色时不会跟随。现直接由当前主题主色派生。
+        acc_soft_bg = _rgba(c["acc"], 0.15)
         prov_row = QHBoxLayout()
         self.provider_combo = QComboBox()
         for p_name in PROVIDER_PRESETS:
@@ -978,7 +1024,10 @@ class OnboardingWizard(QDialog):
         test_head.addWidget(self.btn_test_api)
         tf_layout.addLayout(test_head)
 
-        self.test_result_label = QLabel("<span style='color:#cbd5e1;'>尚未进行连通性测试。建议填写配置后点击右上角自测。</span>")
+        # [P2 修复·2026-10-08] 原 span 色写死 #cbd5e1（深色系灰）：浅色主题白底
+        # 上对比不足，改取当前主题的次级文字色 token。
+        self.test_result_label = QLabel(
+            f"<span style='color:{c['mut']};'>尚未进行连通性测试。建议填写配置后点击右上角自测。</span>")
         self.test_result_label.setWordWrap(True)
         self.test_result_label.setStyleSheet(f"color: {c['fg']}; font-size: 13px; line-height: 1.6;")
         tf_layout.addWidget(self.test_result_label)
@@ -1003,7 +1052,10 @@ class OnboardingWizard(QDialog):
         self.pro2_row_widget.setVisible(is_mode_b)
         if is_mode_b:
             self.pro_name_row_label.setText("专业课一名称与代码 *:")
-            if self.pro_name_edit.text() == "自命题专业课科目":
+            # [P1 修复·2026-10-08] pro_name 不再默认回填「自命题专业课科目」，
+            # 空值同样视为未填 → 与旧哨兵值行为等价地给出双科示例（校验层
+            # 会把示例占位文本拦下，要求替换为真实科目名）。
+            if self.pro_name_edit.text() in ("", "自命题专业课科目"):
                 self.pro_name_edit.setText("自命题科目1")
                 self.pro2_name_edit.setText("自命题科目2")
             elif not self.pro2_name_edit.text():
@@ -1367,11 +1419,63 @@ class OnboardingWizard(QDialog):
         if not api_key:
             QMessageBox.warning(self, "提示", "请先输入 API Key 再进行模型探查。")
             return
+        # [P1 修复·2026-10-08] 重入保护：探查未结束时不得覆盖 self._probe_worker
+        # （运行中的 QThread 失去引用会被 GC 销毁而崩进程）。
+        w = self._probe_worker
+        if w is not None:
+            try:
+                if w.isRunning():
+                    return
+            except RuntimeError:
+                pass
         self.btn_probe_models.setEnabled(False)
         self.btn_probe_models.setText("⏳ 探查中...")
         self._probe_worker = ProbeModelsWorker(api_key, base_url, self)
         self._probe_worker.finished_signal.connect(self._on_probe_models_finished)
+        _ACTIVE_WORKERS.add(self._probe_worker)
+        _install_quit_hook()
+        self._probe_worker.finished.connect(self._on_probe_worker_finished)
         self._probe_worker.start()
+
+    def _on_probe_worker_finished(self) -> None:
+        """探测线程自然结束：从强引用池出池（绑定方法槽，随向导析构自动断开）。"""
+        w = self.sender() or self._probe_worker
+        _ACTIVE_WORKERS.discard(w)
+
+    def closeEvent(self, event):
+        """[P1 修复·2026-10-08] 关闭向导时安全收尾在跑的探测线程（同微信对话框）。
+
+        探测进行中关窗/退出应用：线程是向导子对象，随析构销毁会 abort 进程，
+        且关窗后仍在后台联网。现带超时 wait + terminate 兜底；停不掉时把
+        线程摘出向导改挂 QApplication（强引用池兜住，不随析构销毁）。
+        """
+        self._shutdown_probe_workers()
+        super().closeEvent(event)
+
+    def _shutdown_probe_workers(self) -> None:
+        for attr in ("_probe_worker", "_worker"):
+            w = getattr(self, attr, None)
+            if w is None:
+                continue
+            if _stop_worker(w, _CLOSE_WAIT_MS):
+                _ACTIVE_WORKERS.discard(w)
+                continue
+            self._detach_probe_worker(w)
+            setattr(self, attr, None)
+
+    def _detach_probe_worker(self, w) -> None:
+        """超时后把仍在跑的 worker 摘出向导，避免被连带析构。"""
+        try:
+            app = QApplication.instance()
+            if app is not None:
+                w.setParent(app)
+        except Exception:
+            pass
+        _ACTIVE_WORKERS.add(w)
+        try:
+            w.finished.connect(lambda ww=w: _ACTIVE_WORKERS.discard(ww))
+        except Exception:
+            pass
 
     def _on_probe_models_finished(self, res: Any, err: Optional[str] = None):
         self.btn_probe_models.setEnabled(True)
@@ -1433,6 +1537,15 @@ class OnboardingWizard(QDialog):
             QMessageBox.warning(self, "提示", "请先输入 API Key 再进行连通性测试。")
             return
 
+        # [P1 修复·2026-10-08] 同 _probe_upstream_models：重入不覆盖在跑线程。
+        w = self._worker
+        if w is not None:
+            try:
+                if w.isRunning():
+                    return
+            except RuntimeError:
+                pass
+
         c = self._c()
         self.btn_test_api.setEnabled(False)
         self.test_result_label.setText("⏳ 正在探测 LLM 对话端点与搜索引擎响应，请稍候...")
@@ -1440,6 +1553,10 @@ class OnboardingWizard(QDialog):
 
         self._worker = ConnectivityWorker(api_key, base_url, model, search_provider, self)
         self._worker.finished_signal.connect(self._on_connectivity_finished)
+        _ACTIVE_WORKERS.add(self._worker)
+        _install_quit_hook()
+        self._worker.finished.connect(
+            lambda w=self._worker: _ACTIVE_WORKERS.discard(w))
         self._worker.start()
 
     def _on_connectivity_finished(self, res: dict):
@@ -1452,8 +1569,9 @@ class OnboardingWizard(QDialog):
 
         llm_icon = "🟢" if llm_ok else "🔴"
         search_icon = "🟢" if search_ok else "🔴"
-        llm_color = "#34d399" if llm_ok else "#f87171"
-        search_color = "#34d399" if search_ok else "#fbbf24"
+        # [P2 修复·2026-10-08] 原写死 ok/bad/warn 的深色主题色值：改取当前主题 token
+        llm_color = c["ok"] if llm_ok else c["bad"]
+        search_color = c["ok"] if search_ok else c["warn"]
 
         # 若搜索引擎为 Tavily 且因缺少环境变量失败，提供友好建议
         if not search_ok and "TAVILY_API_KEY" in search_detail:
@@ -1476,7 +1594,6 @@ class OnboardingWizard(QDialog):
     def _update_step_view(self):
         c = self._c()
         self.stacked_widget.setCurrentIndex(self._current_step)
-        is_dark = c.get("is_dark", True)
         for idx, lbl in enumerate(self.step_labels):
             if idx == self._current_step:
                 lbl.setStyleSheet(
@@ -1484,27 +1601,20 @@ class OnboardingWizard(QDialog):
                     f"padding: 6px 12px; border-radius: 6px; border: 1px solid {c['acc']};"
                 )
             elif idx < self._current_step:
-                if is_dark:
-                    lbl.setStyleSheet(
-                        "background: rgba(45, 212, 191, 0.25); color: #5eead4; font-weight: 600; font-size: 13px; "
-                        "padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(94, 234, 212, 0.4);"
-                    )
-                else:
-                    lbl.setStyleSheet(
-                        "background: #ccfbf1; color: #0f766e; font-weight: 600; font-size: 13px; "
-                        "padding: 6px 12px; border-radius: 6px; border: 1px solid #99f6e4;"
-                    )
+                # [P2 修复·2026-10-08] 原按 is_dark 手写 teal 系 rgba/hex（深色
+                # rgba(45,212,191,.25)/#5eead4、浅色 #ccfbf1/#0f766e/#99f6e4）：
+                # 自定义主色时不跟随。现统一由当前主题 token 派生 —— 深色下与
+                # 原观感一致，浅色/自定义主题随主色与焦点环色变化。
+                lbl.setStyleSheet(
+                    f"background: {_rgba(c['acc'], 0.25)}; color: {c['focus_ring']}; "
+                    f"font-weight: 600; font-size: 13px; padding: 6px 12px; "
+                    f"border-radius: 6px; border: 1px solid {_rgba(c['focus_ring'], 0.4)};"
+                )
             else:
-                if is_dark:
-                    lbl.setStyleSheet(
-                        "background: rgba(255, 255, 255, 0.05); color: #94a3b8; font-size: 13px; "
-                        "padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.1);"
-                    )
-                else:
-                    lbl.setStyleSheet(
-                        "background: #f1f5f9; color: #64748b; font-size: 13px; "
-                        "padding: 6px 12px; border-radius: 6px; border: 1px solid #e2e8f0;"
-                    )
+                lbl.setStyleSheet(
+                    f"background: {_rgba(c['fg'], 0.05)}; color: {c['mut']}; font-size: 13px; "
+                    f"padding: 6px 12px; border-radius: 6px; border: 1px solid {_rgba(c['fg'], 0.1)};"
+                )
 
         arrow_color = c["acc"]
         for arrow in self.step_arrows:
@@ -1523,8 +1633,23 @@ class OnboardingWizard(QDialog):
                 QMessageBox.warning(self, "请填写目标院校", "目标院校为必填项，请输入您要报考的高校名称。")
                 self.school_edit.setFocus()
                 return False
+            # [P1 修复·2026-10-08] 占位文本拦截：与 is_unconfigured 同名单
+            # （privacy_policy 单一真源）。旧版只拦空串，「目标院校」等占位值
+            # 通过校验并「建档成功」，下次启动向导又弹（建档成功却永远未配置）。
+            if school in SCHOOL_PLACEHOLDERS:
+                QMessageBox.warning(self, "请填写真实目标院校",
+                                    f"「{school}」是占位文本，不是真实高校名称。\n"
+                                    f"请替换为您要报考的高校（输入框内有示例）。")
+                self.school_edit.setFocus()
+                return False
             if not major:
                 QMessageBox.warning(self, "请填写报考专业", "报考专业为必填项，请输入您的报考专业。")
+                self.major_edit.setFocus()
+                return False
+            if major in MAJOR_PLACEHOLDERS:
+                QMessageBox.warning(self, "请填写真实报考专业",
+                                    f"「{major}」是占位文本，不是真实专业名称。\n"
+                                    f"请替换为您的报考专业与代码（如：081200 计算机科学与技术）。")
                 self.major_edit.setFocus()
                 return False
         elif self._current_step == 1:
@@ -1533,11 +1658,23 @@ class OnboardingWizard(QDialog):
                 QMessageBox.warning(self, "请填写专业课名称", "专业课名称与科目代码为必填项。")
                 self.pro_name_edit.setFocus()
                 return False
+            # [P1 修复·2026-10-08] 示例占位文本同样不得通过（防「建档成功」却无真实科目名）
+            if pro_name in _PRO_NAME_PLACEHOLDERS:
+                QMessageBox.warning(self, "请填写专业课名称",
+                                    f"「{pro_name}」是示例占位文本，请替换为真实的专业课名称与代码"
+                                    f"（如：814 信号与系统）。")
+                self.pro_name_edit.setFocus()
+                return False
             mode = self.exam_mode_combo.currentData() or "mode_a"
             if mode in ("mode_b", "no_math_dual_pro"):
                 pro2_name = self.pro2_name_edit.text().strip()
                 if not pro2_name:
                     QMessageBox.warning(self, "请填写专业课二名称", "在双自命题模式下，专业课二名称与科目代码为必填项。")
+                    self.pro2_name_edit.setFocus()
+                    return False
+                if pro2_name in _PRO_NAME_PLACEHOLDERS:
+                    QMessageBox.warning(self, "请填写专业课二名称",
+                                        f"「{pro2_name}」是示例占位文本，请替换为真实的专业课二名称与代码。")
                     self.pro2_name_edit.setFocus()
                     return False
         elif self._current_step == 2:
@@ -1567,17 +1704,22 @@ class OnboardingWizard(QDialog):
 
     def _load_from_config(self, cfg: dict):
         if not cfg:
-            # 默认值回填
-            self.school_edit.setText("目标院校")
-            self.major_edit.setText("目标专业 (专业代码)")
-            self.pro_name_edit.setText("自命题专业课科目")
-            self.pro2_name_edit.setText("自命题科目2")
+            # [P1 修复·2026-10-08] 不再把占位文本 setText 回填进输入框：旧版
+            # 填「目标院校/目标专业 (专业代码)/自命题专业课科目」且校验只拦
+            # 空串 → 占位值一路通过并「建档成功」；下次启动 is_unconfigured
+            # 按 privacy_policy 占位符判「未配置」→ 向导再次弹出（死循环）。
+            # 现改为空串 + placeholderText（各输入框在 _build_page_* 已备示例）。
+            self.school_edit.setText("")
+            self.major_edit.setText("")
+            self.pro_name_edit.setText("")
+            self.pro2_name_edit.setText("")
         else:
             plan = cfg.get("study_plan") or {}
-            school = plan.get("school") or cfg.get("target_school", "目标院校")
-            major = plan.get("major") or cfg.get("target_major", "目标专业 (专业代码)")
-            self.school_edit.setText(school)
-            self.major_edit.setText(major)
+            school = plan.get("school") or cfg.get("target_school", "")
+            major = plan.get("major") or cfg.get("target_major", "")
+            # [P1 修复·2026-10-08] 配置里若为占位符（历史脏数据/脱敏产物）→ 视作未填
+            self.school_edit.setText("" if school in SCHOOL_PLACEHOLDERS else school)
+            self.major_edit.setText("" if major in MAJOR_PLACEHOLDERS else major)
             self.backup_school_edit.setText(plan.get("backup_school", ""))
 
             # 方案模式
@@ -1606,10 +1748,11 @@ class OnboardingWizard(QDialog):
             if idx >= 0:
                 self.eng_combo.setCurrentIndex(idx)
 
-            # 专业课
-            pro_name = plan.get("pro_name", "自命题专业课科目")
-            self.pro_name_edit.setText(pro_name)
-            self.pro2_name_edit.setText(plan.get("pro2_name", "自命题科目2"))
+            # 专业课（[P1 修复·2026-10-08] 占位符视为未填，不回填进输入框）
+            pro_name = plan.get("pro_name", "")
+            self.pro_name_edit.setText("" if pro_name in _PRO_NAME_PLACEHOLDERS else pro_name)
+            pro2_raw = plan.get("pro2_name", "")
+            self.pro2_name_edit.setText("" if pro2_raw in _PRO_NAME_PLACEHOLDERS else pro2_raw)
             p_type = plan.get("pro_type", "custom")
             idx = self.pro_type_combo.findData(p_type)
             if idx >= 0:

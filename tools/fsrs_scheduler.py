@@ -4,7 +4,7 @@
 
 提供：
 
-- ``compute_next_interval(stage, rating, today)`` —— **纯函数，无状态**。
+- ``compute_next_interval(stage, rating, today, history=None)`` —— **纯函数，无状态**。
    这是全项目复测间隔计算的**唯一真源**，供 ``skills.error_logger``
    依据错题卡片中已持久化的 ``stage``（已完成复测档位）推导下次复测日。
 
@@ -15,6 +15,15 @@
        从而得到真正依赖历史的自适应间隔；
      - 返回值第三项 ``interval_days`` 为「距今天的复测间隔天数」
        （不足 1 天的学习步长统一提升为 1 天，避免刚归档就当天到期）。
+
+   [P1 修复·2026-10-08 K2 历史重建失真] 全按 "good" 快进只在"历史恰好全是 good"
+   时正确：反复 hard 的弱项（如 hard,hard 后本次 good）真实间隔 ≈9 天，
+   按 good 快进却给 46 天（**高估约 5 倍**），复测被系统性推迟。
+   现支持 ``history`` 参数：传入该卡**当前周期**的真实评级序列
+   （自上次 again 重置之后的逐次评级，长度 == stage），按真实序列回放；
+   历史不可信（缺失/断链/含 again 重置/长度不符）时保守回退既有快进路径。
+   :func:`load_review_history` 从 ``.memory/review_log.jsonl``（复测事件日志，
+   由 error_logger.record_review_event 逐次追加）读取并校验该序列。
 
    经校准后的实际间隔序列（参数见 ``make_scheduler``，可复现）：
 
@@ -41,15 +50,23 @@
 
 from __future__ import annotations
 
+import json
 import math
 from datetime import date, datetime, time, timedelta, timezone
+from pathlib import Path
 
 from fsrs import Card, Rating, Scheduler
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from workspace import resolve_workspace_root
+except ImportError:  # pragma: no cover
+    from tools.workspace import resolve_workspace_root
 
 __all__ = [
     "RATING_MAP",
     "make_scheduler",
     "compute_next_interval",
+    "load_review_history",
 ]
 
 # 字符串评级 → FSRS 枚举。键名与错题卡片中记录的 rating 文本保持一致。
@@ -127,10 +144,126 @@ def _gap_days(before: datetime, after: datetime) -> int:
     return max(1, math.ceil(seconds / 86400.0))
 
 
+#: [P1 修复·2026-10-08 K2] 复测事件日志相对工作区根的路径（与 error_logger.REVIEW_LOG_FILE 同源）。
+_REVIEW_LOG_REL = Path(".memory") / "review_log.jsonl"
+
+
+def _default_review_log() -> Path | None:
+    """默认复测事件日志路径；工作区解析失败时返回 None（调用方按无日志处理）。"""
+    try:
+        return resolve_workspace_root(__file__) / _REVIEW_LOG_REL
+    except Exception:  # pragma: no cover - 极端环境下不阻断
+        return None
+
+
+def _normalize_history(history, expected_stage: int):
+    """校验回放历史；不可信时返回 None（调用方回退 good 快进路径）。
+
+    合法条件（刻意严格，宁可不回放也不给出错误间隔）：
+      - 长度 == expected_stage（当前周期已完成的复测次数）；
+      - 每项都是已知评级，且**不含 again** —— again 在项目语义中把整个
+        周期重置为 0，合法"当前周期"序列不可能含 again。
+    """
+    if history is None:
+        return None
+    try:
+        hist = [str(r or "").strip().lower() for r in history]
+    except TypeError:
+        return None
+    if not hist or len(hist) != expected_stage:
+        return None
+    if any(r not in RATING_MAP or r == "again" for r in hist):
+        return None
+    return hist
+
+
+def load_review_history(subject, title, expected_stage, log_file=None):
+    """[P1 修复·2026-10-08 K2] 从复测事件日志提取某道错题**当前周期**的真实评级序列。
+
+    数据源为 ``.memory/review_log.jsonl``（error_logger.record_review_event
+    在每次复测回写时追加一行 JSON）。返回按时间顺序的评级列表
+    （如 ``["hard", "hard"]``），或 None 表示日志不可用/不可信：
+
+      - 日志缺失、无匹配事件、事件字段损坏；
+      - ``stage_before`` 链不连续（断链：日志缺早期事件、或同标题多卡
+        交错污染 —— 链校验是防"张冠李戴"的关键防线）；
+      - 链终点与 ``expected_stage``（卡片当前 stage）不一致；
+      - 标题采用双向包含匹配（调用方可能传入标题前缀），歧义由链校验兜底。
+
+    调用方（当前为白名单外的 error_logger.mark_error_status，见交付报告）
+    应把返回值原样传给 ``compute_next_interval(..., history=...)``；
+    返回 None 时维持既有 good 快进行为。
+    """
+    try:
+        stage_target = max(0, int(expected_stage or 0))
+    except (TypeError, ValueError):
+        return None
+    path = Path(log_file) if log_file else _default_review_log()
+    if path is None or not path.exists():
+        return None
+
+    subj_key = str(subject or "").strip().lower()
+    title_key = str(title or "").strip()
+    if not subj_key or not title_key:
+        return None
+
+    filtered = []
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:  # pragma: no cover - 读取失败按不可用处理
+        return None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        if str(event.get("subject") or "").strip().lower() != subj_key:
+            continue
+        ev_title = str(event.get("title") or "").strip()
+        # 标题双向包含匹配（len>=2 防单字误配）；跨卡污染由下方 stage 链校验拦截
+        if not (ev_title == title_key
+                or (len(ev_title) >= 2 and ev_title in title_key)
+                or (len(title_key) >= 2 and title_key in ev_title)):
+            continue
+        filtered.append(event)
+
+    if not filtered:
+        return None
+
+    expected = 0
+    cycle: list = []
+    for event in filtered:
+        rating = str(event.get("rating") or "").strip().lower()
+        if rating not in RATING_MAP:
+            return None
+        try:
+            stage_before = int(event.get("stage_before"))
+        except (TypeError, ValueError):
+            return None
+        if stage_before != expected:
+            return None  # 断链：日志与卡片状态不连续
+        if rating == "again":
+            # again = 整个周期重置（与 compute_next_interval 的 stage 语义一致）
+            cycle = []
+            expected = 0
+        else:
+            cycle.append(rating)
+            expected = stage_before + 1
+    if expected != stage_target:
+        return None  # 链终点与卡片 stage 不符
+    return cycle
+
+
 def compute_next_interval(
     stage: int = 0,
     rating: str = "good",
     today: date | None = None,
+    history=None,
 ):
     """依据已完成的复测档位与本次评级，计算下一次复测安排。
 
@@ -138,6 +271,10 @@ def compute_next_interval(
         stage: 该错题**已完成**的复测次数（≥0）。
         rating: 本次复测评级，``again`` / ``hard`` / ``good`` / ``easy``。
         today: 计算基准日，缺省为本地今天。
+        history: [P1 修复·2026-10-08 K2] 该卡**当前周期**的真实评级序列（自上次 again
+            重置之后，长度应为 stage）。传 None 或不可信序列时维持既有的
+            「stage 次 good 快进」重建（向后兼容）；传入可信序列时按真实
+            评级回放重建记忆状态 —— 反复 hard 的弱项不再被高估间隔。
 
     Returns:
         ``(new_stage, next_due_date, interval_days)``
@@ -169,9 +306,18 @@ def compute_next_interval(
     # 以基准日零点(UTC)为时间轴原点，逐次快进重建记忆稳定性
     now = datetime.combine(today, time.min).replace(tzinfo=timezone.utc)
     card = Card()
-    for _ in range(effective_stage):
-        card, _log = sched.review_card(card, _BUILD_UP_RATING, now)
-        now = card.due  # 沿真实到期时刻推进，保持 FSRS 时间轴正确
+
+    # [P1 修复·2026-10-08 K2] 有可信真实历史 → 按真实评级序列回放；否则维持 good 快进。
+    # 回放路径与快进路径共用同一条时间轴推进规则（沿真实到期时刻推进）。
+    replay = _normalize_history(history, effective_stage)
+    if replay is not None:
+        for past_rating in replay:
+            card, _log = sched.review_card(card, _resolve_rating(past_rating), now)
+            now = card.due
+    else:
+        for _ in range(effective_stage):
+            card, _log = sched.review_card(card, _BUILD_UP_RATING, now)
+            now = card.due  # 沿真实到期时刻推进，保持 FSRS 时间轴正确
 
     card, _log = sched.review_card(card, target, now)
 

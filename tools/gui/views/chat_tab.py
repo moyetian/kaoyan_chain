@@ -11,8 +11,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QHBoxLayout, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 
 try:  # pragma: no cover - 取决于运行方式
     from gui.widgets.chat_view import ChatView
@@ -21,6 +21,57 @@ except ImportError:  # pragma: no cover
 
 #: 私教快捷指令
 QUICK_COMMANDS = ("数学报到", "英语报到", "政治报到", "专业课报到", "交作业", "查漏", "更新看板")
+
+
+class ChatInput(QPlainTextEdit):
+    """[P1 修复·2026-10-08] 多行对话输入框：Enter 发送 / Shift+Enter 换行。
+
+    为什么换掉 QLineEdit：政治大题、专业课论述动辄数百字，单行框既看不全
+    已写内容，回车还会立刻误发半截答案。QPlainTextEdit 默认 Enter 即换行，
+    这里覆写 ``keyPressEvent`` 把「无修饰键的 Enter/Return」转为发送信号，
+    Shift/Ctrl/Alt+Enter 保持换行语义；高度随内容在 1~6 行间自适应。
+    """
+
+    send_requested = Signal()
+
+    #: 高度自适应范围（行数），与字体行高相乘得到像素高度
+    MIN_LINES = 1
+    MAX_LINES = 6
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # Tab 交给焦点切换而不是插入制表符（作答场景不需要缩进控制）
+        self.setTabChangesFocus(True)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.textChanged.connect(self._adjust_height)
+        self._adjust_height()
+
+    def keyPressEvent(self, event):  # noqa: N802 - Qt 命名
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            mods = event.modifiers()
+            if mods & (
+                Qt.KeyboardModifier.ShiftModifier
+                | Qt.KeyboardModifier.ControlModifier
+                | Qt.KeyboardModifier.AltModifier
+            ):
+                # Shift/Ctrl/Alt+Enter：交给基类做换行
+                super().keyPressEvent(event)
+            else:
+                self.send_requested.emit()
+            return
+        super().keyPressEvent(event)
+
+    def _adjust_height(self):
+        """按逻辑行数（Enter 分段）在 1~6 行之间调整固定高度。
+
+        用 ``blockCount`` 而不是 ``document().size()``：后者依赖布局完成，
+        离屏/首帧时读数不可靠（实测 3 行文本仍报 1 行高）；超长折行由内部
+        滚动条兜底，不影响「多行可见」的核心诉求。
+        """
+        line_h = max(1, self.fontMetrics().lineSpacing())
+        lines = min(max(self.document().blockCount(), self.MIN_LINES), self.MAX_LINES)
+        # 上下各留 8px 内边距；下限 40px 与原 QLineEdit 初始高度一致
+        self.setFixedHeight(max(40, lines * line_h + 16))
 
 
 def build(win) -> QWidget:
@@ -93,21 +144,28 @@ def build(win) -> QWidget:
     upload_file_btn.clicked.connect(win._on_upload_file)
     input_bar.addWidget(upload_file_btn)
 
-    win.input_box = QLineEdit()
+    # [P1 修复·2026-10-08] 单行 QLineEdit → 多行 ChatInput（1~6 行自适应）：
+    # 大题作答/论述题需要可见的多行书写区；Enter 发送、Shift+Enter 换行的
+    # 语义由 ChatInput 内部实现（send_requested 信号替代原 returnPressed）。
+    win.input_box = ChatInput()
     win.input_box.setMinimumHeight(40)
     win.input_box.setPlaceholderText(
-        "输入口令 (如：英语长难句拆解 / 帽子词秒杀 / 交作业) 或向私教提问...")
-    win.input_box.returnPressed.connect(win._on_send_message)
+        "输入口令 (如：英语长难句拆解 / 帽子词秒杀 / 交作业) 或向私教提问...\n"
+        "Enter 发送 · Shift+Enter 换行（大题作答可多行输入）")
+    win.input_box.send_requested.connect(win._on_send_message)
     input_bar.addWidget(win.input_box, stretch=1)
 
     # [缺陷修复·无法中断进行中的回答] 停止按钮：点击调 agent_worker.cancel()，
     # 取消检查回调会在 AgentRunner 的下一个步骤边界终止本轮 run，界面立即
     # 恢复可输入（见 MainWindow._on_stop_agent）。
+    # [P2 修复·2026-10-08] 初始置灰：无正在生成的回答时「停止」不可点，
+    # 由 MainWindow._set_agent_ui_running 随流式开始/结束联动。
     stop_btn = QPushButton("停止")
     stop_btn.setObjectName("SecondaryBtn")
     stop_btn.setMinimumHeight(40)
     stop_btn.setFixedWidth(64)
     stop_btn.setCursor(Qt.PointingHandCursor)
+    stop_btn.setEnabled(False)
     stop_btn.setToolTip("停止当前正在生成的本轮回答（随后可直接发送新消息）")
     stop_btn.clicked.connect(win._on_stop_agent)
     win.stop_btn = stop_btn
@@ -119,9 +177,10 @@ def build(win) -> QWidget:
     send_btn.setFixedWidth(88)
     send_btn.setCursor(Qt.PointingHandCursor)
     send_btn.clicked.connect(win._on_send_message)
+    win.send_btn = send_btn
     input_bar.addWidget(send_btn)
     layout.addLayout(input_bar)
     return widget
 
 
-__all__ = ["QUICK_COMMANDS", "build"]
+__all__ = ["ChatInput", "QUICK_COMMANDS", "build"]

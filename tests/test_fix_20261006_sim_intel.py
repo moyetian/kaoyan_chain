@@ -19,6 +19,21 @@
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _stub_llm_advice(monkeypatch):
+    """[P2 修复·2026-10-08] 隔离 format_diff_markdown 默认路径的真实 LLM 调用。
+
+    ``format_diff_markdown`` 不传 ``strategic_advice`` 时经
+    ``generate_llm_advice`` 生成战术建议（向后兼容设计）；真实仓库
+    ``is_llm_configured=True``，F13 的 3 个 format 用例会各发起一次真实
+    计费调用（spy 实测 1 次 timeout=12s）。统一打桩为「离线态」（返回
+    None → 走通用模板），断言内容不变、隔离网络副作用与耗时。
+    """
+    from tools.intelligence.syllabus_diff import SyllabusDiffGenerator
+    monkeypatch.setattr(SyllabusDiffGenerator, "generate_llm_advice",
+                        lambda self, report_data: None)
+
+
 # ── F4：双校对标 408 过度断言 ────────────────────────────────────────────
 
 def _profile(items, region="河南"):

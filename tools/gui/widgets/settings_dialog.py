@@ -7,6 +7,16 @@ import json
 from pathlib import Path
 from typing import Any, Optional
 from ..services.settings import read_config, save_settings
+# [P1 修复·2026-10-08] 复用微信检索对话框的线程收尾三档兜底（强引用池 +
+# aboutToQuit 钩子 + closeEvent 停线程）：本对话框的「探查模型 / 一键自检」
+# 两个探测线程此前零收尾 —— 关窗后线程仍在联网，退出应用时随对话框析构
+# 触发 "QThread: Destroyed while thread is still running" → 进程 abort。
+from .wechat_search_dialog import (
+    _ACTIVE_WORKERS,
+    _CLOSE_WAIT_MS,
+    _install_quit_hook,
+    _stop_worker,
+)
 
 try:  # pragma: no cover
     from theme import list_presets, PRESET_ORDER
@@ -18,7 +28,7 @@ except ImportError:  # pragma: no cover
 from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
-    QColorDialog, QComboBox, QDialog, QDoubleSpinBox, QFormLayout,
+    QApplication, QColorDialog, QComboBox, QDialog, QDoubleSpinBox, QFormLayout,
     QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QVBoxLayout,
     QWidget, QTabWidget, QMessageBox
 )
@@ -84,8 +94,36 @@ class SettingsDialog(QDialog):
                 "ok": "#34d399", "bad": "#f87171", "surf2": "#1e293b", "line": "#1e293b",
             }
 
-    def _init_tabs(self):
+    def _restyle(self) -> None:
+        """[P2 修复·2026-10-08] 按当前主题重刷对话框内联样式（幂等）。
+
+        此前 4 处内联样式只在构造时生成一次：在「界面外观」页切换预设并点
+        「应用」后，主窗口主题已变，但本对话框的按钮/标签仍是旧主题颜色
+        （widget 内联样式优先级高于全局 QSS，不会被新主题压过去）。
+        现抽成幂等方法：构造后调一次，「应用」主题后由 _apply() 再调一次。
+        """
         c = self._c()
+        _soft_btn = (
+            f"background: {c['surf2']}; color: {c['acc']}; border: 1px solid {c['acc']}; "
+            f"font-weight: bold; padding: 4px 10px; border-radius: 4px;"
+        )
+        self.btn_open_console.setStyleSheet(_soft_btn)
+        self.btn_probe_models.setStyleSheet(_soft_btn)
+        self.wizard_btn.setStyleSheet(
+            f"background: {c['surf2']}; color: {c['acc']}; "
+            f"font-weight: bold; padding: 6px 12px; border: 1px solid {c['acc']}; "
+            f"border-radius: 6px;"
+        )
+        # 连通测试标签：保留测试结果状态色（🟢/🔴），未出结果时用次级文字色
+        txt = self.test_lbl.text()
+        if txt.startswith("🟢"):
+            self.test_lbl.setStyleSheet(f"color: {c['ok']}; font-size: 11px;")
+        elif txt.startswith("🔴"):
+            self.test_lbl.setStyleSheet(f"color: {c['bad']}; font-size: 11px;")
+        else:
+            self.test_lbl.setStyleSheet(f"color: {c['mut']}; font-size: 11px;")
+
+    def _init_tabs(self):
         # ── Tab 1: AI 大模型设置 ─────────────────────────
         self.tab_ai = QWidget()
         form_ai = QFormLayout(self.tab_ai)
@@ -95,10 +133,8 @@ class SettingsDialog(QDialog):
         self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.btn_open_console = QPushButton("🔗 控制台")
         self.btn_open_console.setToolTip("跳转至大模型官方服务商控制台获取 Key")
-        self.btn_open_console.setStyleSheet(
-            f"background: {c['surf2']}; color: {c['acc']}; border: 1px solid {c['acc']}; "
-            f"font-weight: bold; padding: 4px 10px; border-radius: 4px;"
-        )
+        # [P2 修复·2026-10-08] 内联样式统一由 _restyle() 设置（构造后调一次、
+        # 「应用」主题后重刷一次）——此前只在构造时生成，切主题后不刷新。
         self.btn_open_console.clicked.connect(self._open_provider_console)
         key_row.addWidget(self.api_key_edit, stretch=1)
         key_row.addWidget(self.btn_open_console)
@@ -116,10 +152,6 @@ class SettingsDialog(QDialog):
         self.model_selector.currentTextChanged.connect(lambda t: self.model_name_edit.setText(t) if t else None)
         self.btn_probe_models = QPushButton("🔍 探查模型")
         self.btn_probe_models.setToolTip("探测当前 Base URL 节点支持的所有可用模型")
-        self.btn_probe_models.setStyleSheet(
-            f"background: {c['surf2']}; color: {c['acc']}; border: 1px solid {c['acc']}; "
-            f"font-weight: bold; padding: 4px 10px; border-radius: 4px;"
-        )
         self.btn_probe_models.clicked.connect(self._probe_models)
         model_row.addWidget(self.model_name_edit, stretch=1)
         model_row.addWidget(self.model_selector, stretch=1)
@@ -132,7 +164,6 @@ class SettingsDialog(QDialog):
         self.btn_test = QPushButton("⚡ 一键自检")
         self.btn_test.clicked.connect(self._test_connectivity)
         self.test_lbl = QLabel("未测试")
-        self.test_lbl.setStyleSheet(f"color: {c['mut']}; font-size: 11px;")
         test_row.addWidget(self.btn_test)
         test_row.addWidget(self.test_lbl, stretch=1)
         test_w = QWidget()
@@ -154,11 +185,6 @@ class SettingsDialog(QDialog):
         form_study.addRow("初试日期:", self.date_edit)
 
         self.wizard_btn = QPushButton("🚀 启动 5 步全能向导 (重新建档与科目绑定)")
-        self.wizard_btn.setStyleSheet(
-            f"background: {c['surf2']}; color: {c['acc']}; "
-            f"font-weight: bold; padding: 6px 12px; border: 1px solid {c['acc']}; "
-            f"border-radius: 6px;"
-        )
         self.wizard_btn.clicked.connect(self._launch_onboarding_wizard)
         form_study.addRow("", self.wizard_btn)
         self.tabs.addTab(self.tab_study, "考研信息配置")
@@ -233,6 +259,10 @@ class SettingsDialog(QDialog):
 
         self.tabs.addTab(self.tab_theme, "界面外观")
 
+        # [P2 修复·2026-10-08] 构造完成后统一设置对话框内联样式（切主题时
+        # 由 _apply() 重刷 —— 见 _restyle 注释）。
+        self._restyle()
+
     def _load_ky_config(self) -> dict:
         try:
             return read_config(self.config_file)
@@ -278,12 +308,70 @@ class SettingsDialog(QDialog):
         if not api_key:
             QMessageBox.warning(self, "提示", "请先输入 API Key 再进行模型探查。")
             return
+        # [P1 修复·2026-10-08] 重入保护：上一个探查未结束时再点按钮不得覆盖
+        # self._probe_worker —— 运行中的 QThread 失去引用会被 GC 销毁而崩进程。
+        w = getattr(self, "_probe_worker", None)
+        if w is not None:
+            try:
+                if w.isRunning():
+                    return
+            except RuntimeError:
+                pass
         self.btn_probe_models.setEnabled(False)
         self.btn_probe_models.setText("探查中...")
         from .onboarding_wizard import ProbeModelsWorker
         self._probe_worker = ProbeModelsWorker(api_key, base_url, self)
         self._probe_worker.finished_signal.connect(self._on_probe_finished)
+        self._register_probe_worker(self._probe_worker)
         self._probe_worker.start()
+
+    def _register_probe_worker(self, worker) -> None:
+        """[P1 修复·2026-10-08] 登记进模块级在跑池 + 装退出钩子（同微信对话框）。"""
+        _ACTIVE_WORKERS.add(worker)
+        _install_quit_hook()
+        worker.finished.connect(self._on_probe_worker_finished)
+
+    def _on_probe_worker_finished(self) -> None:
+        """线程自然结束：从强引用池出池（用绑定方法槽，避免对话框销毁后回调）。"""
+        w = self.sender() or getattr(self, "_probe_worker", None)
+        _ACTIVE_WORKERS.discard(w)
+
+    def closeEvent(self, event):
+        """[P1 修复·2026-10-08] 关闭设置中心时安全收尾在跑的探测线程。
+
+        此前探查模型/一键自检进行中关窗或直接退出应用：worker 是对话框的
+        子对象，随对话框析构 → "QThread: Destroyed while thread is still
+        running" → 进程 abort；且关窗后线程仍在后台联网。现走与微信检索
+        对话框相同的收尾：带超时 wait + terminate 兜底；万一仍停不掉，
+        把线程摘出对话框改挂 QApplication（强引用池兜住，不随析构销毁）。
+        """
+        self._shutdown_probe_workers()
+        super().closeEvent(event)
+
+    def _shutdown_probe_workers(self) -> None:
+        for attr in ("_probe_worker", "_conn_worker"):
+            w = getattr(self, attr, None)
+            if w is None:
+                continue
+            if _stop_worker(w, _CLOSE_WAIT_MS):
+                _ACTIVE_WORKERS.discard(w)
+                continue
+            self._detach_probe_worker(w)
+            setattr(self, attr, None)
+
+    def _detach_probe_worker(self, w) -> None:
+        """超时后把仍在跑的 worker 摘出对话框，避免被连带析构。"""
+        try:
+            app = QApplication.instance()
+            if app is not None:
+                w.setParent(app)
+        except Exception:
+            pass
+        _ACTIVE_WORKERS.add(w)
+        try:
+            w.finished.connect(lambda ww=w: _ACTIVE_WORKERS.discard(ww))
+        except Exception:
+            pass
 
     def _on_probe_finished(self, res: Any, err: Optional[str] = None):
         self.btn_probe_models.setEnabled(True)
@@ -323,11 +411,23 @@ class SettingsDialog(QDialog):
         if not api_key:
             QMessageBox.warning(self, "提示", "请先输入 API Key 再进行连通测试。")
             return
+        # [P1 修复·2026-10-08] 同 _probe_models 的重入保护：不得覆盖在跑的线程。
+        w = getattr(self, "_conn_worker", None)
+        if w is not None:
+            try:
+                if w.isRunning():
+                    return
+            except RuntimeError:
+                pass
         self.btn_test.setEnabled(False)
         self.test_lbl.setText("测试中...")
         from .onboarding_wizard import ConnectivityWorker
         self._conn_worker = ConnectivityWorker(api_key, base_url, model, "bing", self)
         self._conn_worker.finished_signal.connect(self._on_test_finished)
+        _ACTIVE_WORKERS.add(self._conn_worker)
+        _install_quit_hook()
+        self._conn_worker.finished.connect(
+            lambda w=self._conn_worker: _ACTIVE_WORKERS.discard(w))
         self._conn_worker.start()
 
     def _on_test_finished(self, res: dict):
@@ -374,6 +474,8 @@ class SettingsDialog(QDialog):
             self._win._refresh_card_icons()
         self._win._load_config()
         self._win._refresh_all()
+        # [P2 修复·2026-10-08] 主题已切换：重刷本对话框内联样式，避免旧主题色残留
+        self._restyle()
         return True
 
     def _ok(self):

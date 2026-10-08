@@ -307,10 +307,10 @@ def test_chat_empty_state_examples_fill_input_without_sending(win, app):
         f"空状态示例应为 3~4 个，实际 {len(view.example_pills)}")
     assert view.empty_state.isVisible(), "初始应显示空状态引导"
 
-    assert win.input_box.text() == ""
+    assert win.input_box.toPlainText() == ""
     view.example_pills[0].click()
     app.processEvents()
-    assert win.input_box.text() == EXAMPLE_PROMPTS[0][1], "点击示例应把口令填入输入框"
+    assert win.input_box.toPlainText() == EXAMPLE_PROMPTS[0][1], "点击示例应把口令填入输入框"
     assert win.agent_worker is None, "点击示例不得发起私教工作线程（避免误触计费调用）"
     assert view.bubbles == [], "点击示例不得直接产生对话气泡"
 

@@ -351,8 +351,21 @@ class ChatView(QScrollArea):
     def toPlainText(self) -> str:  # noqa: N802 - 对齐 QTextEdit 命名
         return "\n".join(bubble.text() for bubble in self.bubbles)
 
+    #: 距底部多少像素内仍视为「跟随模式」（流式续写时自动滚到底）
+    _FOLLOW_THRESHOLD_PX = 32
+
     def _scroll_to_bottom(self) -> None:
+        """仅在视图已贴近底部时跟随滚动到底。
+
+        [P2 修复·2026-10-08] 此前无条件 ``setValue(maximum())``：考生向上翻阅
+        历史（长回答、步骤链）时，流式片段/新步骤一到就被拽回底部，无法阅读。
+        现先判「是否在底部附近」（判定须在**调用时**做——布局更新后 maximum 已
+        变大，届时再判会把「本在底部」误判为「已翻阅」），不在底部则完全不排
+        滚动任务，让考生停留在所翻阅的位置。
+        """
         bar = self.verticalScrollBar()
+        if bar.maximum() - bar.value() > self._FOLLOW_THRESHOLD_PX:
+            return  # 已向上翻阅：不把视图拽回底部
         QTimer.singleShot(0, lambda: bar.setValue(bar.maximum()))
 
 

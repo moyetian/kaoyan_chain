@@ -83,7 +83,7 @@ def test_main_window_quick_command_slot():
         assert hasattr(win, "_on_quick_command"), "MainWindow 必须实现 _on_quick_command 槽函数"
         win._on_quick_command("英语报到")
 
-        win.input_box.setText.assert_called_once_with("英语报到")
+        win.input_box.setPlainText.assert_called_once_with("英语报到")
         win._on_send_message.assert_called_once()
 
 

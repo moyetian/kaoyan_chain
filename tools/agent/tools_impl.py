@@ -34,7 +34,7 @@ except ImportError:  # pragma: no cover
 from typing import Dict, Any, Callable, List, Optional, Sequence
 
 from .sandbox import Sandbox, SecurityException
-from .permissions import PermissionLevel, PermissionManager
+from .permissions import LEVEL_NAMES, PermissionLevel, PermissionManager
 
 try:  # [K8] 工具输出预算：截断上限单一真源 + execute_tool 后置兜底
     from .output_budget import (
@@ -359,7 +359,9 @@ class ToolDefinition:
         self.tier = tier
         self.source = source
         # [K8] 输出预算（字符）：execute_tool 出口超过该值即截断 + 落盘。
-        # 默认 400k —— 远大于所有工具自带截断，默认零行为变化。
+        # 默认取 output_budget.DEFAULT_TOOL_OUTPUT_BUDGET（当前 50 KB），
+        # 远大于所有工具自带截断，默认零行为变化。
+        # [三审修复·2026-10-08 注释对齐] 此前注释写死的旧值与实际不符。
         self.budget = budget
 
     def to_openai_dict(self) -> Dict[str, Any]:
@@ -447,6 +449,52 @@ class ToolRegistry:
         tools.sort(key=lambda t: (0 if t.name == "web_search" else _rank.get(t.tier, 2)))
         return [t.to_openai_dict() for t in tools]
 
+    def list_tools(self, tier: Optional[str] = None,
+                   source: Optional[str] = None) -> List[ToolDefinition]:
+        """[B2 动态发现] 实时枚举当前注册表中的工具（活注册表读取，非静态清单）。
+
+        * ``tier``：None=不过滤；``essential`` / ``extended`` 精确过滤，
+          ``all`` 与非法值等价于不过滤（与 get_openai_tools 的宽容语义一致）；
+        * ``source``：None=不过滤；``builtin`` / ``skill`` / ``mcp`` 精确匹配。
+
+        返回注册顺序（呈现层自行排序）；绝不抛异常。
+        """
+        items = list(self.tools.values())
+        if tier is not None:
+            t = str(tier).strip().lower()
+            if t in (TIER_ESSENTIAL, TIER_EXTENDED):
+                items = [td for td in items if td.tier == t]
+        if source is not None:
+            s = str(source).strip().lower()
+            items = [td for td in items if td.source == s]
+        return items
+
+    def describe_tools(self, tier: Optional[str] = None,
+                       source: Optional[str] = None) -> List[Dict[str, Any]]:
+        """[B2 动态发现] 工具摘要行（``ky tools list`` 与 list_tools 工具共用的单一真源）。
+
+        每行字段：name / desc / level（int 或 ``"dynamic"``）/ level_name /
+        tier / source。动态定级（callable）的展示口径此前内联在 CLI 命令里，
+        现收敛到此，避免审计输出与模型自省输出两套漂移。
+        """
+        rows: List[Dict[str, Any]] = []
+        for td in self.list_tools(tier=tier, source=source):
+            if isinstance(td.level, int):
+                level_value: Any = td.level
+                level_name = LEVEL_NAMES.get(td.level, str(td.level))
+            else:
+                level_value = "dynamic"
+                level_name = "动态（按调用参数定级）"
+            rows.append({
+                "name": td.name,
+                "desc": td.desc,
+                "level": level_value,
+                "level_name": level_name,
+                "tier": td.tier,
+                "source": td.source,
+            })
+        return rows
+
     def execute_tool(self, name: str, args: Dict[str, Any], interactive: bool = True,
                      call_id: str = "") -> str:
         """统一执行入口: 经过沙箱与权限验证
@@ -483,13 +531,16 @@ class ToolRegistry:
             call_args = args
             # [K5] solve_vision（图片路径）与 grade_exam_paper（试卷路径）同样要过
             # 工作区外读取授权闸门，与上述三工具同一规则显式透传交互上下文。
+            # [B3/B4] search_in_materials 的 pdf_path 参数同理（自描述工具经
+            # skill_bridge 包装后从 ctx 取 interactive）。
             if name in ("run_command", "read_file", "read_exam_paper",
-                        "solve_vision", "grade_exam_paper"):
+                        "solve_vision", "grade_exam_paper", "search_in_materials"):
                 call_args = {**args, "interactive": interactive}
             result = tool_def.func(**call_args)
-            # 3. [K8] 输出预算兜底：超过 ToolDefinition.budget（默认 400k 字符）
-            # 时截断 + 完整原文落盘 .memory/tool_outputs/<日期>/（落盘失败静默
-            # 降级「未落盘」）。默认预算远大于各工具自带截断 → 零行为变化。
+            # 3. [K8] 输出预算兜底：超过 ToolDefinition.budget（默认
+            # DEFAULT_TOOL_OUTPUT_BUDGET，当前 50 KB）时截断 + 完整原文落盘
+            # .memory/tool_outputs/<日期>/（落盘失败静默降级「未落盘」）。
+            # 默认预算远大于各工具自带截断 → 零行为变化。
             return apply_output_budget(
                 str(result), name,
                 call_id=call_id,
@@ -1757,34 +1808,58 @@ class ToolRegistry:
                 return "Error: 未加载 intelligence 模块"
             try:
                 diff_gen = intelligence.get_syllabus_diff_generator()
-                # 检查是否为文件路径
-                p_old = None
-                p_new = None
-                if old_text and "\n" not in old_text and len(old_text) < 260:
-                    try:
-                        p_candidate = self.sandbox.resolve_safe_path(old_text)
-                        if p_candidate.is_file():
-                            p_old = p_candidate
-                    except Exception:
-                        pass
-                if new_text and "\n" not in new_text and len(new_text) < 260:
-                    try:
-                        p_candidate = self.sandbox.resolve_safe_path(new_text)
-                        if p_candidate.is_file():
-                            p_new = p_candidate
-                    except Exception:
-                        pass
+
+                def _resolve_side(raw: str):
+                    """解析一侧入参 → (path|None, text|None, err|None)。
+
+                    形似文件路径（无换行且短）时尝试解析为工作区内文件；
+                    以考纲常见扩展名结尾却读不到 → 报错，不再把路径字符串
+                    当考纲文本静默比对（产出垃圾研报）。
+                    """
+                    if not raw:
+                        return None, None, None
+                    if "\n" not in raw and len(raw) < 260:
+                        try:
+                            p = self.sandbox.resolve_safe_path(raw)
+                            if p.is_file():
+                                return p, None, None
+                        except Exception:
+                            pass
+                        if re.search(r"\.(md|markdown|txt)\s*$", raw.strip(), re.IGNORECASE):
+                            return None, None, f"找不到考纲文件: {raw}"
+                    return None, raw, None
+
+                p_old, t_old, err_old = _resolve_side(old_text)
+                p_new, t_new, err_new = _resolve_side(new_text)
+                if err_old or err_new:
+                    return f"Error 考纲比对失败: {err_old or err_new}"
+
                 if p_old and p_new:
                     res = diff_gen.compare_files(p_old, p_new, school=school, major=major)
                 else:
-                    ot = old_text
-                    nt = new_text
-                    if not ot:
-                        from tools import syllabus_manager as sm
-                        ot = sm.CS408_SYLLABUS if isinstance(sm.CS408_SYLLABUS, str) else sm.CS408_SYLLABUS.get("content", "")
-                    if not nt:
-                        nt = ot.replace("- **理解**：图的遍历", "- **掌握**：图的遍历（新增拓扑排序与关键路径步骤考查）")
-                        nt += "\n\n### 4. 新增知识点\n- **掌握**：红黑树插入与平衡旋转\n"
+                    # [2026-10-08 六领域审查 P0-9 修复·agent 路径假研报]
+                    # 此前无 old_text/new_text 时用 408 大纲常量当基准 + 伪造变动
+                    # （「图的遍历」改掌握、追加「红黑树插入」），且 compare_texts
+                    # 无 is_demo 通道 → save_diff_report 读不到演示标志，假研报以
+                    # 正式文件落 04-专业课/考纲变动分析_*.md（无演示前缀/免责首行），
+                    # 还会被 context_engine 挂进后续会话当权威引用。
+                    # 现改为：无真实文本直接拒绝；演示比对仅在 CLI/REPL
+                    # （ky fetch diff，有红色警示 + 演示样例目录隔离）提供。
+                    ot = t_old if t_old is not None else (
+                        p_old.read_text(encoding="utf-8", errors="ignore") if p_old else "")
+                    nt = t_new if t_new is not None else (
+                        p_new.read_text(encoding="utf-8", errors="ignore") if p_new else "")
+                    if not ot or not nt:
+                        _missing = []
+                        if not ot:
+                            _missing.append("old_text（基准考纲文本或文件路径）")
+                        if not nt:
+                            _missing.append("new_text（新版考纲文本或文件路径）")
+                        return (
+                            "Error 考纲比对需要真实文本，缺少参数: " + "、".join(_missing) +
+                            "。请先读取考生的考纲文件（如 04-专业课/考试大纲.md）再传入；"
+                            "本工具不生成演示数据（防止假研报污染备考资料）。"
+                            "如需演示 Diff 功能，请提示考生在终端运行 `ky fetch diff`。")
                     res = diff_gen.compare_texts(old_text=ot, new_text=nt, school=school, major=major)
 
                 m = res["metrics"]
@@ -1869,7 +1944,41 @@ class ToolRegistry:
             return f"Error: 未知操作 {action}"
 
         # ─────────────────────────────────────────────────────────────
-        # 8. [K5] 技能桥接工具（6 项领域技能 → extended 档，集中声明见 skill_bridge）
+        # 7.5 [B2] 工具自省：list_tools —— 模型运行时可查询的「动态发现」入口
+        #      （注册表枚举/过滤走 describe_tools 单一真源；extended 档，只读，
+        #      不影响现有工具的注册与 schema 注入行为）
+        # ─────────────────────────────────────────────────────────────
+        @self.register(
+            "list_tools",
+            "列出当前可用的 Agent 工具清单（名称 / 权限级别 / 来源 / 一句话说明）。"
+            "当你不确定有哪些工具可用、或想找某类能力（如检索、判卷、资料盘点）时调用；"
+            "支持按 tier（essential/extended）或 source（builtin/skill/mcp）过滤。",
+            {
+                "type": "object",
+                "properties": {
+                    "tier": {"type": "string",
+                             "description": "按档位过滤: essential / extended（缺省=全部）"},
+                    "source": {"type": "string",
+                               "description": "按来源过滤: builtin / skill / mcp（缺省=全部）"},
+                },
+            },
+            PermissionLevel.READ_ONLY,
+            tier=TIER_EXTENDED,
+        )
+        def _list_tools(tier: str = "", source: str = "") -> str:
+            rows = self.describe_tools(tier=tier or None, source=source or None)
+            if not rows:
+                return "（没有匹配的工具；请检查过滤参数 tier/source）"
+            lines = [f"当前可用工具 {len(rows)} 个（名称 | 档位 | 权限级别 | 来源）:"]
+            for r in rows:
+                lines.append(f"- {r['name']} | {r['tier']} | {r['level_name']} | {r['source']}")
+                lines.append(f"    {r['desc']}")
+            return "\n".join(lines)
+
+        # ─────────────────────────────────────────────────────────────
+        # 8. [K5 + B3/B4] 技能桥接工具（extended 档）：
+        #    集中声明 6 项（见 skill_bridge.build_skill_specs）
+        #    + 自描述 4 项（TOOL_SPEC 契约，见 skill_bridge.build_self_described_specs）
         # ─────────────────────────────────────────────────────────────
         register_skill_tools(self)
 

@@ -149,7 +149,10 @@ def test_trend_chart_uses_named_resizable_renderer():
     """
     template = (DASHBOARD / "web" / "template.html").read_text(encoding="utf-8")
     assert "function renderTrend()" in template, "趋势图未改为具名函数"
-    assert "window.addEventListener('resize', renderTrend)" in template, "缺少 resize 重绘"
+    # [P2 修复·2026-10-08 resize 防抖] 原为把 renderTrend 直接挂到 resize 监听；现经
+    # 150ms 防抖（_trendRzTimer）调度——契约仍是「resize 后重绘」，且更稳。
+    assert "window.addEventListener('resize', function(){" in template, "缺少 resize 重绘"
+    assert "setTimeout(renderTrend, 150)" in template, "resize 重绘未经防抖调度"
     assert "var w = 480" not in template, "仍存在写死的 480 宽度"
     # [前端修复·趋势图 1:1] viewBox 宽必须取「卡片内容盒」宽度（.trend-slot），
     # 而不是 #stat-trend 容器宽度 —— 后者包含 .trend-card 的左右内边距 36px 与
@@ -160,7 +163,7 @@ def test_trend_chart_uses_named_resizable_renderer():
     # 不能被误伤（本仓库踩过「按字面量断言误伤注释」的坑）。
     assert "Math.round(host.clientWidth)" not in template, \
         "仍以容器（含内边距）宽度计算，存在残余缩放"
-    # 切到「数据」页签时（容器可见）必须重绘一次
+    # 切到「进度」页签时（容器可见）必须重绘一次
     animate_body = template.split("function animate(){", 1)[1].split("\n}", 1)[0]
     assert "renderTrend();" in animate_body, "animate() 未触发趋势图重绘"
 

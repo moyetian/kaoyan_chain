@@ -17,7 +17,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v3.1.2-blue?style=flat-square&logo=github&logoColor=white" alt="版本 v3.1.2" />
-  <img src="https://img.shields.io/badge/Tests-3891%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 3891 Passed" />
+  <img src="https://img.shields.io/badge/Tests-4267%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 4267 Passed" />
   <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-0f766e?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
   <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
   <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
@@ -417,7 +417,7 @@ ASCII 字母 18 / 空白 6 / 其余 95，单位 1/100 token，最大实测误差
 ```bash
 python tools/test_ky_suite.py        # 全链路回归套件（26 组 307 项断言）
 python tools/test_new_features.py    # 新功能专项套件（132 项断言）
-python -m pytest -q                  # 单元与进程层测试（3457 项）
+python -m pytest -q                  # 单元与进程层测试（3833 项）
 ```
 
 > ⚠️ `test_ky_suite.py` 会真实改写工作区用户数据：请在干净副本里跑，或设

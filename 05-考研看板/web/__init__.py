@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from .theme_vars import (
     build_theme_css,
-    theme_preset_gallery,
     theme_presets_json,
     theme_rhythm_json,
 )
@@ -44,6 +43,5 @@ __all__ = [
     "strip_non_woff2_font_sources",
     "theme_presets_json",
     "theme_rhythm_json",
-    "theme_preset_gallery",
     "vendor_mode",
 ]

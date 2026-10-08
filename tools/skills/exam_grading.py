@@ -335,6 +335,11 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
 
     updated_records = []
     need_review_titles = []
+    # [三审修复·2026-10-08 文案如实] 收集「未通过但未能回写复测状态」的真实原因，
+    # 供汇总行分类归因。此前一律说「写入被拒绝或记录缺失，请检查权限」——而最常见的
+    # 真实原因是题干缺失（卷面无题干文本 / 题卡无 question 字段），与权限无关、重试无用。
+    unarchived_no_question = []   # 缺题干：["第 X 题 标题", ...]
+    unarchived_errors = []        # 回写异常：["第 X 题（异常类型: 消息）", ...]
     total_score = 0.0
     # [K1 修复·判卷口径一致性] 逐题得分留痕，供返回前做「sum(单题得分)==总分」校验
     item_scores = []
@@ -510,34 +515,43 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
                 # 重跑）时，旧实现**无条件再新建一条**，重复刷屏且污染 FSRS 队列与
                 # 错因统计。现新建前先做三级判重：① 精确标题；② 标题+题干锚定；
                 # ③「题干指纹」正文匹配。任一命中即视为已归档，跳过新建。
-                if not _archived and not is_passed and str(k.get("question") or "").strip():
-                    _already = _find_existing_mistake_record(
-                        subject=k.get("subject", subject),
-                        title=title,
-                        question=k["question"],
-                        error_logger=error_logger,
-                    )
-                    if _already:
-                        _archived = True
-                        _display_title = _already
-                        report_lines.append(
-                            f"  - 状态回写: 错题已在 FSRS 复测队列（{_already}），不重复归档")
-                    else:
-                        _display_title = _unique_mistake_title(title, k.get("question"))
-                        record_msg = error_logger.log_error_record(
+                if not _archived and not is_passed:
+                    if str(k.get("question") or "").strip():
+                        _already = _find_existing_mistake_record(
                             subject=k.get("subject", subject),
-                            title=_display_title,
-                            error_type=k.get("error_type", "概念漏洞"),
-                            detail=(judge_basis or "") + "\n（本题由自测卷链路自动归档，原卷题面见上方【题干设问】）",
-                            prescription="复测订正：先复现采分点步骤，再独立重做一遍。",
+                            title=title,
                             question=k["question"],
+                            error_logger=error_logger,
                         )
-                        _archived = True
-                        report_lines.append(f"  - 状态回写: 已新建错题记录并排入 FSRS 复测队列（{record_msg}）")
+                        if _already:
+                            _archived = True
+                            _display_title = _already
+                            report_lines.append(
+                                f"  - 状态回写: 错题已在 FSRS 复测队列（{_already}），不重复归档")
+                        else:
+                            _display_title = _unique_mistake_title(title, k.get("question"))
+                            record_msg = error_logger.log_error_record(
+                                subject=k.get("subject", subject),
+                                title=_display_title,
+                                error_type=k.get("error_type", "概念漏洞"),
+                                detail=(judge_basis or "") + "\n（本题由自测卷链路自动归档，原卷题面见上方【题干设问】）",
+                                prescription="复测订正：先复现采分点步骤，再独立重做一遍。",
+                                question=k["question"],
+                            )
+                            _archived = True
+                            report_lines.append(f"  - 状态回写: 已新建错题记录并排入 FSRS 复测队列（{record_msg}）")
+                    else:
+                        # [三审修复·2026-10-08 文案如实] 题干缺失 → 新建归档没有题干
+                        # 锚点（判重与展示都依赖它），只能跳过；如实收集原因供汇总行归因。
+                        unarchived_no_question.append(f"第 {q_id} 题 {title}")
                 if _archived:
                     updated_records.append(_display_title)
             except Exception as e:
                 report_lines.append(f"  - 状态回写提示: {e}")
+                if not is_passed:
+                    # [三审修复·2026-10-08 文案如实] 未通过题的写入异常如实收集，
+                    # 供汇总行区分「写入异常」与「缺题干」两类真实原因。
+                    unarchived_errors.append(f"第 {q_id} 题（{type(e).__name__}: {e}）")
 
         report_lines.append("")
 
@@ -571,8 +585,27 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
         # [缺陷修复·禁止假陈述] 只有真的把题目写进复测队列，才谈得上"已重置复测周期"
         report_lines.append(f"⚠️ 评价: 仍有薄弱盲区未突破，未通过题目已重置回第一复测周期。")
     else:
+        # [三审修复·2026-10-08 文案如实] 此前一律说「写入被拒绝或记录缺失，请检查权限
+        # 后重试」——但「缺题干」与「自动回写未启用」两类原因与权限无关、重试无用。
+        # 现按循环中实际收集到的原因分类如实输出，并给对应的可操作指引。
+        _reasons = []
+        if unarchived_no_question:
+            _shown = "；".join(unarchived_no_question[:3])
+            _more = f" 等 {len(unarchived_no_question)} 题" if len(unarchived_no_question) > 3 else ""
+            _reasons.append(f"{len(unarchived_no_question)} 题因**缺少题干**无法自动归档"
+                            f"（{_shown}{_more}），请补充题干后重新判卷")
+        if unarchived_errors:
+            _shown = "；".join(unarchived_errors[:2])
+            _reasons.append(f"错题本写入异常（{_shown}），请检查权限后重试")
+        if not _reasons:
+            if not auto_advance:
+                _reasons.append("自动复测回写已关闭（auto_advance=False），复测队列未变更")
+            elif not error_logger:
+                _reasons.append("错题本组件不可用，复测队列未变更")
+            else:
+                _reasons.append("未通过题目均未命中可回写记录，复测队列未变更")
         report_lines.append(f"⚠️ 评价: 仍有薄弱盲区未突破；但本轮**未能回写复测状态**"
-                            f"（错题本写入被拒绝或记录缺失），复测队列未变更，请检查权限后重试。")
+                            f"（{'；'.join(_reasons)}）。")
     if need_review_titles:
         report_lines.append(
             f"🔍 【待人工复核 {len(need_review_titles)} 题】: {'；'.join(need_review_titles)}")

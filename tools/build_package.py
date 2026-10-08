@@ -607,6 +607,13 @@ def deploy_workspace_skeleton(target_dir: Path, keep_identity: bool = False):
                     continue
                 if _pp.is_local_artifact((rel_dir / name).as_posix()):
                     ignored.add(name)
+                    continue
+                # [2026-10-08 审查修复·P0-3] 与 should_publish 口径对齐：内部文档
+                # （修复记录 / 审查报告 / 路线图等，任何位置不发布）此前只被
+                # staging（collect_data_specs 走 should_publish）挡住，骨架部署
+                # 这一步漏掉 —— 实测 docs/深度修复记录_*.md 被复制进发布包。
+                if _pp.is_internal_doc(name):
+                    ignored.add(name)
         # [P1 修复] 位于用户私有目录内时，仅放行骨架白名单，其余一律剔除
         owner = _private_owner(src)
         if owner is not None:

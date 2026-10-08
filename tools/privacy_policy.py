@@ -241,6 +241,15 @@ NON_PUBLISH_PATH_PREFIXES: Tuple[Tuple[str, ...], ...] = (
     ("05-考研看板", "docs"),
     ("scripts", "gui_shots"),
     ("04-专业课", "演示样例"),
+    # [2026-10-08 六领域审查修复·P0-2] docs/.local/（.gitignore:223 已忽略）：
+    # 看板「完整模式」构建产物（05-考研看板/build.py 的本地输出目录），
+    # index.html + state_snapshot.json 含**真实身份的完整学情**。发布版是
+    # 根 docs/（脱敏产物）；.local/ 此前只在 .gitignore 声明，导出层
+    # （should_publish / sync_publish 双闸门）与打包骨架部署均未对齐 ——
+    # 实测 should_publish('docs/.local/index.html') 返回 True、
+    # deploy_workspace_skeleton 把它复制进发布包（对照：05-考研看板/docs/
+    # 同族产物已被上一条正确排除）。加此一条三出口同源生效。
+    ("docs", ".local"),
     # [2026-09-25 导出缺陷修复] rust_ext 的 Cargo 构建产物目录（.gitignore:168
     # 已忽略，含数百 MB 二进制/PDB）。与「rust_ext 移出 BUILD_ARTIFACT_DIRS」
     # 配套：源码（src/*.rs、Cargo.toml、Cargo.lock）要发布，target/ 不发布。
@@ -311,6 +320,10 @@ PRIVATE_WORKSPACE_ONLY_PATHS: Tuple[Tuple[str, ...], ...] = (
     # import sync_publish / build_package，且目标模块在副本里被 neutralize，
     # 必须同批进本清单。
     ("tests", "test_fix_20261007_publish_exclusions.py"),
+    # [2026-10-08 六领域审查修复] 同族第五个：本文件测「隐私两雷」（docs/.local
+    # 排除 + 内部文档骨架部署对齐），import sync_publish（副本占位）与
+    # build_package（副本完整，不构成风险但同批登记保持一致）。
+    ("tests", "test_fix_20261008_privacy_two_risks.py"),
 )
 
 #: 备份文件标记：任何带此标记的文件都是历史快照，绝不发布（含私有目录白名单内）。

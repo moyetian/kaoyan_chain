@@ -15,6 +15,26 @@ from pathlib import Path
 
 from .config import INDEX_HEADERS, SUBJECTS
 
+def resolve_source_path(p, allow_fallback: bool = True):
+    """解析 Markdown 源文件的**实际读取路径**（含模板回落判定）。
+
+    [P1 修复·2026-10-08 W3] 回落判定从 read() 抽出、由 build.py 与 read()
+    共用：build.py 需要知道「内容来自模板回落」以便在 sections_status /
+    解析告警里如实标注 template_fallback，而 read() 的返回值（str/None）
+    无法携带该信息；抽出后两处共用同一判定，避免各写一套再次漂移。
+
+    返回 ``(path, fell_back)``；``fell_back=True`` 表示原文件不存在、
+    已回落到同目录的 ``*.template.md`` / ``*.example.md``。
+    """
+    path_obj = pathlib.Path(p)
+    if allow_fallback and not path_obj.exists() and path_obj.suffix == ".md":
+        for ext in (".template.md", ".example.md"):
+            cand = path_obj.with_name(path_obj.stem + ext)
+            if cand.exists():
+                return cand, True
+    return path_obj, False
+
+
 def read(p, allow_fallback: bool = True):
     """读取 Markdown 源文件；文件不存在时可按需回落到同目录骨架模板。
 
@@ -25,14 +45,11 @@ def read(p, allow_fallback: bool = True):
     缺失 → 看板显示模板里的假章节雷达）。故调用方（build.py）按构建模式显式
     传 ``allow_fallback``：本地完整模式 False（缺文件走空态 + 解析告警），
     脱敏发布模式 True（保留公开演示内容）。
+
+    回落路径判定与 :func:`resolve_source_path` 共用，保证「读到什么」与
+    「是否回落」两个结论永远一致（W3：回落须可诊断，不再静默）。
     """
-    path_obj = pathlib.Path(p)
-    if allow_fallback and not path_obj.exists() and path_obj.suffix == ".md":
-        for ext in (".template.md", ".example.md"):
-            cand = path_obj.with_name(path_obj.stem + ext)
-            if cand.exists():
-                path_obj = cand
-                break
+    path_obj, _fell_back = resolve_source_path(p, allow_fallback=allow_fallback)
     for enc in ("utf-8", "utf-8-sig", "gbk"):
         try:
             return path_obj.read_text(encoding=enc)
@@ -179,11 +196,16 @@ def md2html(md):
     while i < n:
         ln = lines[i]
         if ln.strip().startswith("|") and i + 1 < n and re.match(r"^\s*\|[\s:|-]+\|\s*$", lines[i + 1]):
-            head = [c.strip() for c in ln.strip().strip("|").split("|")]
+            # [P1 修复·2026-10-08 W1] 此前正文渲染用裸 split("|") 切列：$|A|$
+            # 这类线代公式的竖线被当成列分隔符，2 列表格渲染成 4 列、行列错位
+            # （实测；抽卡链 parse_tables 因用 split_row 而无此问题，两条渲染链
+            # 行为不一致）。改用与抽卡链同一份 split_row（切分前先把 $...$ 段
+            # 换成占位符保护），正文与抽卡从此同源同行为。
+            head = split_row(ln)
             i += 2
             rows = []
             while i < n and lines[i].strip().startswith("|"):
-                rows.append([c.strip() for c in lines[i].strip().strip("|").split("|")])
+                rows.append(split_row(lines[i]))
                 i += 1
             t = ["<div class='tw'><table><thead><tr>"]
             t += [f"<th>{inline(h)}</th>" for h in head]

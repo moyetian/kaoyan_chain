@@ -26,6 +26,9 @@ except ImportError:
 
 ROOT = resolve_workspace_root(__file__)
 CONFIG_FILE = ROOT / "ky_config.json"
+# [P1 修复·2026-10-08] REPL readline 命令历史文件（此前定义后零读写）。
+# 读写逻辑在 tools/cli/repl/loop.py 的 _init_repl_readline / _persist_repl_history：
+# 仅交互终端（TTY）下读写成对，readline 缺失（Windows 默认）时静默跳过。
 HISTORY_FILE = ROOT / "ky_history.json"
 
 DEFAULT_CONFIG: Dict[str, Any] = {

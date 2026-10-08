@@ -133,8 +133,14 @@ BROWSER_HEADERS: Dict[str, str] = {
 }
 
 #: 反爬/验证页特征（命中即说明「不是没结果，是被挡了」）
+#: [P2 修复·2026-10-08] 原第三项是裸 ``"verify"`` —— 子串匹配会命中任何含该词的
+#: 正常页面（英文引导语「please verify your status」、JS 标识符 ``verifyForm``），
+#: 把正常结果页误判成反爬页 → 源被错误记为失败。收紧为「人机验证」专属句式
+#: （Cloudflare/Google 拦截页的 "Verify you are human" 类文案）；中文验证页与
+#: ``SourceVerifyCode``/``unusual traffic`` 等特征不受影响。
 ANTI_BOT_MARKERS = (
-    "anomaly", "captcha", "verify", "请协助验证", "请输入验证码",
+    "anomaly", "captcha", "verify you are", "verify that you",
+    "请协助验证", "请输入验证码",
     "SourceVerifyCode", "访问过于频繁", "unusual traffic", "antispider",
 )
 
@@ -596,7 +602,99 @@ def absolute(url: str, base: str) -> str:
     return urllib.parse.urljoin(base, url)
 
 
+# ── 搜狗微信结果解析共享件 ─────────────────────────────────────────────
+# [P0-7 修复·2026-10-08] 为什么放在 search 层：providers 层不得反向 import skills
+# 层（会引入循环与双导入实例分裂风险），而 skills→search 是既有依赖方向
+# （wechat_searcher 早已从本模块取 clean_bing_url）。搜狗结果页的 URL 补编码与
+# 账号三级回退此前只在 skills 层内联实现、provider 层另有一份残缺实现
+# （只认 class="account"），两处对同一页面的解析能力不一致——现单源化到本模块，
+# provider 与 skills 两端共用同一实现。
+
+
+#: 公众号名占位词/噪声词黑名单（命中即视为未识别，避免把「公众号」「获取更多」当成账号名）
+ACCOUNT_PLACEHOLDERS: Tuple[str, ...] = (
+    "未知", "微信公众号", "公众号", "微信", "蓝字", "上方蓝字",
+    "关注", "获取更多", "更多", "阅读全文", "原文", "文章", "点击上方",
+    "投稿", "转载", "编辑", "责任编辑",
+)
+
+#: 搜狗微信结果块账号名三级选择器：L1 老版 class="account" 锚链（宽容包含匹配，
+#: 与 skills 层历史实现同口径）→ L2 现版 <span class="all-time-y2"> →
+#: L3 s-p 容器内首个 <a>。实测（2026-10-08 真实结果页）L1 已 0 命中，
+#: 账号实际在 L2 节点上，缺 L2/L3 回退时账号字段恒为空。
+_SOGOU_ACCOUNT_PATTERNS = (
+    re.compile(r'<a[^>]*class="[^"]*account[^"]*"[^>]*>(.*?)</a>',
+               re.DOTALL | re.IGNORECASE),
+    re.compile(r'<span[^>]*class="[^"]*all-time-y2[^"]*"[^>]*>(.*?)</span>',
+               re.DOTALL | re.IGNORECASE),
+    re.compile(r'<div[^>]*class="s-p"[^>]*>.*?<a[^>]*>(.*?)</a>',
+               re.DOTALL | re.IGNORECASE),
+)
+
+
+def normalize_search_url(url: str) -> str:
+    """规范化检索结果链接：给空格等非法字符补百分号编码，不动 URL 结构字符。
+
+    [P0-7 修复·2026-10-08] 为什么必须做：搜狗微信结果页的 href 里 query 参数
+    会把搜索词中的空格原样保留（实测 10/10，形如
+    ``…&query=%E9%A9%AC%E5%85%8B%E6%80%9D %E8%80%83%E7%A0%94&token=…``：
+    中文已编码、词间是字面空格）。这样的 URL 进入 urllib 会抛
+    ``InvalidURL: URL can't contain control characters``，整条检索链必失败。
+    ``safe`` 保留 ``:/?&=%#-._~`` 等 URL 结构字符，且 ``%`` 在 safe 集合内使
+    quote 对已有 ``%XX`` 转义幂等（不会二次编码成 ``%25XX``）。
+    """
+    if not url:
+        return ""
+    return urllib.parse.quote(url, safe=":/?&=%#-._~")
+
+
+def guess_account_from_text(text: str) -> str:
+    """从搜索结果摘要/标题中兜底猜测公众号名（如「来源：XXX」「公众号：XXX」）。
+
+    [P0-7 修复·2026-10-08] 自 skills/wechat_searcher.py 的
+    ``_AccountNameResolver._guess_account_from_text`` 上移单源化，正则与占位词
+    过滤逻辑逐字保留（行为等价）；原方法改为薄委托。
+    """
+    if not text:
+        return ""
+    # [P3 修复·D8] 补充「点击上方蓝字关注 XXX」「由 XXX 发布」等列表页常见句式。
+    # 采用 finditer 逐个候选校验：左端噪声命中（如「蓝字关注」）不再直接短路返回，
+    # 且标记词后必须跟分隔符，避免把「关注」本身捕成账号名。
+    for pat in (r'(?:公众号|来源|出品|作者)[：:\s|]*([\u4e00-\u9fa5A-Za-z0-9_·\-]{2,24})',
+                r'(?:来自|由)[\s：:]*([\u4e00-\u9fa5A-Za-z0-9_·\-]{2,24})',
+                r'(?:蓝字|关注)[\s：:]+([\u4e00-\u9fa5A-Za-z0-9_·\-]{2,24})'):
+        for m in re.finditer(pat, text):
+            cand = m.group(1).strip("，。,.|")
+            if cand and cand not in ACCOUNT_PLACEHOLDERS:
+                return cand[:40]
+    return ""
+
+
+def parse_sogou_account(block: str, *, guess_text: str = "") -> str:
+    """搜狗微信结果块的公众号名三级回退解析（L1→L2→L3→句式兜底→清洗）。
+
+    [P0-7 修复·2026-10-08] 为什么必须三级回退：实测（2026-10-08 真实结果页）
+    ``class="account"`` 已 0 命中——账号迁到 ``<span class="all-time-y2">``，
+    只认 L1 的旧实现使账号字段 10/10 为空。三级链与
+    ``skills/wechat_searcher.py`` 既有内联实现同源，两端不再各写一份。
+
+    :param block: 单条结果的 HTML 块（txt-box / li 均可）。
+    :param guess_text: 三级均未命中时的句式兜底文本（如「摘要 + 标题」）；
+        为空则不做兜底（provider 层保持只认结构化字段）。
+    """
+    for pattern in _SOGOU_ACCOUNT_PATTERNS:
+        m = pattern.search(block)
+        if m:
+            name = html.unescape(re.sub(r"<[^>]+>", "", m.group(1))).strip()
+            if name:
+                return name
+    if guess_text:
+        return guess_account_from_text(guess_text)
+    return ""
+
+
 __all__ = [
+    "ACCOUNT_PLACEHOLDERS",
     "ANTI_BOT_MARKERS",
     "BROWSER_HEADERS",
     "RETRYABLE_STATUS_CODES",
@@ -614,7 +712,10 @@ __all__ = [
     "get_browser_headers",
     "get_random_user_agent",
     "get_text",
+    "guess_account_from_text",
     "looks_like_anti_bot",
+    "normalize_search_url",
+    "parse_sogou_account",
     "reset_rate_limit",
     "respect_rate_limit",
 ]

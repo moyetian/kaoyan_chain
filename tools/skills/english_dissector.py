@@ -56,3 +56,35 @@ def health_check() -> dict:
     if not prompt or not str(prompt).strip():
         return {"status": "UNAVAILABLE", "reason": "长难句切分指令产出为空，/dissect 将不可用"}
     return {"status": "READY", "reason": "五步搭积木切分模板可用（纯本地逻辑，无外部依赖）"}
+
+
+#: [B3 自描述契约] 桥接为 Agent 工具（skill_bridge.build_self_described_specs 消费）
+TOOL_SPEC = {
+    "name": "dissect_english_sentence",
+    "description": (
+        "生成考研英语长难句「五步搭积木」拆解模板：主干骨架抽取 → 从句与修饰成分"
+        "解构 → 核心考研词汇与同义替换 → 两步翻译法（直译+润色意译）。传入待拆解"
+        "句子后，请按模板的五个模块结构输出拆解结果。"),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "sentence": {"type": "string",
+                         "description": "待拆解的英语长难句（考研真题原句）"},
+        },
+        "required": ["sentence"],
+    },
+    "level": "read_only",
+}
+
+
+def execute(args, ctx=None):
+    """[B3] 桥接入口：返回长难句拆解模板（纯本地，忽略工作区上下文）。"""
+    sentence = str((args or {}).get("sentence") or "").strip()
+    if not sentence:
+        return "Error: 缺少待拆解句子（sentence）"
+    prompt = build_dissection_prompt(sentence)
+    note = ""
+    if not is_english_sentence(sentence):
+        note = "\n（提示：检测到输入可能不是英语句子；如为误判请忽略本提示。）\n"
+    return (f"【长难句搭积木拆解模板 · 请按以下五个模块输出拆解结果】\n{note}\n"
+            f"{prompt}")

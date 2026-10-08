@@ -254,7 +254,10 @@ def test_cooldown_state_survives_process_restart(tmp_path):
     assert (tmp_path / "cooldown.json").exists(), "冷却状态应落盘"
 
     # 模拟新进程：模块级单例清空后按同样的路径恢复
-    saved = health.policy().snapshot()
+    # [P0-6 修复 2026-10-08] 快照结构已升级（snapshot 返回
+    # {"stored_at", "cooling"} 供按真实流逝折算）；本断言只需要平铺的
+    # {源: 剩余秒数}，改用诊断 API cooldown_state（契约不变）。
+    saved = health.cooldown_state()
     health._POLICY = None                     # 模拟进程重启
     assert health.policy().is_cooling("sogou-weixin"), (
         "重启后应记得仍在冷却（否则换个端点就再撞一次墙）")

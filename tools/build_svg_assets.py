@@ -103,9 +103,9 @@ SVG1 = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="1
       <rect x="12" y="12" width="68" height="20" rx="4" fill="#1e40af" />
       <text x="46" y="26" text-anchor="middle" fill="#60a5fa" class="badge">A 级官方</text>
       <text x="88" y="27" fill="#93c5fd" class="b-title">高校研究生院/招生网</text>
-      <text x="15" y="55" class="b-desc">• 探测 Robots.txt &amp; Sitemap.xml 简章链接</text>
+      <text x="15" y="55" class="b-desc">• 站内检索发现官方简章链接</text>
       <text x="15" y="75" class="b-desc">• 智能正则抽取拟招人数与自命题科目</text>
-      <text x="15" y="95" class="b-desc" fill="#38bdf8">• 📑 PDF 专业目录深度解析 (表格/代码)</text>
+      <text x="15" y="95" class="b-desc" fill="#38bdf8">• PDF 专业目录深度解析 (表格/代码)</text>
       <text x="15" y="115" class="b-desc" fill="#93c5fd">• 置信度: 90%~95% ｜ 官方一手事实</text>
     </g>
     <!-- C级 -->
@@ -343,7 +343,7 @@ SVG3 = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="1
 
   <!-- 标题 -->
   <g transform="translate(480, 42)" text-anchor="middle">
-    <text class="t-main3" y="0">考研全科自测看板 · 六大核心交互页签与考纲图谱架构</text>
+    <text class="t-main3" y="0">考研全科自测看板 · 五大核心交互页签与考纲图谱架构</text>
     <text class="t-sub3" y="24">单文件静态免部署 · 移动端 PWA 丝滑自测 · 7日完成率趋势 · 考纲全景图谱 · 👁️ 毛玻璃遮罩自测</text>
   </g>
 
@@ -383,7 +383,7 @@ SVG3 = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="1
     <g transform="translate(178, 0)">
       <rect width="168" height="310" rx="10" fill="url(#tabGrad1)" stroke="#10b981" stroke-width="1.2" filter="url(#shadow3)" />
       <rect x="12" y="12" width="144" height="28" rx="6" fill="#059669" />
-      <text x="84" y="31" text-anchor="middle" fill="#fff" class="tab-t">🧠 必背 (Cards)</text>
+      <text x="84" y="31" text-anchor="middle" fill="#fff" class="tab-t">🧠 必背 (Flashcards)</text>
 
       <g transform="translate(12, 52)">
         <rect width="144" height="42" rx="5" fill="#1e293b" />
@@ -409,11 +409,11 @@ SVG3 = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="1
       </g>
     </g>
 
-    <!-- 页签 3: 薄弱 (Radar) -->
+    <!-- 页签 3: 错题 (Weak) -->
     <g transform="translate(356, 0)">
       <rect width="168" height="310" rx="10" fill="url(#tabGrad1)" stroke="#f59e0b" stroke-width="1.2" filter="url(#shadow3)" />
       <rect x="12" y="12" width="144" height="28" rx="6" fill="#d97706" />
-      <text x="84" y="31" text-anchor="middle" fill="#fff" class="tab-t">🎯 薄弱 (Radar)</text>
+      <text x="84" y="31" text-anchor="middle" fill="#fff" class="tab-t">🎯 错题 (Weak)</text>
 
       <g transform="translate(12, 52)">
         <rect width="144" height="42" rx="5" fill="#1e293b" />
@@ -438,11 +438,11 @@ SVG3 = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="1
       </g>
     </g>
 
-    <!-- 页签 4: 数据 (Analytics) -->
+    <!-- 页签 4: 进度 (Stats) -->
     <g transform="translate(534, 0)">
       <rect width="168" height="310" rx="10" fill="url(#tabGrad1)" stroke="#ec4899" stroke-width="1.2" filter="url(#shadow3)" />
       <rect x="12" y="12" width="144" height="28" rx="6" fill="#db2777" />
-      <text x="84" y="31" text-anchor="middle" fill="#fff" class="tab-t">📊 数据 (Data)</text>
+      <text x="84" y="31" text-anchor="middle" fill="#fff" class="tab-t">📊 进度 (Stats)</text>
 
       <g transform="translate(12, 52)">
         <rect width="144" height="42" rx="5" fill="#1e293b" />
@@ -461,38 +461,43 @@ SVG3 = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="1
         <text x="8" y="32" class="tab-d">连续2天&lt;60%告警</text>
         <text x="8" y="44" class="tab-d">一键 ky relieve 减负</text>
       </g>
+      <!-- [P2 修复·2026-10-08 配图漂移] 知识图谱自 W13-6 起下沉为「进度」页内的二级入口，
+           不再占页签位；此处如实标注，避免读者按旧「六大页签」理解配图。 -->
+      <g transform="translate(12, 222)">
+        <text x="8" y="16" fill="#f472b6" class="feat-tag">🗺️ 知识图谱二级入口</text>
+      </g>
       <g transform="translate(12, 230)">
         <text x="72" y="32" text-anchor="middle" fill="#94a3b8" font-size="10.5">理性实证主义</text>
         <text x="72" y="50" text-anchor="middle" fill="#ec4899" font-size="11" font-weight="700">用数据击碎焦虑</text>
       </g>
     </g>
 
-    <!-- 页签 5: 图谱 (Map) -->
+    <!-- 页签 5: 考情 (Radar) -->
     <g transform="translate(712, 0)">
       <rect width="168" height="310" rx="10" fill="url(#tabGrad1)" stroke="#8b5cf6" stroke-width="1.2" filter="url(#shadow3)" />
       <rect x="12" y="12" width="144" height="28" rx="6" fill="#7c3aed" />
-      <text x="84" y="31" text-anchor="middle" fill="#fff" class="tab-t">🗺️ 图谱 (Map)</text>
+      <text x="84" y="31" text-anchor="middle" fill="#fff" class="tab-t">📡 考情 (Radar)</text>
 
       <g transform="translate(12, 52)">
         <rect width="144" height="42" rx="5" fill="#1e293b" />
-        <text x="8" y="16" fill="#c084fc" class="feat-tag">🌳 官方大纲知识树</text>
-        <text x="8" y="32" class="tab-d">全科章节知识全景分层</text>
+        <text x="8" y="16" fill="#c084fc" class="feat-tag">🔔 目标院校简章监控</text>
+        <text x="8" y="32" class="tab-d">官方指纹轮询与变动告警</text>
       </g>
       <g transform="translate(12, 102)">
         <rect width="144" height="56" rx="5" fill="#1f1538" stroke="#8b5cf6" stroke-width="0.8" />
-        <text x="8" y="16" fill="#c084fc" class="feat-tag">🏷️ A/B/C/D 四维分级</text>
-        <text x="8" y="32" class="tab-d">A熟练 ｜ B巩固</text>
-        <text x="8" y="46" class="tab-d">C生疏 ｜ D盲区死角</text>
+        <text x="8" y="16" fill="#c084fc" class="feat-tag">📄 考纲版本异动分析</text>
+        <text x="8" y="32" class="tab-d">逐级 AST 差异透视</text>
+        <text x="8" y="46" class="tab-d">增删考点与突破处方</text>
       </g>
       <g transform="translate(12, 166)">
         <rect width="144" height="48" rx="5" fill="#1e293b" />
-        <text x="8" y="16" fill="#c084fc" class="feat-tag">⚡ 一键变式联动</text>
-        <text x="8" y="32" class="tab-d">点击盲区考点</text>
-        <text x="8" y="44" class="tab-d">终端秒级唤醒变式演练</text>
+        <text x="8" y="16" fill="#c084fc" class="feat-tag">💡 社媒经验口碑档案</text>
+        <text x="8" y="32" class="tab-d">知乎/B站/小红书</text>
+        <text x="8" y="44" class="tab-d">实名去噪与避坑提示</text>
       </g>
       <g transform="translate(12, 230)">
-        <text x="72" y="32" text-anchor="middle" fill="#94a3b8" font-size="10.5">初试无死角保障</text>
-        <text x="72" y="50" text-anchor="middle" fill="#8b5cf6" font-size="11" font-weight="700">考点掌握率 100%</text>
+        <text x="72" y="32" text-anchor="middle" fill="#94a3b8" font-size="10.5">研招与考纲动态雷达</text>
+        <text x="72" y="50" text-anchor="middle" fill="#8b5cf6" font-size="11" font-weight="700">8~10 月追踪大纲变动</text>
       </g>
     </g>
   </g>

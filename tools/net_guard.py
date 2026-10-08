@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import http.client
 import ipaddress
-import os
 import socket
 import sys
 import urllib.error
@@ -52,18 +51,18 @@ class UnsafeURLError(ValueError):
 
 #: RFC 2544 基准测试网段（198.18.0.0/15，IANA 保留、公网不可路由）。
 #: 部分企业/沙箱网络的 DNS 会把**所有**公网域名重定向到该网段（本机实测：
-#: ``example.com -> 198.18.1.225``、``www.baidu.com -> 198.18.1.226``）。
-#: 若对「域名解析结果」也按私网拦截，等于把整个外网访问一刀切断。
-#: 因此：**域名**解析到该网段时放行；**IP 字面量**（``http://198.18.0.1/``）
-#: 仍照常拦截 —— 那正是本机网卡地址，属于必须挡住的 SSRF 目标。
+#: ``example.com -> 198.18.1.225``、``www.baidu.com -> 198.18.1.226``；
+#: Clash 类 fake-ip 代理环境同样如此）。若对「域名解析结果」也按私网拦截，
+#: 等于把整个外网访问一刀切断。
+#: [P0-8 修复·2026-10-08] **域名**解析到该网段时**无条件放行**（DNS 劫持 /
+#: 代理环境兼容）—— 该解析结果的连接目标就是 198.18.x.x 不可路由地址，
+#: 无 SSRF 价值；且 DNS 重绑定窗口已由 :class:`PinRegistry` 关闭。
+#: **IP 字面量**（``http://198.18.0.1/``）仍照常拦截 —— 那正是本机网卡地址，
+#: 属于必须挡住的 SSRF 目标。
+#: 旧的 ``KY_ALLOW_BENCHMARK_DNS`` 环境开关已**移除**：生产入口全仓零设置，
+#: 默认拦截导致日常检索全灭（本机实测 sogou 报「安全拦截」）；而该开关也
+#: 并未提供额外安全价值（见上），故回归注释本意、不再设门槛。
 _BENCHMARK_NETS = (ipaddress.ip_network("198.18.0.0/15"),)
-
-
-def _benchmark_dns_allowed() -> bool:
-    """企业 DNS 劫持兼容开关；默认关闭，避免 SSRF 绕过。"""
-    return os.environ.get("KY_ALLOW_BENCHMARK_DNS", "0").strip().lower() in {
-        "1", "true", "yes", "on"
-    }
 
 
 def _host_is_ip_literal(host: str) -> bool:
@@ -119,6 +118,10 @@ def assert_url_safe(url: str, pin: Optional["PinRegistry"] = None, *,
 
     不通过时抛 :class:`UnsafeURLError`；通过时返回原 URL。
 
+    [P0-8 修复·2026-10-08] ``198.18.0.0/15``（RFC 2544 基准网段）为例外：
+    **域名**解析到该网段时无条件放行（DNS 劫持 / 代理环境兼容），
+    **IP 字面量**仍拦截 —— 详见 :data:`_BENCHMARK_NETS`。
+
     传入 ``pin``（:class:`PinRegistry`）时，会把**本次校验实际解析到的 IP** 记进去，
     供真正建连的那一跳复用 —— 校验与连接共用同一份解析结果，DNS 重绑定窗口即被关闭。
     """
@@ -140,9 +143,11 @@ def assert_url_safe(url: str, pin: Optional["PinRegistry"] = None, *,
         # 仍然拒绝，避免把例外扩大成任意内网访问。
         if allow_loopback and ip_obj.is_loopback:
             continue
-        if (not literal and _benchmark_dns_allowed()
-                and any(ip_obj in net for net in _BENCHMARK_NETS)):
-            continue      # DNS 重定向到基准网段：放行（见 _BENCHMARK_NETS 说明）
+        # [P0-8 修复·2026-10-08] 域名解析到基准网段：无条件放行（DNS 劫持 /
+        # 代理环境兼容）。IP 字面量仍拦 —— ``literal`` 判定见函数开头，
+        # 语义说明见 :data:`_BENCHMARK_NETS`。
+        if not literal and any(ip_obj in net for net in _BENCHMARK_NETS):
+            continue
         raise UnsafeURLError(f"安全拦截 - 禁止访问内网/回环/保留地址 [{host} -> {ip_obj}]")
     if pin is not None:
         # 全部 IP 都已通过判定，pin 第一个用于建连

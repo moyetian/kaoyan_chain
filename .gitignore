@@ -188,7 +188,6 @@ rust_ext/target/
 *评审*.md
 /state_snapshot.json
 !docs/state_snapshot.json
-!05-考研看板/docs/state_snapshot.json
 *.log
 /logs/
 logs/

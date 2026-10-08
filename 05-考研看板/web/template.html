@@ -90,6 +90,10 @@ var KY_MODE={};KY_PRESETS.forEach(function(p){KY_MODE[p.k]=p.m;});
 .sidebar{position:fixed;left:0;right:0;bottom:0;z-index:40}
 .brand{display:none}                /* 品牌区只在桌面侧栏出现（移动端底栏无空间） */
 .bar{display:flex;
+ /* [P2 修复·2026-10-08 纯色 fallback] 不支持 color-mix() 的旧浏览器会整条丢弃该声明，
+    底栏背景变透明、文字叠在页面内容上。同属性前置一条纯色声明兜底
+    （模式：fallback 在前、color-mix 在后，支持时后者覆盖）。下同 6 处。 */
+ background:var(--surf);
  background:color-mix(in srgb,var(--surf) 90%,transparent);
  backdrop-filter:saturate(180%) blur(24px);-webkit-backdrop-filter:saturate(180%) blur(24px);
  border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);
@@ -126,12 +130,12 @@ body{margin:0;background:var(--bg);color:var(--fg);
  border-radius:calc(var(--radius) * 1px);box-shadow:var(--elev-2);
  padding:var(--space-5) var(--space-4) var(--space-4)}
 .hero::after{content:"";position:absolute;right:-56px;bottom:-72px;width:200px;height:200px;
- border-radius:50%;background:color-mix(in srgb,var(--on-acc) 10%,transparent);pointer-events:none}
+ border-radius:50%;background:rgba(255,255,255,.1);background:color-mix(in srgb,var(--on-acc) 10%,transparent);pointer-events:none}
 .hero-in{position:relative;display:flex;align-items:center;gap:var(--space-4);flex-wrap:wrap}
 .hero-ring{position:relative;flex:0 0 auto;width:112px;height:112px}
 .hero-ring svg{display:block;width:100%;height:100%;transform:rotate(-90deg)}
 /* pathLength=100 把圆周长归一到 100，故 dasharray/dashoffset 可直接按百分比算 */
-.ring-track{fill:none;stroke:color-mix(in srgb,var(--on-acc) 22%,transparent);stroke-width:8}
+.ring-track{fill:none;stroke:rgba(255,255,255,.22);stroke:color-mix(in srgb,var(--on-acc) 22%,transparent);stroke-width:8}
 .ring-fill{fill:none;stroke:var(--on-acc);stroke-width:8;stroke-linecap:round;
  transition:stroke-dashoffset var(--dur-slow) var(--ease-std)}
 .hero-ring-c{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:2px}
@@ -147,7 +151,7 @@ body{margin:0;background:var(--bg);color:var(--fg);
 /* hero 内的进度条改走 on-acc：底色上的 .pfill 原本也是 acc-grad，会与卡底同色隐形 */
 .hero .plan{margin:var(--space-4) 0 0}
 .hero .pt{color:var(--on-acc);font-size:var(--fs-caption)}
-.hero .ptrack{background:color-mix(in srgb,var(--on-acc) 22%,transparent);border-color:transparent}
+.hero .ptrack{background:rgba(255,255,255,.22);background:color-mix(in srgb,var(--on-acc) 22%,transparent);border-color:transparent}
 .hero .pfill{background:var(--on-acc)}
 .hero-subs{position:relative;margin-top:var(--space-4)}
 
@@ -279,10 +283,10 @@ th,td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);pad
 th:last-child,td:last-child{border-right:0}
 tr:last-child td{border-bottom:0}
 th{background:var(--surf2);font-weight:700;color:var(--fg);white-space:nowrap}
-tr:nth-child(even) td{background:color-mix(in srgb,var(--surf2) 40%,transparent)}
+tr:nth-child(even) td{background:var(--surf2);background:color-mix(in srgb,var(--surf2) 40%,transparent)}
 
 /* ── 遮罩自测效果 ── */
-.mask-active td:nth-child(n+2):not(:last-child){filter:blur(6px);user-select:none;cursor:pointer;transition:filter var(--dur-base) var(--ease-std);background:color-mix(in srgb,var(--acc-sub) 30%,transparent)}
+.mask-active td:nth-child(n+2):not(:last-child){filter:blur(6px);user-select:none;cursor:pointer;transition:filter var(--dur-base) var(--ease-std);background:var(--acc-sub);background:color-mix(in srgb,var(--acc-sub) 30%,transparent)}
 .mask-active td:nth-child(n+2):not(:last-child).revealed{filter:none;background:transparent}
 
 /* ══ 空状态三件套（DESIGN.md §6.4：图标 + 说明 + CTA，禁止裸奔） ═══ */
@@ -1009,7 +1013,14 @@ function renderTrend(){
 /* 首次调用：此时 #p-stat 多为隐藏（clientWidth=0）→ 回落 480 保证有图；
    切到「进度」页签时 animate() 会再调用一次，按真实宽度重绘。 */
 renderTrend();
-window.addEventListener('resize', renderTrend);
+/* [P2 修复·2026-10-08 resize 防抖] 原实现把 renderTrend 直接挂到 resize 监听：
+   拖动窗口 / 手机地址栏收缩会连续触发 resize，每次都全量重建 SVG innerHTML，
+   重排与重绘叠加造成明显抖动。150ms 静默窗口内只重绘一次（尾触发）。 */
+var _trendRzTimer = 0;
+window.addEventListener('resize', function(){
+  clearTimeout(_trendRzTimer);
+  _trendRzTimer = setTimeout(renderTrend, 150);
+});
 
 /* ── 近 7 日 KPI 卡（含 7 日 sparkline） ───────────────────────────
    [P1 首屏] 四张卡：完成率 / 完成任务 / 计划任务 / 待办积压。

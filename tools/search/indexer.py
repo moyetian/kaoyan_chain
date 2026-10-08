@@ -40,12 +40,17 @@ try:  # 双导入路径兼容（源码脚本式 / tools 包式）
     from workspace import resolve_workspace_root
 except ImportError:  # pragma: no cover
     from tools.workspace import resolve_workspace_root
-from typing import List, Generator
+from typing import List, Generator, Tuple
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
 ROOT = resolve_workspace_root(__file__)
+
+#: [P2 修复·2026-10-08] 本索引器**管理**的来源前缀（单一真源）。
+#: ``prune_chunks`` 只清理这些前缀下的失效片段，不碰其它写入方的数据；
+#: 与 :func:`load_universities` / :func:`load_materials` 的 source 取值一一对应。
+MANAGED_SOURCE_PREFIXES: Tuple[str, ...] = ("universities/", "04-专业课/参考资料")
 
 
 @dataclass
@@ -245,6 +250,21 @@ def load_materials() -> Generator[Document, None, None]:
             logger.error(f"加载资料失败 {file_path}: {e}")
 
 
+def _present_managed_prefixes() -> List[str]:
+    """当前工作区里**确实存在**的受管来源前缀。
+
+    [P2 修复·2026-10-08] 清理失效片段必须带存在性护栏：只有来源文件/目录仍在
+    时才做清理 —— 否则在「被剥离的工作区」里跑一次建索引，会把上一个工作区
+    留下的全部院校/资料片段误删（来源缺失 ≠ 来源被删空）。
+    """
+    out: List[str] = []
+    if (ROOT / "data" / "universities" / "registry.json").exists():
+        out.append("universities/")
+    if (ROOT / "04-专业课" / "参考资料").is_dir():
+        out.append("04-专业课/参考资料")
+    return out
+
+
 def build_index(enable_vector: bool = True, show_progress: bool = True):
     """构建知识库索引
 
@@ -286,6 +306,10 @@ def build_index(enable_vector: bool = True, show_progress: bool = True):
     print(f"总计: {total} 个文档片段")
 
     if total == 0:
+        # [P2 说明·2026-10-08] 此分支**不**做失效清理：total=0 既可能是「资料
+        # 被删光」，也可能是「registry.json 存在但损坏/为空」（loader 内部吞异常
+        # 只记日志）。后者做清理会把仅存数据误删 —— 宁可残留旧片段（用户重跑
+        # 一次建索引且来源恢复后即被清理），不冒误删风险。
         print("⚠️ 没有找到可索引的文档")
         return
 
@@ -303,27 +327,34 @@ def build_index(enable_vector: bool = True, show_progress: bool = True):
 
     # 插入知识库
     print("4. 插入知识库...")
-    success_count = 0
 
+    # [P2 修复·2026-10-08] 逐条 add_chunk 是 N 次 INSERT + N 次 commit（写入放大）；
+    # 改为单事务批量写入（知识库侧 add_chunks 整批成功才 commit、失败整批回滚）。
+    chunks: List[Chunk] = []
     for i, doc in enumerate(documents):
-        embedding = embeddings[i] if i < len(embeddings) else None
-
-        chunk = Chunk(
+        chunks.append(Chunk(
             id=doc.id,
             text=doc.text,
             source=doc.source,
             metadata=doc.metadata,
-            embedding=embedding
-        )
-
-        if store.add_chunk(chunk):
-            success_count += 1
-
+            embedding=embeddings[i] if i < len(embeddings) else None,
+        ))
         # 进度提示
         if show_progress and (i + 1) % 50 == 0:
             print(f"   进度: {i + 1}/{total}")
+    success_count = store.add_chunks(chunks)
 
     print(f"   ✅ 成功插入 {success_count}/{total} 个片段\n")
+
+    # [P2 修复·2026-10-08] 收尾清理：增量重建后，已删源 / 变短源留下的旧片段
+    # 会继续被 ky rag 检索到（旧实现只 INSERT OR REPLACE，从不清理）。
+    # 仅在整批写入成功时清理（写入失败时清理 = 删掉旧版仅存的数据）；
+    # 只清理工作区里确实存在的受管来源（见 _present_managed_prefixes）。
+    if success_count == total:
+        removed = store.prune_chunks({doc.id for doc in documents},
+                                     _present_managed_prefixes())
+        if removed:
+            print(f"   🧹 清理失效片段 {removed} 个（来源已删除或内容变短）\n")
 
     # 统计
     print("=== 索引构建完成 ===")

@@ -105,10 +105,18 @@ def _cmd_exam(args: List[str]) -> int:
     return 0
 
 
-def _cmd_exam_submit(args: List[str]) -> None:
+def _cmd_exam_submit(args: List[str]) -> int:
+    """``ky exam-submit`` 命令处理器。
+
+    [P2 修复·2026-10-08 退出码对齐] 与 ``ky exam`` 同口径（0=成功 / 1=环境或用法错误 /
+    2=业务上无法完成）：此前「模块未载入」与「批改失败」都静默 exit 0，
+    脚本无法判定判分是否真正发生；且用法错误用 ``sys.exit`` 而非返回值，
+    与 ``_cmd_exam`` 的 int 返回不一致。现统一由返回值承载退出码
+    （dispatch 会把 int 返回值作为进程退出码）。
+    """
     if len(args) < 3:
         print(colorize("用法: ky exam-submit <试卷文件路径> <作答文本或答案文件>\n示例: ky exam-submit paper_123.json '1. A 2. C 3. B'", C.YELLOW))
-        sys.exit(1)
+        return 1
     paper_p = args[1]
     # [缺陷修复·误报「密钥不可读」] 第一个参数呈路径形态却不存在时，此前被当成
     # 「试卷内联文本」继续判分：文本里没有 EXAM_PAPER_ID → 三条密钥通道全部落空 →
@@ -119,7 +127,7 @@ def _cmd_exam_submit(args: List[str]) -> None:
         print(colorize(
             "    提示：ky exam 默认只打印不落盘，请先运行 `ky exam <科目> --count=N --save` 生成试卷文件，\n"
             "    试卷会保存到对应科目的「错题本/」目录（文件名形如 自测卷_<日期>_EXAM-...md）。", C.YELLOW))
-        sys.exit(1)
+        return 1
     answers = " ".join(args[2:])
     try:
         is_file = len(answers) < 255 and "\n" not in answers and Path(answers).exists()
@@ -137,18 +145,20 @@ def _cmd_exam_submit(args: List[str]) -> None:
         except ImportError:
             exam_composer = None
 
-    if exam_composer:
-        res = exam_composer.grade_exam_paper(paper_p, answers)
-        if res.get("report"):
-            print(res["report"])
-        elif res.get("success"):
-            print(colorize(f"\n=== 🎯 自测整卷批改得分: {res.get('score')} / {res.get('total_score')} (正答率 {res.get('accuracy')}%) ===\n", C.BOLD))
-        else:
-            # [K1 修复·失败原因被吞] 失败路径写的是 "msg" 键，此前只读 "message"
-            # → 永远显示兜底文案、真实原因丢失。两键兼容读取。
-            print(colorize(f"[!] 批改失败: {res.get('msg') or res.get('message') or '未识别到有效作答'}", C.RED))
-    else:
+    if not exam_composer:
         print("exam_composer 技能模块未载入")
+        return 1
+    res = exam_composer.grade_exam_paper(paper_p, answers)
+    if res.get("report"):
+        print(res["report"])
+        return 0
+    if res.get("success"):
+        print(colorize(f"\n=== 🎯 自测整卷批改得分: {res.get('score')} / {res.get('total_score')} (正答率 {res.get('accuracy')}%) ===\n", C.BOLD))
+        return 0
+    # [K1 修复·失败原因被吞] 失败路径写的是 "msg" 键，此前只读 "message"
+    # → 永远显示兜底文案、真实原因丢失。两键兼容读取。
+    print(colorize(f"[!] 批改失败: {res.get('msg') or res.get('message') or '未识别到有效作答'}", C.RED))
+    return 2
 
 
 def _cmd_review(args: List[str]) -> None:
@@ -165,7 +175,17 @@ def _cmd_review(args: List[str]) -> None:
         except ImportError:
             error_logger = None
 
-    due_items = error_logger.get_due_reviews(target_subj, max_count=5) if error_logger else []
+    # [P2 修复·2026-10-08 误报] 此前 error_logger 缺失时 due_items 恒为空，落进「没有到期错题」
+    # 的恭喜分支 —— 把「模块失败」误报成「无到期」。现先区分两条路径：
+    # 模块未载入/查询异常 → 显式报错；仅查询成功且为空才是真「无到期」。
+    if error_logger is None:
+        print(colorize("[!] error_logger 技能模块未载入，无法查询 FSRS 待复测错题", C.RED))
+        return
+    try:
+        due_items = error_logger.get_due_reviews(target_subj, max_count=5)
+    except Exception as exc:
+        print(colorize(f"[!] 查询 FSRS 待复测错题失败: {exc}", C.RED))
+        return
     if not due_items:
         print(colorize(f"\n[🎉 恭喜] {SUBJECT_DIRS.get(target_subj, ('', target_subj))[1]} 当前没有到期需要 FSRS 复测的错题！\n", C.GREEN))
     else:

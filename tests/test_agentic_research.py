@@ -347,7 +347,11 @@ class TestMockLLMFunctionCallingLoop:
         assert res_profile.get("code") == "10001"
         assert "北京" in res_profile.get("region")
         assert any("自命题" in m for m in res_profile.get("majors", []))
-        assert res_profile.get("catalog_source") == "[RESEARCH_VERIFIED 深度研招检索]"
+        # [P0-5 修复·2026-10-08] 信任标签改由证据闸门判定：本用例 mock 只调用了
+        # yanzhao_lookup（本地库、无 URL，不在联网检索白名单），且 LLM 输出无
+        # sources 引文 → 必须如实降级为 UNVERIFIED（旧断言 ==
+        # "[RESEARCH_VERIFIED 深度研招检索]" 固化的是「无条件授予」缺陷形态）。
+        assert res_profile.get("catalog_source") == "[UNVERIFIED 在线生成·未溯源]"
 
 
 class TestMissingAPIKeyGracefulDegradation:
@@ -943,7 +947,10 @@ class TestRecursionGuardV3:
         class _Resp:
             headers = {"Content-Encoding": ""}
 
-            def read(self):
+            # [P1 适配·2026-10-08] execute_loop 出站改走 llm_client.request_chat 后，
+            # 读取契约是 resp.read(n)（带上限的整体读取，见 _read_buffered）——
+            # 原无参签名在该路径下 TypeError。鸭子类型补齐尺寸参数即可。
+            def read(self, *a):
                 return json.dumps(resp).encode("utf-8")
 
             def __enter__(self):

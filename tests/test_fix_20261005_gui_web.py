@@ -221,9 +221,9 @@ def test_main_window_holds_and_passes_process_session_set(qt_app, tmp_path, monk
     win = _make_main_window(qt_app, monkeypatch, tmp_path)
     try:
         assert isinstance(win._session_allowed_tools, set)
-        win.input_box.setText("第一条")
+        win.input_box.setPlainText("第一条")
         win._on_send_message()
-        win.input_box.setText("第二条")
+        win.input_box.setPlainText("第二条")
         win._on_send_message()
 
         assert len(created) == 2, f"应创建 2 个 worker，实际 {len(created)}"
@@ -357,6 +357,9 @@ def test_stop_button_exists_and_restores_sendable_state(qt_app, tmp_path, monkey
         assert win.stop_btn.text() == "停止"
 
         win.agent_worker = _SpyAgentWorker({}, "x")
+        # [P2 修复·2026-10-08 适配] 停止按钮现仅在生成期间可点（状态联动）；
+        # 真实流程由 _on_send_message 置位，此处直接构造「流式中途」运行态。
+        win._set_agent_ui_running(True)
         win.stop_btn.click()
         fake = win.agent_worker  # click 后已被置 None，取引用经闭包
         assert created[-1].cancelled, "点击停止未调用 worker.cancel()"
@@ -365,7 +368,7 @@ def test_stop_button_exists_and_restores_sendable_state(qt_app, tmp_path, monkey
 
         # 停止后再次发送：不得再被「私教仍在思考中」拦住
         monkeypatch.setattr(aw_mod, "AgentWorker", _SpyAgentWorker)
-        win.input_box.setText("停止后的新问题")
+        win.input_box.setPlainText("停止后的新问题")
         win._on_send_message()
         assert len(created) == 2, "停止后无法发送新消息"
     finally:

@@ -39,6 +39,7 @@ import shutil
 import socketserver
 import subprocess
 import sys
+import tempfile
 import threading
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -119,7 +120,14 @@ def check_js_syntax(html: str, label: str) -> Tuple[bool, str]:
     blocks = extract_scripts(html)
     if not blocks:
         return False, "未找到任何 <script> 块"
-    tmp = ROOT / f".dashboard_check_{abs(hash(label)) % 100000}.js"
+    # [P2 修复·2026-10-08 临时文件出仓] 原实现把校验用临时 JS 写在**仓库根**
+    # （``.dashboard_check_<hash>.js``）：进程被强杀（超时/关控制台）时
+    # finally 不执行，仓库里会留下未跟踪临时文件。现落到系统临时目录
+    # （文件名仍带 label 便于排查），finally 清理不变。
+    safe = re.sub(r"[^0-9A-Za-z]+", "_", label).strip("_")[:24] or "probe"
+    fd, tmp_name = tempfile.mkstemp(prefix=f"ky_dashboard_check_{safe}_", suffix=".js")
+    os.close(fd)
+    tmp = Path(tmp_name)
     try:
         tmp.write_text("\n;\n".join(blocks), encoding="utf-8")
         proc = subprocess.run([node, "--check", str(tmp)],
@@ -232,14 +240,21 @@ async page => {
       current: entry ? entry.getAttribute('aria-current') : null,
     };
   });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.waitForTimeout(300);
-  const overflow = await page.evaluate(() => ({
-    vw: document.documentElement.clientWidth,
-    scrollW: document.documentElement.scrollWidth,
-  }));
-  await page.setViewportSize({ width: 1280, height: 900 });
-  return { errors: errors, rawSvg: rawSvg, icons: icons, overflow: overflow, theme: theme,
+  /* [P2 修复·2026-10-08 多宽度溢出] 原只测 390px 一档：360 窄屏与 768/1280 大屏的
+     横向溢出回归无人拦截。现逐档设视口（360/390/768/1280），每档取一次
+     scrollWidth 与 clientWidth；循环结束时停在 1280（桌面档）。 */
+  const overflows = [];
+  const vps = [{ w: 360, h: 800 }, { w: 390, h: 844 }, { w: 768, h: 1024 }, { w: 1280, h: 900 }];
+  for (let i = 0; i < vps.length; i++) {
+    await page.setViewportSize({ width: vps[i].w, height: vps[i].h });
+    await page.waitForTimeout(320);
+    const o = await page.evaluate(() => ({
+      vw: document.documentElement.clientWidth,
+      scrollW: document.documentElement.scrollWidth,
+    }));
+    overflows.push({ w: vps[i].w, vw: o.vw, scrollW: o.scrollW });
+  }
+  return { errors: errors, rawSvg: rawSvg, icons: icons, overflows: overflows, theme: theme,
            tabs: tabs, mapEntry: mapEntry, mapRestore: mapRestore };
 }
 """
@@ -353,9 +368,14 @@ def check_runtime(artifact: Path) -> Tuple[Optional[bool], str]:
         icons = result.get("icons") or {}
         if icons.get("total", 0) > 0 and icons.get("withSvg") != icons.get("total"):
             problems.append(f"图标容器未渲染成图形: {icons.get('withSvg')}/{icons.get('total')}")
-        ov = result.get("overflow") or {}
-        if ov and ov.get("scrollW", 0) > ov.get("vw", 0) + 1:
-            problems.append(f"390px 手机视口横向溢出: 内容宽 {ov.get('scrollW')} > 视口 {ov.get('vw')}")
+        # [P2 修复·2026-10-08 多宽度] 360/390/768/1280 四档逐档断言横向溢出。
+        ovs = result.get("overflows") or []
+        if len(ovs) != 4:
+            problems.append(f"多宽度溢出探针结果异常: {len(ovs)} 档（应为 4 档）")
+        for ov in ovs:
+            if ov.get("scrollW", 0) > ov.get("vw", 0) + 1:
+                problems.append(f"{ov.get('w')}px 视口横向溢出: "
+                                f"内容宽 {ov.get('scrollW')} > 视口 {ov.get('vw')}")
 
         th = result.get("theme") or {}
         order = th.get("order") or []
@@ -408,7 +428,7 @@ def check_runtime(artifact: Path) -> Tuple[Optional[bool], str]:
             return False, "；".join(problems)
         detail = (f"逐页签无报错（5 键逐键断言通过）；{icons.get('total', '?')} 个图标容器全部渲染成 SVG；"
                   f"图谱二级入口可达、kytab=map 刷新恢复正确；"
-                  f"390px 视口无横向溢出（内容宽 {ov.get('scrollW')}）；"
+                  f"360/390/768/1280px 视口均无横向溢出；"
                   f"主题按钮按 {len(order)} 套预设轮换正常（当前 {th.get('first')}）")
         return True, detail
     finally:

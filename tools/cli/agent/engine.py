@@ -56,6 +56,11 @@ try:
 except ImportError:
     from cli.repl.renderer import C, colorize
 
+try:  # [P2 修复·2026-10-08 spinner 清除宽度] 显示宽度取 TUI/看板同源实现（CJK 双宽感知）
+    from tools.tui.terminal import display_width as _display_width
+except ImportError:  # pragma: no cover
+    from tui.terminal import display_width as _display_width  # type: ignore
+
 try:
     from skills import error_logger, math_verifier
 except ImportError:
@@ -343,6 +348,13 @@ def _resolve_max_tokens(config: Optional[Dict[str, Any]]) -> int:
     return output_budget.max_tokens_for(config)
 
 
+#: [P2 修复·2026-10-08 spinner 清除宽度] 流式等待状态文案。含 20 个 CJK 字符（双宽），
+#: 连同前缀「两空格 + 1 帧 + 空格」整行实际 49 显示列；清除行按
+#: ``_display_width`` 计算，不再写死 48（曾致行尾残留 1 字符）。
+_SPINNER_LABEL = "[考研私教正在审阅题干关键采分点与推导步骤...]"
+_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+
 def stream_chat(messages: List[Dict[str, Any]], config: Dict[str, Any]) -> str:
     """向 OpenAI 兼容 API 发起流式请求并打字机式打印
 
@@ -363,15 +375,18 @@ def stream_chat(messages: List[Dict[str, Any]], config: Dict[str, Any]) -> str:
             sys.stdout.write(f"  {C.CYAN}* [考研私教正在审阅题干与思考推导步骤...]{C.RESET}\n")
             sys.stdout.flush()
             return
-        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        frames = _SPINNER_FRAMES
+        label = _SPINNER_LABEL
         idx = 0
         while not stop_spinner.is_set():
             frame = frames[idx % len(frames)]
-            sys.stdout.write(f"\r  {C.CYAN}{frame}{C.RESET} {C.DIM}[考研私教正在审阅题干关键采分点与推导步骤...]{C.RESET}")
+            sys.stdout.write(f"\r  {C.CYAN}{frame}{C.RESET} {C.DIM}{label}{C.RESET}")
             sys.stdout.flush()
             idx += 1
             time.sleep(0.08)
-        sys.stdout.write("\r" + " " * 48 + "\r")
+        # [P2 修复·2026-10-08 清除宽度写死] 此前写死 `" " * 48`，而该行实际 49 显示列
+        # （CJK 文案双宽）→ 每轮结束在行尾残留 1 个字符。按真实宽度清除。
+        sys.stdout.write("\r" + " " * _display_width(f"  {frames[0]} {label}") + "\r")
         sys.stdout.flush()
 
     req = ChatRequest(

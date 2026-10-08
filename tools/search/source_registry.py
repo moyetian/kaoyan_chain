@@ -36,6 +36,13 @@ DOMAIN_TABLE: Dict[str, Tuple[str, float]] = {
     "graduate.": ("graduate_school", 0.98),
     # 自媒体 / 社区 / 视频
     "mp.weixin.qq.com": ("wechat", 0.55),
+    # [P2 修复·2026-10-08] 搜狗微信结果链接是 ``/link?url=…`` 跳转地址：还原成
+    # mp.weixin.qq.com 原文需要搜索会话 cookie（见 providers/sogou.py 模块注释），
+    # provider 层不还原、只如实声明 source_type=wechat。未收录本 host 时
+    # classify() 只能给 DEFAULT 0.40（与「未知来源」同档）——声明是公众号文章、
+    # 权威分却按未知来源算，自相矛盾且排序吃亏。链接背后确为公众号文章，
+    # 权威度与 mp.weixin.qq.com 同档（0.55）。
+    "weixin.sogou.com": ("wechat", 0.55),
     "zhuanlan.zhihu.com": ("community", 0.40),
     "zhihu.com": ("community", 0.38),
     "xiaohongshu.com": ("community", 0.35),

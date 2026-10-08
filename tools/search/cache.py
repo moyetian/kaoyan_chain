@@ -130,6 +130,35 @@ def _mark_stale(result: SearchResult, age_seconds: int) -> SearchResult:
     )
 
 
+def _query_tokens(text: str) -> set:
+    """查询的有效词集合（与守门/重排同一分词与停用词口径）。
+
+    [P2 修复·2026-10-08] 用于 serve-stale 的「近义查询」判定。分词器不可用时
+    返回空集 → 判定恒不成立（宁可少兜底，不拿错数据顶包）。
+    """
+    try:
+        from .relevance import significant_tokens
+        return set(significant_tokens(text))
+    except Exception:                              # pragma: no cover - 极端降级
+        return set()
+
+
+def _tokens_compatible(ta: set, tb: set) -> bool:
+    """两个词集合是否「同一问题的不同说法」（供陈旧兜底放宽匹配）。
+
+    判定用词集合的重合度：至少共享 ``min(2, 较短侧词数)`` 个有效词，且重合
+    占较短侧的一半以上。实测多路规划的变体（原句 / 校名+专业 / 追加
+    「招生简章」「复试分数线」等后缀）都能通过；而「不同学校」或「不同专业」
+    的查询（只共享一个泛词）不会通过 —— 那正是不能拿旧数据顶包的情形。
+    任一侧为空（纯停用词/纯符号）→ 不判定，返回 False。
+    """
+    if not ta or not tb:
+        return False
+    shared = len(ta & tb)
+    shorter = min(len(ta), len(tb))
+    return shared >= min(2, shorter) and shared * 2 >= shorter
+
+
 class SearchCache:
     """检索结果缓存（内存 + 可选落盘）。"""
 
@@ -145,6 +174,8 @@ class SearchCache:
         self.misses = 0
         #: [serve-stale] 命中「过期但仍在兜底窗口内」的次数（诊断用：冷却期
         #: 到底有多依赖陈旧数据 —— 这个数字高说明该源的 TTL 该调长了）。
+        #: [P2 修复·2026-10-08] 近义查询兜底命中也计入本计数（同样是「拿旧数据
+        #: 顶包」的形态）。
         self.stale_serves = 0
         if self.enabled:
             self._load()
@@ -172,11 +203,25 @@ class SearchCache:
         冷却的 10 分钟内**并不会变化** —— 过期 1 小时的缓存远比空结果有用。
         返回的每条结果都带 ``extra["stale"]=True`` 与 ``extra["stale_age_seconds]``，
         由调用方如实告知考生「这是陈旧数据」。
+
+        [P2 修复·2026-10-08 覆盖放宽] ``allow_stale=True`` 时，精确 key 未命中
+        会再尝试「近义查询」兜底（见 :meth:`_find_stale_fallback`）；严格模式
+        （默认）行为不变 —— 过期即未命中、查询必须精确匹配。
         """
         if not self.enabled:
             return None
         key = self.make_key(provider, query, limit, time_range)
         entry = self._entries.get(key)
+        # [P2 修复·2026-10-08] 精确 key 未命中时，serve-stale 路径放宽到
+        # 「同 provider/limit/time_range 的近义查询」条目 —— 多路规划会为同一
+        # 问题产出多个变体（原句 / 校名+专业 / 追加「招生简章」等后缀），
+        # 精确匹配让兜底只覆盖「一字不差复问」这一种形态，源一旦被反爬冷却，
+        # 变体查询就无旧数据可用。**仅 allow_stale=True 生效**：新鲜读必须
+        # 精确命中，否则会把别的查询的结果当本次查询的新鲜结果返回。
+        fallback = False
+        if entry is None and allow_stale:
+            entry = self._find_stale_fallback(provider, query, limit, time_range)
+            fallback = entry is not None
         if entry is None:
             self.misses += 1
             return None
@@ -195,8 +240,48 @@ class SearchCache:
             return [_mark_stale(SearchResult.from_raw(item, engine=entry.provider),
                                 age)
                     for item in entry.results]
+        if fallback:
+            # 近义查询的条目：相对本次查询同样是「旧数据」（不是为本次查询取的），
+            # 照旧标注陈旧度与年龄，交上层如实展示。
+            age = int(entry.age)
+            self.hits += 1
+            self.stale_serves += 1
+            _LOG.info("缓存近义兜底：%r 命中缓存查询 %r（provider=%s，age=%ds）",
+                      str(query)[:60], entry.query[:60], entry.provider, age)
+            return [_mark_stale(SearchResult.from_raw(item, engine=entry.provider),
+                                age)
+                    for item in entry.results]
         self.hits += 1
         return [SearchResult.from_raw(item, engine=entry.provider) for item in entry.results]
+
+    def _find_stale_fallback(self, provider: str, query: str, limit: int,
+                             time_range: Optional[str]) -> Optional[CacheEntry]:
+        """为 serve-stale 找一条「近义查询」的缓存条目（找不到返回 None）。
+
+        候选必须同 provider / 同 limit / 同 time_range（与精确匹配同范围，只是
+        放宽查询文本），且未超出 ``STALE_MAX_AGE`` 兜底窗口；多条命中取最新
+        存入的一条（``stored_at`` 最大）。
+        """
+        want_provider = str(provider or "")
+        want_limit = str(int(limit))
+        want_range = str(time_range or "").lower()
+        want_tokens = _query_tokens(query)
+        if not want_tokens:
+            return None
+        best: Optional[CacheEntry] = None
+        for entry in self._entries.values():
+            if entry.provider != want_provider:
+                continue
+            parts = entry.key.split("|", 3)
+            if len(parts) != 4 or parts[1] != want_limit or parts[2] != want_range:
+                continue
+            if entry.age > STALE_MAX_AGE:
+                continue
+            if not _tokens_compatible(want_tokens, _query_tokens(entry.query)):
+                continue
+            if best is None or entry.stored_at > best.stored_at:
+                best = entry
+        return best
 
     def put(self, provider: str, query: str, limit: int, results: Sequence[SearchResult],
             time_range: Optional[str] = None, ttl: Optional[int] = None) -> None:

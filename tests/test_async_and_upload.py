@@ -96,7 +96,9 @@ def test_main_window_upload_buttons_and_slots():
          patch.object(MainWindow, "_open_onboarding_wizard"), patch.object(MainWindow, "_init_timer"):
         win = MainWindow()
         win.input_box = MagicMock()
-        win.input_box.text.return_value = ""
+        # [P1 修复·2026-10-08] 输入框已换为多行 ChatInput（QPlainTextEdit）：
+        # 读写接口为 toPlainText()/setPlainText()，替代 QLineEdit 的 text()/setText()。
+        win.input_box.toPlainText.return_value = ""
         win.chat_display = MagicMock()
 
         assert hasattr(win, "_on_upload_image"), "MainWindow 必须实现 _on_upload_image"
@@ -107,19 +109,19 @@ def test_main_window_upload_buttons_and_slots():
         with patch("PySide6.QtWidgets.QFileDialog.getOpenFileName", return_value=(fake_img, "images")):
             win._on_upload_image()
 
-            win.input_box.setText.assert_called_once()
-            called_text = win.input_box.setText.call_args[0][0]
+            win.input_box.setPlainText.assert_called_once()
+            called_text = win.input_box.setPlainText.call_args[0][0]
             assert "/img" in called_text
             assert "homework_draft.png" in called_text
 
         # 测试文件选择与输入框填充
-        win.input_box.setText.reset_mock()
+        win.input_box.setPlainText.reset_mock()
         fake_pdf = "c:/test_workspace/syllabus_2026.pdf"
         with patch("PySide6.QtWidgets.QFileDialog.getOpenFileName", return_value=(fake_pdf, "documents")):
             win._on_upload_file()
 
-            win.input_box.setText.assert_called_once()
-            called_text = win.input_box.setText.call_args[0][0]
+            win.input_box.setPlainText.assert_called_once()
+            called_text = win.input_box.setPlainText.call_args[0][0]
             assert "/file" in called_text
             assert "syllabus_2026.pdf" in called_text
 

@@ -55,6 +55,11 @@ def _cmd_ingest(args: List[str]) -> None:
         elif not a.startswith("-"):
             if target_file is None:
                 target_file = a
+            else:
+                # [P2 修复·2026-10-08 静默丢弃] 第二个位置参数此前被无声忽略（`ky ingest a.md b.md`
+                # 只入库 a.md，用户以为两份都进了）。现明确报错，避免误操作。
+                print(colorize(f"[!] 多余的参数: {a}（ky ingest 只接受一个试题文件路径）", C.RED))
+                sys.exit(1)
 
     if not target_file:
         print(colorize("[!] 请提供待切片入库的试题文件路径", C.RED))

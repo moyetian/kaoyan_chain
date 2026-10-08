@@ -137,9 +137,34 @@ def is_relevant(title: str, snippet: str, url: str,
     return False
 
 
+def _fallback_gate_tokens(query: str) -> List[str]:
+    """纯停用词查询的守门兜底 token：分词后只去操作符与 1 字噪声，**保留停用词**。
+
+    [P2 修复·2026-10-08] 为什么需要：``significant_tokens`` 会把「考研/招生/大学」
+    这类零辨别力词全部滤掉 —— 对打分是正确口径，但查询**整句**都由停用词组成时
+    （如「考研 招生」），token 列表为空 → ``is_relevant`` 走「无法判定一律放行」
+    分支 → 守门被整条绕过：反爬返回的 200+垃圾页会被当正常结果放行，provider
+    也不会被记为失败（软性反爬失效）。此时改用未滤停用词的 token 做判定：
+    它们是查询里**唯一**可用的相关性证据，而正常结果页几乎必然包含查询词
+    （搜索引擎会把它高亮进标题/摘要）。
+    兜底也为空（纯符号/单字查询）→ 返回空列表，上层仍回到「无法判定 → 不误杀」。
+    """
+    text = _OPERATORS.sub(" ", str(query or ""))
+    try:
+        from .segment import segment_and_normalize
+        tokens = segment_and_normalize(text)
+    except ImportError:                            # pragma: no cover - 降级分支
+        tokens = _TOKEN_RE.findall(text)
+    return list(dict.fromkeys(t for t in tokens if len(t) >= 2))
+
+
 def filter_relevant(results: Iterable, query: str) -> Tuple[List, int]:
     """逐条过滤，返回 ``(保留的结果, 被丢弃的数量)``。"""
     tokens = significant_tokens(query)
+    if not tokens:
+        # [P2 修复·2026-10-08] 纯停用词查询：改用未滤停用词的兜底 token 判定，
+        # 不让守门被「关键词全被过滤」整条绕过（详见 _fallback_gate_tokens）。
+        tokens = _fallback_gate_tokens(query)
     kept: List = []
     dropped = 0
     for r in results:

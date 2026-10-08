@@ -244,7 +244,11 @@ class CHSIConnector:
                     college = clean_cols[1] if len(clean_cols) > 1 else "相关学院"
                     
                     ev = build_evidence(
-                        field_name="专业目录与统考初试科目",
+                        # [P1 修复·2026-10-08 R10] field 名归一「初试科目」：
+                        # 同语义证据（本处/PDF/HTML/离线基准）此前四种 field 名
+                        # 永不进 resolve_conflicts 同一分组，跨源冲突仲裁对
+                        # 「初试科目」实质失效；来源细分由 source.type/name 承载。
+                        field_name="初试科目",
                         value={
                             "school": school_name,
                             "college": college,
@@ -314,14 +318,22 @@ class CHSIConnector:
             # 注意：此处是「联网失败时的离线兜底」，严禁伪造成 S 级研招网权威证据。
             # 来源名不拼接校名、级别降为 C、状态标为未核验，避免学员误当作官方核实数据。
             ev_sub = build_evidence(
-                field_name=f"初试科目组合 ({code} {info['name']})",
+                # [P1 修复·2026-10-08 R10] field 名归一「初试科目」，专业细分
+                # （code+名称）移入 source_name：此前 field 名自带专业后缀，
+                # 与 HTML/PDF/研招网在线三处同语义字段永不进 resolve_conflicts
+                # 同一分组，跨源冲突仲裁对「初试科目」实质失效。
+                field_name="初试科目",
                 value=info["common_subjects"],
                 # [缺陷修复] 此前 unit="门"：「门」是课程计数单位，而本项 value 是
                 # 一份科目清单，渲染后会输出「…专业自命题或统考 门」这种悬空字符。
                 unit="",
                 exam_year=target_year,
                 source_type="offline_baseline",
-                source_name="【离线基准·全国学科门类指导标准】全国硕士研究生招生考试指导科目标准模板 [DISCIPLINE_CATALOG 全国学科门类指导标准]",
+                source_name=(
+                    "【离线基准·全国学科门类指导标准】全国硕士研究生招生考试指导科目标准模板 "
+                    "[DISCIPLINE_CATALOG 全国学科门类指导标准]"
+                    f"（适用专业：{code} {info['name']}）"
+                ),
                 source_url=source_url,
                 target_year=target_year,
                 extra_confidence_decay=0.1

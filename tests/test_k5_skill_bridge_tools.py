@@ -8,7 +8,7 @@
    ``exam_diagnoser`` 经 ``skill_bridge`` 注册为 Agent 工具，schema 合法
    （``type=object`` 且 ``required ⊆ properties``）、``tier/level/source``
    元数据齐全、无重名；
-2. **分级口径**：essential 18 / extended 12 / all 30；``web_search`` 置顶、
+2. **分级口径**：essential 18 / extended 17 / all 35；``web_search`` 置顶、
    新工具排尾；``names`` 收尾受限集语义不变；
 3. **技能缺失不崩**：技能模块不可用（公开副本 / 裁剪安装）时 handler 返回
    「Error: 未加载 xxx 技能」，而不是崩溃或「未知工具」；注册表构建与技能
@@ -53,10 +53,11 @@ ESSENTIAL_TOOLS = {
     "socratic_hint", "log_mistake", "review_mistakes", "manage_memory",
 }
 
-#: extended 6（内置部分）：破坏性/低频能力（delete_file 有意不常驻 schema）
+#: extended 7（内置部分）：破坏性/低频能力（delete_file 有意不常驻 schema）
+#: + [B2] list_tools 工具自省（动态发现入口，只读）
 EXTENDED_BUILTIN_TOOLS = {
     "delete_file", "search_variant", "compose_exam", "scout_school",
-    "diff_syllabus", "ingest_exam_material",
+    "diff_syllabus", "ingest_exam_material", "list_tools",
 }
 
 #: extended 6（本批新增）：技能桥接工具 → 技能模块名（声明顺序即注册顺序）
@@ -68,6 +69,12 @@ SKILL_TOOL_MODULES = {
     "map_knowledge": "knowledge_map",
     "diagnose_exam": "exam_diagnoser",
 }
+
+#: [B3/B4] 自描述技能桥接工具（TOOL_SPEC 契约，随技能模块可用性注册；
+#: 本地仓库与公开副本均含全部模块，正常环境计数稳定）。顺序 = 注册顺序。
+SELF_DESCRIBED_TOOLS_ORDER = ("dissect_english_sentence", "mount_materials",
+                              "archive_experience", "search_in_materials")
+SELF_DESCRIBED_TOOLS = set(SELF_DESCRIBED_TOOLS_ORDER)
 
 
 def _registry(workspace_root=None, mode="safe", config=None) -> ToolRegistry:
@@ -83,10 +90,10 @@ def _registry(workspace_root=None, mode="safe", config=None) -> ToolRegistry:
 # ① 注册表结构与元数据
 # ══════════════════════════════════════════════════════════════════════════
 
-def test_registry_has_30_tools_with_valid_metadata():
-    """30 个工具（24 内置 + 6 技能桥接）schema 合法、元数据齐全、无重名。"""
+def test_registry_has_35_tools_with_valid_metadata():
+    """35 个工具（25 内置 + 6 集中声明 + 4 自描述）schema 合法、元数据齐全、无重名。"""
     reg = _registry()
-    assert len(reg.tools) == 24 + len(SKILL_TOOL_MODULES) == 30
+    assert len(reg.tools) == 25 + len(SKILL_TOOL_MODULES) + len(SELF_DESCRIBED_TOOLS) == 35
     for name, td in reg.tools.items():
         assert td.name == name, f"ToolDefinition.name 与注册键不一致: {name}"
         assert td.tier in (TIER_ESSENTIAL, TIER_EXTENDED), f"{name}: 非法 tier {td.tier}"
@@ -103,29 +110,31 @@ def test_registry_has_30_tools_with_valid_metadata():
     # 幂等注册：重复调用不新增、不覆盖（无重名/重复登记）
     assert skill_bridge.register_skill_tools(reg) == []
     # 内置与技能工具名不得交叠
-    assert not (ESSENTIAL_TOOLS | EXTENDED_BUILTIN_TOOLS) & set(SKILL_TOOL_MODULES)
+    assert not (ESSENTIAL_TOOLS | EXTENDED_BUILTIN_TOOLS) & (
+        set(SKILL_TOOL_MODULES) | SELF_DESCRIBED_TOOLS)
 
 
 def test_tier_partition_counts_and_ordering():
-    """分级计数（18/12/30）+ web_search 置顶 + essential 段在前、新工具排尾。"""
+    """分级计数（18/17/35）+ web_search 置顶 + essential 段在前、新工具排尾。"""
     reg = _registry()
     essential = {n for n, t in reg.tools.items() if t.tier == TIER_ESSENTIAL}
     extended = {n for n, t in reg.tools.items() if t.tier == TIER_EXTENDED}
     assert essential == ESSENTIAL_TOOLS
-    assert extended == EXTENDED_BUILTIN_TOOLS | set(SKILL_TOOL_MODULES)
+    assert extended == EXTENDED_BUILTIN_TOOLS | set(SKILL_TOOL_MODULES) | SELF_DESCRIBED_TOOLS
 
     assert len(reg.get_openai_tools(tier=TIER_ESSENTIAL)) == 18
-    assert len(reg.get_openai_tools(tier=TIER_EXTENDED)) == 12
-    assert len(reg.get_openai_tools()) == 30
-    assert len(reg.get_openai_tools(tier=TIER_ALL)) == 30
+    assert len(reg.get_openai_tools(tier=TIER_EXTENDED)) == 17
+    assert len(reg.get_openai_tools()) == 35
+    assert len(reg.get_openai_tools(tier=TIER_ALL)) == 35
 
     order = [t["function"]["name"] for t in reg.get_openai_tools()]
-    assert len(order) == len(set(order)) == 30, "工具名不得重复"
+    assert len(order) == len(set(order)) == 35, "工具名不得重复"
     assert order[0] == "web_search", "web_search 必须置顶（W10 检索行为引导）"
     tiers = [reg.tools[n].tier for n in order]
     first_ext = tiers.index(TIER_EXTENDED)
     assert all(t == TIER_EXTENDED for t in tiers[first_ext:]), "extended 必须整体排在 essential 之后"
-    assert order[-len(SKILL_TOOL_MODULES):] == list(SKILL_TOOL_MODULES), "新技能工具必须排尾"
+    assert order[-10:] == list(SKILL_TOOL_MODULES) + list(SELF_DESCRIBED_TOOLS_ORDER), \
+        "技能工具（集中声明 6 + 自描述 4）必须排尾"
 
 
 def test_names_subset_semantics_unchanged():
@@ -150,13 +159,13 @@ def test_tier_escape_hatch_from_config(tmp_path):
 
     # 显式传入的 config 优先于文件
     reg2 = _registry(workspace_root=tmp_path, config={"agent": {"tool_tier": "all"}})
-    assert len(reg2.get_openai_tools()) == 30
+    assert len(reg2.get_openai_tools()) == 35
 
     # 非法值 / 无配置 → all（宁可多给工具，绝不静默丢工具）
     reg3 = _registry(workspace_root=tmp_path, config={"agent": {"tool_tier": "bogus"}})
-    assert len(reg3.get_openai_tools()) == 30
+    assert len(reg3.get_openai_tools()) == 35
     reg4 = _registry(workspace_root=tmp_path, config={})
-    assert len(reg4.get_openai_tools()) == 30
+    assert len(reg4.get_openai_tools()) == 35
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -164,10 +173,15 @@ def test_tier_escape_hatch_from_config(tmp_path):
 # ══════════════════════════════════════════════════════════════════════════
 
 def test_registration_is_independent_of_skill_availability(monkeypatch):
-    """注册与技能可用性无关：模块全缺失时仍是 30 个工具（extended/skill 元数据不变）。"""
+    """集中声明 6 项注册与技能可用性无关：模块全缺失时 31 个工具仍可审计。
+
+    [B3] 自描述工具（SELF_DESCRIBED_TOOLS）语义不同：元数据只存在于技能模块内，
+    模块缺失时无从注册 —— 本用例同时钉住这一差异（模块全缺失 → 只剩 31）。
+    """
     monkeypatch.setattr(skill_bridge, "load_skill_module", lambda name: None)
     reg = _registry()
-    assert len(reg.tools) == 30
+    assert len(reg.tools) == 31
+    assert not (SELF_DESCRIBED_TOOLS & set(reg.tools)), "模块缺失时自描述工具不得注册"
     for name in SKILL_TOOL_MODULES:
         td = reg.tools[name]
         assert td.tier == TIER_EXTENDED and td.source == "skill"
@@ -355,7 +369,7 @@ def test_tools_cli_list_json_counts_and_tier_filter(tmp_path, monkeypatch, capsy
 
     assert system_mod._cmd_tools(["tools", "list", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["count"] == 30 == len(payload["tools"])
+    assert payload["count"] == 35 == len(payload["tools"])
     assert {t["name"] for t in payload["tools"]} == set(_registry().tools)
     assert all({"name", "tier", "level", "source", "desc"} <= set(t) for t in payload["tools"])
 
@@ -366,8 +380,9 @@ def test_tools_cli_list_json_counts_and_tier_filter(tmp_path, monkeypatch, capsy
 
     assert system_mod._cmd_tools(["tools", "list", "--json", "--tier=extended"]) == 0
     payload_ext = json.loads(capsys.readouterr().out)
-    assert payload_ext["count"] == 12
-    assert {t["name"] for t in payload_ext["tools"]} == EXTENDED_BUILTIN_TOOLS | set(SKILL_TOOL_MODULES)
+    assert payload_ext["count"] == 17
+    assert {t["name"] for t in payload_ext["tools"]} == (
+        EXTENDED_BUILTIN_TOOLS | set(SKILL_TOOL_MODULES) | SELF_DESCRIBED_TOOLS)
 
     # 未知 tier：显式失败（非零退出码），不静默输出
     assert system_mod._cmd_tools(["tools", "list", "--tier=bogus"]) == 1
@@ -381,7 +396,7 @@ def test_tools_cli_text_smoke(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(system_mod, "ROOT", tmp_path)
     assert system_mod._cmd_tools(["tools", "list"]) == 0
     out = capsys.readouterr().out
-    assert "Agent 工具注册表" in out and "30 项" in out
+    assert "Agent 工具注册表" in out and "35 项" in out
     assert "grade_exam_paper" in out and "solve_vision" in out
 
 
@@ -408,12 +423,12 @@ def test_tools_cli_skips_mcp_unless_flagged(tmp_path, monkeypatch, capsys):
     assert system_mod._cmd_tools(["tools", "list", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert "mcp_sample_srv_probe" not in {t["name"] for t in payload["tools"]}
-    assert payload["count"] == 30
+    assert payload["count"] == 35
 
     assert system_mod._cmd_tools(["tools", "list", "--json", "--with-mcp"]) == 0
     payload_mcp = json.loads(capsys.readouterr().out)
     names = {t["name"] for t in payload_mcp["tools"]}
     assert "mcp_sample_srv_probe" in names
-    assert payload_mcp["count"] == 31
+    assert payload_mcp["count"] == 36
     row = next(t for t in payload_mcp["tools"] if t["name"] == "mcp_sample_srv_probe")
     assert row["tier"] == TIER_EXTENDED and row["source"] == "mcp"

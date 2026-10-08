@@ -142,9 +142,11 @@ def _restore_locked(pol: CooldownPolicy) -> None:
         if not path.exists():
             return
         data = json.loads(path.read_text(encoding="utf-8"))
-        entries = data.get("cooling") if isinstance(data, dict) else None
-        if isinstance(entries, dict):
-            pol.restore({str(k): float(v) for k, v in entries.items()})
+        if isinstance(data, dict) and isinstance(data.get("cooling"), dict):
+            # [P0-6 修复·冷却跨进程冻结] 新版（version 2）快照顶层带 stored_at
+            # （CooldownPolicy.snapshot 的形态平铺展开），restore 按真实流逝
+            # 折算；version 1 旧文件无 stored_at → restore 内部整批丢弃。
+            pol.restore(data)
     except Exception as exc:                     # pragma: no cover - 状态损坏不该影响检索
         _LOG.debug("冷却状态加载失败（按无冷却继续）: %s", exc)
 
@@ -158,7 +160,9 @@ def _persist_locked(pol: CooldownPolicy) -> None:
         # 只读模式下连目录都不创建；异常由本方法兜住，表现为「不落盘、检索照常」。
         guard_write("写入检索冷却状态", path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"version": 1, "cooling": pol.snapshot()},
+        # [P0-6 修复] version 2：顶层 stored_at + cooling（快照形态平铺展开），
+        # restore 按真实流逝折算（旧 version 1 由 restore 判为无时间戳丢弃）。
+        path.write_text(json.dumps({"version": 2, **pol.snapshot()},
                                    ensure_ascii=False), encoding="utf-8")
     except Exception as exc:                     # pragma: no cover
         _LOG.debug("冷却状态写入失败（忽略）: %s", exc)
@@ -217,6 +221,22 @@ def is_cooling(name: str) -> bool:
     return policy().is_cooling(key)
 
 
+def try_half_open(name: str) -> bool:
+    """冷却期满后放行**一次**半开探测；返回 False 表示本次不放行。
+
+    [P1 修复·2026-10-08 S2] 接线入口。此前 ``CooldownPolicy.try_half_open``
+    全仓零调用（死代码）：冷却期满后 ``is_cooling`` 直接返回 False，过滤链
+    **全量放行** —— 并发请求同时涌向刚解冻的源（惊群），恰是冷却要避免的形态。
+    ``SearchService`` 现在每个源真正发请求前调用本函数消费半开名额：冷却期满
+    只放行一次，探测结果（成功清零 / 失败续冷）决定后续。未进入过冷却的源
+    直接放行且不占名额（见 ``CooldownPolicy.try_half_open``）。
+    """
+    key = _key(name)
+    if not key:
+        return True
+    return policy().try_half_open(key)
+
+
 def cooldown_reason(name: str) -> str:
     """冷却中的说明文案（形态与 W11 既有断言一致）。"""
     key = _key(name)
@@ -226,8 +246,14 @@ def cooldown_reason(name: str) -> str:
 
 
 def cooldown_state() -> Dict[str, float]:
-    """当前冷却表快照（``{源: 剩余秒数}``，供测试与诊断）。"""
-    return policy().snapshot()
+    """当前冷却表快照（``{源: 剩余秒数}``，供测试与诊断）。
+
+    [P0-6] ``CooldownPolicy.snapshot`` 现返回 ``{"stored_at", "cooling"}``
+    结构（供跨进程按真实流逝折算）；本诊断 API 保持原平铺契约。
+    """
+    snap = policy().snapshot()
+    cooling = snap.get("cooling") if isinstance(snap, dict) else None
+    return dict(cooling) if isinstance(cooling, dict) else {}
 
 
 def reset() -> None:
@@ -261,4 +287,5 @@ __all__ = [
     "reset",
     "reset_cooldown",
     "set_persistence",
+    "try_half_open",
 ]

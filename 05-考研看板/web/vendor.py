@@ -193,7 +193,12 @@ def download_vendor_assets(docs_dir: Path, fetcher=None) -> list:
         try:
             res = fetcher.fetch(url)
             if not getattr(res, "is_valid", False):
-                _LOG.warning("vendor 资源抓取失败（保留 CDN 引用即可）: %s", url)
+                # [P2 修复·2026-10-08 文案如实] 旧文案承诺「可保留 CDN 引用」——与默认
+                # 离线模式不符：产物引用的是本地 assets/vendor/ 路径，抓取
+                # 失败时浏览器只会 404，公式最终走 fallbackMathUnicode 降级，
+                # 并不会回落到 CDN。如实描述失败后果与重试方式。
+                _LOG.warning("vendor 资源抓取失败（产物仍引用本地路径，"
+                             "对应功能将走降级；联网后重跑构建可补齐）: %s", url)
                 return False
             target.write_text(res.content, encoding="utf-8")
             saved.append(target)
