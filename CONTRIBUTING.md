@@ -258,8 +258,8 @@ python tools/test_new_features.py
 >   干净检出（`git archive` 导出、无 `.git`）为 **302 通过 + 5 跳过 = 307** ——
 >   「测试组 7 Git 隐私隔离」的 5 条断言需 `.git`，无 `.git` 时逐条记为跳过，故**两种环境总数恒为 307**。
 > - `test_new_features.py`：**132 项断言**（0 跳过），与是否 Git 工作区无关。
-> - `pytest tests/`：共 **3833 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
->   **含** `dist/` 构建产物，实测 3828 通过 + 5 跳过）。跳过项为联网测试未设
+> - `pytest tests/`：共 **3836 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
+>   **含** `dist/` 构建产物，实测 3831 通过 + 5 跳过）。跳过项为联网测试未设
 >   `KY_LIVE_TEST=1`（2 条）、一条需特定 registry 探测串的守卫（1 条）、一条 POSIX
 >   权限位断言（Windows 不适用，1 条）与一条 prompt 外置迁移后的设计性跳过
 >   （1 条，迁移完成后由 golden 固化用例持续覆盖该不变量）。

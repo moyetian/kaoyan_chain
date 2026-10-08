@@ -17,7 +17,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v3.1.2-blue?style=flat-square&logo=github&logoColor=white" alt="版本 v3.1.2" />
-  <img src="https://img.shields.io/badge/Tests-4267%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 4267 Passed" />
+  <img src="https://img.shields.io/badge/Tests-4270%20Passed-10b981?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests 4270 Passed" />
   <img src="https://img.shields.io/badge/GUI-PySide6%20Desktop-0f766e?style=flat-square&logo=qt&logoColor=white" alt="PySide6 GUI" />
   <img src="https://img.shields.io/badge/Rust-PyO3%20Native%20Fast-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust Native" />
   <img src="https://img.shields.io/badge/WeChat-Scraper%20%26%20Search-07C160?style=flat-square&logo=wechat&logoColor=white" alt="WeChat Searcher" />
@@ -84,7 +84,7 @@
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 开发者        | 完整架构树、开发环境、测试与质量门禁、Agent 协议规范、PR 流程                   | **想改代码 / 提 PR 时** |
 | [CHANGELOG.md](CHANGELOG.md)       | 所有人        | 版本历史与升级方式                                             | **升级前后**          |
 
-> 快速直达：安装不上 → [SETUP 第 8 章 FAQ](SETUP.md)；不知道某条命令怎么用 → [操作手册 第 8 章「43 项子命令全景速查」](操作手册.md)；担心隐私 → 本页 [🔒 隐私优先](#-隐私优先与主流-ai-agent-接入) 与 [⚠️ 使用注意事项](#-使用注意事项) 第 7 条。
+> 快速直达：安装不上 → [SETUP 第 8 章 FAQ](SETUP.md)；不知道某条命令怎么用 → [操作手册 第 8 章「47 项子命令全景速查」](操作手册.md)；担心隐私 → 本页 [🔒 隐私优先](#-隐私优先与主流-ai-agent-接入) 与 [⚠️ 使用注意事项](#-使用注意事项) 第 7 条。
 
 ---
 
@@ -264,7 +264,7 @@ ky
 
 ## 💬 常用私教交互与指令速查
 
-系统提供 43 个工业级 CLI 子命令与对话交互口令，完整参数说明请参阅 [📘 学员实操手册](操作手册.md)：
+系统提供 47 个工业级 CLI 子命令与对话交互口令，完整参数说明请参阅 [📘 学员实操手册](操作手册.md)：
 
 | 交互场景      | 推荐口令 / 子命令                         | 行为说明                                      |
 | --------- | ---------------------------------- | ----------------------------------------- |
@@ -417,7 +417,7 @@ ASCII 字母 18 / 空白 6 / 其余 95，单位 1/100 token，最大实测误差
 ```bash
 python tools/test_ky_suite.py        # 全链路回归套件（26 组 307 项断言）
 python tools/test_new_features.py    # 新功能专项套件（132 项断言）
-python -m pytest -q                  # 单元与进程层测试（3833 项）
+python -m pytest -q                  # 单元与进程层测试（3836 项）
 ```
 
 > ⚠️ `test_ky_suite.py` 会真实改写工作区用户数据：请在干净副本里跑，或设
