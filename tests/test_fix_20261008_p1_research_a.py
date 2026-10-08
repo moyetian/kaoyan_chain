@@ -462,12 +462,49 @@ class TestR9EvidenceGate:
         """剩余预算不足（≤ _EVIDENCE_RETRY_MIN_BUDGET）→ 不补检索（轻量边界）。
 
         补检索至少要一次 LLM 请求 + 一次工具调用的耗时，预算不足只会超时白跑。
-        判据：budget_s=60 与阈值同值 → 剩余必然小于阈值 → 不触发。
+        判据：budget_s 取 30（明显低于阈值 60）→ 剩余预算约 30 秒，恒小于阈值
+        → 不触发。**不可取 60（与阈值同值）**：此时剩余 = 60 − elapsed，只有
+        elapsed > 0 才不触发；CI runner 上单调时钟若出现回退（elapsed ≤ 0），
+        判据会翻转、补检索被误触发 → 多发一次请求 → 本断言变红（2026-10-08
+        实测 windows-latest 3.12，同 job rerun 通过；以「时钟回退」打桩可稳定复现）。
         """
         captured = []
         _patch_llm(monkeypatch, [_turn_content(_online_json())], captured=captured)
         prof = ar.AgenticResearchEngine().research_university_profile(
-            _SCHOOL, _MAJOR, api_config=dict(_API_CFG), budget_s=60.0)
+            _SCHOOL, _MAJOR, api_config=dict(_API_CFG), budget_s=30.0)
+
+        assert len(captured) == 1
+        assert prof.get("catalog_source") == _UNVERIFIED
+
+    def test_budget_gate_immune_to_monotonic_regression(self, monkeypatch):
+        """[阴性对照] 单调时钟回退时预算判据不得翻转（补检索不得被误触发）。
+
+        背景：budget_s 若取成与阈值同值（60），剩余 = 60 − elapsed 恰落在
+        `> _EVIDENCE_RETRY_MIN_BUDGET` 的边界上，只有 elapsed > 0 才不触发；
+        CI runner 上 monotonic 出现回退（elapsed ≤ 0）时判据翻转 → 补检索误
+        触发 → 多发一次请求 → 上一条用例变红（2026-10-08 windows-3.12 实测）。
+        本用例以「回退时钟」打桩钉住该不变量：budget_s=30（明显低于阈值）时，
+        即便时钟回退也不触发补检索。
+
+        阴性对照：把 budget_s 改回 60.0 → 本用例 captured 变 2（判据翻转）。
+        """
+        class _RegressingClock:
+            """每次调用返回更小的值（模拟 monotonic 回退）。"""
+
+            def __init__(self):
+                self.t = 10000.0
+
+            def __call__(self):
+                self.t -= 0.01
+                return self.t
+
+        _clock = _RegressingClock()
+        monkeypatch.setattr(time, "monotonic", _clock)
+
+        captured = []
+        _patch_llm(monkeypatch, [_turn_content(_online_json())], captured=captured)
+        prof = ar.AgenticResearchEngine().research_university_profile(
+            _SCHOOL, _MAJOR, api_config=dict(_API_CFG), budget_s=30.0)
 
         assert len(captured) == 1
         assert prof.get("catalog_source") == _UNVERIFIED
