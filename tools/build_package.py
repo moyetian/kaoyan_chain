@@ -202,11 +202,12 @@ SUBJECT_DIRS = ("01-数学", "02-英语", "03-思想政治理论", "04-专业课
 # 真实学情、出版社 PDF 被镜像进 kaoyan_chain_public）。策略重复定义必然漂移。
 try:  # 双导入路径兼容（脚本直跑 / pytest / 包内导入）
     from privacy_policy import (  # noqa: E402
+        BUILD_ARTIFACT_DIRS as _BUILD_ARTIFACT_DIRS,
+        DEV_SCRATCH_DIRS as _DEV_SCRATCH_DIRS,
         JUNK_DIR_NAMES as _JUNK_DIR_NAMES,
         JUNK_FILE_EXTS as _JUNK_FILE_EXTS,
         PRIVATE_CONFIG_FILES as _PRIVATE_CONFIG_FILES,
         PRIVATE_DIRS,
-        ROOT_ONLY_EXCLUDE_DIRS as _ROOT_ONLY_EXCLUDE_DIRS,
         SKELETON_WHITELIST,
         identity_name_tokens as _identity_name_tokens,
         is_backup as _is_backup,
@@ -217,11 +218,12 @@ try:  # 双导入路径兼容（脚本直跑 / pytest / 包内导入）
     import privacy_policy as _pp  # noqa: E402
 except ImportError:  # pragma: no cover
     from tools.privacy_policy import (  # noqa: E402
+        BUILD_ARTIFACT_DIRS as _BUILD_ARTIFACT_DIRS,
+        DEV_SCRATCH_DIRS as _DEV_SCRATCH_DIRS,
         JUNK_DIR_NAMES as _JUNK_DIR_NAMES,
         JUNK_FILE_EXTS as _JUNK_FILE_EXTS,
         PRIVATE_CONFIG_FILES as _PRIVATE_CONFIG_FILES,
         PRIVATE_DIRS,
-        ROOT_ONLY_EXCLUDE_DIRS as _ROOT_ONLY_EXCLUDE_DIRS,
         SKELETON_WHITELIST,
         identity_name_tokens as _identity_name_tokens,
         is_backup as _is_backup,
@@ -330,7 +332,10 @@ def leak_reason(rel_parts: Tuple[str, ...], name: str,
       1. 用户私有目录（参考资料/_状态/错题本/…）内、且不在骨架白名单中的文件；
       2. 历史备份快照（*_backup_*）；
       3. 个人运行时配置（ky_config.json / state_snapshot.json / …）；
-      4. 产物根第一层的构建产物 / 开发脚手架目录（dist、build、logs、.agents…）；
+      4. 构建产物 / 开发脚手架目录 —— [R11 修复·嵌套脚手架] 与
+         ``should_publish()`` 同口径：``BUILD_ARTIFACT_DIRS``（dist、build…）
+         仅**产物根第一层**，``DEV_SCRATCH_DIRS``（.config_backup / .checkpoint /
+         .sim_logs / .sim_tools…）**任意层级**命中即判泄漏；
       5. 文件名本身夹带当前真实报考身份（校名 / 专业 / 自命题科目组合）——
          ``data/`` 公开高校库豁免（见 IDENTITY_NAME_EXEMPT_ROOTS）。
     """
@@ -338,7 +343,13 @@ def leak_reason(rel_parts: Tuple[str, ...], name: str,
         return "历史备份快照"
     if name in _PRIVATE_CONFIG_FILES:
         return "个人运行时配置"
-    if rel_parts and rel_parts[0] in _ROOT_ONLY_EXCLUDE_DIRS:
+    # [R11 修复·嵌套脚手架] 与 should_publish 同口径：构建产物仅根层级
+    # （避免误伤第三方包内部的 dist/ 结构），开发脚手架任意层级（嵌套的
+    # .config_backup 含明文 api_key 快照 / .checkpoint 含本机绝对路径，
+    # 此前只在 sync_publish 出口有任意深度兜底，打包链路全面放行）。
+    if rel_parts and rel_parts[0] in _BUILD_ARTIFACT_DIRS:
+        return "构建产物/开发脚手架目录"
+    if any(p in _DEV_SCRATCH_DIRS for p in rel_parts):
         return "构建产物/开发脚手架目录"
     owner = _private_owner(rel_parts)
     if owner is not None:
@@ -592,7 +603,14 @@ def deploy_workspace_skeleton(target_dir: Path, keep_identity: bool = False):
     target_dir.mkdir(parents=True, exist_ok=True)
 
     def ignore_patterns(src, names):
-        ignored = {name for name in names if _is_junk(name)}
+        # [R11 修复·嵌套脚手架] 与 should_publish 同口径：DEV_SCRATCH_DIRS
+        # （.config_backup/.checkpoint/.sim_logs/.sim_tools 等）在**任意层级**
+        # 整棵剔除 —— 此前只查 _is_junk(basename)，嵌套出现（KY_CONFIG_BACKUP_DIR
+        # 指向仓库内子目录、快照落点被改、手工拷贝）会连同明文 api_key 快照
+        # 一起被复制进发布包。BUILD_ARTIFACT_DIRS 刻意不在此下沉
+        # （会误伤 docs/assets/vendor/katex/<ver>/dist/ 类第三方结构）。
+        ignored = {name for name in names
+                   if _is_junk(name) or name in _DEV_SCRATCH_DIRS}
         # [2026-09-24 检查补漏] 与导出层 / staging 同口径：.gitignore 已忽略的
         # 本地产物与受限路径（原始快照、看板构建产物、研报/考纲生成物等）
         # 同样不得随发布包分发 —— 此前只套 _is_junk，dist 实测它们原样进了

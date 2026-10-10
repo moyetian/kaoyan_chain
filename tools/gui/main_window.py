@@ -68,6 +68,26 @@ RESTORE_TAIL_MESSAGES = 60
 #: 页面标题的唯一真源在 views/nav_rail.NAV_VIEWS（rail 的「视图」组同源）
 TAB_TITLES = tuple(title for _icon, title in views.nav_rail.NAV_VIEWS)
 
+#: [GUI-H1 修复·2026-10-09] 关窗后仍在运行的无 parent QThread 的**模块级强引用池**。
+#:
+#: 为什么需要：IntelTaskWorker/AgentWorker 都是无 parent 的 QThread 且是纯 Python
+#: ``run()`` —— ``w.quit()`` 对它们无效（quit 只对线程内事件循环有意义），
+#: ``cancel()`` 也无法打断在途网络读（单次读超时可达 90s）。closeEvent 的 5s
+#: 全局 deadline 过后 closeEvent 返回、窗口析构时，这些线程此前仅由**实例属性**
+#: ``_worker_refs`` 持有 → 引用随窗口消失 → 仍在运行的 QThread 被析构 →
+#: "QThread: Destroyed while thread is still running" → 进程 abort。
+#: 登记进本容器后，线程对象在运行期有强引用，窗口析构不再连带析构它；
+#: 线程自然结束时经 ``finished`` 信号自动出池。
+#:
+#: 边界如实说明（不过度承诺）：
+#:   ① 这只保证「QThread 对象不被连带析构」，不保证线程本身能停下 —— 若进程
+#:      退出时仍阻塞在系统调用/网络读，残留线程风险依然存在（项目取向是不强杀，
+#:      不用 terminate()）；
+#:   ② worker 的 finished 还连着引用窗口的既有 lambda（如 _worker_refs.remove
+#:      与 _on_agent_finished），窗口销毁后其槽函数可能抛 RuntimeError ——
+#:      PySide 打印告警但不致命，此处不为规避它拆既有连接。
+_ORPHANED_WORKERS: set = set()
+
 
 class MainWindow(QMainWindow):
     def __init__(self, parent=None, workspace_root=None):
@@ -1289,6 +1309,29 @@ class MainWindow(QMainWindow):
                     remaining = deadline - time.monotonic()
                     if remaining > 0:
                         w.wait(int(remaining * 1000))
+            except Exception:
+                pass
+        # [GUI-H1 修复·2026-10-09] 5s 截止后仍未结束的线程：登记进模块级强引用池。
+        # 此前引用只挂在实例属性 _worker_refs 上，窗口析构即失去强引用 → 运行中的
+        # QThread 被连带析构 → 进程 abort。登记 + finished 出池 + 防重复标记，
+        # 背景与边界见模块顶部 _ORPHANED_WORKERS 定义处注释。
+        for w in list(getattr(self, "_worker_refs", [])):
+            try:
+                still_running = w.isRunning()
+            except Exception:
+                still_running = False
+            if not still_running or getattr(w, "_ky_orphan_registered", False):
+                continue
+            try:
+                w._ky_orphan_registered = True
+                _ORPHANED_WORKERS.add(w)
+                w.finished.connect(lambda ww=w: _ORPHANED_WORKERS.discard(ww))
+            except Exception:
+                pass
+            try:
+                # 与 cancel 并列的补充信号（幂等无害）：纯 Python run() 不读它，
+                # 但若线程实现检查中断标志可尽早退出。
+                w.requestInterruption()
             except Exception:
                 pass
         theme_apply.write_pref(theme_apply.KEY_LAST_TAB, self.tabs.currentIndex())

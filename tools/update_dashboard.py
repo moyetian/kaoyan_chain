@@ -116,14 +116,20 @@ def _scan_publish_residuals(root: Path) -> list:
 
     与 sync_publish 导出后自检调用同一函数（``privacy_policy.scan_residual_identity``），
     ``include_pii=True`` 亦同 —— ``docs/`` 里没有第三方源码树，通用 PII 正则不会误报。
-    扫描覆盖整个 ``docs/`` 树（git 全量跟踪 = Pages 公开面）：脱敏只处理构建产物，
-    静态资产里的当前身份靠这一步兜底拦截。返回相对 ``docs/`` 的 posix 路径列表；
-    非空时调用方必须阻断推送。
+    扫描覆盖 ``docs/`` 下**非 ``.local/`` 部分**（= Pages 公开面；不是「git 全量
+    跟踪」——``docs/.local/`` 未跟踪也不进 Pages）：脱敏只处理构建产物，静态资产里
+    的当前身份靠这一步兜底拦截。返回相对 ``docs/`` 的 posix 路径列表；非空时
+    调用方必须阻断推送。
     """
     docs = root / "docs"
     if not docs.is_dir():
         return []
-    return _pp.scan_residual_identity(docs, root, include_pii=True)
+    hits = _pp.scan_residual_identity(docs, root, include_pii=True)
+    # [R11 修复·误阻断] docs/.local/ 是本地完整模式产物（.gitignore 已忽略、
+    # git ls-files 0、不进 Pages），不是公开面；计入残留会让 --push 被必然
+    # 误阻断 —— finally 分支每次都会重建 .local，下一次 --push 必被拦死，
+    # 闸门从「防泄漏」变成「阻断正常发布」。
+    return [h for h in hits if not h.startswith(".local/")]
 
 
 def _assert_identity_rules_effective(root: Path) -> None:

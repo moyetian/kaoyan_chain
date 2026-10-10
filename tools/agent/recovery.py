@@ -5,7 +5,13 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any, Callable, Optional
+
+try:  # 双导入路径兼容（源码脚本式 / tools 包式）
+    from ky_io import atomic_write_text
+except ImportError:  # pragma: no cover
+    from tools.ky_io import atomic_write_text  # type: ignore
 
 
 def parse_fallback_tool_calls(content: str, now: Callable[[], float]) -> list[dict[str, Any]]:
@@ -56,8 +62,19 @@ def missing_outputs(root, required: list[str]) -> list[str]:
 
 
 def autosave_json_outputs(root, missing: list[str], answer: str) -> list[str]:
+    """把答案里可解析的 JSON 机械落盘到 ``missing`` 列出的相对路径。
+
+    [审计 2026-10-10 A#11] ``rel`` 来自任务文本正则（可含 ``.`` 与 ``/``），
+    此前 ``root / rel`` 直接 write_text —— ``output/../../x.json`` 这类穿越
+    路径会把文件写出工作区。现写入前校验解析结果仍位于工作区内（不通过即
+    跳过），并改走 ``ky_io.atomic_write_text``（受只读闸门约束 + 原子写）。
+    """
     payload = extract_json_payload(answer)
     if payload is None:
+        return []
+    try:
+        root_resolved = Path(root).resolve()
+    except OSError:
         return []
     saved = []
     for rel in missing:
@@ -65,8 +82,10 @@ def autosave_json_outputs(root, missing: list[str], answer: str) -> list[str]:
         if path.suffix.lower() != ".json":
             continue
         try:
+            if not Path(path).resolve().is_relative_to(root_resolved):
+                continue
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2))
             saved.append(rel)
         except Exception:
             continue

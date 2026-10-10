@@ -30,6 +30,10 @@ AgentEvent schema（``SCHEMA_VERSION = 2``）
 * ``session_start``: ``{"active_subject": str, "user_input": str}``
 * ``user``:          ``{"content": str}``
 * ``assistant``:     ``{"content": str}``
+  —— [审计 2026-10-10 A#8] 这两类事件的 ``content`` 参与
+  :func:`rebuild_history` 的 resume 重建，上限为
+  :data:`USER_ASSISTANT_MAX_CHARS`（防爆用，正常内容远小于此）；
+  按 tool_result 的 4000 截断会破坏「resume 上下文 == 实时上下文」契约。
 * ``tool_call``:     ``{"tool_call_id": str, "name": str, "arguments": dict}``
 * ``tool_result``:   ``{"tool_call_id": str, "name": str, "content": str,
                         "truncated": bool, "original_chars": int}``
@@ -44,6 +48,9 @@ AgentEvent schema（``SCHEMA_VERSION = 2``）
   ``http_<code>`` / ``http_400_downgrade`` / ``network`` / ``too_large`` /
   ``invalid_response`` / ``exception``。本事件只作观测埋点，**不参与 history 重建**。
 * ``compact``:       ``{"summary": str, "before_messages": int, "after_messages": int}``
+  —— [第2轮 N1] ``summary`` 参与 :func:`rebuild_history` 的摘要重建
+  （作为置顶 system 消息），上限同为 :data:`USER_ASSISTANT_MAX_CHARS`
+  （rule 模式摘要可达上万字符，4000 截断同样破坏 resume 契约）。
 * ``session_end``:   ``{"active_subject": str}``
 
 向前 / 向后兼容契约
@@ -113,6 +120,13 @@ RESUME_TAIL_MESSAGES = 12
 #: 不能无界写盘；截断只在日志层发生，实时上下文不受影响。
 TOOL_RESULT_MAX_CHARS = 4_000
 
+#: [审计 2026-10-10 A#8 / 第2轮 N1] user / assistant 正文与 compact summary
+#: 的单条上限（字符）。这些内容参与 ``rebuild_history`` 的 resume 重建 ——
+#: 按 tool_result 的 4000 静默截断会破坏模块契约「resume 上下文 == 实时上下文」
+#: （模型答复 >4000 字符时，恢复后的历史与实时历史不一致）。50000 仅防爆，
+#: 正常对话内容远小于此。
+USER_ASSISTANT_MAX_CHARS = 50_000
+
 #: 会话日志相对 workspace 根的目录（本地隐私目录，导出已排除）。
 SESSIONS_SUBDIR = (".memory", "sessions")
 
@@ -147,13 +161,13 @@ def _redact_session_text(value: str) -> str:
     return _SESSION_PHONE_RE.sub("[手机号]", value)
 
 
-def _sanitize_session_payload(value):
+def _sanitize_session_payload(value, max_str: int = TOOL_RESULT_MAX_CHARS):
     if isinstance(value, str):
-        return _redact_session_text(value[:TOOL_RESULT_MAX_CHARS])
+        return _redact_session_text(value[:max_str])
     if isinstance(value, dict):
-        return {k: _sanitize_session_payload(v) for k, v in value.items()}
+        return {k: _sanitize_session_payload(v, max_str) for k, v in value.items()}
     if isinstance(value, list):
-        return [_sanitize_session_payload(v) for v in value]
+        return [_sanitize_session_payload(v, max_str) for v in value]
     return value
 
 
@@ -370,7 +384,17 @@ class SessionLog:
     def append(self, event_type: str, payload: Optional[Dict[str, Any]] = None,
                parent: Optional[str] = None) -> str:
         """追加一条事件，返回事件 id（即使写盘失败也返回 —— 调用方不必分支）。"""
-        evt = new_event(event_type, _sanitize_session_payload(payload), parent=parent)
+        # [审计 2026-10-10 A#8] 截断上限按事件类型分流：user / assistant 的
+        # content 参与 resume 重建（见 rebuild_history），用防爆上限
+        # USER_ASSISTANT_MAX_CHARS；其余事件（tool_result 等）维持 4000。
+        # [第2轮 N1] compact 的 summary 同样参与 rebuild_history（摘要置顶），
+        # 一并纳入高上限 —— 4000 截断会让 resume 摘要与实时上下文不一致。
+        _max_str = (USER_ASSISTANT_MAX_CHARS
+                    if event_type in (EVENT_USER, EVENT_ASSISTANT, EVENT_COMPACT)
+                    else TOOL_RESULT_MAX_CHARS)
+        evt = new_event(event_type,
+                        _sanitize_session_payload(payload, max_str=_max_str),
+                        parent=parent)
         self._write_line(evt)
         return evt["id"]
 

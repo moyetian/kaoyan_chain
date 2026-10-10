@@ -478,6 +478,13 @@ class ContextEngine:
         else:
             cut = step_back_cut
 
+        # [审计 2026-10-10 A#10] 回溯归零（cut == 0）= 没有可压缩的历史：
+        # keep_tail 已含全部消息，再插一条空摘要不会减少任何消息，反而多出
+        # 一条无内容摘要、并让 loop 的 _log_compact_if_happened 误报「已压缩」。
+        # 直接原样返回（与上方水位未达的早退同语义：压缩无意义时不动作）。
+        if cut == 0:
+            return messages
+
         keep_tail = non_system[cut:]
         history_to_compress = non_system[:cut]
 

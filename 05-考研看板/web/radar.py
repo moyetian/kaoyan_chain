@@ -127,6 +127,81 @@ def _school_watch_state(it: dict) -> str:
     return "UNCHANGED" if _baseline_ok else "PENDING_BASELINE"
 
 
+#: Windows 保留设备名（与 ky_io._WINDOWS_RESERVED_NAMES 对齐，供兜底复刻使用）。
+_WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+
+def _fallback_safe_filename(name: str, fallback: str = "未命名",
+                            max_length: int = 120) -> str:
+    """``ky_io.safe_filename`` 的对齐复刻（双路径均不可导入时的兜底）。
+
+    仅覆盖本模块用到的语义：非法字符→``_``、首尾空格/点清理、Windows 保留名、
+    字符数截断、空串回退（max_length=60 时 60 CJK 字符 = 180 字节，恰在
+    ky_io 字节预算上界内，故不另做字节截断）。
+    """
+    s = re.sub(r'[\\/:*?"<>|\r\n\t\x00-\x1f]', "_", str(name or "")).strip()
+    s = s.strip().strip(".")
+    if not s:
+        s = fallback
+    if s.split(".")[0].upper() in _WINDOWS_RESERVED_NAMES:
+        s = f"_{s}"
+    if len(s) > max_length:
+        s = s[:max_length]
+    return s or fallback
+
+
+def _resolve_safe_filename():
+    """解析 ``ky_io.safe_filename``：优先真实实现（双路径），否则对齐复刻。"""
+    try:
+        from ky_io import safe_filename
+        return safe_filename
+    except ImportError:
+        pass
+    try:
+        from tools.ky_io import safe_filename
+        return safe_filename
+    except ImportError:  # pragma: no cover - 极端环境兜底
+        return _fallback_safe_filename
+
+
+def _major_filename_token(major: str) -> str:
+    """专业名归一为「落盘文件名段」——与 syllabus_diff.save_diff_report 逐字节一致。
+
+    [N8 修复·归一管道漂移] 此前只做 ``re.sub(r"\\s+","_")``，而落盘管道
+    （``syllabus_diff.save_diff_report``）还会先过 ``ky_io.safe_filename``
+    （非法字符→``_``、max_length 截断）再剥括号内容 —— major 带方向括号
+    （「085400 示例专业（085400-01）」）时两口径不一致 → 替换失败、报告标题
+    残留真实专业名；无数字码的括号形态（「学科教学（思政）」）闸门同样失明。
+    """
+    m = str(major or "").strip() or "专业课"
+    _safe_fn = _resolve_safe_filename()
+    m = _safe_fn(m, max_length=60)
+    m = re.sub(r"[（(][^）)]*[）)]", "", m)   # 去括号内容（与 syllabus_diff 同正则）
+    m = re.sub(r"\s+", "_", m).strip("_") or "专业课"
+    return m
+
+
+def _major_scrub_forms(major: str) -> list:
+    """脱敏替换用专业名形态（长形态优先，避免短形态先替换留残片）。
+
+    含：原空格形态 / 剥括号形态 / 落盘归一形态；空 major → 空列表。
+    """
+    m = str(major or "").strip()
+    if not m:
+        return []
+    forms = {m, re.sub(r"[（(][^）)]*[）)]", "", m).strip(),
+             _major_filename_token(m)}
+    forms = {f for f in forms if f}
+    if "专业课" not in m:
+        # 归一兜底名「专业课」是通用词不是身份，不得作为替换形态误伤正常文本
+        forms.discard("专业课")
+    return sorted(forms, key=len, reverse=True)
+
+
 def build_radar_html(root_path: pathlib.Path) -> str:
     """构建【📡 招考与考纲变动雷达】全景 HTML 模块 (Sprint 7)"""
     sections = []
@@ -283,6 +358,21 @@ def build_radar_html(root_path: pathlib.Path) -> str:
             if sanitize and target_school:
                 diff_title = diff_title.replace(target_school, "目标院校")
                 diff_name = diff_name.replace(target_school, "目标院校")
+            # [R11 修复·科目名泄漏] 报告文件名形如
+            # 「考纲变动分析_<院校>_<科目>_<年>.md」，专业名里的空格已被
+            # syllabus_diff.py 归一为下划线（re.sub(r"\s+","_",major)），
+            # 自命题科目名（如「618 示例科目」→「618_示例科目」）同属身份，
+            # 必须一并泛化；此前残留自检的 token 是空格形态，对下划线失明。
+            # [N8 修复·归一管道对齐] 替换形态必须与真实落盘管道逐字节一致
+            # （safe_filename → 剥括号 → 压空格，见 _major_filename_token）：
+            # 此前只做 re.sub(r"\s+","_")，major 带方向括号
+            # （「085400 示例专业（085400-01）」）时与落盘名（085400_示例专业）
+            # 不一致 → 替换失败、标题残留真实专业名。
+            if sanitize and target_major:
+                _major_fn = _major_filename_token(target_major)
+                if _major_fn:
+                    diff_title = diff_title.replace(_major_fn, "目标专业")
+                    diff_name = diff_name.replace(_major_fn, "目标专业")
             diff_html.append(f"<div class='radar-card-h'><span>{html.escape(diff_title)}</span><span class='radar-badge mod'>动荡率 {vol}%</span></div>")
             diff_html.append("<div class='radar-stat'>")
             diff_html.append(f"<span class='radar-badge add'>+ 新增必考 {c_add} 处</span>")
@@ -322,8 +412,20 @@ def build_radar_html(root_path: pathlib.Path) -> str:
             if sanitize:
                 token = ef.stem.split("_")[0]  # 文件名形如「目标院校_目标专业.md」
                 clean_title = "目标院校 · 目标专业 社媒经验档案"
-                pos_matches = [x.replace(token, "目标院校") for x in pos_matches]
-                risk_matches = [x.replace(token, "目标院校") for x in risk_matches]
+                # [N7 修复·bullet 专业名泄漏] 此前只替换文件名首段（校名），
+                # bullet 加粗标题里的专业名（如「085400 示例专业 就业面广」）
+                # 未替换 → 随公开看板发布。现把专业名的三种形态（原空格形态 /
+                # 剥括号形态 / 落盘归一形态）一并泛化为「目标专业」。
+                _major_forms = _major_scrub_forms(target_major)
+
+                def _scrub(x: str) -> str:
+                    x = x.replace(token, "目标院校")
+                    for _f in _major_forms:
+                        x = x.replace(_f, "目标专业")
+                    return x
+
+                pos_matches = [_scrub(x) for x in pos_matches]
+                risk_matches = [_scrub(x) for x in risk_matches]
 
             exp_html.append("<div class='radar-card'>")
             exp_html.append(f"<div class='radar-card-h'><span>{html.escape(clean_title)}</span><span class='radar-badge tag'>AI置信清洗</span></div>")

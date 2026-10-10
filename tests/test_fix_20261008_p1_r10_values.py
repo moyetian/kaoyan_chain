@@ -139,8 +139,10 @@ class TestNonStringValuesUnchanged:
         out = resolve_conflicts([_ev("简章元信息", dict(d)),
                                  _ev("简章元信息", dict(d))])
         assert len(out) == 1
+        # [R11 适配·同源异值=并列条目] 冲突仲裁的前提是「多源」（R11 起同源
+        # type+url 相同不再是冲突）；本用例意图「异值仍判冲突」，故改多源构造。
         out2 = resolve_conflicts([_ev("简章元信息", {"title": "甲版"}),
-                                  _ev("简章元信息", {"title": "乙版"})])
+                                  _ev_chsi("简章元信息", {"title": "乙版"})])
         assert len(out2) == 2 and all(e.status == "CONFLICT" for e in out2)
 
     def test_list_of_dict_pdf_links_no_crash(self):

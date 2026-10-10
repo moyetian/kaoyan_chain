@@ -345,6 +345,13 @@ def save_experience_dossier(
     return target_file
 
 
+#: 「精选高置信度经验」标题行：后缀「 (Top Experiences)」可选（历史档案两种形态并存）。
+#: [R11 修复·条件与替换串不一致] 旧实现条件查无后缀子串、replace 匹配带后缀串，
+#: 无后缀标题档案的 replace 永不命中 → 原样写回后 return True 谎报成功、经验静默丢失。
+_TOP_EXPERIENCES_HEADING_RE = re.compile(
+    r"^(## 💡 2\. 精选高置信度学长学姐实名经验)(?: \(Top Experiences\))?$", re.M)
+
+
 def append_experience_to_dossier(
     school_name: str,
     source_or_major: str = "微信公众号",
@@ -403,16 +410,20 @@ def append_experience_to_dossier(
 
         if target_file.exists():
             orig = target_file.read_text(encoding="utf-8")
-            if "## 💡 2. 精选高置信度学长学姐实名经验" in orig:
-                updated = orig.replace(
-                    "## 💡 2. 精选高置信度学长学姐实名经验 (Top Experiences)",
-                    "## 💡 2. 精选高置信度学长学姐实名经验 (Top Experiences)\n" + text_to_append
-                )
-                atomic_write_text(target_file, updated)
-                return True
+            # [R11 修复·条件与替换串不一致] 条件查无后缀子串、replace 匹配带
+            # 「 (Top Experiences)」后缀串 → 无后缀标题档案 replace 永不命中、
+            # 原样写回后 return True 谎报成功（经验静默丢失）。改用正则匹配可选
+            # 后缀：命中即在标题行末尾（m.end()）插入；未命中（无该标题）走尾部追加。
+            m = _TOP_EXPERIENCES_HEADING_RE.search(orig)
+            if m:
+                updated = orig[:m.end()] + text_to_append + orig[m.end():]
             else:
-                atomic_write_text(target_file, orig + "\n" + text_to_append)
-                return True
+                updated = orig + "\n" + text_to_append
+            # 防线：内容未变化时不得谎报成功（防未来形态漂移再次静默丢经验）
+            if updated == orig:
+                return False
+            atomic_write_text(target_file, updated)
+            return True
         else:
             header = f"# 🎓 考研社媒真实经验与就读体验档案 · {school}\n\n## 💡 2. 精选高置信度学长学姐实名经验 (Top Experiences)\n"
             atomic_write_text(target_file, header + text_to_append)

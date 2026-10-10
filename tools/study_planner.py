@@ -909,7 +909,7 @@ def run_ai_study_plan_generation(plan, interactive=True):
         except Exception:
             pass
 
-    api_key = cfg.get("api_key", "").strip()
+    api_key = str(cfg.get("api_key") or "").strip()
 
     # [文科适配·AI 提示词数学串味] 不考数学时，提示词里的数学预算/白名单/
     # 痛点行全部替换为不考数学声明，并追加硬约束（否则 LLM 照样输出数学战术）。

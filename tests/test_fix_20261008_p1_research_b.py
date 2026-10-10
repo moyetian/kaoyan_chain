@@ -286,9 +286,20 @@ class TestR7SubjectCodeTruncation:
 # ═══════════════════ R10：初试科目 field 名归一 + 冲突分组 ═══════════════════
 
 class TestR10InitialSubjectsFieldUnification:
-    """R10：HTML/PDF/研招网在线/离线基准四路同语义字段统一「初试科目」。"""
+    """R10：HTML/PDF/离线基准三路同语义字段统一「初试科目」。
+
+    [INTEL-H2 修正] 研招网在线目录的 value 是专业目录条目而非科目清单，
+    已拆出「招生院系与专业」独立字段，不再与科目清单同组仲裁。
+    """
 
     def test_four_producers_share_unified_field(self):
+        """R10：HTML/PDF/离线基准三路真·科目清单统一「初试科目」。
+
+        [INTEL-H2 修正] 研招网在线目录原也被断言为「初试科目」，但它的 value 是
+        专业目录条目（院系/专业代码/专业名/方向），**不含科目** —— 与真科目清单
+        同名分组后每次在线抓取成功都无条件报 CONFLICT 假警报。现改为
+        「招生院系与专业」，回归钉子见下方两个 test_chsi_catalog_* 用例。
+        """
         html_evs = DocumentExtractor().extract_from_html(
             _HTML_HALFWIDTH, "https://yz.example.edu.cn/n/1", "测试大学",
             target_year=2027)
@@ -298,16 +309,41 @@ class TestR10InitialSubjectsFieldUnification:
         conn = CHSIConnector()
         off_evs = conn._generate_ground_truth_evidences(
             "测试大学", "085404", "https://yz.chsi.com.cn", 2027)
-        on_evs = conn._parse_catalog_html(
-            "<table><tr><td>测试大学</td><td>计算机学院</td><td>085404 计算机技术</td>"
-            "<td>不区分研究方向</td><td>全日制</td><td>60</td></tr></table>",
-            "测试大学", "https://yz.chsi.com.cn", 2027)
         assert [e.field for e in html_evs if e.field == "初试科目"] == ["初试科目"]
         assert [e.field for e in pdf_evs if e.field == "初试科目"] == ["初试科目"]
         assert [e.field for e in off_evs if e.field == "初试科目"] == ["初试科目"]
-        assert [e.field for e in on_evs if e.field == "初试科目"] == ["初试科目"]
         # 专业细分移入 source（离线基准不再靠 field 名携带专业后缀）
         assert "085404 计算机技术" in off_evs[0].source.name
+
+    def test_chsi_catalog_entry_not_claimed_as_subject(self):
+        """[INTEL-H2 回归] 研招网专业目录条目不得自称「初试科目」。
+
+        这是假冲突的最小复现：目录 dict 与官网科目 list 同名分组时，
+        判等键（dict 走 str() vs list 走 json.dumps）必然不同 → 无条件 CONFLICT。
+        """
+        on_evs = CHSIConnector()._parse_catalog_html(
+            "<table><tr><td>测试大学</td><td>计算机学院</td><td>085404 计算机技术</td>"
+            "<td>不区分研究方向</td><td>全日制</td><td>60</td></tr></table>",
+            "测试大学", "https://yz.chsi.com.cn", 2027)
+        assert on_evs, "在线目录解析应产出一条证据"
+        assert all(e.field == "招生院系与专业" for e in on_evs)
+        # value 仍是专业条目，键名不得被改动（下游按 major_code 取值）
+        assert on_evs[0].value["major_code"] == "085404"
+
+    def test_chsi_catalog_entry_no_false_conflict_with_official_subjects(self):
+        """[INTEL-H2 回归] 研招网目录 + 官网科目清单同批 → 不再报假 CONFLICT。"""
+        official = build_evidence(
+            "初试科目", ["(101)思想政治理论", "(302)数学(二)"], "", 2027,
+            "graduate_school", "官网目录", "https://a.cn", target_year=2027)
+        catalog = CHSIConnector()._parse_catalog_html(
+            "<table><tr><td>测试大学</td><td>计算机学院</td><td>085404 计算机技术</td>"
+            "<td>不区分研究方向</td><td>全日制</td><td>60</td></tr></table>",
+            "测试大学", "https://yz.chsi.com.cn", 2027)[0]
+
+        out = resolve_conflicts([official, catalog])
+        assert not any(e.status == "CONFLICT" for e in out), (
+            "语义不同的证据（科目清单 vs 专业目录条目）不得互判冲突")
+        assert {e.status for e in out} == {"VERIFIED"}
 
     def test_conflicting_values_share_group(self):
         """异值多源 → 进入同一冲突分组（修复前四种 field 名永不进同组）。"""

@@ -843,7 +843,6 @@ def grade_open_question(
 
     # ── 输入截断：学员可粘贴整页手写转录，超长文本会撑爆上下文并放大费用 ──
     question = _truncate(question, cfg.get("max_question_chars", 4000))
-    student_answer = _truncate(student_answer, cfg.get("max_answer_chars", 6000))
 
     # ── 边界：空题或空作答，直接判不通过（无需调用模型）──
     if not question:
@@ -854,6 +853,8 @@ def grade_open_question(
                          "已转人工复核（本次不计分，不代表作答错误）")
         result.degraded = True
         return result
+    # （作答截断在题面检查之后：空题直接返回，不做大段作答的无用截断）
+    student_answer = _truncate(student_answer, cfg.get("max_answer_chars", 6000))
     if not student_answer:
         result.match_level = 0
         result.score = 0.0
@@ -1128,6 +1129,25 @@ def _review_one(question: str, answer: str, rubric: List[Dict[str, Any]],
     return parsed
 
 
+def _rubric_key(value: Any) -> Optional[str]:
+    """rubric 要点 ID 的归一化键（建键与查找共用，双端同口径）。
+
+    [GRADE-H1] 模型返回的 ``rubric_hits[].id`` 常为字符串（``"1"``），而 rubric
+    解析出的 id 为整数（``1``）—— 直接按原样建键/查找会 miss：命中明细全部
+    落空、重算总分 0.0，与模型自报分偏差超容差，``_finalize`` 据此误判
+    「判分自检未通过」并把整题转人工（开放题自动判分被类型伪矛盾打废）。
+    统一归一为字符串键：
+      · int 1 / float 1.0 → "1"（整值浮点去小数点）
+      · str "1" / " 1 "  → "1"（strip 空白）
+      · None → None（不建键、不查找 —— 保持既有「无 id 不参与匹配」行为）
+    """
+    if value is None:
+        return None
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return str(value).strip()
+
+
 def _recompute_total(rubric, hits):
     """按 rubric 明细重算总分：Σ hit_fraction × point_score，再归一到 10 分制。
 
@@ -1149,6 +1169,10 @@ def _recompute_total(rubric, hits):
           - 明细全为 none：重算 0.0 是**有效结论**，照常比对
           - 明细非空但无一命中 rubric 的 id：明细与 rubric 对不上，仍按 0 分
             重算比对（这确属「自相矛盾」，应当被抓住）
+
+    [GRADE-H1] 建键与查找经 :func:`_rubric_key` 双端归一（int 1 / "1" / 1.0 /
+    " 1 " 同键）—— 此前原样 ID 比对时模型返回的字符串 id 与 rubric 整数 id
+    对不上，命中明细被整体丢弃、重算 0.0，触发类型伪矛盾降级。
     """
     rubric = rubric or []
     if not rubric:
@@ -1158,8 +1182,9 @@ def _recompute_total(rubric, hits):
         return None
     by_id = {}
     for h in hits:
-        if h.get("id") is not None:
-            by_id[h.get("id")] = h
+        key = _rubric_key(h.get("id"))
+        if key is not None:
+            by_id[key] = h
     fractions = {"full": 1.0, "partial": 0.5, "half": 0.5, "none": 0.0}
     got = 0.0
     full = 0.0
@@ -1168,7 +1193,7 @@ def _recompute_total(rubric, hits):
             continue
         pts = _coerce_float(r.get("score"), 0.0)
         full += pts
-        h = by_id.get(r.get("id", i), {})
+        h = by_id.get(_rubric_key(r.get("id", i)), {})
         frac = fractions.get(str(h.get("hit", "") or "").strip().lower(), 0.0)
         got += frac * pts
     if full <= 0:

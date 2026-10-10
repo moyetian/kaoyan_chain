@@ -483,6 +483,13 @@ class MCPClientManager:
         ``start_timeout``：initialize 握手的等待秒数（体检类调用方可传更短的值）。
         """
         for s_name, s_conf in mcp_config_dict.items():
+            # [审计 2026-10-10 A#5] mcp_servers 的 value 可能是字符串 / null /
+            # 数组（手写配置或迁移残留）——此前直接 s_conf.get 会 AttributeError，
+            # 且本函数在 AgentRunner.__init__ 内被调用 → REPL/GUI 全部无法启动。
+            # 收敛为可辨识的 failed 记录（不静默丢弃、不崩溃）。
+            if not isinstance(s_conf, dict):
+                self.failed[s_name] = "配置格式错误（应为对象，含 command/args 字段）"
+                continue
             cmd = s_conf.get("command")
             args = s_conf.get("args", [])
             if not cmd:

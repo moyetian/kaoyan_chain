@@ -140,11 +140,17 @@ def test_looks_like_anti_bot_false_for_normal_page():
 
 
 def test_ddg_raises_anti_bot_error_when_both_endpoints_blocked(monkeypatch):
-    """两个端点都被挡时要说清「被反爬挡了」，而不是笼统的「没结果」。"""
+    """两个端点都被挡时要说清「被反爬挡了」，而不是笼统的「没结果」。
+
+    [BOT-M1 修复·2026-10-09] 夹具原用裸 ``<html>anomaly</html>``，而 ``anomaly``
+    已被收紧为反爬专属短语（它是通用学术词，检索「anomaly detection」这类主题的
+    正常结果页必然命中，会导致学术检索被误判反爬并 600s 硬封）。
+    夹具改用仍然有效的反爬特征，不影响本用例要表达的「被挡时说清原因」。
+    """
     from tools.search.providers import ddg as ddg_mod
 
     monkeypatch.setattr(ddg_mod, "get_text",
-                        lambda *a, **k: "<html>anomaly</html>")
+                        lambda *a, **k: "<html>Anomaly detected</html>")
     with pytest.raises(Exception) as exc:
         ddg_mod.DuckDuckGoProvider().search("x")
     assert "反爬" in str(exc.value)

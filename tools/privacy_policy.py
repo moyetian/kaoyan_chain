@@ -171,7 +171,11 @@ BUILD_ARTIFACT_DIRS = frozenset({
 #: 开发期脚手架/工具残留目录：AI 代理的临时工作区、爬取缓存、浏览器自动化日志等。
 #: 这些目录是「本机干活时的副产物」，既不是产品源码，也可能夹带真实数据
 #: （例如 .codex_full_check_04 下散落着多份 ky_config.json 测试副本）。
-#: 与 BUILD_ARTIFACT_DIRS 同样**只在仓库根层级**整棵排除。
+#: [R11 修复·嵌套脚手架] 与 BUILD_ARTIFACT_DIRS 不同，本清单在
+#: ``should_publish()`` 里按**任意层级**整棵排除：build_package 出口没有
+#: sync_publish.EXCLUDE_DIRS 那样的任意深度兜底，嵌套出现（备份/快照目录
+#: 落点被改、指向仓库内子目录）就会静默进分发包。各名字都是本机开发
+#: 副产物，任意层级出现都不该发布，无第三方结构误伤面。
 DEV_SCRATCH_DIRS = frozenset({
     ".agents", ".tmp_unidata", ".playwright-cli",
     ".codex_full_check_04", ".codebuddy", ".claude", ".cursor",
@@ -211,6 +215,9 @@ DEV_SCRATCH_DIRS = frozenset({
 })
 
 #: 根级整棵排除的目录（构建产物 + 开发脚手架）。
+#: 保留为「根级判定」的聚合清单，供 sync_publish.dir_should_exclude 等
+#: 只需根级语义的调用点使用；``should_publish()`` 已分别处理：
+#: BUILD_ARTIFACT_DIRS 仅根层级、DEV_SCRATCH_DIRS 任意层级（见该函数 3/3.1 段）。
 ROOT_ONLY_EXCLUDE_DIRS = BUILD_ARTIFACT_DIRS | DEV_SCRATCH_DIRS
 
 #: 与 `.gitignore` 对齐的「不入发布物」路径（相对仓库根的 parts 前缀元组）。
@@ -457,9 +464,19 @@ def should_publish(path: Union[str, Path]) -> bool:
     if is_backup(name):
         return False
 
-    # 3. 根级构建产物 / 依赖目录 / 开发脚手架：整棵子树剔除
+    # 3. 根级构建产物 / 依赖目录：仅根层级整棵剔除
     #    只在仓库根判断，避免误伤 docs/assets/vendor/katex/<ver>/dist/ 这类第三方包内部结构
-    if parts[0] in ROOT_ONLY_EXCLUDE_DIRS:
+    if parts[0] in BUILD_ARTIFACT_DIRS:
+        return False
+    # 3.1 [R11 修复·嵌套脚手架] 开发脚手架目录（.config_backup / .checkpoint /
+    #     .sim_logs / .sim_tools 等）：**任意层级**整棵剔除。此前与构建产物共用
+    #     「仅 parts[0]」的根级判定，而 build_package 出口没有 sync_publish.
+    #     EXCLUDE_DIRS 那样的任意深度兜底 —— 一旦这些目录出现在嵌套层级
+    #     （KY_CONFIG_BACKUP_DIR 指向仓库内子目录、PermissionsManager
+    #     (workspace_root=子目录)、手工拷贝），含明文 api_key 的快照 /
+    #     本机绝对路径留档就会静默进分发包。BUILD_ARTIFACT_DIRS 保持根层级
+    #     不动（下沉会误伤第三方 dist/ 结构，.gitignore C7 教训）。
+    if any(p in DEV_SCRATCH_DIRS for p in parts):
         return False
 
     # 3.5 与 .gitignore 对齐的受限路径与本地产物（原始快照 / 运行时向量库 /
@@ -1218,13 +1235,14 @@ def _public_email_guard() -> str:
 
 
 #: **通用 PII 形态**（与「报考身份」无关的个人隐私）：手机号 / 身份证号 /
-#: 邮箱 / 带标签的准考证号、QQ 号和学号。
+#: 邮箱 / 带标签的准考证号、QQ 号和学号 / ``sk-`` 凭证。
 #:
 #: 设计原则：**宁少勿滥**。数字类规则极易误伤仓库里大量合法的既有数字
 #: （专业代码 ``030500``、初试日期 ``2026-12-19``、自命题科目码 ``618``/``823``、
 #: 倒计时天数、页码…），所以：
 #:   * 手机号 / 身份证：靠**长度 + 结构 + 数字边界**锁定，不需要语境；
-#:   * 准考证号、QQ、学号：**必须**紧邻显式标签，裸数字一律不动。
+#:   * 准考证号、QQ、学号：**必须**紧邻显式标签，裸数字一律不动；
+#:   * ``sk-`` 凭证：靠**前缀 + 长度下限**锁定（发布面实测零误报，见条目注释）。
 PII_SUBSTITUTIONS: List[Tuple[str, str]] = [
     # 手机号：11 位、1 开头、第二位 3-9；数字边界保证不截断更长的数字串。
     (r"(?<!\d)1[3-9]\d{9}(?!\d)", "[手机号]"),
@@ -1247,6 +1265,15 @@ PII_SUBSTITUTIONS: List[Tuple[str, str]] = [
     # QQ / 学号只在显式标签后替换，避免误伤公开院校代码、页码与年份。
     (r"((?:QQ(?:号|号码)?|qq(?:号|号码)?)\s*[:：=]?\s*)\d{5,12}(?!\d)", r"\1[QQ号]"),
     (r"((?:学号|学生编号)\s*[:：=]?\s*)\d{6,20}(?!\d)", r"\1[学号]"),
+    # [R11 修复] API 凭证：``sk-`` 开头 + ≥20 位字母数字/连字符/下划线（AI
+    # 工具链的主流 key 形态，如 ky_config.json 里 51 字符的真实 api_key）。
+    # [N9 修复·分段前缀失配] 字符类须含 ``-``/``_``：``sk-proj-xxxxx…`` 这类
+    # OpenAI 分段前缀此前被 ``[A-Za-z0-9]{20,}`` 失配 → 绕过脱敏。
+    # 长度下限 20 是**误报边界**：仓库里的占位形态（sk-SHORT / sk-placeholder /
+    # sk-test-fake / sk-mock-valid-key）全部短于阈值，发布面全类型实测零命中
+    # （唯一 ≥20 位形态是根 ky_config.json 的真实 key —— 正是要保护的对象）。
+    # 替换与残留自检同源派生（PII_RESIDUAL_PATTERNS），导出后自检不再对它失明。
+    (r"sk-[A-Za-z0-9_-]{20,}", "[API密钥]"),
 ]
 
 #: PII 的**残留自检**用正则（与 PII_SUBSTITUTIONS 同源）。
@@ -1664,6 +1691,10 @@ def scan_residual_identity(dst: Union[str, Path], src_root: Union[str, Path], *,
     **并集** ``identity_domain_tokens()``（院校 pinyin 注册域名）。后者是
     2026-09-21 补的：只有中文 token 时，正文留着 ``gra.<校名拼音>.edu.cn``
     的文件会被判为「干净」—— 自检与规则同时失明。
+
+    [PRIV-H1 修复·2026-10-09] 扫描对象从「**文件内容**」扩展为「内容 + 文件名」：
+    ``identity_filename_reason()`` 此前已存在却无人调用，导致内容干净的
+    ``<真实校名>真题.md`` 判为干净。文件名与内容同为泄漏面，两者缺一不可。
     """
     dst = Path(dst)
     tokens = [t for t in identity_name_tokens(src_root) if t]
@@ -1704,6 +1735,14 @@ def scan_residual_identity(dst: Union[str, Path], src_root: Union[str, Path], *,
         if not f.is_file():
             continue
         rel = f.relative_to(dst)
+        # [R11 修复·既定噪音阻断] 副本的 ``.git`` 是本地版本控制元数据，不参与
+        # push 的文件树（git 协议只传对象，不上传工作区文件）；其 config/logs
+        # 里的提交身份邮箱（占位 ``29652@kaoyan.local``，已随每个 commit 公开）
+        # 会被 PII 规则命中 —— 此前自检只告警时无碍，PRIV-C2 改为**阻断**后
+        # 会让每次 ``--force`` 导出必然失败（实测 4 命中全在 .git 内）。
+        # 跳过 .git 段（任意层级，与 git 自身的排除口径一致）。
+        if ".git" in rel.parts:
+            continue
         posix = rel.as_posix()
         logical = _logical(posix)
         if logical.split("/", 1)[0] == "data":
@@ -1715,5 +1754,13 @@ def scan_residual_identity(dst: Union[str, Path], src_root: Union[str, Path], *,
             continue
         matchers = py_matchers if f.suffix == ".py" else md_matchers
         if _file_has_residual(f, matchers, include_pii, overlap):
+            hits.append(posix)
+            continue
+        # [PRIV-H1 修复·2026-10-09] 自检必须同时看**文件名**。
+        # 此前只扫内容，于是「内容已脱敏、名字带真实校名」的文件
+        # （如 04-专业课/<真实校名>真题.md）一路绿灯进公开副本 ——
+        # 内容闸门与rename 闸门对它同时失明。identity_filename_reason()
+        # 早已存在但无人调用，此处接入。
+        if identity_filename_reason(f.name, src_root):
             hits.append(posix)
     return hits

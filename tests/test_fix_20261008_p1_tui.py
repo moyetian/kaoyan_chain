@@ -359,8 +359,14 @@ def test_t3_normal_width_text_untouched(monkeypatch):
 
 
 def test_t3_truncate_display_unit():
-    """_truncate_display 单元：不超不动 / 精确截断 / 全角边界留省略号。"""
+    """_truncate_display 单元：不超不动 / 截断为省略号预留 2 列 / 全角边界回退。
+
+    [TUI-L1 修复·2026-10-09] 省略号按真实宽度（2 列）预留：空间不足时回退已收
+    字符，故 "abcdef"/3 → "a…"、"中中中"/5 → "中…"（旧口径按 1 列预留，省略号
+    在中文终端实际多占 1 列，整行右边框外扩 —— 本用例此前钉的 "abc"/"中中…"
+    正是该错位行为的产物）。
+    """
     assert tui_navigator._truncate_display("abc", 5) == "abc"
-    assert tui_navigator._truncate_display("abcdef", 3) == "abc"
-    assert tui_navigator._truncate_display("中中中", 5) == "中中…"
+    assert tui_navigator._truncate_display("abcdef", 3) == "a…"
+    assert tui_navigator._truncate_display("中中中", 5) == "中…"
     assert tui_navigator._truncate_display("中", 0) == ""

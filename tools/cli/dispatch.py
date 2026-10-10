@@ -265,7 +265,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     # [G5 修复·透传污染] 此前无条件追加给**每个**子命令，吞自由文本的处理器
     #（done/calc/notify/diagnose/variant 做 join）会把 token 吃进关键词导致
     # 匹配失败。现仅对真正解析它们的 serve/view 回填。
-    if passthrough_opts and cmd.name in ("serve", "view"):
+    if cmd.name in ("serve", "view"):
+        # [R11 修复·权限静默降级] `--permission=`/`-p=` 在上方全局解析被消费后
+        # 从不回填，_cmd_view 里的 `--permission=` 解析分支成了死代码，
+        # permission_mode 恒为初始值 ask —— 用户以为只读，实际拿到可批准写权限
+        # （A3a/G13 同类：声明与实现脱节）。此处无条件回填规范化后的模式；
+        # serve 不解析该选项，多余参数会被其解析循环自然忽略。
+        passthrough_opts = passthrough_opts + [f"--permission={permission_mode}"]
         args = args + passthrough_opts
 
     if _wants_command_help(args) and cmd.name not in _HANDLERS_WITH_OWN_HELP:

@@ -363,7 +363,7 @@ def stream_chat(messages: List[Dict[str, Any]], config: Dict[str, Any]) -> str:
     ``_MAX_ATTEMPTS=2`` 空回复重试与「失败/无内容返回 ""」契约。
     """
     raw_base_url = config.get("base_url", "https://api.deepseek.com/v1")
-    api_key = config.get("api_key", "").strip()
+    api_key = str(config.get("api_key") or "").strip()
     model = config.get("model", "deepseek-chat")
 
     if not api_key:
@@ -518,7 +518,7 @@ def query_llm_reply(user_msg: str, cfg: Optional[Dict[str, Any]] = None) -> str:
     if not messages or messages[-1].get("content") != user_msg:
         messages.append({"role": "user", "content": user_msg})
 
-    api_key = cfg.get("api_key", "").strip()
+    api_key = str(cfg.get("api_key") or "").strip()
     raw_base_url = cfg.get("base_url", "https://api.deepseek.com/v1")
     if not api_key or api_key == "YOUR_API_KEY_HERE" or "example.com" in raw_base_url:
         return f"🎓【考研私教】收到提问: \"{user_msg}\"\n⚠️ 尚未配置大模型 API Key，请在电脑端终端运行 `ky config` 设置密钥后即可畅享网页端与群聊对话讲题！"

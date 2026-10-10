@@ -149,6 +149,13 @@ def _resolve_max_tokens(config: Optional[Dict[str, Any]]) -> int:
 _THINK_BLOCK_RE = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.DOTALL | re.IGNORECASE)
 _THINK_TAG_RE = re.compile(r"</?think(?:ing)?>?", re.IGNORECASE)
 
+#: [审计 2026-10-10 A#9] 输出预算截断标注的尾部特征（单一来源为
+#: ``tools.output_budget.truncation_notice``，格式固定）——JSON 修复前先剥离，
+#: 修复成功后原样补回，避免「修复吞掉如实标注」。
+_TRUNCATION_NOTICE_TAIL_RE = re.compile(
+    r"\n*\[已达「[^」\n]*」档输出预算（\d+ tokens）而截断；"
+    r"若需完整内容，可切换到更深的档位后重问。\]\s*$")
+
 
 def _strip_think_tags(text: str) -> str:
     """移除模型输出中偶发泄漏的思维链标签（``<think…`` / ``</think>`` 等）。
@@ -453,7 +460,7 @@ class AgentRunner:
             self._session_started = True
             self.hooks.trigger_session_start(ctx)
 
-        api_key = self.config.get("api_key", "").strip()
+        api_key = str(self.config.get("api_key") or "").strip()
         if not api_key:
             err_msg = "[!] 错误: 未配置大模型 API Key！请在终端输入 /config 进行配置。"
             print(f"\033[91m{err_msg}\033[0m")
@@ -584,7 +591,12 @@ class AgentRunner:
                     final_answer = "本轮已达到 Agent Token 预算，已停止继续调用模型。"
                     break
 
-                choice = response_data.get("choices", [{}])[0]
+                # [审计 2026-10-10 A#3] ``response_data.get("choices", [{}])``
+                # 只在**键缺失**时兜底：键存在但为空列表（或 null）时 [0] 直接
+                # IndexError / TypeError 中断 run。归一化后空 choices 视作空响应，
+                # 与 message/content 全空走同一条既有分支（情形 B → 收尾恢复）。
+                choices = response_data.get("choices") or []
+                choice = choices[0] if choices else {}
                 message = choice.get("message", {})
                 # [P2 修复·思维链标签泄漏] 统一出口清洗：content 会流向
                 # print / 对话历史 / last_assistant_text / final_answer 四处。
@@ -649,6 +661,12 @@ class AgentRunner:
                         })
 
                         # 优雅的高科技状态行显示
+                        # [审计 2026-10-10 A#2] json.loads 可能返回非 dict（如
+                        # "[1,2]" 解析成功返回 list）——与上方事件构造同一防御：
+                        # 状态行格式化前先归一化，否则 .items() 直接 AttributeError
+                        # 中断整个 run（事件侧此前已防御，状态行侧漏了）。
+                        if not isinstance(fn_args, dict):
+                            fn_args = {"raw": fn_args}
                         args_summary = ", ".join(f"{k}='{v}'" if len(str(v))<40 else f"{k}='...'" for k, v in fn_args.items())
                         if not self.quiet:
                             print(f"\n\033[96m🛠️  [Agent Tool] 智能私教正在调用: \033[1m{fn_name}\033[0m\033[96m({args_summary})\033[0m")
@@ -1072,16 +1090,30 @@ class AgentRunner:
             if "<tool_call>" in content:
                 content = content.split("<tool_call>")[0].strip()
             if content.strip():
+                # [LOOP-L1] 收尾请求也可能被 max_tokens 截断：与主答案出口
+                # （run() 情形 B）同口径追加截断标注。顺序：先完成 <tool_call>
+                # 截断、后追加通知 —— 通知必须落在文本最后。
+                content += output_budget.truncation_notice(
+                    getattr(self, "_last_finalize_finish_reason", None),
+                    self.config)
                 self._display_final_answer(content)
                 return content
         if last_assistant_text:
+            # 兜底文本来自工具轮的 assistant 输出（非收尾请求，无 finish_reason
+            # 可标），不追加截断通知。
             self._display_final_answer(last_assistant_text)
             return last_assistant_text
         return ""
 
     def _finalize_request(self, messages: List[Dict[str, Any]],
                           instruction: str) -> str:
-        """[收尾答案] 发一次「禁用工具」的收尾请求，返回 content（异常/空皆为空串）。"""
+        """[收尾答案] 发一次「禁用工具」的收尾请求，返回 content（异常/空皆为空串）。
+
+        [LOOP-L1] 本次响应的 ``finish_reason`` 记入
+        ``self._last_finalize_finish_reason``（入口先清空）：收尾请求同样可能被
+        max_tokens 截断，调用方据此追加截断标注，避免考生拿到无提示的半截答案。
+        """
+        self._last_finalize_finish_reason = None
         try:
             tail = list(messages)
             tail.append({"role": "user", "content": instruction})
@@ -1091,6 +1123,7 @@ class AgentRunner:
             except RunBudgetExceeded:
                 return ""
             choice = ((data or {}).get("choices") or [{}])[0] or {}
+            self._last_finalize_finish_reason = choice.get("finish_reason") or None
             message = choice.get("message") or {}
             # [P2 修复·思维链标签泄漏] 收尾答案同样要过清洗（最终答复出口）
             return _strip_think_tags(message.get("content") or "")
@@ -1124,6 +1157,15 @@ class AgentRunner:
         """
         from .recovery import build_json_repair_instruction, validate_repaired_json
         text = (final_answer or "").strip()
+        # [审计 2026-10-10 A#9] 答案可能带输出预算截断标注（run 主出口 / 收尾
+        # 出口追加，且**在文本最后**）。修复请求只应收到 JSON 本体：先剥离标注，
+        # 修复成功后原样补回 —— 此前标注被整体发给模型，补全结果回包后标注
+        # 丢失，考生拿到无标注的半截答案（违背如实标注）。
+        truncation_notice = ""
+        _notice_match = _TRUNCATION_NOTICE_TAIL_RE.search(text)
+        if _notice_match:
+            truncation_notice = text[_notice_match.start():]
+            text = text[:_notice_match.start()].rstrip()
         if text[:1] not in ("{", "["):
             return final_answer
         try:
@@ -1150,7 +1192,7 @@ class AgentRunner:
             "content": "json_answer_repair: 修复成功（仅语法，内容未改）",
             "kind": "json_answer_repair",
         })
-        return cand
+        return cand + truncation_notice
 
     # ── [W8] 流式请求基础设施 ────────────────────────────────────────────
 
@@ -1219,7 +1261,7 @@ class AgentRunner:
         「失败返回 None」契约。
         """
         raw_base_url = self.config.get("base_url", "https://api.deepseek.com/v1")
-        api_key = self.config.get("api_key", "").strip()
+        api_key = str(self.config.get("api_key") or "").strip()
         model = self.config.get("model", "deepseek-chat")
 
         # [W1 埋点] 每次 LLM 调用的耗时 / 上游真实 usage / 错误分类 → session jsonl
@@ -1402,7 +1444,7 @@ class AgentRunner:
         exception）与返回 None 契约。
         """
         raw_base_url = self.config.get("base_url", "https://api.deepseek.com/v1")
-        api_key = self.config.get("api_key", "").strip()
+        api_key = str(self.config.get("api_key") or "").strip()
         model = self.config.get("model", "deepseek-chat")
 
         # [W1 埋点] 降级路径同样落 llm_call 事件（allow_tools=False 可辨识）。

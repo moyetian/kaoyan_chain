@@ -591,7 +591,21 @@ def root_docs_sync_enabled() -> bool:
     state_snapshot.json 静默不同步（Pages 停留在旧版本，考生以为看板已更新）。
     现换用与考试模式无关的稳定锚点 ky_config.json（初始化向导必写、四端共用），
     并保留「输出重定向」豁免（KY_DASHBOARD_OUTPUT_DIR 隔离输出时不回写根 docs）。
+
+    [PRIV-C1 修复·2026-10-09] 补``snapshot_opt_in()`` 校验。注意
+    「输出重定向」豁免**不在本函数**：它在 ``web/config.py:89-95`` 以
+    ``ROOT_DOCS = OUT`` 重定向等效实现（设了 KY_DASHBOARD_OUTPUT_DIR 时
+    ROOT_DOCS 指向隔离目录，本判据的``ROOT_DOCS.parent.parent == ROOT.parent``
+    自动为假）—— 不要在这里重复加环境变量判断。
+
+    真缺口是**脱敏状态**：本地完整模式（``KY_SNAPSHOT_OPT_IN=0``）下产物含
+    真实学情（真实校名/自命题科目代码与名称），而根``docs/`` 是 **Git 跟踪
+    目录**、origin 直连公开仓库 —— 一次 ``add -A`` 提交推送即构成隐私泄漏。
+    发布出口另有 ``ensure_sanitized_docs_for_publish()`` 保护**公开副本**，
+    但它不保护主仓库工作区，故此处必须自己拦一道。
     """
+    if not snapshot_opt_in():
+        return False
     return (ROOT_DOCS.parent.parent == ROOT.parent
             and (ROOT.parent / "ky_config.json").exists())
 
@@ -630,8 +644,13 @@ if __name__ == "__main__":
         print(f"[OK] synced to root docs: {ROOT_DOCS}")
     else:
         # [P1 修复·2026-10-08 W4] 跳过根 docs 同步时不再静默：如实说明原因。
-        print("[i] 未同步到根 docs/：仓库根缺少 ky_config.json（工作区未初始化），"
-              "或输出已被 KY_DASHBOARD_OUTPUT_DIR 重定向")
+        # [PRIV-C1 修复·2026-10-09] 补脱敏这一原因（本地完整模式不再回写根 docs）。
+        if not snapshot_opt_in():
+            print("[i] 未同步到根 docs/：当前为本地完整模式（KY_SNAPSHOT_OPT_IN=0），"
+                  "产物含真实学情，不写入 Git 跟踪目录以防隐私泄漏")
+        else:
+            print("[i] 未同步到根 docs/：仓库根缺少 ky_config.json（工作区未初始化），"
+                  "或输出已被 KY_DASHBOARD_OUTPUT_DIR 重定向")
 
     # ── 新增：生成 state_snapshot.json（Pages 部署的真相源）──
     snapshot_path = OUT.parent / "state_snapshot.json"

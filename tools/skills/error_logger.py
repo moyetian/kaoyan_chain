@@ -770,12 +770,13 @@ def mark_error_status(subject, file_name, title_keyword=None, new_status="已掌
         count=1
     )
 
-    new_content = content.replace(section_text, new_section, 1)
     # 学员可对该卡片声明 `locked: true` 将其钉死；此处是回写的唯一写点，故在此拦截
+    # （先过锁检查再构造回写内容：锁定卡直接返回，不做整卡替换的无用功）
     try:
         assert_writable(target_file)
     except NoteLockedError as e:
         return False, str(e)
+    new_content = content.replace(section_text, new_section, 1)
     atomic_write_text(target_file, new_content)
 
     # 记录复测事件（供 evaluate_pipeline 做真实的 FSRS 校准度评测）

@@ -99,10 +99,16 @@ def test_p0_4_list_of_dict_evidence_does_not_crash_and_merges():
 
 
 def test_p0_4_list_of_dict_conflict_still_detected():
-    """异值 PDF 附件 → 正确判为 CONFLICT（修复不能把冲突检测一并吞掉）。"""
+    """异值 PDF 附件（**多源**）→ 正确判为 CONFLICT（修复不能把冲突检测一并吞掉）。
+
+    [R11 适配] 冲突仲裁的前提是「多源」（同源 type+url 相同的并列条目不再是
+    冲突）；本用例意图「异值仍判冲突」，故第二条改用不同来源构造。
+    """
     ev1 = _pdf_evidence(_PDF_LINKS_A)
     ev2 = _pdf_evidence([{"name": "2026 旧目录",
-                          "url": "https://yz.example.edu.cn/old.pdf"}])
+                          "url": "https://yz.example.edu.cn/old.pdf"}],
+                        source_type="graduate_school",
+                        source_name="合成研究生院", url="https://gs.example.edu.cn")
     out = resolve_conflicts([ev1, ev2])
     assert len(out) == 2 and all(e.status == "CONFLICT" for e in out)
 

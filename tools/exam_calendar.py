@@ -18,7 +18,8 @@
      直接用 N 去减会整体偏移一年。
 
 本模块把「初试日期」收敛为唯一入口，供 CLI / TUI / GUI / 看板构建器 / Agent 记忆共用。
-考研初试固定为 12 月倒数第二个周六，等价表述为「12 月第 3 个周六」。
+考研初试固定为 12 月倒数第二个周六（不可表述为「12 月第 3 个周六」：5 个周六的
+年份两者相差 7 天，见 ``third_saturday_of_december`` 的 R11 修复说明）。
 """
 
 from __future__ import annotations
@@ -50,13 +51,19 @@ _MAX_YEAR = 2100
 
 
 def third_saturday_of_december(year: int) -> date:
-    """返回指定年份 12 月的第 3 个周六（= 倒数第二个周六）。
+    """返回指定年份 12 月的倒数第二个周六（历年考研初试固定日）。
 
-    实测校验：2024 → 12-21、2025 → 12-20、2026 → 12-19，与历年初试日吻合。
+    实测校验：2023 → 12-23、2024 → 12-21、2025 → 12-20、2026 → 12-19、
+    2027 → 12-18、2028 → 12-23、2029 → 12-22。
+
+    [R11 修复·5 周六年份差 7 天] 旧实现取「第 3 个周六」，只在 12 月恰有 4 个
+    周六的年份等于倒数第二个周六；5 个周六的年份（2023/2028/2029…）第 3 个
+    周六比倒数第二个周六早 7 天（2023 误算 12-16，实际 12-23），连带
+    infer_exam_year 在考试周内误判次年。改为「12 月最后一个周六 − 7 天」。
     """
-    first = date(int(year), 12, 1)
-    offset = (_SATURDAY - first.weekday()) % 7
-    return first + timedelta(days=offset + 14)
+    last = date(int(year), 12, 31)
+    last -= timedelta(days=(last.weekday() - _SATURDAY) % 7)   # 12 月最后一个周六
+    return last - timedelta(days=7)                            # 倒数第二个周六
 
 
 def exam_date_for_exam_year(exam_year: int) -> date:
@@ -114,7 +121,7 @@ def resolve_exam_date(
     优先级（高 → 低）：
       1. 配置中显式的 ``exam_date`` —— 学员已确认过的日期，最高优先；
       2. 配置中的 ``target_year``（考研年份 / 入学年份）→ 头年 12 月初试；
-      3. 日历推算 —— 12 月第 3 个周六，今年已过则顺延一年。
+      3. 日历推算 —— 12 月倒数第二个周六，今年已过则顺延一年。
 
     兼容 ``study_plan.exam_date`` 与顶层 ``exam_date`` 两种存量写法。
     """

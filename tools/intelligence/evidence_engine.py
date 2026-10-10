@@ -286,6 +286,21 @@ def resolve_conflicts(evidences: List[EvidenceObject]) -> List[EvidenceObject]:
             best_ev.confidence = min(1.0, round(best_ev.confidence + 0.03, 2))
             resolved.append(best_ev)
         else:
+            # [R11 修复·同源多行假冲突] 冲突仲裁的前提是「多源」：同一来源
+            # （type+url 相同）在同一字段下产出的多条并列条目互不相等，但**不是**
+            # 「多源官方冲突」——研招网目录每个专业行一条证据（chsi_connector.
+            # _parse_catalog_html，value 为不同 dict），实测 ky scout / ky
+            # admission 只要目录 ≥2 行（常态）就全部标 CONFLICT + 假裁决文案。
+            # 同源异值 → 原样保留全部条目，不做冲突裁决、不生成裁决说明。
+            # 注：判定放在值判等**之后**：同源同值仍走上面的合并去重（既有行为，
+            # 由 test_int_same_value_merges 等钉住），此处只拦截假冲突。
+            # [N6 修复·url None/"" 归一] 集合未归一 url 时 None 与 "" 被凑成两个
+            # 来源 → 同源假冲突残留（部分连接器缺 URL 时 url=None、另一条 ""）。
+            sources = {(ev.source.type, ev.source.url or "") for ev in ev_list}
+            if len(sources) == 1:
+                resolved.extend(ev_list)
+                continue
+
             # 存在数据冲突！
             detail_lines = [f"⚠️ 字段【{field_name}】({year}年) 存在多源官方冲突："]
             for ev in ev_list:

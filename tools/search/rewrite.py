@@ -208,7 +208,9 @@ def _site_queries(school: str, domains: Dict[str, str], major_kw: str,
                 out.extend(discovery.build_targeted_queries(
                     school_name=school, domain=domain,
                     major_keyword=major_kw or None,
-                    year=year or 0))
+                    # [R11 修复·字面 0] 未识别到年份时传 None，由 discovery 在运行时
+                    # 兜底为当前考试年（此前 `year or 0` 会拼出「site:域名 0 硕士…」）
+                    year=year or None))
             except Exception as exc:              # pragma: no cover
                 _LOG.debug("站内查询生成失败: %s", exc)
     except Exception as exc:                      # pragma: no cover

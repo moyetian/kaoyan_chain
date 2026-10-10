@@ -209,8 +209,14 @@ def _truncate_display(text: str, max_w: int) -> str:
         ch = text[i]
         cw = display_width(ch)
         if width + cw > max_w:
-            # 截断处补省略号（若还剩 1 列），明示内容被截
-            if out and width + 1 <= max_w:
+            # [TUI-L1 修复·2026-10-09] 截断处补省略号，但必须为它预留**真实
+            # 宽度**（U+2026 在中文终端按 2 列渲染，见 terminal._WIDE_AMBIGUOUS）
+            # —— 旧实现按 1 列预留，省略号实际多占 1 列，整行右边框外扩。
+            # 空间不足时回退已收字符直到放得下；全部回退完则不留省略号。
+            ell_w = display_width("…")
+            while out and width + ell_w > max_w:
+                width -= display_width(out.pop())
+            if out:
                 out.append("…")
             break
         out.append(ch)

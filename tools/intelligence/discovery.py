@@ -33,11 +33,16 @@ class OfficialDiscovery:
         school_name: str,
         domain: str,
         major_keyword: Optional[str] = None,
-        year: int = current_exam_year()
+        year: Optional[int] = None
     ) -> List[str]:
         """
         构建针对特定高校官方站点的精准检索词 (site: 语法)
         """
+        # [R11 修复·字面 0/None] 默认参数不得在导入期求值（旧写法
+        # `year: int = current_exam_year()` 把导入时刻的年份冻结成默认值）；
+        # 调用方传 None/0 时在此**运行时**兜底为当前考试年，查询词恒为 4 位年份，
+        # 不再出现 `site:域名 0 硕士 招生简章` 或字面 None。
+        year = year or current_exam_year()
         queries = []
         parsed = urllib.parse.urlparse(domain)
         clean_domain = parsed.netloc or domain.replace("https://", "").replace("http://", "").split("/")[0]

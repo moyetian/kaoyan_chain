@@ -89,6 +89,29 @@ def _confirmed_408(subjects) -> bool:
             return True
     return False
 
+
+def _subjects_equivalent(subjects1, subjects2) -> bool:
+    """两校科目记录是否等价：**忽略顺序**的逐条(代码,名称)比较。
+
+    [COMP-M1 修复·2026-10-09] 此前判等是 ``codes1 == codes2 and display1 == display2``
+    逐位比较。两校画像的科目**集合相同但排列顺序不同**是完全正常的（来源不同、
+    录入顺序不同），旧口径会误报「科目代码存在差异」，把「实质一致」说成「有差异」，
+    误导考生做无谓的取舍。
+
+    按 (代码, 名称) 组成可哈希元组后排序比较：既忽略顺序，又不比原始拼接串
+    （``format_subject_items`` 的输出格式若调整，不应让等价性判断随之失效）。
+    """
+    def _key(subjects):
+        out = []
+        for item in subjects or []:
+            if not isinstance(item, dict):
+                continue
+            out.append((str(item.get("code") or "").strip(),
+                        str(item.get("name") or "").strip()))
+        return sorted(out)
+
+    return _key(subjects1) == _key(subjects2)
+
 # [UT4 修复·WEB-3] 省级行政区名单（不含直辖市）：用于识别「仅省级粒度」的
 # region 文本（如兜底启发式产出的「河南」），以便与市级粒度（「河南新乡」）
 # 区分。直辖市（北京/天津/上海/重庆）省市同体、粒度天然一致，不在列即无需标注。
@@ -159,11 +182,14 @@ def report_fingerprint(text) -> str:
 
 def find_duplicate_report(directory: Path, report_text: str, prefix: str = "双校考情对比_") -> Optional[Path]:
     """在目录内查找与本份研报指纹一致的既有文件（用于幂等复用）。"""
-    fp_new = report_fingerprint(report_text)
     try:
         candidates = sorted(Path(directory).glob(f"{prefix}*.md"))
     except Exception:
         return None
+    if not candidates:
+        return None
+    # （指纹在确认有候选后才计算：空目录 / 异常路径不再白算一遍研报 sha256）
+    fp_new = report_fingerprint(report_text)
     for cand in candidates:
         try:
             if report_fingerprint(cand.read_text(encoding="utf-8", errors="ignore")) == fp_new:
@@ -542,7 +568,7 @@ class SchoolComparator:
         if structured_ready:
             display1 = format_subject_items(subjects1) or "待核验"
             display2 = format_subject_items(subjects2) or "待核验"
-            if codes1 == codes2 and display1 == display2:
+            if sorted(codes1) == sorted(codes2) and _subjects_equivalent(subjects1, subjects2):
                 subject_diff = (
                     f"两校当前记录的初试科目一致：{display1}；"
                     "科目复习通用度较高，但仍需以当年招生目录核验。"

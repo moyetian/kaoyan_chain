@@ -251,6 +251,9 @@ try:
         QuestionSource, extract_card_stem, fence_for_text, has_declared_identity,
         source_from_card, split_card_blocks,
     )
+    # [STEM-M1 单一事实源] 答案类小节正则统一由 question_source 提供 ——
+    # 组卷剥离与 checksum 截断必须同口径；保留原私有名作别名，行为不变。
+    from skills.question_source import ANSWER_SUBSEC_RE as _STEM_ANSWER_SUBSEC_RE
     from skills.question_source import REAL_ORIGINS as _REAL_ORIGINS
 except Exception:  # pragma: no cover - 包式导入路径
     from tools.skills.question_source import (  # noqa: F401
@@ -258,6 +261,7 @@ except Exception:  # pragma: no cover - 包式导入路径
         QuestionSource, extract_card_stem, fence_for_text, has_declared_identity,
         source_from_card, split_card_blocks,
     )
+    from tools.skills.question_source import ANSWER_SUBSEC_RE as _STEM_ANSWER_SUBSEC_RE
     from tools.skills.question_source import REAL_ORIGINS as _REAL_ORIGINS
 
 SUBJECT_DIRS = {
@@ -361,11 +365,10 @@ def _score_card_against_weakness(card: dict, weakness_grams: set) -> int:
 # ─────────────────────────────────────────────────────────────
 #: 题卡题干段内的编号子小节标题（「#### 2. 标准答案」等）—— 出现即视为
 #: 题干结束，其后内容不得进卷面。
-_STEM_ANSWER_SUBSEC_RE = re.compile(
-    r"^[ \t]*#{2,4}\s*\d*\s*[.、]?\s*(?:标准答案|参考答案|答案(?:与解析|解析|要点)?"
-    r"|步骤级采分点标注?|命题人逻辑)[^\n]*$",
-    re.MULTILINE,
-)
+#: [STEM-M1 单一事实源] 正则已移入 ``question_source.ANSWER_SUBSEC_RE``
+#: （组卷剥离与 checksum 取数口径必须同口径，两处各自维护会再次漂移）；
+#: 本文件以 ``_STEM_ANSWER_SUBSEC_RE`` 别名导入（见文件头双路径导入），
+#: 下方 ``_split_answer_from_stem`` / ``_strip_answer_sections`` 行为不变。
 
 #: 其中**答案类**小节（采分点表 / 命题人解析只截断、不作为标准答案提取）
 _STEM_ANS_ONLY_RE = re.compile(

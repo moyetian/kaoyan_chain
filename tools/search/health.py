@@ -187,8 +187,11 @@ def mark_blocked(name: str, reason: str = "") -> None:
 def note_failure(name: str, reason: str = "") -> float:
     """记一次**疑似抖动**的失败；连续达阈值才冷却，返回冷却秒数（0=未冷却）。
 
-    目前搜索侧尚未调用（``SearchService`` 只在明确反爬时调 :func:`mark_blocked`），
-    预留给「普通超时也累计、但要两次才停」的策略，避免一次网络抖动误伤整个源。
+    [R11 修复·docstring 与真实调用相反] 搜索侧**已在**四类场景调用本函数
+    （``search/service.py`` 211/234/457/463）：软性反爬全垃圾、页面改版/结构类
+    文案、未预期异常、普通超时等疑似抖动。**明确**反爬拦截（验证码页 / 429 等
+    确定性信号）不走这里，由 :func:`mark_blocked` 立即冷却；本函数连续两次才
+    冷却，避免一次网络抖动误伤整个源。
     """
     key = _key(name)
     if not key:

@@ -1022,15 +1022,25 @@ def run_tests():
 
     # 5. 上下文压缩 Context Compaction 算法
     ce_test = ContextEngine(workspace_root=ROOT, active_subject="math", max_context_tokens=50)
+    # [R11 适配·A#10] 原构造（8 条消息、tool 前无发起它的 assistant(tool_calls)、
+    # 非 system 消息恰 7 条）命中「回溯归零」分支：算法找不到可安全压缩的段，
+    # 修复后如实不压缩（此前靠插一条空摘要让断言通过，消息反而变多，属假绿）。
+    # 现改用真实对话形态（tool 组带发起 assistant）+ 足够消息数，让压缩真实
+    # 发生、超长工具输出确实被摘要替换 —— 测试意图（防爆）不变。
     fake_history = [
         {"role": "system", "content": "顶层协议"},
         {"role": "user", "content": "请从真题抽一道中值定理题目" * 10},
+        {"role": "assistant", "content": None, "tool_calls": [
+            {"id": "call_ky1", "type": "function",
+             "function": {"name": "read_exam_paper", "arguments": "{}"}}]},
         {"role": "tool", "name": "read_exam_paper", "content": "提取了五千字真题试卷" * 20},
         {"role": "assistant", "content": "这是2018年第15题" * 10},
         {"role": "user", "content": "我的解答是 f'(xi)=0"},
         {"role": "assistant", "content": "批改完成，获得10分"},
         {"role": "user", "content": "再抽一道积分题"},
-        {"role": "assistant", "content": "好的，请看这道 2021 年第 3 题"}
+        {"role": "assistant", "content": "好的，请看这道 2021 年第 3 题"},
+        {"role": "user", "content": "这道积分题我用分部积分做的"},
+        {"role": "assistant", "content": "思路正确，注意符号细节"},
     ]
     compacted_msgs = ce_test.compact_context(fake_history)
     runner.assert_true(len(compacted_msgs) < len(fake_history) or any("Context Compaction" in m.get("content", "") for m in compacted_msgs), "上下文引擎：Context Compaction 自动压缩超长工具输出，防爆 Context 成功")

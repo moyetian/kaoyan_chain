@@ -48,6 +48,13 @@ class ChatInput(QPlainTextEdit):
 
     def keyPressEvent(self, event):  # noqa: N802 - Qt 命名
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            # [GUI-L1 修复·2026-10-09] 键盘自动连击（按住 Enter）会连续产生
+            # autorep=True 的按键事件：此前不过滤，按住 Enter 会连发多条半截
+            # 消息。只拦发送键的自动连击 —— 普通字符键长按仍走基类正常输入
+            # （不过滤，否则长按输入会失效）；Shift/Ctrl/Alt+Enter 换行语义不变。
+            # IME 合成态不在此处理：平台相关，无法稳定测试。
+            if event.isAutoRepeat():
+                return
             mods = event.modifiers()
             if mods & (
                 Qt.KeyboardModifier.ShiftModifier

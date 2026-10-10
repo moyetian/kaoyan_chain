@@ -225,13 +225,51 @@ def test_auto_escalates_on_403(monkeypatch, browser_ready, fake_playwright):
 
 
 def test_auto_escalates_on_browser_required(monkeypatch, browser_ready, fake_playwright):
-    """SPA 空壳（BROWSER_REQUIRED）同样是升级触发条件。"""
+    """SPA 空壳（BROWSER_REQUIRED）同样是升级触发条件。
+
+    [INTEL-C1 回归钉子] mock 必须用 ``valid=True``——真实 ``fetch()`` 在 HTTP 200
+    分支把 SPA 空壳判为 ``is_valid=True`` + ``access_status="BROWSER_REQUIRED"``。
+    本用例此前构造 ``valid=False``，与生产实现不符，恰好掩盖了
+    「needs_upgrade 与 is_valid 互斥致 SPA 永不升级」的缺陷（测试绿、功能瘸）。
+    """
     monkeypatch.setattr(HTTPFetcher, "fetch", lambda self, url, **kw: _http_result(
-        "BROWSER_REQUIRED", body='<div id="app"></div>', valid=False))
+        "BROWSER_REQUIRED", body='<div id="app"></div>', valid=True))
     fake_playwright(FakeStack(html="<html>spa</html>"))
 
     res = fetcher_mod.fetch_with_fallback(_URL, mode="auto")
     assert res.tier == "browser" and res.escalation == "OK"
+
+
+def test_spa_shell_with_valid_true_still_escalates(monkeypatch, browser_ready, fake_playwright):
+    """[INTEL-C1 回归] SPA 空壳必带 is_valid=True（200 分支），升级不得依赖 not is_valid。
+
+    这是本缺陷的最小复现：若needs_upgrade 写回 ``not is_valid``，本用例会红。
+    """
+    seen = {"browser": 0}
+    monkeypatch.setattr(HTTPFetcher, "fetch", lambda self, url, **kw: _http_result(
+        "BROWSER_REQUIRED", body='<div id="app"></div>', valid=True))
+    monkeypatch.setattr(_CLS, "fetch_with_browser",
+                        staticmethod(lambda url, **kw: (seen.__setitem__(
+                            "browser", seen["browser"] + 1),
+                            _browser_result(body="<html>spa-rendered</html>"))[1]))
+
+    res = fetcher_mod.fetch_with_fallback(_URL, mode="auto")
+    # is_valid=True 仍触发升级 →证明判据是 access_status 而非 not is_valid
+    assert res.tier == "browser" and res.escalation == "OK"
+    assert seen["browser"] == 1
+    assert res.content == "<html>spa-rendered</html>"
+
+
+def test_auto_no_escalation_when_spa_but_browser_disabled(monkeypatch):
+    """[INTEL-C1 回归] SPA 触发升级但闸门关 → 保留 HTTP 原结果并如实记原因。"""
+    monkeypatch.delenv(_GATE, raising=False)
+    monkeypatch.setattr(HTTPFetcher, "fetch", lambda self, url, **kw: _http_result(
+        "BROWSER_REQUIRED", body='<div id="app"></div>', valid=True))
+
+    res = fetcher_mod.fetch_with_fallback(_URL, mode="auto")
+    assert res.tier == "http" and res.access_status == "BROWSER_REQUIRED"
+    assert res.escalation == "BROWSER_DISABLED"
+    assert res.content == '<div id="app"></div>'
 
 
 def test_auto_no_escalation_when_http_ok(monkeypatch, browser_ready, fake_playwright):

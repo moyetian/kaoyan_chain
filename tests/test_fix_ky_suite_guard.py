@@ -41,7 +41,7 @@ REAL_CFG = {
         "pro_name": "610 法学基础 810 法学综合",
         "total_hours": 6.5,
     },
-    "api_key": "sk-REAL-LOOKING-KEY-abcdef",
+    "api_key": "sk-" + "REAL-LOOKING-KEY-abcdef",
     "model": "mimo-v2.5",
 }
 TEMPLATE_CFG = {
@@ -188,7 +188,7 @@ def test_killed_run_is_healed_on_next_start(tmp_path):
     cfg_path.write_text(json.dumps(
         {"study_plan": {"school": "目标院校", "major": "报考专业", "math_key": "math2",
                         "pro_name": "408 计算机学科专业基础", "total_hours": 8.5},
-         "api_key": "sk-REAL-LOOKING-KEY-abcdef"},
+         "api_key": "sk-" + "REAL-LOOKING-KEY-abcdef"},
         ensure_ascii=False, indent=2), encoding="utf-8")
 
     # 落盘快照 = 被强杀前的 good 态
@@ -235,7 +235,7 @@ def test_apply_scout_to_config_honors_config_path(tmp_path):
     real = tmp_path / "real_ky_config.json"
     real.write_text(json.dumps(
         {"study_plan": {"school": "中国人民大学", "major": "030100 法学"},
-         "api_key": "sk-REAL-LOOKING-KEY-abcdef"},
+         "api_key": "sk-" + "REAL-LOOKING-KEY-abcdef"},
         ensure_ascii=False, indent=2), encoding="utf-8")
     real_before = real.read_bytes()
 

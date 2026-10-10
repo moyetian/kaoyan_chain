@@ -244,11 +244,18 @@ class CHSIConnector:
                     college = clean_cols[1] if len(clean_cols) > 1 else "相关学院"
                     
                     ev = build_evidence(
-                        # [P1 修复·2026-10-08 R10] field 名归一「初试科目」：
-                        # 同语义证据（本处/PDF/HTML/离线基准）此前四种 field 名
-                        # 永不进 resolve_conflicts 同一分组，跨源冲突仲裁对
-                        # 「初试科目」实质失效；来源细分由 source.type/name 承载。
-                        field_name="初试科目",
+                        # [INTEL-H2 修复·2026-10-09] 字段名退回「招生院系与专业」，
+                        # 不再与官网科目清单共处「初试科目」分组。
+                        # 此前 R10 归一的动机（让同语义证据进同一仲裁分组）是对的，
+                        # 但本行的 value 是**专业目录条目**（院系/专业代码/专业名/研究方向），
+                        # 压根不含科目 —— 与extractor 产出的科目清单 list 同名分组后，
+                        # 判等键必然不同（dict 走 str()、list 走 json.dumps），
+                        # 每次在线抓取成功都无条件报CONFLICT 假警报。
+                        # 语义不同就该用不同 field：分组键是 (field, exam_year)，
+                        # 改名的代价是不与科目清单仲裁，而它本就不该参与该仲裁。
+                        # 下游按 value["major_code"] 取值（comparator.py:437），
+                        # 不依赖 field 名，故改名不影响消费侧。
+                        field_name="招生院系与专业",
                         value={
                             "school": school_name,
                             "college": college,

@@ -10,6 +10,20 @@ except ImportError:  # pragma: no cover
     from tools.skills.paper_registry import PaperRegistry
 
 
+#: 伴生密钥文件名形如 ``.自测卷_<日期>_<paper_id>.md.keys.json``，paper_id 恒以
+#: ``EXAM-`` 开头（exam_composer.py: ``paper_id = f"EXAM-{subject.upper()}-..."``）。
+#: [R11 修复·正则贪婪吞日期] 旧模式 ``_([A-Za-z0-9_\-]+)\.md\.keys\.json$`` 会把
+#: 日期前缀一并吞进 paper_id（``2026-10-10_EXAM-...``）→ 用错 paper_id 派生
+#: keystream → 解封失败。锚定 EXAM- 前缀后反解值恒为真实 paper_id。
+_COMPANION_PAPER_ID_RE = re.compile(r"_(EXAM-[A-Za-z0-9_\-]+)\.md\.keys\.json$")
+
+
+def _extract_companion_paper_id(filename: str) -> str:
+    """从伴生密钥文件名反解 paper_id；文件名不含 EXAM- 形态时返回空串。"""
+    m = _COMPANION_PAPER_ID_RE.search(str(filename or ""))
+    return m.group(1) if m else ""
+
+
 def _unique_mistake_title(title, question):
     """[NEW-2 修复·错题标题撞名] 同卷占位题/同类题标题原本完全相同
     （如三道"XX核心必考大纲自测题"），错题本里出现 N 个同名卡片，按标题
@@ -237,8 +251,7 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
                 # 伴生文件名形如 .自测卷_<日期>_<paper_id>.md.keys.json，可反解 paper_id 用于解封
                 comp_pid = p_id
                 if not comp_pid:
-                    fn_m = re.search(r"_([A-Za-z0-9_\-]+)\.md\.keys\.json$", comp_path.name)
-                    comp_pid = fn_m.group(1) if fn_m else ""
+                    comp_pid = _extract_companion_paper_id(comp_path.name)
                 raw_keys = open_keys(comp_pid, comp_path.read_text(encoding="utf-8"))
                 if raw_keys is None:
                     key_read_errors.append(f"伴随密钥文件 {comp_path.name} 解封失败")

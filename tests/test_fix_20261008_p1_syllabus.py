@@ -329,9 +329,15 @@ def test_k5_no_data_no_section(tmp_path, monkeypatch):
 
 # ═══════════════════════ K6 今日任务模板 ═══════════════════════
 
+# [既有缺陷修复·2026-10-09] 天数原写死 ``days_left: 72`` 与断言 ``还剩 72 天``，
+# 而实现是按 ``exam_date - 今天`` 现算的 —— 两者随日期漂移不一致（跑批当天算出
+# 71 天，断言却写 72），使本用例成为与被测行为无关的日期地雷。
+# 改为**从 exam_date 动态推导**期望值：既与实现同源，又永不再漂移。
+_K6_EXAM_DATE = "2026-12-19"
 _K6_PLAN = {"eng_name": "英语一 (201)", "eng_hours": 2.0, "eng_books": "暂未放置",
-            "eng_weakness": "合成薄弱点", "days_left": 72,
-            "exam_date": "2026-12-19"}
+            "eng_weakness": "合成薄弱点",
+            "days_left": (date.fromisoformat(_K6_EXAM_DATE) - date.today()).days,
+            "exam_date": _K6_EXAM_DATE}
 
 
 def test_k6_due_review_first_row_and_pacing(tmp_path, monkeypatch):
@@ -344,7 +350,8 @@ def test_k6_due_review_first_row_and_pacing(tmp_path, monkeypatch):
     items = parse_task_lines(text)
     assert items and items[0].module == "到期复测", [it.module for it in items]
     assert len(items) == 4 and res["task_count"] == 4
-    assert "配速提示" in text and "还剩 72 天" in text and "日均量" in text
+    expected = (date.fromisoformat(_K6_EXAM_DATE) - date.today()).days
+    assert "配速提示" in text and f"还剩 {expected} 天" in text and "日均量" in text
 
 
 def test_k6_no_due_no_row_pacing_kept(tmp_path, monkeypatch):

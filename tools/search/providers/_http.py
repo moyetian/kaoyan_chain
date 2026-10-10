@@ -138,8 +138,16 @@ BROWSER_HEADERS: Dict[str, str] = {
 #: 把正常结果页误判成反爬页 → 源被错误记为失败。收紧为「人机验证」专属句式
 #: （Cloudflare/Google 拦截页的 "Verify you are human" 类文案）；中文验证页与
 #: ``SourceVerifyCode``/``unusual traffic`` 等特征不受影响。
+#:
+#: [BOT-M1 修复·2026-10-09] 裸 ``"anomaly"`` 同属通用学术词，且本函数是对
+#: **整页 HTML**（含每条结果的标题与摘要）做子串匹配——检索「anomaly detection」
+#: 这类学术主题时，正常结果页必然命中 → 双端点皆被判反爬 → raise 文案含
+#: 「反爬」标记 → health 侧首次即 600s 硬封（学术检索被误封）。
+#: 收紧为反爬页**专属**短语（"unusual anomaly" / "anomaly detected"），
+#: 既保住真反爬页检出，又不再误伤正常学术结果页。
 ANTI_BOT_MARKERS = (
-    "anomaly", "captcha", "verify you are", "verify that you",
+    "captcha", "verify you are", "verify that you",
+    "unusual anomaly", "anomaly detected",
     "请协助验证", "请输入验证码",
     "SourceVerifyCode", "访问过于频繁", "unusual traffic", "antispider",
 )

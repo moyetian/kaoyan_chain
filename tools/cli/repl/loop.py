@@ -262,12 +262,42 @@ def _init_repl_readline(cfg: Optional[dict] = None) -> None:
             pass  # 首次运行文件不存在 / 格式不兼容：静默跳过
 
 
+#: [审查 2026-10-09 HIST-M1 修复] 历史文件中 ``sk-`` 凭证的字节级匹配式。
+#: 只认 ASCII：UTF-8 多字节序列的任一字节均 >= 0x80，不可能构成 "sk-" 序列，
+#: 故在字节串上替换对非 ASCII 内容零影响（readline 历史文件本身是转义
+#: ASCII 形态，二进制读写最稳）。
+_HISTORY_SECRET_RE = re.compile(rb"sk-[A-Za-z0-9_\-]{8,}")
+
+
+def _redact_history_secrets(data):
+    """[审查 2026-10-09 HIST-M1 修复] 把历史内容里的 ``sk-`` 凭证打码。
+
+    用户可能把含 API key 的整段内容粘贴进 REPL，readline 会原样写进
+    ``ky_history.json``（明文留档）。此处把 ``sk-`` + 至少 8 位
+    ``[A-Za-z0-9_-]`` 的凭证串替换为 ``sk-***``；长度不足的普通文本
+    （如 "sk-短"）不动，避免误伤。
+
+    接受 ``str`` 或 ``bytes``（文件路径走 bytes，保持逐字节形态），返回
+    同类型。str 路径经 UTF-8 编解码往返 —— 只替换 ASCII 字节，多字节
+    字符不受影响。
+    """
+    if isinstance(data, (bytes, bytearray)):
+        return _HISTORY_SECRET_RE.sub(b"sk-***", bytes(data))
+    return _HISTORY_SECRET_RE.sub(b"sk-***", str(data).encode("utf-8")).decode("utf-8")
+
+
 def _persist_repl_history() -> None:
     """[P1 修复·2026-10-08] 退出时落盘 readline 历史（与读取成对，仅 TTY）。
 
     - 非 TTY（管道 / 自动化）：不写 —— 写出的会是空历史，覆盖用户既有文件；
     - 严格只读模式 (--permission=safe)：不写 —— 工作区只读语义；
     - readline 缺失（Windows 默认）：静默跳过，绝不因缺库崩溃。
+
+    [审查 2026-10-09 HIST-M1 修复] 落盘后追加两道收口：
+    - 权限收紧 0600（POSIX 真实生效；Windows 上 chmod 只切只读位、无害）；
+    - ``sk-`` 凭证打码（见 :func:`_redact_history_secrets`）—— 历史文件
+      此前会把用户粘贴的 API key 明文留在 ``ky_history.json``。
+    两道收口均为 best-effort：失败静默降级，不影响退出流程。
     """
     if _readline is None or not _stdin_is_tty():
         return
@@ -279,6 +309,17 @@ def _persist_repl_history() -> None:
     try:
         _readline.write_history_file(str(HISTORY_FILE))
     except Exception:
+        return
+    try:
+        os.chmod(HISTORY_FILE, 0o600)
+    except Exception:
+        pass
+    try:
+        raw = HISTORY_FILE.read_bytes()
+        redacted = _redact_history_secrets(raw)
+        if redacted != raw:
+            HISTORY_FILE.write_bytes(redacted)
+    except Exception:
         pass
 
 
@@ -287,12 +328,28 @@ def _read_user_input(prompt: str) -> str:
 
     粘贴大段题干 / 多问综合题时，此前每一行都被当作独立指令分别路由；现以
     行尾 ``\`` 声明续行，连续多行拼接为一条指令后走原有全部路由（含 Agent
-    LLM 链）。Ctrl+C / EOF 语义不变，照旧由调用方捕获（空闲时优雅退出）。
+    LLM 链）。
+
+    [审查 2026-10-09 REPL-M1 修复] 续行中的 Ctrl+C（KeyboardInterrupt）：
+    - 已有草稿（``parts`` 非空）：只丢弃本次多行草稿、打印一行提示后重新以
+      主提示符开始读 —— 此前 KeyboardInterrupt 会从 ``input()`` 冒泡到主
+      循环的 ``except (KeyboardInterrupt, EOFError)``，导致整个 REPL 退出、
+      草稿丢失；
+    - 空闲态（``parts`` 为空）：re-raise，由主循环捕获后优雅退出（期望语义）。
+
+    EOF 语义不变：续行中 EOF（管道结束）把已读内容作为最终输入；空闲态
+    EOF 照旧冒泡（由调用方捕获）。
     """
     parts: List[str] = []
     while True:
         try:
             line = input(prompt if not parts else "... ")
+        except KeyboardInterrupt:
+            if not parts:
+                raise
+            print("\n[已取消本次多行输入，草稿已丢弃]")
+            parts = []
+            continue
         except EOFError:
             if not parts:
                 raise
@@ -1119,7 +1176,15 @@ def run_repl(permission_mode: str = "ask", gateway_host: str = "127.0.0.1", gate
                     continue
                 elif cmd in ("/view", "/live"):
                     import webbrowser
-                    target_url = f"http://localhost:{live_port or 8088}/live"
+                    # [R11 修复·失败仍宣称已打开] 此前 `live_port or 8088` 把
+                    # 启动失败（None）兜底成 8088，打开的是空端口还宣称已打开
+                    # （与 CLI 侧 _cmd_view 同型缺陷）。现按真实启动结果分支。
+                    if not live_port:
+                        print(colorize(
+                            "\n[实时 LaTeX 伴侣未启动（端口占用或非回环需 token），"
+                            "已跳过打开浏览器]\n", C.YELLOW))
+                        continue
+                    target_url = f"http://localhost:{live_port}/live"
                     webbrowser.open(target_url)
                     print(colorize(f"\n[已在默认浏览器中打开实时可视化伴侣: {target_url}]\n", C.GREEN))
                     continue

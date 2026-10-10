@@ -75,6 +75,11 @@ except ImportError:  # pragma: no cover
         save_experience_dossier,
     )
 
+try:  # [R11] 研报落盘文件名单一真源（与 intelligence/scout_engine 同函数）
+    from intelligence.report_paths import scout_report_filename  # noqa: E402
+except ImportError:  # pragma: no cover
+    from tools.intelligence.report_paths import scout_report_filename  # type: ignore
+
 ROOT = resolve_workspace_root(__file__)
 
 #: 院校研报 LLM 合成的尝试次数（含首发）。单次 60s 超时，2 次足以覆盖绝大多数
@@ -442,9 +447,9 @@ def synthesize_report_with_llm(school: str, major: str, official_items: List[Dic
         except Exception:
             cfg = {}
 
-    api_key = cfg.get("api_key", "").strip()
-    base_url = cfg.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
-    model = cfg.get("model", "deepseek-chat")
+    api_key = str(cfg.get("api_key") or "").strip()  # [R11 修复·null 崩溃，同 A#4]
+    base_url = str(cfg.get("base_url") or "https://api.deepseek.com/v1").rstrip("/")  # [第2轮 N2·null 防护]
+    model = str(cfg.get("model") or "deepseek-chat")  # [第2轮 N2·null 防护]
 
     if not api_key:
         return None
@@ -565,8 +570,8 @@ def scout_school(school: str, major: str = "", include_social: bool = True, save
     if save_report:
         pro_dir = ROOT / "04-专业课"
         pro_dir.mkdir(parents=True, exist_ok=True)
-        safe_name = f"目标院校情报_{school}" + (f"_{major}" if major else "") + ".md"
-        save_file = pro_dir / safe_name
+        # [R11 修复·落盘走单一真源] 改用 report_paths 归一函数（与 admission 侧同名）
+        save_file = pro_dir / scout_report_filename(school, major)
         # [P0 修复] 与 admission(证据链版) 共用同名文件，写入前备份旧报告避免互相覆盖
         if save_file.exists():
             try:

@@ -285,9 +285,10 @@ def classify_http_error(status: Any, body: Any = "") -> Tuple[bool, str]:
         code = int(status)
     except (TypeError, ValueError):
         return False, "unknown"
-    text = str(body or "").lower()
     if code in _HTTP_RETRYABLE_STATUS or code >= 500:
         return True, "http_retryable"
+    # （body 归一化只在 400 分支需要：重试类状态码直接返回，不做无用 lower）
+    text = str(body or "").lower()
     if code == 400 and any(k in text for k in _TOOLS_UNSUPPORTED_KEYWORDS):
         return False, "tools_unsupported"
     if code in (401, 403):
@@ -853,7 +854,13 @@ def request_chat(req: ChatRequest, *, max_retries: int = 2,
                                             body=body, last_error=err) from e
                 raise err
             except (urllib.error.URLError, TimeoutError, socket.timeout,
-                    ConnectionResetError, http.client.RemoteDisconnected) as e:
+                    ConnectionResetError, http.client.RemoteDisconnected,
+                    # [审计 2026-10-10 A#7] 流中途被截断（Content-Length 不匹配 /
+                    # 半截 chunked）抛 IncompleteRead（继承 HTTPException，不属于
+                    # 上面任何一类）——此前不在捕获列表，_consume_sse docstring
+                    # 声称「会被 request_chat 捕获重试」但实际直接外泄，
+                    # 且调用方不会把它当网络类异常。补入网络类重试分支。
+                    http.client.IncompleteRead) as e:
                 if attempt < retries:
                     _sleep(compute_backoff("network", attempt, None))
                     break       # 落回外层 for → 下一次尝试
@@ -870,15 +877,32 @@ def request_chat(req: ChatRequest, *, max_retries: int = 2,
 
 def _pick_llm_config_value(data: Dict[str, Any], api: Dict[str, Any], key: str,
                            aliases: Tuple[str, ...] = (), default: Any = "") -> Any:
-    """顶层平铺键优先；缺失（None）时回退 ``api`` 子对象（同名字段 → 别名 → 默认值）。"""
+    """顶层平铺键优先；缺失时回退 ``api`` 子对象（同名字段 → 别名 → 默认值）。
+
+    [三审修复·2026-10-09 空白串] 缺失判据顶层与嵌套**同口径**：``None`` 或
+    空白字符串（``""``/纯空白）均视为未配置，逐键回退嵌套/别名；非字符串值
+    （float 等）语义不变；都缺失时返回 ``default``。
+    """
     top = data.get(key)
-    if top is not None:
+    if top is not None and not (isinstance(top, str) and not top.strip()):
         return top
     for candidate in (key, *aliases):
         value = api.get(candidate)
-        if value is not None:
+        if value is not None and not (isinstance(value, str) and not value.strip()):
             return value
     return default
+
+
+def _coerce_temperature(value: Any, default: float = 0.3) -> float:
+    """[审计 2026-10-10 A#6] 温度值安全强转：非法值（"abc" / [] / None 等）
+    仅本字段回落 ``default``，**绝不牵连** api_key / base_url / model ——
+    此前 float(...) 内联在 return dict 里，非法温度被外层 except 捕获后
+    整个 ``get_llm_config`` 返回 {}，一次配置里的小错导致全部字段丢失。
+    """
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def get_llm_config(workspace_root: Optional[Path | str] = None) -> Dict[str, Any]:
@@ -886,9 +910,11 @@ def get_llm_config(workspace_root: Optional[Path | str] = None) -> Dict[str, Any
 
     [三审修复·2026-10-08 api 嵌套回退] 兼容把 LLM 配置写在 ``"api"`` 子对象下的
     手写/迁移配置（如 ``{"api": {"key": "sk-...", "url": "https://..."}}``）：
-    顶层平铺键优先（向导 / GUI / CLI 写回均为平铺格式），顶层缺失（None）时
-    逐键回退嵌套 —— 同名字段（api_key/base_url/model/temperature）+ ``key``/``url``
-    短别名；``api`` 非对象（字符串/数组等）时按无嵌套处理，行为与旧版一致。
+    顶层平铺键优先（向导 / GUI / CLI 写回均为平铺格式），顶层缺失时逐键回退嵌套
+    —— 缺失判据含 ``None`` 与空白字符串（顶层/嵌套同口径，见
+    ``_pick_llm_config_value``）；同名字段（api_key/base_url/model/temperature）
+    + ``key``/``url`` 短别名；``api`` 非对象（字符串/数组等）时按无嵌套处理，
+    行为与旧版一致。
     """
     ws = Path(workspace_root) if workspace_root else ROOT
     cfg_file = ws / "ky_config.json"
@@ -907,7 +933,7 @@ def get_llm_config(workspace_root: Optional[Path | str] = None) -> Dict[str, Any
                     "https://api.deepseek.com/v1")).strip(),
                 "model": str(_pick_llm_config_value(
                     data, api, "model", (), "deepseek-chat")).strip(),
-                "temperature": float(_pick_llm_config_value(
+                "temperature": _coerce_temperature(_pick_llm_config_value(
                     data, api, "temperature", (), 0.3)),
             }
     except Exception as e:
@@ -918,9 +944,9 @@ def get_llm_config(workspace_root: Optional[Path | str] = None) -> Dict[str, Any
 def is_llm_configured(config: Optional[Dict[str, Any]] = None, workspace_root: Optional[Path | str] = None) -> bool:
     """检查是否配置了有效的 LLM API Key 与模型。"""
     cfg = config if config is not None else get_llm_config(workspace_root)
-    api_key = cfg.get("api_key", "").strip()
-    base_url = cfg.get("base_url", "").strip()
-    model = cfg.get("model", "").strip()
+    api_key = str(cfg.get("api_key") or "").strip()
+    base_url = str(cfg.get("base_url") or "").strip()
+    model = str(cfg.get("model") or "").strip()
     return bool(api_key and base_url and model and not api_key.startswith("sk-placeholder"))
 
 
@@ -1040,9 +1066,9 @@ def chat_completion(
     if not is_llm_configured(cfg):
         return None
 
-    api_key = cfg.get("api_key", "").strip()
-    base_url = cfg.get("base_url", "").strip()
-    model = cfg.get("model", "").strip()
+    api_key = str(cfg.get("api_key") or "").strip()
+    base_url = str(cfg.get("base_url") or "").strip()
+    model = str(cfg.get("model") or "").strip()
 
     # 规范化消息列表
     if isinstance(messages_or_prompt, str):

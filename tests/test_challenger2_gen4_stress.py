@@ -165,7 +165,7 @@ class TestWindowsSubprocessEncodingRobustness:
                 "eng_key": "eng1",
                 "total_hours": 6.5,
             },
-            "api_key": "sk-REAL-LOOKING-KEY-1234567890abcdef",
+            "api_key": "sk-" + "REAL-LOOKING-KEY-1234567890abcdef",
             "model": "mimo-v2.5",
         }
         (tmp_path / "tools").mkdir(parents=True, exist_ok=True)

@@ -974,6 +974,51 @@ class ToolRegistry:
                         continue
                 return False
 
+            def _enforce_ancestor_conftest_gate(display: str, target) -> str:
+                """[审计 2026-10-10 A#1] 收集路径**祖先链**上的 conftest.py 闸门。
+
+                pytest 会自动加载从 rootdir 到收集路径的每一级 conftest.py ——
+                会话写入工作区根的 conftest.py 后执行 ``pytest tests/``，它同样
+                会被加载执行，但既不在 ``tests/`` 子树内（目录检查覆盖不到）、
+                也不是收集参数本身（文件检查覆盖不到）→ 闸门缺口（任意代码执行）。
+                这里对每个收集路径补查祖先链：若某会话写入的 conftest.py 是它的
+                祖先或自身，必须过会话写入审批。返回空串 = 放行。
+                """
+                for _key in self.sandbox.session_written_files:
+                    try:
+                        _written = Path(_key)
+                        if _written.name != "conftest.py":
+                            continue
+                        target_path = Path(target)
+                        # 「祖先或自身」判据必须落在**父目录**上：目标路径不可能
+                        # 是某个 conftest.py 文件的子路径，`is_relative_to(文件)`
+                        # 对目录/文件参数永远为 False（不落地的判据=闸门形同虚设）。
+                        if not (target_path == _written
+                                or target_path.is_relative_to(_written.parent)):
+                            continue
+                        # [第2轮 N3] 去重：本闸门只在「既有检查覆盖不到」时才弹卡 ——
+                        # ① 目标就是这份 conftest 自身（文件参数）：文件分支的
+                        #    _enforce_script_gates 会对同一路径发起同一审批；
+                        # ② 目标目录内已有会话写入 .py（含 conftest）：目录分支的
+                        #    _dir_has_session_written_py 会审批。
+                        # 两者均跳过，避免同一次命令弹两张卡。
+                        if target_path == _written:
+                            continue
+                        if target_path.is_dir() and _dir_has_session_written_py(target_path):
+                            continue
+                        _approved, _reason = self.permissions.check_session_script_exec(
+                            display, {"command": command}, interactive=interactive)
+                        if not _approved:
+                            return (
+                                f"PermissionDenied: 本会话写入的 conftest.py 位于收集路径"
+                                f" [{display}] 的祖先链上，pytest 会自动加载执行，"
+                                f"执行未获批准 —— {_reason}"
+                                f"【替代路径】请改用内置工具完成任务"
+                                f"（如 read_file 直接读取文件内容），不要反复重试脚本执行。")
+                    except (OSError, ValueError):
+                        continue
+                return ""
+
             # [P0 修复·增强] shell=False 挡不住 Python 自身的任意代码执行：
             # `python -c "import shutil;shutil.rmtree('/')"` 既在白名单内又不命中参数黑名单。
             # 因此对 python 收紧为「只允许运行工作区内的 .py 脚本」，其余调用形式一律拒绝。
@@ -1075,6 +1120,14 @@ class ToolRegistry:
                                     f"（{', '.join(_SCRIPT_EXEC_ALLOWED_PREFIXES)}）下运行测试，"
                                     f"已拒绝 [{_cand}]。"
                                 )
+                            # [审计 2026-10-10 A#1] 祖先链 conftest.py 闸门：目录与
+                            # 文件参数统一覆盖（pytest 对两者都会加载祖先链 conftest）。
+                            # [第2轮 N5] 顺序调整：本闸门移到白名单检查之后 ——
+                            # 注定被白名单拒绝的目录（如 01-数学/）不再先弹一张
+                            # 「批准了也会被拒」的审批卡。
+                            _gate_msg = _enforce_ancestor_conftest_gate(_cand, _p)
+                            if _gate_msg:
+                                return _gate_msg
                             if _dir_has_session_written_py(_p):
                                 _approved, _reason = self.permissions.check_session_script_exec(
                                     _cand, {"command": command}, interactive=interactive)
@@ -1082,6 +1135,11 @@ class ToolRegistry:
                                     return (f"PermissionDenied: 本会话写入的测试脚本位于 [{_cand}]，"
                                             f"执行未获批准 —— {_reason}")
                         else:
+                            # [审计 2026-10-10 A#1] 文件参数同样覆盖祖先链 conftest
+                            # （pytest 会加载从 rootdir 到该文件的每一级 conftest）。
+                            _gate_msg = _enforce_ancestor_conftest_gate(_cand, _p)
+                            if _gate_msg:
+                                return _gate_msg
                             _gate_msg = _enforce_script_gates(_cand, _p)
                             if _gate_msg:
                                 return _gate_msg

@@ -53,6 +53,10 @@ _LOG = logging.getLogger(__name__)
 # [P1 两级采集] HTTP 层出现这些状态时，若浏览器闸门允许则自动升级渲染。
 # 只包含「换浏览器大概率能解」的两类：SPA 空壳（BROWSER_REQUIRED）与 403 反爬；
 # 超时/证书错误/内容为空等升级也大概率无解，不在此列（避免无谓开销与噪声）。
+#
+# [INTEL-C1 修复] 消费方判据是 ``access_status in ESCALATABLE_STATUSES``，
+# **不可**再叠加 ``not is_valid``：SPA 空壳在 HTTP 200 分支 is_valid 恒为 True，
+# 叠加会把这条腿整个废掉。两类状态的 is_valid 各自固定，故按状态判定即可。
 ESCALATABLE_STATUSES = ("BROWSER_REQUIRED", "HTTP_403")
 
 #: :func:`fetch_with_fallback` 的合法抓取模式
@@ -377,6 +381,23 @@ class HTTPFetcher:
                         _LOG.warning(
                             "TLS 证书校验失败（未降级）: %s (%s)；如确需抓取该站点的"
                             "自签名/过期证书，请显式传入 allow_insecure_ssl=True", url, e)
+                        return FetchResult(
+                            url=url,
+                            status_code=0,
+                            content="",
+                            is_valid=False,
+                            access_status="TLS_CERT_ERROR",
+                            headers={},
+                            ssl_verified=not is_fallback_ssl
+                        )
+                    # [R11 修复·末次 attempt 缺守卫] 证书错误出现在最后一次 attempt
+                    # 时，设置 fallback ctx 后 continue 已无下一次循环 —— 既未兑现
+                    # opt-in 的「未验证重试一次」，又落进循环外的兜底 ERROR 丢失
+                    # TLS_CERT_ERROR 归因。此时直接返回与上方 L380 分支同构的结果。
+                    if attempt >= last_attempt:
+                        _LOG.warning(
+                            "TLS 证书校验失败（已达最后一次尝试，无法再降级重试）: "
+                            "%s (%s)", url, e)
                         return FetchResult(
                             url=url,
                             status_code=0,
@@ -942,8 +963,14 @@ def fetch_with_fallback(url: str, mode: str = "auto", timeout: int = 6,
         allow_insecure_ssl=allow_insecure_ssl)
     result.tier = "http"
 
-    needs_upgrade = (mode_n == "auto" and not result.is_valid
-                     and result.access_status in ESCALATABLE_STATUSES)
+    # [INTEL-C1 修复·2026-10-09] 升级判据是「access_status 属于可升级清单」，
+    # 不能写成 ``not is_valid and access_status in ESCALATABLE_STATUSES``：
+    # SPA 空壳在 HTTP 200 分支返回 is_valid=True（见 fetch() L332-339），
+    # 与 ``not is_valid`` 互斥 → needs_upgrade 恒False，浏览器兜底对高校
+    # SPA 官网形同虚设，而 docstring 承诺的能力不可达。
+    # 两个可升级状态的 is_valid 各自固定（403→False、SPA→True），
+    # 故按状态判定是唯一既正确又不必把超时/证书错误拖进升级的口径。
+    needs_upgrade = mode_n == "auto" and result.access_status in ESCALATABLE_STATUSES
     if not needs_upgrade:
         return result
 

@@ -894,6 +894,10 @@ var FM=new Flash('memo'), FW=new Flash('weak');
 FM.init(); FW.init();
 
 document.addEventListener('keydown',function(e){
+  /* [R11 修复·Space 双重触发] 按钮/页签/输入框自身的 keydown 与文档级翻卡
+     监听同一事件且互不隔离（按钮只 preventDefault 不 stopPropagation）——
+     焦点在按钮上按 Space 会既激活按钮又翻卡。可聚焦元素内一律不接管。 */
+  if(e.target.closest('button,[role="tab"],input,select,textarea')) return;
   var btn=document.querySelector('.bar button.on');
   if(!btn) return;
   var t=btn.dataset.p;

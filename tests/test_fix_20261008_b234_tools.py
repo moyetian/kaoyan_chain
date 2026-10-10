@@ -310,7 +310,7 @@ def _workspace_files(root: Path):
 
 
 def test_b4_mount_materials_readonly_and_dynamic_level(tmp_path):
-    """资料盘点：只读不落盘；apply=True（SAFE_EDIT）在 safe 模式被拒。"""
+    """资料盘点：只读不落盘；apply=True（NETWORK）在 safe 模式被拒。"""
     (tmp_path / "01-数学" / "参考资料").mkdir(parents=True)
     (tmp_path / "01-数学" / "参考资料" / "样本习题册.md").write_text(
         "# 样本习题册\n" + "第一章 函数极限连续。\n" * 8, encoding="utf-8")
@@ -323,7 +323,10 @@ def test_b4_mount_materials_readonly_and_dynamic_level(tmp_path):
     assert _workspace_files(tmp_path) == before, "只读盘点不得落盘"
 
     td = reg.tools["mount_materials"]
-    assert td.level({"apply": True}) == PermissionLevel.SAFE_EDIT
+    # [AGENT-H1·2026-10-09] apply=true 且 auto_scout_school 缺省（true）在目标
+    # 档案缺失时会真实联网侦察 → 定级 NETWORK；显式关闭侦察才回落 SAFE_EDIT。
+    assert td.level({"apply": True}) == PermissionLevel.NETWORK
+    assert td.level({"apply": True, "auto_scout_school": False}) == PermissionLevel.SAFE_EDIT
     assert td.level({"apply": False}) == PermissionLevel.READ_ONLY
     assert td.level({}) == PermissionLevel.READ_ONLY
 

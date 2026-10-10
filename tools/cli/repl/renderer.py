@@ -483,12 +483,18 @@ def print_welcome(live_port: Optional[int] = 8088, animate: bool = True) -> None
         console.print()
 
     today = datetime.now().date()
-    exam_date = datetime(today.year, 12, 19).date()
-    if today > exam_date:
-        exam_date = datetime(today.year + 1, 12, 19).date()
-    days_left = (exam_date - today).days
-
+    # [R11 修复·横幅硬编码日期] 此前直接写死「当年 12-19」且完全不读配置，
+    # 与同会话 /status 面板（走 resolve_exam_date，配置 exam_date 优先）同屏
+    # 出现两个互相矛盾的倒计时。现与 print_status_summary 同一真源。
     cfg = load_config()
+    if exam_calendar:
+        exam_d, _exam_src = exam_calendar.resolve_exam_date(cfg)
+    else:
+        exam_d = datetime(today.year, 12, 19).date()
+        if today > exam_d:
+            exam_d = datetime(today.year + 1, 12, 19).date()
+    days_left = max(0, (exam_d - today).days)
+
     # [F8 修复·不考数学默认激活数学] 统一解析（见 shared.resolve_active_subject）
     curr_subj = resolve_active_subject(cfg)
     subj_name = SUBJECT_DIRS.get(curr_subj, ("01-数学", "数学"))[1]

@@ -115,13 +115,24 @@ def is_emoji_char(ch: str) -> bool:
     )
 
 
+#: [TUI-L1 修复·2026-10-09] 本渲染器**自己产生**的宽歧义字符集合。
+#: U+2026 '…' 的 east_asian_width 是 'A'(Ambiguous)：按 Unicode 标准宽度未定，
+#: 但中文终端（以及本仓 TUI 截断代码 tui_navigator._truncate_display 实际产出
+#: 它的场景）普遍按 2 列渲染。不特判则 display_width 少算 1 列 → pad/截断输出
+#: 右边框错位。此处只收本渲染器自己产出的截断省略号，其余 Ambiguous 字符
+#: （'·'、'±'、希腊字母等）不动，避免大面积行为漂移。
+_WIDE_AMBIGUOUS = {"…"}
+
+
 def display_width(s: str) -> int:
     """字符串在终端的实际打印宽度（去除 ANSI，精准判定全角汉字与 Emoji）。"""
     clean_s = _ANSI_RE.sub("", str(s))
     clean_s = clean_s.replace("\ufe0f", "").replace("\u200d", "")
     w = 0
     for ch in clean_s:
-        if is_emoji_char(ch) or unicodedata.east_asian_width(ch) in ("W", "F"):
+        if (is_emoji_char(ch)
+                or unicodedata.east_asian_width(ch) in ("W", "F")
+                or ch in _WIDE_AMBIGUOUS):
             w += 2
         else:
             w += 1

@@ -469,6 +469,22 @@ def restore(tag: Optional[str] = None, force: bool = False) -> bool:
               f"（已查找：{', '.join(str(d) for d in _backup_dirs())}）")
         return False
 
+    # [审查 2026-10-09 CONF-L1 修复] 快照完整性校验：账本在 snapshot() 时记录了
+    # 快照 sha256（verify() 已用它判定），但 restore() 此前解析到 src 后**直接
+    # 覆盖** —— 损坏/被篡改的快照会覆盖有效配置。此处覆盖前按账本记录比对；
+    # 老账本无 sha256 字段时保持现状（最小惊讶），仅提示一行。
+    recorded = str(chosen.get("sha256") or "")
+    if recorded:
+        actual = _sha256(src)
+        if actual != recorded:
+            print(f"[guard] ✗ 快照文件已损坏或被改动，拒绝还原：{chosen['path']}")
+            print(f"        账本 sha256={recorded[:16]}  "
+                  f"实际 sha256={(actual or '（不可读）')[:16]}")
+            return False
+    else:
+        print(f"[guard] ⚠ 快照 {chosen['path']} 无 sha256 记录（旧账本），"
+              "跳过完整性校验")
+
     if force and CONFIG.exists():
         snapshot(tag="before_restore", expected=False)
     # [S7 修复·非原子覆盖] 旧 shutil.copyfile 直接覆盖，并发读取者可见半文件。

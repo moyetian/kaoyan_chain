@@ -175,7 +175,7 @@ def call_text_llm(messages, config, stream=True):
     """
     base_url = config.get("base_url", "https://api.deepseek.com/v1")
     url = _get_normalized_chat_url(base_url)
-    api_key = config.get("api_key", "").strip()
+    api_key = str(config.get("api_key") or "").strip()
     model = config.get("model", "deepseek-chat")
 
     if not api_key:

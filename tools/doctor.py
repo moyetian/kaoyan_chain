@@ -554,7 +554,7 @@ def run_doctor(return_summary=False, check_persistence=False):
             check_item("配置文件格式", False, "", f"JSON 损坏: {e}")
             issues += 1
 
-    api_key = cfg.get("api_key", "").strip() if cfg else ""
+    api_key = str((cfg or {}).get("api_key") or "").strip()
     if not api_key or api_key.startswith("sk-xxxx"):
         check_item("大模型 API Key 状态", False, "", "尚未配置 API Key，运行 ky config 设置后即可唤醒 AI 解题", warn=True)
         warnings += 1

@@ -347,9 +347,15 @@ def _cmd_view(args: List[str]) -> None:
         elif a.startswith("--permission="):
             permission_mode = a.split("=", 1)[1].strip()
     port = start_background_live_server(8088, host=gateway_host, token=gateway_token,
-                                        webhook_token=webhook_token) or 8088
-    webbrowser.open(f"http://localhost:{port}/live")
-    print(f"已在默认浏览器打开实时 LaTeX 伴侣: http://localhost:{port}/live")
+                                        webhook_token=webhook_token)
+    # [R11 修复·失败仍宣称已打开] 此前 `or 8088` 把启动失败（None）兜底成 8088，
+    # 随后无条件打开浏览器并打印「已打开」——用户看到的是一个空端口
+    # （与 REPL 侧 F10 同型缺陷）。现按真实启动结果分支。
+    if port:
+        webbrowser.open(f"http://localhost:{port}/live")
+        print(f"已在默认浏览器打开实时 LaTeX 伴侣: http://localhost:{port}/live")
+    else:
+        print("实时 LaTeX 伴侣未启动（端口占用或非回环需 token），已跳过打开浏览器")
     try:
         from tools.cli.repl.loop import run_repl
     except ImportError:

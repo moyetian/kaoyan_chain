@@ -407,9 +407,14 @@ TOOL_SPEC = {
             },
         },
     },
-    # 动态定级：apply=true 写 ky_config.json / AGENTS.md（SAFE_EDIT）；
-    # 缺省/false 为纯只读盘点（READ_ONLY，safe 模式也放行）。
-    "level": lambda a: "safe_edit" if (a or {}).get("apply") else "read_only",
+    # 动态定级：apply=true 写 ky_config.json / AGENTS.md，且 auto_scout_school
+    # （默认 true）在目标档案缺失时会真实发起网络侦察（school_scout.scout_school）
+    # → 必须按 NETWORK 级别审批，低权限模型不得借 safe_edit 放行产生外网流量；
+    # apply=true 且显式关闭侦察时仅写盘 → SAFE_EDIT；不 apply 为纯只读盘点
+    # （侦察只在 apply 分支内执行）→ READ_ONLY，safe 模式也放行。
+    "level": lambda a: (
+        "read_only" if not (a or {}).get("apply")
+        else ("network" if (a or {}).get("auto_scout_school", True) else "safe_edit")),
 }
 
 
@@ -449,10 +454,21 @@ def execute(args, ctx=None):
                 continue
             lines.append(f"  · {c.get('target', '')} {c.get('field', '')}: "
                          f"{c.get('old')} → {c.get('new')}")
-    if res.get("would_watch"):
-        lines.append("研招简章监控: " + ", ".join(map(str, res["would_watch"])))
-    if res.get("would_scout"):
-        lines.append("院校侦察: " + ", ".join(map(str, res["would_scout"])))
+    # [R11 修复·bool/str 误用 join] would_watch 是 bool、would_scout 是文件名 str
+    # （见 scan_and_mount_materials 返回体），此前 join(map(str,...)) 对 bool 直接
+    # TypeError（新用户/换院校时 would_watch=True 即触发）、对 str 逐字符展开。
+    # 按真实类型渲染文案，不做迭代展开。
+    # [N4 修复·两态文案对齐] apply=True 且 res 已带执行确认（school_watch 为
+    # watcher 写入成功文案、scout_report 为落盘路径）时渲染已执行形态；
+    # 否则（只读预览 / apply 分支未产出确认）保持将来时预览。
+    if res.get("school_watch"):
+        lines.append(f"研招简章监控: {res['school_watch']}")
+    elif res.get("would_watch"):
+        lines.append("研招简章监控: 将自动纳入监控雷达")
+    if res.get("scout_report"):
+        lines.append(f"院校侦察: 已生成 {res['scout_report']}")
+    elif res.get("would_scout"):
+        lines.append(f"院校侦察: 将生成 {res['would_scout']}")
     if not applied:
         lines.append("（只读预览未落盘；确认无误后可 apply=true 写回）")
     return "\n".join(lines)

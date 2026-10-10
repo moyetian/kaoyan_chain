@@ -228,3 +228,54 @@ class TestW4RootDocsSyncJudgment:
             "index.html / state_snapshot.json 两处同步点未统一走新判据"
         assert 'if ROOT_DOCS.parent.parent == ROOT.parent and (ROOT.parent / "01-数学").exists():' \
             not in src, "旧 01-数学 判据残留"
+
+
+# ══════════════════════════════════════════════════════════════
+# PRIV-C1：本地完整模式（未脱敏）不得回写 Git 跟踪的根 docs/
+# ══════════════════════════════════════════════════════════════
+
+
+class TestPrivC1UnsanitizedSnapshotMustNotSync:
+    """[PRIV-C1]根 docs/ 是 Git 跟踪目录且 origin 直连公开仓库。
+
+    本地完整模式（KY_SNAPSHOT_OPT_IN=0）产物含真实学情（真实校名/自命题科目），
+    写入根 docs/ 后一次 ``add -A`` 提交推送即构成隐私泄漏。
+    发布出口的 ensure_sanitized_docs_for_publish() 只保护**公开副本**，
+    不保护主仓库工作区，故须在此处自拦。
+    """
+
+    def _fake_repo(self, tmp_path, monkeypatch, *, with_cfg=True):
+        repo = tmp_path / "repo"
+        pkg = repo / "05-考研看板"
+        pkg.mkdir(parents=True)
+        if with_cfg:
+            (repo / "ky_config.json").write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(build, "ROOT", pkg)
+        monkeypatch.setattr(build, "ROOT_DOCS", repo / "docs" / "index.html")
+        return repo
+
+    def test_local_full_mode_does_not_sync(self, tmp_path, monkeypatch):
+        """本地完整模式（opt_in=False）下判据必须为假。修复前恒为真。"""
+        self._fake_repo(tmp_path, monkeypatch, with_cfg=True)
+        monkeypatch.setattr(build, "snapshot_opt_in", lambda: False)
+        assert build.root_docs_sync_enabled() is False, \
+            "本地完整模式的未脱敏快照被写进 Git 跟踪的根 docs/（隐私泄漏）"
+
+    def test_sanitized_mode_still_syncs(self, tmp_path, monkeypatch):
+        """脱敏模式（默认 opt_in=True）下同步照常，闸门不得把正常路径也拦掉。"""
+        self._fake_repo(tmp_path, monkeypatch, with_cfg=True)
+        monkeypatch.setattr(build, "snapshot_opt_in", lambda: True)
+        assert build.root_docs_sync_enabled() is True
+
+    def test_judgment_calls_snapshot_opt_in(self):
+        """判据必须真的读脱敏状态（钉住调用点，防被摘掉后静默失效）。"""
+        src = (DASHBOARD / "build.py").read_text(encoding="utf-8")
+        fn_start = src.index("def root_docs_sync_enabled()")
+        # 函数体到下一个顶层 def 之前（build.py 里该函数是文件最后一个顶层定义，
+        # 故用「再下一个 def 或 EOF」兜底，避免 src.index 抛 ValueError）
+        rest = src[fn_start + 10:]
+        nxt = rest.find("\ndef ")
+        fn_body = rest if nxt == -1 else rest[:nxt]
+        assert "snapshot_opt_in()" in fn_body, \
+            "root_docs_sync_enabled 未校验脱敏状态（PRIV-C1 回归）"
+

@@ -165,6 +165,14 @@ def filter_relevant(results: Iterable, query: str) -> Tuple[List, int]:
         # [P2 修复·2026-10-08] 纯停用词查询：改用未滤停用词的兜底 token 判定，
         # 不让守门被「关键词全被过滤」整条绕过（详见 _fallback_gate_tokens）。
         tokens = _fallback_gate_tokens(query)
+    # [R11 修复·年份-only 查询全判不相关] 查询的有效 token 只剩年份（如
+    # 「2027 考研」——「考研」是停用词）时，is_relevant 会对每个 token 走
+    # `year → continue` → 恒 return False → 结果全丢 + 被记「疑似被反爬拦截」。
+    # 年份零辨别力、无法据此判定相关性 → 与空 tokens 同口径「无法判定 → 放行」。
+    # 与既有「垃圾页含年份」防护不冲突：查询含明确关键词（word/code）时年份仍被
+    # continue（见 is_relevant），垃圾页不会因含年份而放行。
+    if tokens and all(token_kind(t) == "year" for t in tokens):
+        tokens = []
     kept: List = []
     dropped = 0
     for r in results:

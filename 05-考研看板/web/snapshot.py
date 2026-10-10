@@ -23,8 +23,11 @@ def snapshot_opt_in():
     return os.environ.get("KY_SNAPSHOT_OPT_IN", "1").lower() in ("1", "true", "yes", "on")
 
 
-#: 发布用通用科目短名（与 subjects[].name 同源；仅作 subjects 缺失时的兜底）
-_GENERIC_SUBJECT_NAMES = {"math": "数学", "eng": "英语", "pol": "政治", "pro": "专业课"}
+#: 发布用通用科目短名（subjects[].name 与 maps[].subject_name 泛化的唯一真源）
+#: [R11 修复·科目名泄漏] 补 pro2：双专业课考生的第二门自命题科目名此前不在表中，
+#: subjects[].name 会原样把真实自命题科目全称带进公开快照。
+_GENERIC_SUBJECT_NAMES = {"math": "数学", "eng": "英语", "pol": "政治",
+                          "pro": "专业课", "pro2": "专业课二"}
 
 
 def sanitize_public_data(data: dict) -> dict:
@@ -46,6 +49,13 @@ def sanitize_public_data(data: dict) -> dict:
     # 科目全称（如「601 数学分析 801 高等代数」），
     # 会随 Pages 公开发布。发布前一律泛化为通用短名（与看板卡片所用名一致）。
     generic_names = dict(_GENERIC_SUBJECT_NAMES)
+    # [R11 修复·科目名泄漏] subjects[].name 此前原样透传：mode_b/mode_c 分支里
+    # 它是 ky_config/study_plan 的真实自命题科目名（如「618 示例科目」），
+    # 绕过下方 maps 的泛化防线直接进公开快照（45-50 行注释自称「永远使用通用短名」，
+    # 实现却没有落实）。按 key 一律泛化，与 maps[].subject_name 同源同口径。
+    for s2 in safe_subjects:
+        if s2.get("key") in generic_names:
+            s2["name"] = generic_names[s2["key"]]
     # 公开快照永远使用通用短名；不能把 ky_config/考纲里的自命题科目全称
     # 重新写回白名单，否则「subjects[].name」会绕过 maps 的泛化防线。
     # [G-3 体积治理] maps.<subj>.modules 是 chapters 的**纯投影**

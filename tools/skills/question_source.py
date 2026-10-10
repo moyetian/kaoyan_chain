@@ -13,6 +13,10 @@
 1. **checksum 与既有指纹同口径**：归一化 = 去掉**全部空白字符**（与
    ``exam_grading._question_fingerprint`` 的 48 字截断同源），但改用 sha256
    摘要 —— 后者「只比前 48 字」，长题干尾部被改动时判不出来。
+   [STEM-M1] 取数口径：先截断到第一个答案类小节（§2 标准答案 / §3 采分点 /
+   §4 命题人解析，见 :data:`ANSWER_SUBSEC_RE`）再归一化 —— 身份只锚定题干
+   本体，微调答案/解析不再被误判为「题干被改动」；存量卡（旧口径含答案
+   小节盖章）由 :func:`checksum_matches` 双口径接受，不触发集体误伤。
 2. **source_id 人类可读且幂等**：``f"{origin}-{checksum[:12]}"`` —— 同题干
    同来源恒得同一 ID（backfill 可安全重复执行），且从 ID 一眼看出来源类别；
    ``origin`` 或题干任一变化都会得到不同 ID。
@@ -73,6 +77,17 @@ REAL_ORIGINS: Tuple[str, ...] = (ORIGIN_MISTAKE, ORIGIN_WHITELIST, ORIGIN_SYNTHE
 #: ``\s`` 在 Python 的 str 正则里是 Unicode 感知的，故全角空格也覆盖。
 _WS_RE = re.compile(r"\s+")
 
+#: [STEM-M1] 答案类小节标记（题卡题干段内的编号子小节标题，如「#### 2. 标准答案」
+#: 「#### 3. 步骤级采分点标注」「#### 4. 命题人逻辑与私教解析」）——出现即视为
+#: 题干本体结束。**单一事实源**：组卷侧（exam_composer 的题面剥离 / 标准答案
+#: 提取）与 checksum 取数口径（本模块 :func:`compute_checksum`）必须同口径，
+#: exam_composer 以 ``_STEM_ANSWER_SUBSEC_RE`` 别名导入本常量（行为不变）。
+ANSWER_SUBSEC_RE = re.compile(
+    r"^[ \t]*#{2,4}\s*\d*\s*[.、]?\s*(?:标准答案|参考答案|答案(?:与解析|解析|要点)?"
+    r"|步骤级采分点标注?|命题人逻辑)[^\n]*$",
+    re.MULTILINE,
+)
+
 #: checksum 取 sha256 前 16 位十六进制（64 bit；同库内碰撞概率可忽略）
 CHECKSUM_HEX_LEN = 16
 
@@ -92,9 +107,48 @@ def normalize_stem(stem: Any) -> str:
     return _WS_RE.sub("", str(stem if stem is not None else ""))
 
 
+def _truncate_at_answer_subsection(stem: Any) -> str:
+    """截断到第一个答案类小节标记之前（无标记原样返回）。"""
+    text = str(stem if stem is not None else "")
+    m = ANSWER_SUBSEC_RE.search(text)
+    return text[:m.start()] if m else text
+
+
 def compute_checksum(stem: Any) -> str:
-    """题干摘要：``sha256(归一化题干)`` 的前 16 位十六进制。"""
+    """题干摘要：``sha256(归一化题干)`` 的前 16 位十六进制。
+
+    [STEM-M1] 取数口径：先截断到第一个**答案类小节**（§2 标准答案 / §3 步骤级
+    采分点 / §4 命题人逻辑与解析，见 :data:`ANSWER_SUBSEC_RE`）再归一化 ——
+    题源身份只锚定题干本体，微调答案/解析不再让存量卡被误判「题干被改动」
+    （旧口径覆盖整个题干段：解析一改 → checksum 漂移 → 组卷侧 source_tampered
+    误报「题干被改动」、整批排除）。无答案小节的文本截断为空操作，摘要与
+    旧口径逐字节相同（兼容红线）；存量卡（旧口径盖章）由
+    :func:`checksum_matches` 双口径接受。
+    """
+    return hashlib.sha256(
+        normalize_stem(_truncate_at_answer_subsection(stem)).encode("utf-8")
+    ).hexdigest()[:CHECKSUM_HEX_LEN]
+
+
+def _legacy_checksum(stem: Any) -> str:
+    """旧口径摘要：全文（不截断答案小节）仅空白归一化 —— 仅用于兼容存量盖章。"""
     return hashlib.sha256(normalize_stem(stem).encode("utf-8")).hexdigest()[:CHECKSUM_HEX_LEN]
+
+
+def checksum_matches(stored: Any, stem: Any) -> bool:
+    """``stored`` 校验和是否与 ``stem`` 匹配（双口径兼容）。
+
+    [STEM-M1 兼容红线] 存量卡片是用旧口径（全文含答案/解析小节）盖的章，
+    直接换口径会让所有带 §2/§3/§4 的旧卡 ``verify`` 失败 → 组卷整批排除。
+    故同时接受两种口径，任一匹配即视为一致：
+      * 新口径：截断到第一个答案类小节后再归一化（:func:`compute_checksum`）；
+      * 旧口径：全文仅空白归一化。
+    空 ``stored`` 一律不匹配（「无源即拒」的语义不放松）。
+    """
+    s = str(stored or "")
+    if not s:
+        return False
+    return s == compute_checksum(stem) or s == _legacy_checksum(stem)
 
 
 def build_source_id(origin: str, checksum: str) -> str:
@@ -168,10 +222,13 @@ class QuestionSource:
         无 ``checksum`` 的身份（存量数据未 backfill 时）一律返回 ``False``
         —— 「无源即拒」的判定依据就在这里：宁可让调用方走补录流程，
         也不默认放行一道身份不明的题。
+
+        比对走 :func:`checksum_matches` 双口径（新口径截断版 / 旧口径全文版）
+        —— 存量卡是旧口径盖章的，单口径会让带答案小节的卡集体误判被改动。
         """
         if not self.checksum:
             return False
-        return self.checksum == compute_checksum(stem)
+        return checksum_matches(self.checksum, stem)
 
     # ── 序列化 ──
     def to_dict(self) -> Dict[str, Any]:
@@ -335,7 +392,7 @@ def source_from_card(card_text: str, *, origin: str, fallback_stem: str = "",
     if not src_id:
         # 半声明：元数据区出现过身份字段名却无可用 ID 行。题干被改动过即拒
         # （删 ID 行 / 改坏校验和值都不能豁免）；题干未动则按当前题干重建 ID。
-        if has_declared_identity(text, kind=kind) and checksum != compute_checksum(stem):
+        if has_declared_identity(text, kind=kind) and not checksum_matches(checksum, stem):
             return QuestionSource(source_id="", origin=str(origin), verified=verified,
                                   syllabus_ref="", checksum="")
         return QuestionSource.build(stem, origin, verified=verified)
@@ -347,15 +404,19 @@ def source_from_card(card_text: str, *, origin: str, fallback_stem: str = "",
                               syllabus_ref="", checksum="")
 
     declared_origin, prefix = parsed
-    actual = compute_checksum(stem)
     if checksum:
         # 完整声明：ID 内嵌前缀、校验和行、题干三者必须一致
-        trustworthy = checksum.startswith(prefix) and checksum == actual
+        # （题干比对走双口径 —— 存量卡用旧口径盖章，见 checksum_matches）
+        trustworthy = checksum.startswith(prefix) and checksum_matches(checksum, stem)
         return QuestionSource(source_id=src_id, origin=declared_origin, verified=verified,
                               syllabus_ref="", checksum=checksum if trustworthy else "")
     # 校验和行缺失：退化为 ID 内嵌 12 位前缀的弱校验，通过则按当前题干补全
+    # （弱前缀同样双口径：存量 ID 的前缀来自旧口径摘要，单口径会误拒）
+    # （actual 仅本分支需要：完整声明分支走 checksum_matches，无需预计算）
+    actual = compute_checksum(stem)
+    ok = actual.startswith(prefix) or _legacy_checksum(stem).startswith(prefix)
     return QuestionSource(source_id=src_id, origin=declared_origin, verified=verified,
-                          syllabus_ref="", checksum=actual if actual.startswith(prefix) else "")
+                          syllabus_ref="", checksum=actual if ok else "")
 
 
 # ════════════════════════════════════════════════════════════════
@@ -557,7 +618,8 @@ __all__ = [
     "ORIGIN_MISTAKE", "ORIGIN_WHITELIST", "ORIGIN_SYNTHETIC_LLM", "ORIGIN_PLACEHOLDER",
     "ALL_ORIGINS", "REAL_ORIGINS",
     "QuestionSource",
-    "normalize_stem", "compute_checksum", "build_source_id", "parse_source_id",
+    "normalize_stem", "compute_checksum", "checksum_matches", "build_source_id",
+    "parse_source_id", "ANSWER_SUBSEC_RE",
     "extract_card_stem", "extract_mistake_stem", "find_source_id", "find_checksum",
     "fence_for_text",
     "source_from_card", "backfill_markdown_text", "backfill_file", "backfill_workspace",

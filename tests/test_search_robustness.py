@@ -248,7 +248,11 @@ def test_clean_text_strips_nested_tags_and_unescapes_entities():
 
 def test_looks_like_anti_bot_detection():
     assert looks_like_anti_bot("<html>请输入验证码以继续访问</html>") == "请输入验证码"
-    assert looks_like_anti_bot("Please verify you are a human: anomaly detected") == "anomaly"
+    # [BOT-M1 修复] 裸 "anomaly" 已收紧为反爬专属短语；此处verify you are 在
+    # ANTI_BOT_MARKERS 中更靠前，故先命中它（与修复前行为一致）。
+    assert looks_like_anti_bot("Please verify you are a human: anomaly detected") == "verify you are"
+    # 只含反爬专属短语时（无其它标记抢先）命中新标记
+    assert looks_like_anti_bot("<html>Anomaly detected by our systems</html>") == "anomaly detected"
     assert looks_like_anti_bot("正常的研究生院招生简章页面公告") == ""
 
 

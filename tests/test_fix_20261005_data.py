@@ -115,8 +115,13 @@ _PLAIN_CARD_EXTRACT_FROZEN = (
     "> B"
 )
 
-#: 冻结指纹（sha256(去空白题干)[:16]）——提取口径若被改动，此值必然漂移
-_PLAIN_CARD_CHECKSUM_FROZEN = "f511ccedf02fec5b"
+#: 冻结指纹（sha256(去空白题干)[:16]）。
+#: [STEM-M1 口径变更 2026-10-09] 本卡含「#### 2. 标准答案」小节：checksum 取数
+#: 现为**截断到第一个答案类小节之前**（身份只锚定题干本体，微调答案/解析不再
+#: 触发 source_tampered 误报）。旧口径值 ``f511ccedf02fec5b``（全文 hash）仍被
+#: ``checksum_matches`` 双口径接受 —— 存量旧章卡的兼容由该 helper 保障。
+#: 提取口径（``extract_card_stem``）未变，上方 ``_PLAIN_CARD_EXTRACT_FROZEN`` 仍逐字节冻结。
+_PLAIN_CARD_CHECKSUM_FROZEN = "dbdb1238e07d0e1c"
 
 
 def test_plain_card_extraction_byte_identical():

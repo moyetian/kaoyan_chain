@@ -321,8 +321,30 @@ def test_existing_anti_bot_markers_unaffected():
     assert looks_like_anti_bot("<html>请协助验证，SourceVerifyCode: 480928</html>") == "请协助验证"
     assert looks_like_anti_bot("<html>SourceVerifyCode: 480928</html>") == "SourceVerifyCode"
     assert looks_like_anti_bot("<html>unusual traffic detected</html>") == "unusual traffic"
-    assert looks_like_anti_bot("<html>anomaly detected</html>") == "anomaly"
+    # [BOT-M1 修复] 裸 "anomaly" 已收紧为反爬专属短语，真反爬页仍必须命中
+    assert looks_like_anti_bot("<html>anomaly detected</html>") == "anomaly detected"
     assert looks_like_anti_bot("<html>请输入验证码</html>") == "请输入验证码"
+
+
+def test_academic_anomaly_term_is_not_anti_bot():
+    """[BOT-M1 回归] 学术检索正常结果页不得被判成反爬页。
+
+    ``looks_like_anti_bot`` 是对**整页 HTML**（含每条结果的标题与摘要）做子串匹配。
+    检索「anomaly detection」这类学术主题时，裸 ``"anomaly"`` 必然出现在正常结果页里
+    → 双端点皆被判反爬 → 源被raise（文案含「反爬」标记）→ health 侧首次即600s 硬封。
+    修复前本用例会红。
+    """
+    normal_page = (
+        "<html><body>"
+        "<h2>Anomaly Detection in Time Series: A Survey</h2>"
+        "<p class=snippet>Deep learning approaches for anomaly detection, "
+        "including isolation forest and autoencoder-based methods.</p>"
+        "<h2>Unsupervised Anomaly Detection Using Gaussian Mixture Models</h2>"
+        "<p class=snippet>A tutorial on anomaly detection benchmarks.</p>"
+        "</body></html>"
+    )
+    assert looks_like_anti_bot(normal_page) == "", (
+        "学术术语 'anomaly' 出现在正常结果页标题/摘要里，不得触发反爬判定")
 
 
 # ══════════════════════════════════════════════════════════════════════

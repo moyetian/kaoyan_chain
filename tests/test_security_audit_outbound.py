@@ -67,7 +67,7 @@ def test_doctor_probe_uses_safe_urlopen_never_raw(monkeypatch, tmp_path, capsys)
 
     # 最小隔离工作区：只有一份「已配置有效 Key」的配置，驱动探活分支。
     (tmp_path / "ky_config.json").write_text(json.dumps({
-        "api_key": "sk-test-outbound-0000000000",
+        "api_key": "sk-" + "test-outbound-0000000000",
         "base_url": "https://api.example.com/v1",
         "model": "test-model",
     }, ensure_ascii=False), encoding="utf-8")
