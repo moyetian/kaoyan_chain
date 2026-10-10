@@ -108,6 +108,26 @@ class TestR3BudgetSingleSource:
         assert len(captured) == 2
         assert all(0 < b <= 60.0 for _, b in captured), f"默认 60s: {captured}"
 
+    def test_budget_never_exceeds_total_on_same_tick(self, monkeypatch):
+        """[R11 修复·浮点边界] 粗粒度单调时钟（Windows CI ~15.6ms）下
+        worker 与 deadline 构造落在同一 tick：``deadline - now`` 退化为
+        ``(start + budget) - start``，浮点舍入可致结果略超 budget
+        （CI win3.10 实测 60.00000000000006，打红 ``<= 60`` 边界断言）。
+        修复后夹紧到总预算，「剩余墙钟 ≤ 总预算」恒成立。
+        打桩值经本地扫描确认可稳定触发该舍入方向（+2.3e-13）。"""
+        import types
+        import tools.intelligence.comparator as cmp_mod
+        _tick = 1988.085000000923
+        assert (_tick + 60.0) - _tick > 60.0, \
+            "打桩前提失效：该值不再触发浮点越界，请重新扫描同 tick 值"
+        monkeypatch.setattr(cmp_mod, "time",
+                            types.SimpleNamespace(monotonic=lambda: _tick))
+        captured = self._stub_capture(monkeypatch)
+        comp = SchoolComparator()
+        comp._get_two_profiles("测试大学甲", None, "测试大学乙", None, "测试专业")
+        assert len(captured) == 2
+        assert all(b <= 60.0 for _, b in captured), f"同 tick 浮点舍入越界: {captured}"
+
 
 # ═══════════════════ R4：引文闸门（全角括号 + 逐科目） ═══════════════════
 

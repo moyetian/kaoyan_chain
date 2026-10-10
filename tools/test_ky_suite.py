@@ -576,7 +576,12 @@ def run_tests():
             data=ask_img_payload,
             headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(ask_req, timeout=5) as resp:
+        # [R11 修复·CI 冷启动] /api/ask 触发图片处理链路（本地 OCR 引擎
+        # 初始化 + 视觉批改）：RapidOCR 首次构造需加载 ONNX 模型，macOS
+        # arm64 CI 冷启动实测 >5s，旧 timeout=5 误报「timed out」（macos-3.12
+        # 单平台红）。改与 LLM 端点同级的 _LLM_TIMEOUT（默认 60s）：链路在
+        # 无 LLM 调用时数秒内返回，超时上限只兜底环境波动、不拖慢正常路径。
+        with urllib.request.urlopen(ask_req, timeout=_LLM_TIMEOUT) as resp:
             runner.assert_true(resp.status == 200, "Web 伴侣 /api/ask 图像多模态上传处理正常 (HTTP 200)")
 
         # 测试 live.html 支持 LaTeX 保护与图片上传能力

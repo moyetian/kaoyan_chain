@@ -370,7 +370,13 @@ class SchoolComparator:
             # 到点即弃」与「内层研究主动收尾」指向同一时间点。
             research_budget = None
             if deadline is not None:
-                research_budget = max(0.0, deadline - time.monotonic())
+                # [R11 修复·浮点边界] 夹紧到总预算：粗粒度单调时钟（Windows
+                # ~15.6ms）下 worker 与 deadline 构造可能落在同一 tick，此时
+                # ``deadline - now`` 退化为 ``(start + budget) - start``，浮点
+                # 舍入可致结果略超 budget（CI win3.10 实测 60.00000000000006，
+                # 越界传入内层打红「内层预算 ≤ 外层」边界断言）。「剩余墙钟」
+                # 物理上不可能超过总预算，夹紧即语义修正。
+                research_budget = min(budget, max(0.0, deadline - time.monotonic()))
             try:
                 slots[idx] = ("ok", self._get_school_profile(
                     school_name, entity, major_keyword, api_config,
