@@ -9,6 +9,54 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 
 ---
 
+## [3.1.3] — 2026-10-09 ~ 10-10（未发布）
+
+> v3.1.2 发布后的连续消缺：2026-10-09 审查报告复核（39 项 → 确认 17 项全部
+> 修复）、R11 推送前多智能体深度检查（5 域并行深审 29 项 + 对抗回归 N1–N9）、
+> 隐私自检 `.git` 交互修复与推送后 CI 双红修复。版本号真源 `pyproject.toml`。
+
+### 🔍 R11 推送前多智能体深度检查（29 项 + 对抗回归 9 项）
+
+- **critical 3**：pytest 写入闸门覆盖祖先链 `conftest.py`（auto 模式任意
+  代码执行缺口）；看板脱敏快照 `subjects[].name` 泛化（mode_b/c 真实自命题
+  科目名泄漏）；`update_dashboard --push` 排除 `docs/.local` 误阻断；
+- **high 12**：Agent 主循环畸形回包两类崩溃、配置 null 15 处、`mcp_servers`
+  类型容错、temperature 容错、`IncompleteRead` 重试、`session_log` 截断
+  分流（resume 契约）、`material_scanner` join 类型、研招网同源多行假冲突、
+  `ky view --permission` 静默降级、雷达科目名泄漏、嵌套 `DEV_SCRATCH`
+  打包防线；
+- **medium/low 14**：日历倒数第二周六、JSON 修复标注、密钥正则锚定、
+  年份-only 查询、站内查询字面 0、`school_scout` 落盘单一真源、压缩回溯
+  归零空摘要（不再谎报「已压缩」）、沙箱绕过、SSL 降级守卫、横幅硬编码
+  日期、Space 键双重触发等；
+- **对抗回归 N1–N9**：`EVENT_COMPACT` 截断分流 / `base_url` null 防护 /
+  conftest 闸门去重 / 文案两态 / url 归一 / radar 归一管道对拍 /
+  `sk-` 分段前缀；变异检验 17/17 精确捕获；ky_suite 压缩测试适配真实
+  对话形态（pytest 盲区兜底）。
+
+### 🧾 2026-10-09 审查报告复核（39 项 → 确认 17 项清零）
+
+- 首批 7 项 + 批次二 11 项：SPA 空壳官网浏览器升级判定（含失真 mock 修正）、
+  研招网专业目录假 CONFLICT、科目无序比较、反爬标记收紧（防首查硬封）、
+  脱敏自检扩至文件名、导出后残留阻断（exit 3，堵住「规则有效但覆盖不全」）、
+  判卷双端 `_rubric_key` 归一、题源截断双口径、GUI 孤儿线程保活、
+  REPL 草稿 Ctrl-C、历史 0600 + 凭证打码、`config_guard` 快照校验等；
+  变异检验精确捕获。
+
+### 🩹 推送后 CI 修复与测试加固
+
+- win3.10：comparator 剩余预算夹紧 `min(budget, …)`（粗粒度单调时钟同
+  tick 下浮点舍入越界，实测 60.00000000000006）+ 同 tick 确定性回归测试；
+- macos3.12：ky_suite `/api/ask` 超时 5s → `_LLM_TIMEOUT`（RapidOCR 冷启动
+  在 arm64 CI >5s 误报）；R9 预算边界测试改非边界预算 + 时钟回退不变量；
+- 隐私自检跳过 `.git` 元数据（占位邮箱命中 PII 规则致 `--force` 导出
+  必然阻断）；
+- **测试**：截至 2026-10-10 全量 pytest **4022 收集 / 4016 通过 + 6 跳过**；
+  `test_ky_suite.py` **307 项**（私有口径）；`test_new_features.py`
+  **132 通过**。
+
+---
+
 ## [3.1.2] — 2026-10-01 ~ 10-08（2026-10-08 发布）
 
 > 自 v3.1.1 以来的累积更新：Agent 内核修复重构（K1–K9）、2026-09-30 安全审查

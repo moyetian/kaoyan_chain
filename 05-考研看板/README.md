@@ -474,7 +474,7 @@ kaoyan_chain/
     ├── ky_cli.py                        # 专有终端私教 (REPL) 与多端 IM 网关 (WeChat/QQ/DingTalk/Feishu)
     ├── study_planner.py                 # 7维度个人定制化方案设计引擎与防疲劳预警
     ├── syllabus_manager.py              # 官方考纲智能匹配与切换管理器
-    ├── test_ky_suite.py                 # 26 组全自动化工程回归测试套件 (共 307 项断言；干净检出为 302 通过 + 5 跳过 = 307)
+    ├── test_ky_suite.py                 # 26 组全自动化工程回归测试套件 (共 307 项断言；干净检出为 302 通过 + 5 跳过 = 307；公开副本 306)
     ├── update_dashboard.py              # 本地编译；--push 时才提交并推送
     └── verify_health.py                 # 全科规范与关键文件健康度巡检脚本
 ```
