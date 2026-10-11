@@ -277,6 +277,12 @@ def _cmd_audit(args: List[str]) -> int:
         print(json.dumps(rows, ensure_ascii=False, indent=2))
         return 0
     print(colorize(f"\n=== 审批审计（{len(rows)} 条）===", C.BOLD))
+    # [R12 修复·G4-6 口径澄清] 审计只覆盖经过**审批闸门**的决策（Agent 工具
+    # 调用 / REPL / 网关）；一次性 CLI 写命令（ky ingest / ky build 等）由用户
+    # 直接在终端执行、不经过审批环节，因此不在本记录中 —— 此前无任何说明，
+    # 用户可能误以为「审计为空 = 没有任何写操作发生过」。
+    print(colorize("  覆盖范围: Agent / REPL / 网关的审批闸门决策；"
+                   "一次性 CLI 写命令不经过审批环节，不在本记录中。", C.DIM))
     for row in rows:
         decision = "ALLOW" if row.get("allowed") else "DENY"
         print(f"  {decision:5} {row.get('tool', '')} | level={row.get('level')} | "

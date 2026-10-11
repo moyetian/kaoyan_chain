@@ -65,7 +65,15 @@ DEFAULT_LLM_ENRICH_BUDGET = 10
 # 关键词）才算有来源**；凡是展示层本地推断出来的（学科名兜底与通用占位）一律
 # 标「本地兜底」。这是唯一可判定的分界 —— ``_fallback_points`` 只在
 # ``chunk.points`` 为空时才做本地推断，所以判据就是「渲染时 points 是否为空」。
+#
+# [R12 修复·--no-llm 失实标注] 上述两档把「LLM 补全」与「材料正文提取」混在
+# 同一标签「已补全（LLM 采分点分析 / 材料正文关键词）」里：``--no-llm`` 实测
+# 产出的题卡仍标「已补全（LLM 采分点分析…）」—— 从未调用过 LLM，标注失实。
+# 现按 ``chunk.points_from_llm`` 三态细分：True=LLM 补全（历史标签）；
+# False=材料正文提取（新标签，明示未经 LLM）；None=未知（直接构造的调用方，
+# 保持历史标签逐字节不变以兼容既有消费者与测试）。
 POINTS_SOURCE_LLM = "llm"
+POINTS_SOURCE_MATERIAL = "material"
 POINTS_SOURCE_FALLBACK = "fallback"
 
 #: 兜底考点的显式标记（写在【考查考点】行末、反引号**外**）。
@@ -82,6 +90,7 @@ POINTS_SOURCE_LINE_PREFIX = f"- **【{POINTS_SOURCE_FIELD}】**："
 #: 【考点来源】行的取值文案
 _POINTS_SOURCE_LABEL = {
     POINTS_SOURCE_LLM: "已补全（LLM 采分点分析 / 材料正文关键词）",
+    POINTS_SOURCE_MATERIAL: "材料正文提取（题面关键词/表格列，未经 LLM 补全）",
     POINTS_SOURCE_FALLBACK: f"{POINTS_FALLBACK_MARK} · 本地推断，非官方考点，请以考纲/真题核验",
 }
 
@@ -101,6 +110,12 @@ class QuestionChunk:
     source: str = ""                    # 题源出处
     subject: str = ""                    # 冻结的入库科目键
     subject_provenance: str = "user_specified"  # 科目来源：user_specified/filename/section
+    #: [R12 修复·--no-llm 失实标注] 考点（points）的来源标记：
+    #: True=LLM 补全填入；False=材料正文提取（表格/关键词/Rust 分块）；
+    #: None=未知（直接构造的调用方，渲染层按历史文案展示）。
+    #: ``--no-llm`` 时此前题卡仍标注「已补全（LLM 采分点分析…）」——失实；
+    #: 现按真实来源分流标签（见 ``points_source``）。
+    points_from_llm: Optional[bool] = None
 
 
 # 文科题型判定规则：(q_type, 关键词, 无显式分值时的默认分)
@@ -420,6 +435,36 @@ class MaterialIngestionPipeline:
         for c in chunks:
             if c.stem:
                 c.stem = _strip_md_heading(c.stem)
+
+        # [R12 修复·G4-2 配套·两路径同口径] Rust 加速器无 Python 参考实现的
+        # 目录行过滤（_parse_single_block 的 TOC 分支）：纯目录页（无题号/标记，
+        # 走单题兜底）在 Rust 路径下整页目录成为题干（实测产出「题干=目录页」的
+        # 垃圾卡），Python 路径则产出空 stem 占位 —— 同一输入两条路径产物不一致，
+        # 且 Rust 侧的整页目录卡会被下游 G4-2 门禁拒收、Python 侧占位却被豁免
+        # （ky_suite 21-10 钉住的既有契约），同一文本在有无加速器环境下行为不同。
+        # 统一出口把 TOC 形态的单题兜底产物归一为占位（与 Python 路径逐字段同形：
+        # 空 stem + 空内容），两路径行为由此一致。
+        # 影响面：仅「整篇无题号/标记且呈目录形态」的单题兜底产物；目录页 + 真题
+        # 的正常材料走多题切分，不受影响（实测两路径均只切出题目本身）。
+        if len(chunks) == 1 and self._is_toc_text(chunks[0].stem):
+            chunks[0] = QuestionChunk(
+                number=chunks[0].number, q_type="essay", stem="", options=[],
+                answer="", analysis="", rubric=[], points=[], score=0,
+                source=default_source,
+            )
+
+        # [R12 修复·G4-2] 垃圾文本最小可信度门禁（判据与设计见
+        # _NUMBERING_RE / _QUESTION_SIGNAL_RE 处注释）：无题号/标记的整篇文本
+        # 会被兜底切成"一道大题"——实测随笔与乱码都产出 1 题 essay 并"成功
+        # 入库"。现要求这种单题产物至少含一个题目信号，否则拒收并给出补救
+        # 路径。空 stem 产物（TOC 过滤后的占位等）与多题材料不受影响。
+        if len(chunks) == 1 and (chunks[0].stem or "").strip() \
+                and not self._has_question_structure(raw_text) \
+                and not self._looks_like_question(chunks[0]):
+            print("  [!] 未检测到题目结构（题号 / 分值 / 答案 / 作答动词均缺失），"
+                  "已跳过入库以免垃圾文本污染题库。")
+            print("      如确为单题材料，请保留题号（如 `1.`）或分值（如 `（10 分）`）后重试。")
+            return []
         return chunks
 
     # ── 单行紧凑选项规范化 ────────────────────────────────────────────────
@@ -601,6 +646,9 @@ class MaterialIngestionPipeline:
                     stem=stem,
                     answer=ans,
                     points=[p for p in re.split(r"[、,，/]", point) if p][:4],
+                    # [R12 修复·--no-llm 失实标注] 表格「考点」列 = 材料正文
+                    # 提取（非 LLM 补全），来源如实标注
+                    points_from_llm=False,
                     source=default_source,
                 ))
                 j += 1
@@ -660,6 +708,70 @@ class MaterialIngestionPipeline:
         r'^#{2,}[ \t]*[^\n]*?(?:' + "|".join(_ANSWER_SEC_KEYS) + r')[^\n]*$',
         re.MULTILINE
     )
+
+    # ── [R12 修复·G4-2] 垃圾文本最小可信度门禁 ─────────────────────────────
+    # 问题：无题号/标记的整篇文本会被兜底切成"一道大题"入库（_chunk_text_python
+    # 的 `if not matches and not marker_matches` 分支 + Rust 同形态输出）。实测
+    # 随笔（"今天天气不错，我去了图书馆…"）与乱码（"asdjkhaskjd…"）都产出 1 题
+    # essay —— 垃圾材料污染题库与考点图谱，用户却看到"成功入库 1 道"。
+    # 处置：对"单题兜底"产物要求至少一个题目信号（见下方两级判据），否则拒收
+    # 并提示补救路径。多题材料与空 stem 产物（如 TOC 过滤后的占位）不受影响。
+    #: 原文级题号判据（与 _chunk_text_python 的 q_pattern 同口径）：材料本身
+    #: 出现过题号即视为有题目结构，兜底单题不适用门禁。
+    #: [R12 审查补漏] 补上 q_pattern 的 `第\\s*N\\s*题` 分支 —— 此前漏掉该形态，
+    #: 无分值、无信号词的「第1题：求极限…」单题被误判"无结构"拒收（审查实测）。
+    _NUMBERING_RE = re.compile(
+        r'(?:^|\n)[ \t]*(?:\d+\s*[-–—~]\s*\d+\s*[\.、]|\d+[\.、]'
+        r'|[【\[](?:第|题|Q)?\d+[】\]题]'
+        r'|\*{0,2}第\s*\d+\s*题)', re.MULTILINE)
+    #: 题目信号词表（强信号）：作答动词 / 指令词 / 分值 / 填空 / 英文题词。
+    #: 刻意不放弱词（"分析""说明""比较"单用）—— 随笔笔记里也常出现，
+    #: 放进词表会让门禁在垃圾场景失效；"试述/简述/论述/名词解释/请/如何/
+    #: 为什么"等几乎只出现在题面。
+    _QUESTION_SIGNAL_RE = re.compile(
+        r"试述|简述|论述|试论|阐述|概述|名词解释|辨析|"
+        r"计算|证明|求解|已知|"
+        r"请|如何|为什么|谈谈|结合|"
+        r"[？?]|____|（\s*）|\(\s*\)|"
+        r"\d+(?:\.\d+)?\s*分|本题满分|"
+        r"Directions|Translate|Explain|Write|Question|Answer",
+        re.IGNORECASE)
+
+    @classmethod
+    def _has_question_structure(cls, raw_text: str) -> bool:
+        """[R12 修复·G4-2] 原文是否自带题目结构（题号/题目标记/题型分段）。"""
+        t = raw_text or ""
+        if cls._NUMBERING_RE.search(t):
+            return True
+        if cls._QUESTION_MARKER_PATTERN.search(t):
+            return True
+        # 题型分段标题（"一、简答题（每题 10 分）"）同为强结构信号
+        return bool(cls._SEC_LINE_PATTERN.search(t))
+
+    @classmethod
+    def _looks_like_question(cls, chunk: QuestionChunk) -> bool:
+        """[R12 修复·G4-2] 该题是否含至少一个题目信号（答案/解析/采分点/
+        选项/作答动词/分值/问号/填空标记/英文题词）。"""
+        if chunk.answer or chunk.analysis or chunk.rubric or chunk.options:
+            return True
+        return bool(cls._QUESTION_SIGNAL_RE.search(chunk.stem or ""))
+
+    #: [R12 修复·G4-2 配套] 目录行判据（单源）：章节名 + 点线/省略号/中点/
+    #: 破折号 + 页码。Python 参考实现（_parse_single_block 的 TOC 分支）与
+    #: 统一出口（chunk_text 的单题兜底归一）共用，避免两处判据漂移。
+    _TOC_LINE_RE = re.compile(r"(?:\.{4,}|…{2,}|·{4,}|—{4,})\s*\d+\s*$")
+
+    @classmethod
+    def _is_toc_text(cls, text: str) -> bool:
+        """[R12 修复·G4-2 配套] 文本是否呈「目录页/目录行」形态
+        （点线页码行，或含「目录」且以页码数字结尾）。"""
+        t = (text or "").strip()
+        if not t:
+            return False
+        if cls._TOC_LINE_RE.search(t):
+            return True
+        return "目录" in t and bool(re.search(r"\d+\s*$", t))
+
     #: 答案区标记的共享正则（题块内切分 / 答案正文前缀清洗同源）
     _ANSWER_POINT_MARKER_RE = r"(?:\*\*)?(?:回忆|参考)?答案要点(?:\*\*)?\s*[：:]"
     #: 题块内「题干 | 答案/解析」的切分标记（_parse_single_block 与答案区跨度
@@ -749,6 +861,9 @@ class MaterialIngestionPipeline:
             analysis=str(d.get("analysis", "")),
             rubric=list(d.get("rubric", [])),
             points=list(d.get("points", [])),
+            # [R12 修复·--no-llm 失实标注] Rust 分块的 points 来自材料正文
+            # 解析（非 LLM 补全），来源如实标注
+            points_from_llm=False,
             source=str(d.get("source", "")),
         )
 
@@ -917,6 +1032,16 @@ class MaterialIngestionPipeline:
         支持「1. B  2. D  3. A」「11. ABD」等回忆版常见写法；答案区里的
         文字解析行不含「题号. 字母」形态，自动跳过。题号在切片结果里出现
         多次（跨题型重复编号）时映射有歧义，保守跳过不写入。
+
+        [R12 修复·主观题答案丢失] 选择题字母答案之外，再按「行首编号条目」
+        回填**主观题文本答案**（实测「## 参考答案」下 ``2. 实践是认识的基础…``
+        形态的 3 道简答答案此前整段丢弃、判卷全部转人工复核）。两条护栏：
+          * 已命中字母答案的题号不覆盖（字母路径优先）；
+          * 条目正文为纯字母形态、或自身含行内字母条目（「1. B  2. D」式
+            单行罗列的后续条目）时不回填 —— 前者归字母正则管辖，后者说明
+            该行是多条目行，本机制不应把后续条目吞进本条正文。
+        条目边界：下一条行首编号 / 空行 / 解析标记行（「解析：」等）。
+        回填仍仅限「答案为空且题号全局唯一」的题（与字母路径同口径）。
         """
         sec = getattr(self, "_last_answer_section", "") or ""
         if not sec or not chunks:
@@ -924,15 +1049,54 @@ class MaterialIngestionPipeline:
         answers: Dict[int, str] = {}
         for m in re.finditer(r"(\d{1,3})\s*[\.、]\s*([A-Da-d]{1,8})(?![A-Za-z0-9])", sec):
             answers[int(m.group(1))] = m.group(2).upper()
-        if not answers:
+
+        # ── 文本条目（主观题答案）解析 ──
+        _entry_re = re.compile(r"^[ \t]*(\d{1,3})\s*[\.、]\s*(.*)$")
+        _inline_letter_re = re.compile(r"\d{1,3}\s*[\.、]\s*[A-Da-d]{1,8}(?![A-Za-z0-9])")
+        _analysis_line_re = re.compile(r"^(?:【解析】|【评析】|解析[：:]|评析[：:])")
+        _prefix_re = re.compile(
+            r"^(?:【答案】|【参考答案】|参考答案[：:]|【解】|解[：:]|答案[：:]|"
+            + self._ANSWER_POINT_MARKER_RE + r")\s*")
+        text_answers: Dict[int, str] = {}
+        current: Optional[int] = None
+        buf: List[str] = []
+
+        def _flush() -> None:
+            nonlocal current, buf
+            if current is not None and buf:
+                body = "\n".join(buf).strip()
+                body = _prefix_re.sub("", body).strip()
+                if (body and current not in answers
+                        and not re.fullmatch(r"[A-Da-d]{1,8}", body)
+                        and not _inline_letter_re.search(body)):
+                    text_answers[current] = body
+            current, buf = None, []
+
+        for ln in sec.splitlines():
+            m = _entry_re.match(ln)
+            if m:
+                _flush()
+                current = int(m.group(1))
+                buf = [m.group(2)]
+            elif current is not None:
+                if not ln.strip() or _analysis_line_re.match(ln.strip()):
+                    _flush()
+                else:
+                    buf.append(ln)
+        _flush()
+
+        if not answers and not text_answers:
             return
         num_count: Dict[int, int] = {}
         for c in chunks:
             num_count[c.number] = num_count.get(c.number, 0) + 1
         for c in chunks:
-            ans = answers.get(c.number)
-            if ans and num_count.get(c.number, 0) == 1 and not (c.answer or "").strip():
-                c.answer = ans
+            if (c.answer or "").strip() or num_count.get(c.number, 0) != 1:
+                continue
+            if c.number in answers:
+                c.answer = answers[c.number]
+            elif c.number in text_answers:
+                c.answer = text_answers[c.number]
 
     def _parse_single_block(self, block: str, num: int, source: str, sec_hint: str = "") -> QuestionChunk:
         """解析单个题块"""
@@ -964,9 +1128,9 @@ class MaterialIngestionPipeline:
         raw_stem = parts[0].strip()
 
         # 过滤书籍/材料目录行 (TOC line: 章节名 ... 页码)
-        if re.search(r"(?:\.{4,}|…{2,}|·{4,}|—{4,})\s*\d+\s*$", raw_stem.strip()) or (
-            "目录" in raw_stem and re.search(r"\d+\s*$", raw_stem.strip())
-        ):
+        # [R12 修复·G4-2 配套] 判据抽为单源类方法 _is_toc_text（统一出口的
+        # 单题兜底归一与 TOC 分支共用，防两处漂移）。
+        if self._is_toc_text(raw_stem):
             return QuestionChunk(
                 number=num, q_type="essay", stem="", options=[], answer="",
                 analysis="", rubric=[], points=[], score=0, source=source
@@ -1112,6 +1276,9 @@ class MaterialIngestionPipeline:
             analysis=analysis,
             rubric=rubric_list,
             points=points,
+            # [R12 修复·--no-llm 失实标注] 关键词提取（题面命中） = 材料正文
+            # 提取（非 LLM 补全），来源如实标注
+            points_from_llm=False,
             source=source
         )
 
@@ -1183,8 +1350,13 @@ class MaterialIngestionPipeline:
                     chunk.rubric = [str(x) for x in data["rubric"] if x]
                     applied = applied or bool(chunk.rubric)
                 if not chunk.points and isinstance(data.get("points"), list):
-                    chunk.points = [str(x) for x in data["points"] if x]
-                    applied = applied or bool(chunk.points)
+                    _llm_points = [str(x) for x in data["points"] if x]
+                    if _llm_points:
+                        chunk.points = _llm_points
+                        # [R12 修复·--no-llm 失实标注] 记录真实来源：
+                        # 仅当 points 由本次 LLM 响应填入时才置 True
+                        chunk.points_from_llm = True
+                        applied = True
                 if not chunk.analysis and data.get("analysis"):
                     chunk.analysis = str(data["analysis"])
                     applied = True
@@ -1212,13 +1384,19 @@ class MaterialIngestionPipeline:
 
     @staticmethod
     def points_source(chunk: QuestionChunk) -> str:
-        """[R3 缺口 2] 该题考点的来源：``llm`` / ``fallback``。
+        """[R3 缺口 2] 该题考点的来源：``llm`` / ``material`` / ``fallback``。
 
-        判据 =渲染时 ``chunk.points`` 是否为空（见模块级口径说明）。
-        LLM 补全成功或材料正文已含关键词 → ``llm``（来源可信，不标降级）；
-        空→ 本地学科名推断或通用占位 → ``fallback``（必须让考生看见）。
+        判据 =渲染时 ``chunk.points`` 是否为空（见模块级口径说明）：
+        LLM 补全成功 → ``llm``；材料正文已含关键词（``points_from_llm is
+        False``）→ ``material``；空 → 本地学科名推断或通用占位 → ``fallback``
+        （必须让考生看见）。``points_from_llm is None``（直接构造的调用方）
+        按历史契约归 ``llm`` —— 既有消费者与测试依赖该取值不变。
         """
-        return POINTS_SOURCE_LLM if chunk.points else POINTS_SOURCE_FALLBACK
+        if not chunk.points:
+            return POINTS_SOURCE_FALLBACK
+        if chunk.points_from_llm is False:
+            return POINTS_SOURCE_MATERIAL
+        return POINTS_SOURCE_LLM
 
     def format_question_card(self, chunk: QuestionChunk, subject: str = "pro",
                              *, llm_enrich: Optional[bool] = None) -> str:

@@ -149,15 +149,40 @@ SESSION_MAX_FILES = 100
 
 _SESSION_SECRET_RE = re.compile(
     r"(?i)(bearer\s+|(?:api[_-]?key|access[_-]?token|token|secret|password)"
-    r"\s*[\"']?\s*[:=]\s*[\"']?\s*)[A-Za-z0-9._~+/=-]{8,}")
+    r"\s*[\"']?\s*[:=]\s*[\"']?\s*)[A-Za-z0-9._~+/=@!#$%^&*-]{8,}")
 _SESSION_EMAIL_RE = re.compile(
     r"(?i)(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+(?![\w.-])")
 _SESSION_PHONE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
+# [R12 修复·脱敏漏 7 类] 下列形态此前原样落盘（探针 7/7 实测漏）：
+#   * 裸 ``sk-`` 键（无 ``key=`` 上下文，如「密钥 sk-abc…」直接贴出）；
+#   * 裸 AWS access key id（``AKIA``/``ASIA`` 前缀，无 ``key=`` 上下文）；
+#   * ``aws_secret_access_key=`` / ``aws_access_key_id=``（现有规则要求关键字
+#     后紧跟 ``[=:]``，而 ``secret`` 后面是 ``_access`` → 整条漏网）；
+#   * 含 ``@`` 等符号的 password 值（值字符集不含 ``@`` → 长度不足整体不匹配）；
+#   * 带空格/短横线的手机号（``138 1234 5678`` / ``138-1234-5678``）；
+#   * 中文「密钥：/密码：」上下文（关键字为中文，英文规则不命中）。
+# 说明：这些规则是**会话日志落盘前**的最后一层脱敏（.memory/ 本地隐私目录），
+# 宁可多脱一点，也不让凭证形态的文本原样留存。
+_SESSION_SK_RE = re.compile(r"\bsk-[A-Za-z0-9_-]{8,}")
+_SESSION_AWS_KEY_RE = re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{12,}\b")
+_SESSION_AWS_ASSIGN_RE = re.compile(
+    r"(?i)(aws_(?:secret_)?access_key(?:_id)?\s*[:=]\s*[\"']?)[A-Za-z0-9/+=._-]{8,}")
+_SESSION_CN_SECRET_RE = re.compile(
+    r"(密钥|密码|口令|令牌)\s*[：:]\s*([^\s，。；、,;：]{6,})")
+#: [R12 审查补漏] 分隔符用 `[\s\-]*`（此前 `?` 只认单个分隔字符，双空格
+#: 「138  1234  5678」整体漏网）；同时覆盖单空格/连字符/无分隔形态。
+_SESSION_PHONE_SPACED_RE = re.compile(
+    r"(?<!\d)1[3-9]\d[\s\-]*\d{4}[\s\-]*\d{4}(?!\d)")
 
 
 def _redact_session_text(value: str) -> str:
     value = _SESSION_SECRET_RE.sub(lambda m: f"{m.group(1)}[REDACTED]", value)
+    value = _SESSION_AWS_ASSIGN_RE.sub(lambda m: f"{m.group(1)}[REDACTED]", value)
+    value = _SESSION_SK_RE.sub("[REDACTED]", value)
+    value = _SESSION_AWS_KEY_RE.sub("[REDACTED]", value)
+    value = _SESSION_CN_SECRET_RE.sub(lambda m: f"{m.group(1)}：[REDACTED]", value)
     value = _SESSION_EMAIL_RE.sub("[邮箱]", value)
+    value = _SESSION_PHONE_SPACED_RE.sub("[手机号]", value)
     return _SESSION_PHONE_RE.sub("[手机号]", value)
 
 

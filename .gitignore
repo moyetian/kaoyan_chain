@@ -146,6 +146,7 @@ temp_*.png
 temp_*.jpg
 *.tmp
 .tmp.driveupload/
+.tmp.drivedownload/
 *.docx
 考研学习链_功能规划与竞品分析报告*.txt
 

@@ -12,6 +12,7 @@ Level 5 = Dangerous (删除与破坏性操作)
 
 import json
 import shutil
+import sys
 import time
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
@@ -145,6 +146,11 @@ class PermissionManager:
         from .approval_audit import resolve_audit_root
         self.audit_root = resolve_audit_root(self.workspace_root)
         self.audit_enabled = True
+        # [R12 修复·F1 审计静默失效] 审计写入失败此前被 `except: pass` 吞掉：
+        # 探针把审计根指向一个文件 → 工具照常执行、磁盘写入发生、审计零记录零
+        # 告警。现首次失败打印一次告警并置 audit_degraded（见 _audit_decision）。
+        self.audit_degraded = False
+        self._audit_warned = False
         if approval_channel is not None:
             # 通道侧若自带信任集（TtyApproval / GuiApproval 均是），必须**共享同一个
             # set 对象**：用户在弹窗里选"本会话信任"后，策略层的
@@ -457,6 +463,39 @@ class PermissionManager:
         except Exception:
             pass
 
+    def _audit_decision(self, tool_name: str, level: int,
+                        result: Tuple[bool, str], interactive: bool,
+                        args: Optional[Dict[str, Any]] = None) -> None:
+        """[R12 修复·F1/F3] 审批决策审计的**唯一出口**（普通检查与两道专属闸门共用）。
+
+        F1（审计静默失效）：写入异常此前被 `except: pass` 吞掉 —— 工具照常执行、
+        审计零记录零告警，B1 的审计价值被无声掏空。现首次失败打印一次告警
+        （stderr，含失败原因与审计根路径）并置 ``audit_degraded``；后续失败不
+        重复刷屏（每次调用仍会重新尝试写入，恢复即自动继续落审计）。决策本身
+        不受影响 —— 审计是「事后可追溯性」层，不阻塞工具执行。
+
+        F3（两高危闸门零留痕）：``check_session_script_exec`` 与
+        ``check_external_read`` 的批准/拒绝同样经本方法落审计 —— 这两类决策
+        （执行会话写入的脚本 / 读取工作区外文件）恰是最需要事后追溯的。
+        """
+        if not self.audit_enabled:
+            return
+        allowed, reason = result
+        try:
+            from .approval_audit import append_approval_event
+            append_approval_event(self.audit_root, tool_name=tool_name, level=level,
+                                  allowed=allowed, reason=reason, mode=self.mode,
+                                  interactive=interactive, args=args or {})
+        except Exception as e:
+            self.audit_degraded = True
+            if not self._audit_warned:
+                self._audit_warned = True
+                print(f"\033[93m[warn] 审批审计写入失败，本次及后续决策将不被记录"
+                      f"（工具执行与对话不受影响）: {type(e).__name__}: {e}\033[0m",
+                      file=sys.stderr)
+                print(f"\033[93m[warn] 审计根目录: {self.audit_root}\033[0m",
+                      file=sys.stderr)
+
     def check_permission(self, tool_name: str, level: int, tool_args: Dict[str, Any], interactive: bool = True) -> Tuple[bool, str]:
         """
         评估工具调用权限:
@@ -471,15 +510,7 @@ class PermissionManager:
         :meth:`restore_checkpoint` / :meth:`restore_last_checkpoint`。
         """
         allowed, reason = self._decide_permission(tool_name, level, tool_args, interactive)
-        if self.audit_enabled:
-            try:
-                from .approval_audit import append_approval_event
-                append_approval_event(self.audit_root, tool_name=tool_name,
-                                      level=level, allowed=allowed, reason=reason,
-                                      mode=self.mode, interactive=interactive,
-                                      args=tool_args)
-            except Exception:
-                pass
+        self._audit_decision(tool_name, level, (allowed, reason), interactive, tool_args)
         if allowed:
             self._snapshot_before_write(tool_name, tool_args)
         return allowed, reason
@@ -545,19 +576,25 @@ class PermissionManager:
         改写）。因此每次执行都重新批准，与 Level 5 高危操作同款语义。
         """
         if self.force_allow_all:
-            return True, "force_allow_all 开启，测试放行"
-
-        if self.mode == "safe":
-            return False, (f"当前处于严格安全模式 (--permission=safe)，"
-                           f"已拒绝执行本会话写入的脚本 [{script_display}]")
-
-        channel = self._select_channel(interactive)
-        if not getattr(channel, "is_interactive", False):
-            return False, ("本会话写入的脚本禁止在无审批的情况下执行："
-                           "非交互（headless）环境无法请求用户审批，"
-                           "需在交互终端批准后才能执行。"
-                           "【替代路径】请改用内置工具完成任务（如 read_file 读取文件内容）。")
-        return channel.request("run_command", PermissionLevel.DANGEROUS, tool_args)
+            result = (True, "force_allow_all 开启，测试放行")
+        elif self.mode == "safe":
+            result = (False, (f"当前处于严格安全模式 (--permission=safe)，"
+                              f"已拒绝执行本会话写入的脚本 [{script_display}]"))
+        else:
+            channel = self._select_channel(interactive)
+            if not getattr(channel, "is_interactive", False):
+                result = (False, ("本会话写入的脚本禁止在无审批的情况下执行："
+                                  "非交互（headless）环境无法请求用户审批，"
+                                  "需在交互终端批准后才能执行。"
+                                  "【替代路径】请改用内置工具完成任务（如 read_file 读取文件内容）。"))
+            else:
+                result = channel.request("run_command", PermissionLevel.DANGEROUS, tool_args)
+        # [R12 修复·F3] 批准/拒绝一律落审计：这是「执行会话写入脚本」这类
+        # 最需要事后追溯的决策之一。tool 名带 @session_script 后缀，与
+        # 普通 run_command 审批在审计中可区分。
+        self._audit_decision("run_command@session_script", PermissionLevel.DANGEROUS,
+                             result, interactive, {"path": script_display})
+        return result
 
     def check_external_read(self, path_display: str, tool_args: Dict[str, Any],
                             interactive: bool = True) -> Tuple[bool, str]:
@@ -572,30 +609,33 @@ class PermissionManager:
             后所有外部读取免卡），不是 Level 5 高危卡片。
         """
         if self.force_allow_all:
-            return True, "force_allow_all 开启，测试放行"
-
+            result = (True, "force_allow_all 开启，测试放行")
         # [审计 2026-09-30 P1-2] safe 判定前移：此前「会话信任集」短路写在 safe 之前，
         # 一旦 session_allowed_tools 含外部读键（先以其它模式批准过），safe 模式
         # 仍会放行外部读取 —— 最严格档位不得被信任集绕过。非 safe 模式行为不变。
-        if self.mode == "safe":
-            return False, (f"当前处于严格安全模式 (--permission=safe)，"
-                           f"已拒绝读取工作区外文件 [{path_display}]")
-
+        elif self.mode == "safe":
+            result = (False, (f"当前处于严格安全模式 (--permission=safe)，"
+                              f"已拒绝读取工作区外文件 [{path_display}]"))
         # 用户曾选 [a]「本会话记住并信任此类操作」：直接放行，不再弹卡。
-        if tool_name_matches(EXTERNAL_READ_TOOL_NAME, self.session_allowed_tools):
-            return True, "会话已永久信任外部只读读取"
-
-        channel = self._select_channel(interactive)
-        if not getattr(channel, "is_interactive", False):
-            return False, (
-                f"读取工作区外文件 [{path_display}] 需要用户授权，"
-                "非交互（headless）环境无法请求审批。两条出路："
-                "① 长期授权：在 ky_config.json 的 agent.allowed_extra_paths "
-                "中登记该目录，之后直接放行；"
-                "② 本次授权：在交互终端中重试，并在弹卡中批准"
-                "（批准后本会话内同目录不再询问）。")
-
-        return channel.request(
-            EXTERNAL_READ_TOOL_NAME, PermissionLevel.NETWORK,
-            {**tool_args,
-             "scope": "工作区外只读，批准后本会话内同目录不再询问"})
+        elif tool_name_matches(EXTERNAL_READ_TOOL_NAME, self.session_allowed_tools):
+            result = (True, "会话已永久信任外部只读读取")
+        else:
+            channel = self._select_channel(interactive)
+            if not getattr(channel, "is_interactive", False):
+                result = (False, (
+                    f"读取工作区外文件 [{path_display}] 需要用户授权，"
+                    "非交互（headless）环境无法请求审批。两条出路："
+                    "① 长期授权：在 ky_config.json 的 agent.allowed_extra_paths "
+                    "中登记该目录，之后直接放行；"
+                    "② 本次授权：在交互终端中重试，并在弹卡中批准"
+                    "（批准后本会话内同目录不再询问）。"))
+            else:
+                result = channel.request(
+                    EXTERNAL_READ_TOOL_NAME, PermissionLevel.NETWORK,
+                    {**tool_args,
+                     "scope": "工作区外只读，批准后本会话内同目录不再询问"})
+        # [R12 修复·F3] 批准/拒绝一律落审计（读取工作区外文件同样是最需要
+        # 事后追溯的决策；工具名沿用 EXTERNAL_READ_TOOL_NAME，与审批卡一致）。
+        self._audit_decision(EXTERNAL_READ_TOOL_NAME, PermissionLevel.NETWORK,
+                             result, interactive, tool_args)
+        return result

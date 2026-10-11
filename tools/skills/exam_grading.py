@@ -147,6 +147,37 @@ def _item_full_score(card: dict) -> float:
     return 10.0
 
 
+#: [R12 修复·G3 防篡改不对称] 组卷产物中每道题的切块标记（与
+#: exam_composer 渲染循环的 `### 📝 第 {i} 题：{title}` 同源）。
+_PAPER_Q_SPLIT_RE = re.compile(r"^###\s*📝?\s*第\s*(\d+)\s*题[：:]", re.MULTILINE)
+#: 题块内「题目设问与题干」标签后的围栏内容（围栏长度自适应，见
+#: exam_composer 的 fence_for_text —— 用回引匹配同一长度的闭合围栏）。
+_PAPER_Q_FENCE_RE = re.compile(
+    r"- \*\*题目设问与题干\*\*：\s*\n(`{3,})text\s*\n([\s\S]*?)\n\1")
+
+
+def _extract_paper_question_blocks(content: str) -> dict:
+    """[R12 修复·G3] 从组卷产物中提取各题题干（题号 → 题干文本）。
+
+    判卷实际按密钥库（题卡侧）的题干与标准答案执行，试卷文件仅作作答载体
+    （见 grade_exam_paper 的 keys 加载链路）。本函数供判卷时做"卷面题干 vs
+    题卡题干"的一致性提示：用户编辑过已保存试卷时不再零告警。
+    提取失败（格式被改 / 无该题块）返回缺失该题，由调用方按"无法判定"跳过，
+    不产生误报。
+    """
+    out: dict = {}
+    if not content:
+        return out
+    marks = list(_PAPER_Q_SPLIT_RE.finditer(content))
+    for idx, m in enumerate(marks):
+        end = marks[idx + 1].start() if (idx + 1 < len(marks)) else len(content)
+        block = content[m.end():end]
+        fm = _PAPER_Q_FENCE_RE.search(block)
+        if fm:
+            out[int(m.group(1))] = fm.group(2)
+    return out
+
+
 def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", auto_advance=True, *,
                      root, error_logger, open_keys, grade_open, extract_tokens, norm_tokens, text_hit):
     """
@@ -345,6 +376,45 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
         f"作答提交时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         f"试题总数: {len(keys) if keys else '未知'} 题\n",
     ]
+
+    # [R12 修复·G3 防篡改不对称] 判分口径声明 + 卷面题干一致性提示。
+    # 判卷实际按**密钥库（题卡侧）**的题干与标准答案执行（见上方 keys 加载），
+    # 试卷文件仅作作答载体 —— 此前对它没有任何完整性说明：用户编辑已保存
+    # 试卷的题干后交卷判分零告警，容易误以为交卷文件带完整性校验（与题卡侧
+    # 「改题卡→组卷被闸门拦截」形成不对称）。现：① 固定声明判分口径；
+    # ② 逐题对比卷面题干与题卡题干，不一致时如实列出（仅提示，不阻断判分）。
+    report_lines.append("ℹ️ 判分口径: 题干与标准答案以题卡（加密密钥库）为准，"
+                        "试卷文件仅作作答载体；编辑卷面不影响判分结果。")
+    if file_path:
+        _paper_qs = _extract_paper_question_blocks(content)
+        _tamper_notes = []
+        for _k in keys:
+            try:
+                _qid = int(_k.get("id"))
+            except (TypeError, ValueError):
+                continue
+            _key_q = re.sub(r"\s+", "", str(_k.get("question") or ""))
+            _paper_q = _paper_qs.get(_qid)
+            if not _key_q or not _paper_q:
+                continue
+            _pq = re.sub(r"\s+", "", _paper_q)
+            # 前缀关系视为一致：组卷渲染侧会对题面做答案子小节剥离
+            # （UT4 修复·INGEST-7），卷面题干可能是题卡题干的前缀。
+            # [R12 修复·G3 补漏] 反向（卷面题干比题卡题干**长**）不放行：
+            # 渲染侧只剥离、不追加（见 exam_composer 的 _strip_answer_sections
+            # 渲染防线），卷面比题卡长只可能是卷面被追加/编辑 —— 此前对称放行
+            # 会把「尾部追加文字」这类典型编辑形态整类吞掉（E2E 实测：卷面题干
+            # 尾部追加"（被考生编辑过）"零提示，而中间改字有提示）。
+            if _pq == _key_q or _key_q.startswith(_pq):
+                continue
+            _tamper_notes.append(f"第 {_qid} 题")
+        if _tamper_notes:
+            _shown = "、".join(_tamper_notes[:5])
+            _more = f" 等 {len(_tamper_notes)} 题" if len(_tamper_notes) > 5 else ""
+            report_lines.append(
+                f"⚠️ 完整性提示: 检测到 {len(_tamper_notes)} 道题的卷面题干与题卡不一致"
+                f"（{_shown}{_more}）—— 判分仍按题卡口径执行，不受卷面编辑影响。")
+    report_lines.append("")
 
     updated_records = []
     need_review_titles = []
@@ -588,6 +658,18 @@ def grade_exam_paper(paper_path_or_content, user_answers_text, subject="math", a
     max_disp = int(graded_max) if float(graded_max) == int(graded_max) else graded_max
     report_lines.append(f"------------------------------------------------------------")
     report_lines.append(f"总得分: {total_disp} / {max_disp} ｜ 总体通过率: {pass_rate}%")
+    if excluded_full > 0 and graded_max > 0:
+        # [R12 修复·G4-5 分母口径澄清] 分母只含可自动判分的题（K1 口径不变），
+        # 但此前不显式说明 —— 考生看到「8 / 8、通过率 100%」会误以为这是全卷
+        # 成绩（实际另有 N 题合计 M 分待人工复核未计入）。现把两个数字都摊开，
+        # 指向下方待复核区块，杜绝高估误读。全卷待复核（graded_max=0）时由
+        # 下方「没有可自动判分的题目」评价行覆盖，不重复输出。
+        _ex_disp = int(excluded_full) if float(excluded_full) == int(excluded_full) else excluded_full
+        _full_disp = int(max_score) if float(max_score) == int(max_score) else max_score
+        report_lines.append(
+            f"ℹ️ 口径说明: 分母 {max_disp} 分只含可自动判分题目；另有 {len(need_review_titles)} 题"
+            f"（合计 {_ex_disp} 分）待人工复核，未计入本行 —— 全卷满分 {_full_disp} 分，"
+            f"请结合下方待复核区块看待总得分。")
     if not graded_max:
         # 全卷没有可自动判分的题目：绝不出具通过/不通过结论
         report_lines.append("ℹ️ 评价: 本轮没有可自动判分的题目（全部待人工复核），未生成通过率结论，"

@@ -141,6 +141,10 @@ class RunRuntime:
     stop_reason: str = ""
     trace: List[Dict[str, Any]] = field(default_factory=list)
     _base_limits: RunLimits = field(init=False, repr=False)
+    #: [R12 修复·F5] elapsed 高水位：单调钟理论上不回退，但虚拟化/休眠恢复等
+    #: 环境实测可回退 —— 回退时 `now - started_at` 变负，时间预算永不触发
+    #: （fail-open）。高水位保证 elapsed 只增不减，回退方向保守推进。
+    _elapsed_high_water: float = field(default=0.0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._base_limits = self.limits
@@ -155,9 +159,26 @@ class RunRuntime:
         self.started_at = time.monotonic()
         self.finished_at = None
         self.stop_reason = ""
+        self._elapsed_high_water = 0.0
         self.trace.clear()
         self._record("start", user_input=user_input[:500], session_id=session_id)
         return self.run_id
+
+    def _elapsed_seconds(self) -> float:
+        """已运行秒数（**高水位**语义：只增不减）。
+
+        [R12 修复·F5 时钟回退 fail-open] 此前直接 `now - started_at`：单调钟
+        一旦回退，elapsed 变负 → `>= max_seconds` 永不成立 → 总时长熔断被
+        静默绕过（探针：回退 5s 后 50 步全部通过）。现按「已观察到的最大
+        elapsed」保守推进 —— 时钟回退不再重置预算进度（只会提前触发、不会
+        延后）。前跳方向（elapsed 突然变大）本就 fail-closed，行为不变。
+        """
+        if self.started_at is None:
+            return 0.0
+        raw = (self.finished_at or time.monotonic()) - self.started_at
+        if raw > self._elapsed_high_water:
+            self._elapsed_high_water = raw
+        return self._elapsed_high_water
 
     def transition(self, state: RunState, **data: Any) -> None:
         target = RunState(state)
@@ -258,9 +279,8 @@ class RunRuntime:
         self.finished_at = time.monotonic()
 
     def snapshot(self) -> Dict[str, Any]:
-        elapsed = 0.0
-        if self.started_at is not None:
-            elapsed = (self.finished_at or time.monotonic()) - self.started_at
+        # [R12 修复·F5] elapsed 走高水位（时钟回退不缩水，见 _elapsed_seconds）
+        elapsed = self._elapsed_seconds()
         return {
             "run_id": self.run_id,
             "state": self.state.value,
@@ -273,8 +293,9 @@ class RunRuntime:
         }
 
     def _check_time_budget(self) -> None:
+        # [R12 修复·F5] 用高水位 elapsed：单调钟回退时预算只提前不延后
         if (self.limits.max_seconds and self.started_at is not None
-                and time.monotonic() - self.started_at >= self.limits.max_seconds):
+                and self._elapsed_seconds() >= self.limits.max_seconds):
             self.stop("max_seconds")
             raise RunBudgetExceeded("agent time budget exhausted")
 

@@ -297,6 +297,27 @@ class HeadlessApproval:
             # [B4] glob 匹配：白名单可写 ``mcp_*`` 一次放行全部外部 MCP 工具；
             # 普通工具名（write_file 等）仍按精确匹配，语义不变。
             if tool_name_matches(tool_name, self.allow_tools):
+                from .permissions import PermissionLevel
+                # [R12 修复·F2 白名单无级别闸门] 此前白名单命中即放行、完全不看
+                # Level：``headless_allow_tools: ["*"]`` 一行配置就能让 L5 的
+                # delete_file 在无人环境直接执行。两条级别闸门：
+                #   ① L5（DANGEROUS）**任何通道都不自动放行**（与「会话信任
+                #      排除 L5」「auto 模式只到 L3」同一系统级不变量）——
+                #      精确点名或通配命中都不例外；
+                #   ② 通配命中（含 ``*`` / ``?`` 的 glob 条目）只覆盖 L0-L3：
+                #      未逐个点名的网络级工具不应被一行 ``*`` 顺带放行；精确
+                #      点名 L4 的既有语义不变（KaoyanBench 评测受控配置依赖
+                #      「点名放行 L4 网络工具」，见 test_w3_headless_allowlist）。
+                if level >= PermissionLevel.DANGEROUS:
+                    return False, (
+                        f"headless 白名单 [{tool_name}] 命中，但该工具为 Level {level}"
+                        f"（高危/破坏性），任何通道都不自动放行，需在交互终端确认")
+                exact = tool_name in self.allow_tools
+                if not exact and level >= PermissionLevel.NETWORK:
+                    return False, (
+                        f"headless 通配白名单 [{tool_name}] 命中，但该工具为 Level {level}"
+                        f"（网络访问），通配条目仅覆盖 L0-L3；如需放行请在 "
+                        f"headless_allow_tools 中精确点名")
                 return True, f"headless 白名单放行 [{tool_name}]"
             return False, self._deny_reason(tool_name)
 

@@ -643,7 +643,10 @@ def test_w13_palette_command_coverage_boundary_audit():
     assert set(nav_rail_view.GUI_ACTION_TO_COMMAND.values()) <= registered
     assert nav_rail_view.GUI_REACHABLE_COMMANDS == set(nav_rail_view.GUI_ACTION_TO_COMMAND.values())
     # 能在 CLI 注册表直接解析的别名（如 compose→exam）必须解析到声明的规范名；
-    # diff / wechat_search 由 CLI 分发层与 TUI 分发器承接，注册表查不到属预期。
+    # wechat_search 由 TUI 分发器承接，注册表查不到属预期。
+    # [R12 修复·G4-3 同步] diff 原属「分发层特判、注册表查不到」——现登记为
+    # fetch 的注册别名（`ky help diff` / `ky commands diff` 可解析到 fetch），
+    # 故从"查不到"集合移出；其解析结果仍须等于声明的规范名 fetch（上方循环覆盖）。
     resolved = {alias: dispatch.get_command(alias)
                 for alias in nav_rail_view.GUI_ACTION_TO_COMMAND}
     for alias, cmd in resolved.items():
@@ -652,7 +655,7 @@ def test_w13_palette_command_coverage_boundary_audit():
                 f"别名 {alias} 解析到 {cmd.name}，与声明的 "
                 f"{nav_rail_view.GUI_ACTION_TO_COMMAND[alias]} 不一致")
     assert {alias for alias, cmd in resolved.items() if cmd is None} == {
-        "diff", "wechat_search"}, "预期只有这两个别名不在 CLI 注册表直查面"
+        "wechat_search"}, "预期只有 wechat_search 不在 CLI 注册表直查面"
 
 
 # ── ⑧ W13 验收修复：空结果提示行（R3-1）+ 口语搜索别名（R3-2） ──

@@ -87,9 +87,14 @@ def _cmd_ingest(args: List[str]) -> None:
             print(colorize(f"  ✓ {res.get('summary')}", C.GREEN))
             print(colorize(f"  • 白名单题目卡片集已生成至: {res.get('target_path')}\n", C.BOLD))
         else:
+            # [R12 修复·G4-1] 空文件 / 解码失败 / 切片零题等失败此前只打印
+            # 黄色警告，进程退出码仍为 0 —— 脚本化调用（CI/批处理）无法据
+            # rc 判断成败。现显式以非零码退出（msg 已含可操作补救路径）。
             print(colorize(f"  [!] 切片入库未完成: {res.get('msg')}\n", C.YELLOW))
+            sys.exit(1)
     else:
         print(colorize("[!] material_ingestion 模块未载入", C.RED))
+        sys.exit(1)
 
 
 def run_material_ingest(arg: str = "") -> bool:

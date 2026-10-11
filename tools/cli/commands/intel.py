@@ -593,5 +593,11 @@ def _cmd_compare(args: List[str]) -> None:
 register(Command('scout', ("scout", "--scout"), '<高校名> [专业名] [--save] [--apply]', '定向侦察目标高校招生简章、考试大纲、报录比与知乎/B站口碑', handler=_cmd_scout))
 register(Command('admission', ("admission", "--admission", "admit"), '<高校名> [专业] [--year=YYYY] [--save]', '精准调取研招网与高校官方招考指标与证据链', handler=_cmd_admission))
 register(Command('watch', ("watch", "--watch"), '[高校名] [--check] [--list] [--remove]', '高校研究生院最新简章与自命题动态指纹监控雷达', handler=_cmd_watch))
-register(Command('fetch', ("fetch", "--fetch"), '[info|diff|watch]', '考研招考情报与考纲变动抓取中枢 (研招网/官网/考纲Diff/监控雷达)', handler=_cmd_fetch))
+# [R12 修复·G4-3] `ky diff` 由 dispatch 特判转发（等价 ky fetch diff，见
+# dispatch.py 的 `args[0] in ("diff", "--diff")` 分支），但该简写从未登记为
+# fetch 的别名 —— `ky help diff` / `ky commands diff` 走注册表查询，命中不了
+# 任何命令，报「未知参数: diff」。现把 diff 登记为 fetch 的别名：帮助类查询
+# 能解析到 fetch；`ky diff` 本体仍由 dispatch 特判转成 `ky fetch diff`，
+# 两条路径语义不变（别名只影响注册表查询，不改 dispatch 的分发顺序）。
+register(Command('fetch', ("fetch", "--fetch", "diff"), '[info|diff|watch]', '考研招考情报与考纲变动抓取中枢 (研招网/官网/考纲Diff/监控雷达)', handler=_cmd_fetch))
 register(Command('compare', ("compare", "--compare", "vs", "--vs"), '<校1> <校2> [专业] [--save]', '双校招考关键指标横向深度对标 (408/自命题/复试线/保护)', handler=_cmd_compare))
