@@ -308,29 +308,29 @@ NON_PUBLISH_PATH_PATTERNS: Tuple[Tuple[Tuple[str, ...], str], ...] = (
 #: 里是能跑通的，整目录排除会让公开仓库失去全部回归测试（有专门用例钉住这一点）。
 PRIVATE_WORKSPACE_ONLY_PATHS: Tuple[Tuple[str, ...], ...] = (
     ("tests", "test_fix_publish_privacy.py"),
-    # [W12 补漏] 同族：本文件测 sync_publish 的排除名单与 python_mirror 遍历
-    # （sp.dir_should_exclude / sp.file_should_exclude / sp.python_mirror /
-    # sp.SRC·DST·DRY_RUN / sp.EXCLUDE_DIRS），而 sync_publish 在公开副本里是
-    # 4 行占位 → 副本 CI 必 AttributeError。教训：新增「测占位工具的测试」时
-    # 必须同批进本清单（本次由推送后自查拦下；同类判据 = grep 该测试是否
-    # import sync_publish / build_package，且目标模块在副本里被 neutralize）。
+    # [W12 补漏] 同族：测 sync_publish 的排除名单 / python_mirror 遍历（sp.SRC·
+    # DST·DRY_RUN / sp.EXCLUDE_DIRS …），副本 4 行占位 → CI 必 AttributeError。
+    # 教训：新增「测占位工具的测试」必须同批进本清单（本次由推送后自查拦下；
+    # 判据 = grep 该测试是否 import sync_publish / build_package，且目标模块
+    # 在副本里被 neutralize）。
     ("tests", "test_fix_checkpoint_exclusion.py"),
     # 显式化加固：此前靠 BACKUP_MARK 的 ``_backup_`` 子串**巧合**排除
     # （文件名 test_fix_config_backup_exclusion.py 含 "_backup_"），语义脆弱 ——
     # 同族引用 sp.dir_should_exclude / sp.file_should_exclude / sp.EXCLUDE_DIRS，
     # 一旦 BACKUP_MARK 判据调整就会漏进副本。
     ("tests", "test_fix_config_backup_exclusion.py"),
-    # [2026-10-07 推送前核查] 同族第四个：本文件测导出排除名单（新增的
-    # 「修复记录」内部文档模式 + ``.sim_logs`` / ``.sim_tools`` 仿真目录）与
-    # ``sp.python_mirror()`` 真实遍历，同样 import sync_publish —— 副本里它是
-    # 4 行占位 → 留在副本会让公开 CI 恒红。判据同前：grep 该测试是否
-    # import sync_publish / build_package，且目标模块在副本里被 neutralize，
-    # 必须同批进本清单。
+    # [2026-10-07 推送前核查] 同族第四个：测导出排除名单（「修复记录」文档模式
+    # + ``.sim_logs`` / ``.sim_tools``）与 ``sp.python_mirror()`` 真实遍历，
+    # import sync_publish（副本 4 行占位）→ 公开 CI 恒红；判据同前。
     ("tests", "test_fix_20261007_publish_exclusions.py"),
     # [2026-10-08 六领域审查修复] 同族第五个：本文件测「隐私两雷」（docs/.local
     # 排除 + 内部文档骨架部署对齐），import sync_publish（副本占位）与
     # build_package（副本完整，不构成风险但同批登记保持一致）。
     ("tests", "test_fix_20261008_privacy_two_risks.py"),
+    # [2026-10-12 CI 红灯修复] 同族第六个：R2-C2 用例从
+    # test_fix_publish_privacy.py 迁入分层目录时漏登记 —— 公开副本 CI 9 平台
+    # test 矩阵全红（AttributeError: module 'sync_publish' has no attribute 'DST'）。
+    ("tests", "regression", "test_publish_exempt_guard.py"),
 )
 
 #: 备份文件标记：任何带此标记的文件都是历史快照，绝不发布（含私有目录白名单内）。

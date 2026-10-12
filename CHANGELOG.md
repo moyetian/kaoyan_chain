@@ -111,13 +111,18 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
   `tests/regression/test_publish_exempt_guard.py`（变异检验：豁免移除 →
   守卫变红；原文件回落基线）；余 5 条 R3 为存量文件（4 生产 + 1 测试）
   功能增长净效果，如实保留；
-- **测试**：全量 pytest **4178 收集 / 4173 通过 + 5 跳过**；
+- **测试**：全量 pytest **4179 收集 / 4174 通过 + 5 跳过**；
   `test_ky_suite.py` **307 项**；`test_new_features.py` **132 通过**。
 - **发布前文档收口**（2026-10-12）：README 顶部失效锚点 ×2 修复
   （`⚠️ 使用注意事项` 的渲染 id 含残留 U+FE0F，旧 href 缺该字符；全量
   67 个链接逐条与渲染页真实 id 比对）；CONTRIBUTING 计数同步（pytest
-  4178/4173+5、隐私测试收集数 145、CLI 子命令 43→48）；README 门禁
+  4179/4174+5、隐私测试收集数 146、CLI 子命令 43→48）；README 门禁
   脚本清单与 CONTRIBUTING 架构树/PR 流程补 `review_gate` 说明。
+- **CI 修复**（2026-10-12）：R2-C2 用例迁入新测试文件
+  `tests/regression/test_publish_exempt_guard.py` 时未同步登记
+  `PRIVATE_WORKSPACE_ONLY_PATHS` 导出排除清单，公开副本 CI 九平台 pytest
+  全红（`AttributeError: module 'sync_publish' has no attribute 'DST'`）；
+  现补登记，并把清单守护用例参数化扩展覆盖分层目录。
 
 ---
 

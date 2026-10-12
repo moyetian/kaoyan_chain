@@ -263,17 +263,18 @@ python tools/test_new_features.py
 >   + 1 跳过 = 306**：「私有导出守卫」在私有工作区跑 2 条断言（真实模块），占位
 >   模块记为 1 条跳过，故总数比私有口径少 1。
 > - `test_new_features.py`：**132 项断言**（0 跳过），与是否 Git 工作区无关。
-> - `pytest tests/`：共 **4178 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
->   **含** `dist/` 构建产物，实测 4173 通过 + 5 跳过）。跳过项为联网测试未设
+> - `pytest tests/`：共 **4179 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
+>   **含** `dist/` 构建产物，实测 4174 通过 + 5 跳过）。跳过项为联网测试未设
 >   `KY_LIVE_TEST=1`（2 条）、两条 POSIX
 >   权限位断言（Windows 不适用，2 条）与一条 prompt 外置迁移后的设计性跳过
 >   （1 条，迁移完成后由 golden 固化用例持续覆盖该不变量）。
 >   在**无** `dist/` 的副本里跑，6 条打包断言会转为跳过 —— 收集总数不变，通过数下降。
 >   在**无 `cat` 的 Windows 裸机**（Git usrin 未加入 PATH）上，2 条沙箱阴性对照会转为
 >   跳过 —— 收集总数不变，通过数下降（该路径由 CI 的 Linux/macOS 作业与 Git 自带 coreutils 覆盖）。
->   在**公开副本**里跑还会少一整份 `tests/test_fix_publish_privacy.py`（私有工作区收集 145 项）：
->   它测的 `tools/sync_publish.py` / `tools/build_package.py` 在公开副本里是刻意保留的占位文件，
->   该测试只对私有工作区有意义，导出时按 `privacy_policy.PRIVATE_WORKSPACE_ONLY_PATHS` 剔除。
+>   在**公开副本**里跑还会少两份私有工具测试（`tests/test_fix_publish_privacy.py` 收集 146 项
+>   + 由它迁出的 `tests/regression/test_publish_exempt_guard.py` 收集 2 项）：它们测的
+>   `tools/sync_publish.py` / `tools/build_package.py` 在公开副本里是刻意保留的占位文件，
+>   只对私有工作区有意义，导出时按 `privacy_policy.PRIVATE_WORKSPACE_ONLY_PATHS` 剔除。
 >   ⚠️ 造副本时排除目录**必须锚定根级路径**（如 `--exclude=./dist`）：写成裸 `dist` 会连
 >   `docs/assets/vendor/katex/0.16.9/dist/` 一起排掉（KaTeX npm 包内部结构），导致 vendor 资产假缺失、
 >   `test_web_assets.py` 假失败 —— robocopy 的 `/XD "dist"` 与 tar 的 `--exclude=dist` 同样会踩。
