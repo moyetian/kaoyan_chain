@@ -10,11 +10,12 @@
   6. Git 隐私隔离与敏感文件防泄漏防护
 """
 
-import sys
 import json
 import re
 import socket
+import sys
 from pathlib import Path
+
 
 # Script execution (`python tools/doctor.py`) sets sys.path[0] to `tools/`,
 # which makes the package import `tools.skills` unavailable.  Add the workspace
@@ -33,6 +34,13 @@ try:
 except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
     from tools.net_guard import MAX_HTTP_RESPONSE_BYTES, safe_urlopen  # type: ignore  # noqa: E402
 
+try:
+    from doctor_checks import (
+        ROOT, C, _check_mcp_mount, _check_rag_vector_chain, check_item, color)
+except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
+    from tools.doctor_checks import (
+        ROOT, C, _check_mcp_mount, _check_rag_vector_chain, check_item, color)
+
 # Windows UTF-8 控制台兼容
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     try:
@@ -40,20 +48,6 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-
-ROOT = Path(__file__).resolve().parent.parent
-
-class C:
-    GREEN = "\033[92m"
-    RED = "\033[91m"
-    YELLOW = "\033[93m"
-    BLUE = "\033[94m"
-    CYAN = "\033[96m"
-    BOLD = "\033[1m"
-    RESET = "\033[0m"
-
-def color(text, code):
-    return f"{code}{text}{C.RESET}"
 
 
 def _read_upstream_error(err) -> str:
@@ -162,13 +156,6 @@ def _detect_agents_title_drift(plan: dict, agents_txt: str) -> list:
             drifts.append(f"矩阵·{prefix}（AGENTS: {m.group(1).strip()} ≠ 配置: {title}）")
     return drifts
 
-
-def check_item(title, ok, detail_ok="", detail_fail="", warn=False):
-    status_tag = color("[√ 通过]", C.GREEN) if ok else (color("[! 提示]", C.YELLOW) if warn else color("[× 异常]", C.RED))
-    detail = detail_ok if ok else detail_fail
-    detail_str = f" - {detail}" if detail else ""
-    print(f"  {status_tag} {title}{detail_str}")
-    return ok
 
 def check_persistence_state(root=None):
     """Read-only validation of the agent's durable state directories."""
@@ -610,8 +597,8 @@ def run_doctor(return_summary=False, check_persistence=False):
             chat_detail = ""
             if probe_reachable and model_found:
                 try:
-                    import urllib.request
                     import urllib.error
+                    import urllib.request
                     body = _build_chat_probe_body(model_name)
                     creq = urllib.request.Request(
                         chat_url,
@@ -685,47 +672,11 @@ def run_doctor(return_summary=False, check_persistence=False):
             else:
                 check_item("模型有效性 (上游 /v1/models)", True, "上游暂不可达，已跳过探测 (离线环境属正常)")
 
+    # ── 4.2 本地 RAG 向量检索链路 ──
+    _check_rag_vector_chain()
+
     # ── 4.5 MCP 外部工具挂载 (B4) ──
-    # [B4 新增] MCP 是可选能力：未配置时零开销、不拉任何子进程；配置了才做
-    # **轻量探活**（3s 握手超时）并逐个汇报 名称/状态/工具数/失败原因 ——
-    # 此前崩溃的 MCP server 在体检里完全不可见，用户只在会话里莫名少工具。
-    print(color("\n【4.5 MCP 外部工具挂载】", C.BOLD))
-    _mcp_cfg = cfg.get("mcp_servers") if isinstance(cfg, dict) else None
-    if not isinstance(_mcp_cfg, dict) or not _mcp_cfg:
-        check_item("外部 MCP Server 挂载", True,
-                   "未配置（可选能力；在 ky_config.json 的 mcp_servers 段挂载外部工具）")
-    else:
-        try:
-            try:
-                from agent.mcp_client import MCPClientManager
-            except ImportError:
-                from tools.agent.mcp_client import MCPClientManager
-            _mgr = MCPClientManager(workspace_root=ROOT)
-            try:
-                _mgr.load_from_config(_mcp_cfg, start_timeout=3)
-                _health = _mgr.mcp_health()
-            finally:
-                # 体检不留常驻子进程：取到健康快照后立即回收
-                _mgr.close_all()
-            _all_ok = _health["degraded"] == 0 and _health["dead"] == 0
-            check_item(
-                "外部 MCP Server 挂载",
-                _all_ok,
-                f"共 {_health['total']} 个 server 全部健康，工具可发现",
-                f"{_health['healthy']}/{_health['total']} 健康、"
-                f"{_health['degraded']} 降级、{_health['dead']} 崩溃",
-            )
-            if not _all_ok:
-                warnings += 1
-            for _s in _health["servers"]:
-                if _s["status"] == "healthy":
-                    check_item(f"  └ MCP [{_s['name']}]", True, f"{_s['tool_count']} 个工具可用")
-                else:
-                    check_item(f"  └ MCP [{_s['name']}]", False, "",
-                               f"[{_s['status']}] {_s['reason']}", warn=True)
-        except Exception as _e:
-            check_item("外部 MCP Server 挂载", False, "", f"MCP 体检失败: {_e}", warn=True)
-            warnings += 1
+    warnings += _check_mcp_mount(cfg)
 
     # ── 5. 网关与看板构建环境 ──
     print(color("\n【5. Web 伴侣网关与看板系统】", C.BOLD))

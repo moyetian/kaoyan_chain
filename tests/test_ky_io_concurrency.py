@@ -277,3 +277,45 @@ def test_readers_never_see_partial_content(tmp_path):
     assert not corrupted, f"读取侧观察到 {len(corrupted)} 次不完整内容，首例: {corrupted[:2]}"
     final = json.loads(target.read_text(encoding="utf-8"))
     assert final["writer"] in range(n_writers) and len(final["blob"]) >= 400
+
+
+def test_filelock_missing_degrades_with_explicit_warning(
+        tmp_path: Path, caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch):
+    """filelock 缺失时必须**显式告警**降级，而不是静默无锁。
+
+    [缺陷修复] 旧实现 ``except ImportError: lock = None`` 完全无声：生产环境里
+    filelock 装没装、跨进程互斥有没有降级，无人知晓。现改为对该锁路径记一条
+    WARNING（由 ``_LOCKS`` 缓存保证每路径一次）。本用例钉住三件事：
+      ① 降级不抛异常（返回 None，写入路径继续可用）；
+      ② 降级时确实有 WARNING（消息含"filelock 未安装"）；
+      ③ 降级不影响功能正确性 —— 无锁写入照常完成且内容完整。
+
+    手法：``sys.modules['filelock'] = None`` 让 ``from filelock import FileLock``
+    抛 ImportError（import 系统对 None 条目的标准行为）；锁路径取未用过的新
+    路径，避免命中 ``_LOCKS`` 缓存（缓存命中则不会再触发 import 与告警）。
+
+    阴性对照：删掉 ``_get_file_lock`` 的 ``logging.warning`` 调用，本用例在
+    告警断言处变红；把降级改为抛异常，在 ``lock is None`` 处变红。
+    """
+    from tools import ky_io
+
+    lock_path = ky_io._lock_path_for(tmp_path / "从未用过的目标.json")
+    assert str(lock_path) not in ky_io._LOCKS, "锁路径已被缓存，用例前提不成立"
+
+    monkeypatch.setitem(sys.modules, "filelock", None)
+    try:
+        with caplog.at_level("WARNING", logger="tools.ky_io"):
+            lock = ky_io._get_file_lock(lock_path)
+
+        assert lock is None, "filelock 缺失时应降级返回 None 而非抛异常"
+        msgs = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert any("filelock 未安装" in m for m in msgs), f"未显式告警降级: {msgs}"
+
+        # 降级路径的功能正确性：无锁写入照常完成，内容完整可读回
+        target = tmp_path / "降级写入.json"
+        ky_io.atomic_write_text(target, '{"degraded": true}')
+        assert json.loads(target.read_text(encoding="utf-8")) == {"degraded": True}
+    finally:
+        # 清理 None 缓存，避免同进程后续用例经同一路径拿到降级锁
+        ky_io._LOCKS.pop(str(lock_path), None)

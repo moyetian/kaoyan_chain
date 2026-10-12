@@ -53,6 +53,14 @@ ROOT = resolve_workspace_root(__file__)
 #: 在空工作区里凭空造出一个空库，对只读语义是副作用。
 DEFAULT_DB_PATH = ROOT / "data" / "knowledge" / "embeddings.db"
 
+#: [P0 修复·2026-10-11 第五轮深审] 向量维度默认值（单一真源，与
+#: ``vector.py`` 的 ``VectorEncoder.embedding_dim`` 默认保持一致；
+#: tests/regression/test_search_pipeline_fixes.py 有常量一致性钉子）。
+#: bge-small-zh-v1.5 的 hidden_size 实测 = **512**（官方 config.json；
+#: 旧实现两处硬编码 384 是 bge-small-**en** 的维度——中文版从未对过：
+#: 384 维表 + 512 维向量 = sqlite-vec 插入报错 → 整批回滚）。
+DEFAULT_EMBEDDING_DIM = 512
+
 
 @dataclass
 class Chunk:
@@ -75,16 +83,20 @@ class KnowledgeStore:
     5. 线程安全：连接为线程本地（每线程独立连接 + WAL 并发读写）
     """
 
-    def __init__(self, db_path: Path | str | None = None):
+    def __init__(self, db_path: Path | str | None = None,
+                 embedding_dim: int = DEFAULT_EMBEDDING_DIM):
         """初始化知识库
 
         Args:
             db_path: 数据库路径，默认为 data/knowledge/embeddings.db
+            embedding_dim: 向量维度（建表 FLOAT[dim] 用）。默认 512（bge-small-zh）；
+                换模型时显式传入，维度不符的向量在写入时只跳过向量行（不回滚文本）。
         """
         if db_path is None:
             db_path = DEFAULT_DB_PATH
 
         self.db_path = Path(db_path)
+        self.embedding_dim = int(embedding_dim)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         # [R4 #207 修复·跨线程 SQLite] sqlite3 连接默认绑定创建它的线程，
@@ -160,10 +172,32 @@ class KnowledgeStore:
 
         Returns:
             是否成功加载
+
+        [P0 修复·2026-10-11 第五轮深审] 优先走 ``sqlite_vec`` 包自带加载 API：
+        旧实现只试裸文件名（``load_extension("vec0")`` 等），依赖动态库在系统
+        搜索路径里——pip 装好 ``sqlite-vec`` 后其 .so/.dll 在包目录内，裸名
+        加载必然失败（实测 has_vector 恒 False，向量检索"名义功能"）。
+        ``sqlite_vec.load(conn)`` 自动定位包内动态库；包不可用时再回落裸名
+        （兼容手工把扩展放进系统路径的部署）。
         """
         try:
             conn.enable_load_extension(True)
+        except Exception as e:                     # pragma: no cover - 平台差异
+            logger.debug(f"启用扩展加载失败: {e}")
+            return False
 
+
+        # 1) sqlite_vec 包 API（首选）
+        try:
+            import sqlite_vec  # type: ignore
+            sqlite_vec.load(conn)
+            conn.execute("SELECT vec_version()").fetchone()
+            return True
+        except Exception as e:
+            logger.debug(f"sqlite_vec.load 不可用: {e}")
+
+        # 2) 裸文件名回落（手工部署/系统路径场景）
+        try:
             # 尝试多个可能的扩展文件名
             vec_extensions = [
                 "vec0",           # Linux/macOS 默认
@@ -228,12 +262,16 @@ class KnowledgeStore:
         # 向量表（如果支持）
         if self.has_vector:
             # 使用 sqlite-vec 的虚拟表
+            # [P0 修复·2026-10-11] 维度参数化：旧实现硬编码 FLOAT[384]
+            # （bge-small-en 维度），而 bge-small-zh 实际 512 —— 修好加载/
+            # tokenizer/输入后生成 512 维向量，写入 384 维表即报错，且
+            # add_chunks 单事务整批回滚会让文本也写不进（比修前更糟）。
             try:
-                cursor.execute("""
+                cursor.execute(f"""
                     CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks
                     USING vec0(
                         chunk_id TEXT PRIMARY KEY,
-                        embedding FLOAT[384]
+                        embedding FLOAT[{int(self.embedding_dim)}]
                     )
                 """)
             except Exception as e:
@@ -266,16 +304,27 @@ class KnowledgeStore:
             ))
 
             # 插入向量表（如果有向量且支持）
+            # [P0 修复·2026-10-11 第五轮深审] 维度不符只跳向量、不拖垮文本：
+            # 旧实现在此直接 INSERT，512 维向量撞 384 维表 → 异常 → 整个
+            # add_chunk 回滚（连主表文本一起丢）。现先做维度前置校验，
+            # 向量写入再套一层独立 try（向量失败不牵连已写好的文本行）。
             if self.has_vector and chunk.embedding:
                 if not HAS_NUMPY:
                     logger.warning("numpy 不可用，无法存储向量")
+                elif len(chunk.embedding) != self.embedding_dim:
+                    logger.warning(
+                        "向量维度 %d 与库表 %d 不符，跳过该片段向量（文本仍入库）: %s",
+                        len(chunk.embedding), self.embedding_dim, chunk.id)
                 else:
-                    # sqlite-vec 期望的格式
-                    embedding_blob = np.array(chunk.embedding, dtype=np.float32).tobytes()
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO vec_chunks (chunk_id, embedding)
-                        VALUES (?, ?)
-                    """, (chunk.id, embedding_blob))
+                    try:
+                        # sqlite-vec 期望的格式
+                        embedding_blob = np.array(chunk.embedding, dtype=np.float32).tobytes()
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO vec_chunks (chunk_id, embedding)
+                            VALUES (?, ?)
+                        """, (chunk.id, embedding_blob))
+                    except Exception as e:
+                        logger.warning("向量写入失败，仅跳过向量行（文本仍入库）: %s", e)
 
             self.conn.commit()
             return True
@@ -315,18 +364,7 @@ class KnowledgeStore:
                    json.dumps(c.metadata, ensure_ascii=False)) for c in chunks])
 
             if self.has_vector:
-                if not HAS_NUMPY:
-                    logger.warning("numpy 不可用，无法存储向量（仅写入文本索引）")
-                else:
-                    vec_rows = [
-                        (c.id, np.array(c.embedding, dtype=np.float32).tobytes())
-                        for c in chunks if c.embedding
-                    ]
-                    if vec_rows:
-                        cursor.executemany("""
-                            INSERT OR REPLACE INTO vec_chunks (chunk_id, embedding)
-                            VALUES (?, ?)
-                        """, vec_rows)
+                self._write_vectors_batch(cursor, chunks)
 
             self.conn.commit()
             return len(chunks)
@@ -335,6 +373,37 @@ class KnowledgeStore:
             logger.error(f"批量添加文本片段失败（整批回滚）: {e}")
             self.conn.rollback()
             return 0
+
+    def _write_vectors_batch(self, cursor: sqlite3.Cursor, chunks: List[Chunk]) -> None:
+        """在 add_chunks 的同一事务内批量写入向量行。
+
+        [P0 修复·2026-10-11] 维度前置校验 + 向量写入独立 try：维度不符的
+        行跳过（记 warning），向量写入异常也不整批回滚文本 —— 旧实现让一个
+        维度不符的向量把整批文本陪葬。
+        """
+        if not HAS_NUMPY:
+            logger.warning("numpy 不可用，无法存储向量（仅写入文本索引）")
+            return
+        vec_rows = []
+        for c in chunks:
+            if not c.embedding:
+                continue
+            if len(c.embedding) != self.embedding_dim:
+                logger.warning(
+                    "向量维度 %d 与库表 %d 不符，跳过该片段向量（文本仍入库）: %s",
+                    len(c.embedding), self.embedding_dim, c.id)
+                continue
+
+            vec_rows.append(
+                (c.id, np.array(c.embedding, dtype=np.float32).tobytes()))
+        if vec_rows:
+            try:
+                cursor.executemany("""
+                    INSERT OR REPLACE INTO vec_chunks (chunk_id, embedding)
+                    VALUES (?, ?)
+                """, vec_rows)
+            except Exception as e:
+                logger.warning("向量批量写入失败，仅跳过向量行（文本仍入库）: %s", e)
 
     def prune_chunks(self, keep_ids, source_prefixes) -> int:
         """删除「source 属于指定前缀、且 id 不在 keep_ids 中」的片段。

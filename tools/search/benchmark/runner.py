@@ -123,9 +123,9 @@ def evaluate_offline(dataset: Optional[List[Dict[str, Any]]] = None,
         year = row.get("year")
         intent = row.get("intent") or "general"
 
-        # 1) 查询规划是否覆盖官方站点
+        # 1) 查询规划是否覆盖官方站点（判据=q.domains，回归见 test_search_report_bench.py）。
         plan = plan_queries(query_text, year=year)
-        if any(q.text.startswith("site:") and _site_is_official(q.text, domains)
+        if any(q.domains and _site_is_official(" ".join(q.domains), domains)
                for q in plan.queries):
             plan_hits += 1
 

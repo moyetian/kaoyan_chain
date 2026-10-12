@@ -13,13 +13,17 @@ import sys
 import urllib.parse
 from pathlib import Path
 
+
 try:  # 双导入路径兼容（源码脚本式 / tools 包式）
     from workspace import resolve_workspace_root
 except ImportError:  # pragma: no cover
     from tools.workspace import resolve_workspace_root
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
 import yaml
+
 from .models import UniversityEntity
+from .registry_synth import synthesize_unlisted_school
 
 
 def _resolve_data_path(subpath: str) -> Path:
@@ -230,6 +234,13 @@ def compose_intro(entity: UniversityEntity) -> str:
     return "".join(parts)
 
 
+#: [P0 修复·2026-10-11 第五轮深审] 院校名解析的输入长度上限（字符）。
+#: 中文校名最长约 20 字（如「北京师范大学-香港浸会大学联合国际学院」），
+#: 自然语言输入（"我想考XX大学"）通常 10 字以内。60 是宽松上限：
+#: 超过即视为非校名查询（长句/垃圾串），不再进入子串与合成匹配。
+_MAX_QUERY_LEN = 60
+
+
 class UniversityRegistry:
     """高校注册表管理器"""
 
@@ -418,36 +429,85 @@ class UniversityRegistry:
         if q_lower in self._alias_map:
             return self._entities[self._alias_map[q_lower]]
 
-        # 4. 名称包含匹配（双向，按"最长校名优先"择优）
-        #    - 查询是校名子串：简称输入，如 "华中科技" ⊂ "华中科技大学"
-        #    - 校名是查询子串：自然语言输入，如 "我想考华中科技大学"
-        #    [缺陷修复·确定性] 旧实现遍历 dict 返回首个命中，结果依赖字典顺序，
-        #    且未按长度择优；现改为收集全部命中后取最长校名（最具体者胜出）。
-        name_hits = [code for name, code in self._name_map.items()
-                     if q_lower in name or name in q_lower]
+        # 4. 名称包含匹配（双向，按"最长校名优先"择优；长度守卫见助手 docstring）
+        ent = self._match_by_name_substring(q_lower)
+        if ent is not None:
+            return ent
+
+        # 5. 别名匹配（前缀对齐 + q 长度守卫，详见助手 docstring）
+        ent = self._match_by_alias_prefix(q_lower)
+        if ent is not None:
+            return ent
+
+        # 6. 启发式通用高校实体合成（长度收口，详见助手 docstring）
+        return self._synthesize_or_none(q, q_lower)
+
+    def _match_by_name_substring(self, q_lower: str) -> UniversityEntity | None:
+        """步骤 4：名称双向包含匹配（最长校名优先）。
+
+        [缺陷修复·确定性] 旧实现遍历 dict 返回首个命中，结果依赖字典顺序，
+        且未按长度择优；现改为收集全部命中后取最长校名（最具体者胜出）。
+
+        [P0 修复·2026-10-11 第五轮深审] 双向裸子串必须加长度守卫（第 5 步
+        曾因同类事故改前缀对齐，此处漏改）：
+          * ``q_lower in name``（简称方向）：q 至少 4 字符。实测 resolve("华")
+            命中「中国兵器科学研究院(陕西青华机电研究所)」、resolve("理")
+            命中「中国兵器科学研究院(陕西应用物理化学研究所)」—— 单汉字
+            查询会静默换成另一所完全无关的学校，下游 dynamic_fallback_profile
+            还会对误命中实体贴 [LOCAL_DB_VERIFIED 本地高校库实录] 信任标签。
+            3 字下限不够：「研究院」「研究所」这类通用词仍会命中最长校名；
+            2 字简称（清华/北大/华科/南大…44 个）与 3 字简称（北理工/哈工大…
+            51 个）已由第 3 步别名表精确覆盖，名称子串方向从 4 字起才有
+            区分度（如「华中科技」⊂「华中科技大学」）。
+          * ``name in q_lower``（自然语言方向）：q 不超 _MAX_QUERY_LEN。2 万字
+            垃圾串只要含一个完整校名就会被当成"自然语言输入"命中。
+        """
+        name_hits: List[str] = []
+        if len(q_lower) >= 4:
+            name_hits.extend(code for name, code in self._name_map.items()
+                             if q_lower in name)
+        if len(q_lower) <= _MAX_QUERY_LEN:
+            name_hits.extend(code for name, code in self._name_map.items()
+                             if name in q_lower)
         if name_hits:
             name_hits.sort(key=lambda c: -len(self._entities[c].name or ""))
             return self._entities[name_hits[0]]
+        return None
 
-        # 5. 别名匹配（[P0 修复] 必须前缀对齐，严禁裸子串）
-        #    旧实现用 `alias in q_lower` 做裸子串判断，导致
-        #    「华北理工大学」因含子串「北理工」被解析成「北京理工大学」(10007)，
-        #    于是双校对标把学员的备选院校静默替换成另一所层次完全不同的高校
-        #    （10058 vs 10007、双非 vs 985）。中文无词边界，故以"前缀对齐"为准。
+    def _match_by_alias_prefix(self, q_lower: str) -> UniversityEntity | None:
+        """步骤 5：别名匹配（[P0 修复] 必须前缀对齐，严禁裸子串）。
+
+        旧实现用 ``alias in q_lower`` 做裸子串判断，导致「华北理工大学」因含
+        子串「北理工」被解析成「北京理工大学」(10007)，于是双校对标把学员的
+        备选院校静默替换成另一所层次完全不同的高校（10058 vs 10007、双非 vs
+        985）。中文无词边界，故以"前缀对齐"为准。
+        [P0 修复·2026-10-11] 另加 q 长度守卫：``alias.startswith(q_lower)``
+        在 q 为单字符时同样会误命中（如 "h" → "hust"）。
+        """
         alias_hits = []
         for alias, code in self._alias_map.items():
-            if len(alias) < 2:
+            if len(alias) < 2 or len(q_lower) < 2:
                 continue
             if q_lower.startswith(alias) or alias.startswith(q_lower):
                 alias_hits.append((len(alias), code))
         if alias_hits:
             alias_hits.sort(key=lambda t: -t[0])   # 最长别名优先，保证确定性
             return self._entities[alias_hits[0][1]]
+        return None
 
-        # 6. 启发式通用高校实体合成 (Universal Heuristic Entity Synthesizer)
-        # 支持全国任意非热门双非院校、地方工科/师范/财经本科高校
-        if any(keyword in q for keyword in ("大学", "学院", "学校", "研究院", "研究所", "中心")):
-            synthetic_entity = self._synthesize_unlisted_school(q)
+    def _synthesize_or_none(self, q: str, q_lower: str) -> UniversityEntity | None:
+        """步骤 6：启发式通用高校实体合成 (Universal Heuristic Entity Synthesizer)。
+
+        支持全国任意非热门双非院校、地方工科/师范/财经本科高校。
+        [P0 修复·2026-10-11] 长度收口：超长输入（2 万字垃圾串）不得被当成
+        校名合成为实体——旧实现会把整串垃圾写入 name_map 并回填 _entities。
+        最小长度守卫：q 至少 4 字符。纯关键词输入（"大学"/"学院"）本身不是
+        校名，合成出 name="大学" 的实体毫无意义（实测 resolve("大学") → 合成
+        实体「大学」）；最短的真实合成场景是「XX大学/XX学院」4 字形态。
+        """
+        if 4 <= len(q) <= _MAX_QUERY_LEN and any(
+                keyword in q for keyword in ("大学", "学院", "学校", "研究院", "研究所", "中心")):
+            synthetic_entity = synthesize_unlisted_school(q)
             if synthetic_entity:
                 synthetic_entity.intro = compose_intro(synthetic_entity)
                 # 动态回填映射，加速后续查询
@@ -455,120 +515,7 @@ class UniversityRegistry:
                 self._entities[entity_key] = synthetic_entity
                 self._name_map[q_lower] = entity_key
                 return synthetic_entity
-
         return None
-
-    def _synthesize_unlisted_school(self, school_name: str) -> UniversityEntity:
-        """启发式推导未收录高校的区域、办学层次与教育部研招直达通道。
-
-        [性能] 旧实现在此处重新读取 national_institutions.json 做精确匹配，
-        但该文件的全部条目在 ``load()`` 阶段已进入 ``_name_map``，而 ``resolve()``
-        的步骤 2 已做过精确名称匹配——此处再读盘属于纯冗余，且在全国库扩容到
-        近两千所后每次未命中查询都要重新解析一个数兆字节的 JSON。现直接移除。
-        """
-        # 常见双非/地方高校教育部代码与域名索引
-        KNOWN_REGIONAL = {
-            "东莞理工学院": ("11819", "广东东莞", "http://yjs.dgut.edu.cn", "https://www.dgut.edu.cn"),
-            "河南农业大学": ("10466", "河南郑州", "https://gra.henau.edu.cn", "https://www.henau.edu.cn"),
-            "湖南农业大学": ("10537", "湖南长沙", "https://yjsy.hunau.edu.cn", "https://www.hunau.edu.cn"),
-            "河南科技大学": ("10464", "河南洛阳", "https://yjsc.haust.edu.cn", "https://www.haust.edu.cn"),
-            "河南理工大学": ("10460", "河南焦作", "http://admissions.hpu.edu.cn", "https://www.hpu.edu.cn"),
-            "河南工业大学": ("10463", "河南郑州", "https://yjs.haut.edu.cn", "https://www.haut.edu.cn"),
-            "桂林电子科技大学": ("10595", "广西桂林", "https://www.guet.edu.cn/yjsy", "https://www.guet.edu.cn"),
-            "杭州电子科技大学": ("10336", "浙江杭州", "https://grs.hdu.edu.cn", "https://www.hdu.edu.cn"),
-            "重庆邮电大学": ("10617", "重庆", "http://yjs.cqupt.edu.cn", "https://www.cqupt.edu.cn"),
-            "西安邮电大学": ("10709", "陕西西安", "http://gr.xupt.edu.cn", "https://www.xupt.edu.cn"),
-            "长春理工大学": ("10186", "吉林长春", "http://yzb.cust.edu.cn", "https://www.cust.edu.cn"),
-            "齐鲁工业大学": ("10431", "山东济南", "https://yjs.qlu.edu.cn", "https://www.qlu.edu.cn"),
-            "燕山大学": ("10216", "河北秦皇岛", "https://ysuyzb.ysu.edu.cn", "https://www.ysu.edu.cn"),
-            "江苏大学": ("10299", "江苏镇江", "https://yz.ujs.edu.cn", "https://www.ujs.edu.cn"),
-            "南京邮电大学": ("10293", "江苏南京", "http://yzb.njupt.edu.cn", "https://www.njupt.edu.cn"),
-            "广东工业大学": ("11845", "广东广州", "http://yjs.gdut.edu.cn", "https://www.gdut.edu.cn"),
-            "深圳大学": ("10590", "广东深圳", "https://yz.szu.edu.cn", "https://www.szu.edu.cn"),
-            "浙江工业大学": ("10337", "浙江杭州", "http://www.yz.zjut.edu.cn", "https://www.zjut.edu.cn"),
-            "太原科技大学": ("10109", "山西太原", "https://yjs.tyust.edu.cn", "https://www.tyust.edu.cn"),
-            "中北大学": ("10110", "山西太原", "http://grs.nuc.edu.cn", "https://www.nuc.edu.cn"),
-            "常州大学": ("10292", "江苏常州", "http://yzb.cczu.edu.cn", "https://www.cczu.edu.cn"),
-            "青岛科技大学": ("10426", "山东青岛", "https://grad.qust.edu.cn", "https://www.qust.edu.cn"),
-            "三峡大学": ("11075", "湖北宜昌", "http://sxdxpos.ctgu.edu.cn", "https://www.ctgu.edu.cn"),
-            "长江大学": ("10489", "湖北荆州", "http://gs.yangtzeu.edu.cn", "https://www.yangtzeu.edu.cn"),
-            "长沙理工大学": ("10536", "湖南长沙", "https://yjsy.csust.edu.cn", "https://www.csust.edu.cn")
-        }
-
-        chsi_code = "待查"
-        region = "全国"
-        grad_domain = ""
-        official_domain = ""
-
-        # 1. 命中知名双非对照表
-        if school_name in KNOWN_REGIONAL:
-            code, reg, grad, off = KNOWN_REGIONAL[school_name]
-            chsi_code = code
-            region = reg
-            grad_domain = grad
-            official_domain = off
-        else:
-            # 2. 地理区域启发式提取
-            CITY_MAP = {
-                "郑州": "河南郑州", "长沙": "湖南长沙",
-                "东莞": "广东东莞", "洛阳": "河南洛阳", "焦作": "河南焦作", "开封": "河南开封", "新乡": "河南新乡",
-                "保定": "河北保定", "秦皇岛": "河北秦皇岛", "徐州": "江苏徐州", "苏州": "江苏苏州", "无锡": "江苏无锡",
-                "常州": "江苏常州", "南通": "江苏南通", "镇江": "江苏镇江", "温州": "浙江温州", "宁波": "浙江宁波",
-                "杭州": "浙江杭州", "芜湖": "安徽芜湖", "蚌埠": "安徽蚌埠", "赣州": "江西赣州", "九江": "江西九江",
-                "绵阳": "四川绵阳", "泸州": "四川泸州", "湘潭": "湖南湘潭", "株洲": "湖南株洲", "衡阳": "湖南衡阳",
-                "宜昌": "湖北宜昌", "荆州": "湖北荆州", "襄阳": "湖北襄阳", "大连": "辽宁大连", "鞍山": "辽宁鞍山",
-                "吉林": "吉林", "齐齐哈尔": "黑龙江齐齐哈尔", "桂林": "广西桂林", "柳州": "广西柳州",
-                "延安": "陕西延安", "汉中": "陕西汉中", "青岛": "山东青岛", "烟台": "山东烟台", "威海": "山东威海"
-            }
-            for city_key, reg_val in CITY_MAP.items():
-                if city_key in school_name:
-                    region = reg_val
-                    break
-
-            if region == "全国":
-                PROVINCES = [
-                    "北京", "天津", "上海", "重庆", "河北", "山西", "辽宁", "吉林", "黑龙江", "江苏", "浙江",
-                    "安徽", "福建", "江西", "山东", "河南", "湖北", "湖南", "广东", "海南", "四川", "贵州",
-                    "云南", "陕西", "甘肃", "青海", "台湾", "内蒙古", "广西", "西藏", "宁夏", "新疆"
-                ]
-                for prov in PROVINCES:
-                    if school_name.startswith(prov):
-                        region = prov
-                        break
-
-            # 官方通道降级：直达研招网该校专页
-            encoded = urllib.parse.quote(school_name)
-            official_domain = f"https://yz.chsi.com.cn/sch/search.do?ssdm=&yjsy=&xxmc={encoded}"
-            grad_domain = official_domain
-
-        # 3. 判定国家线分区 (A区 vs B区)
-        B_ZONE_PROVINCES = ("内蒙古", "广西", "海南", "贵州", "云南", "西藏", "甘肃", "青海", "宁夏", "新疆")
-        is_b_zone = any(bp in region for bp in B_ZONE_PROVINCES)
-        zone_label = "国家二区线高校 (B区，享受降分照顾)" if is_b_zone else "国家一区线高校 (A区)"
-
-        # [P2 修复·未收录院校误导] 此前对未收录高校无差别打出「省属重点公办高校」，
-        # 且区域未识别时回落为「全国」，看起来像已核实的官方标签，实则纯属猜测。
-        # 现明确标注「未收录·待核验」，并把未知区域标注为「待核验」，避免误导考生。
-        region_unverified = (region in ("全国", "", None))
-        region_display = "待核验（未能从校名推断省份）" if region_unverified else region
-        if school_name in KNOWN_REGIONAL:
-            levels = ["省属重点公办高校（本地对照表推定）", "硕士研究生培养单位", zone_label]
-        else:
-            levels = ["未收录院校 · 办学层次待核验（请以研招网/官网为准）", "硕士研究生培养单位", zone_label]
-
-        return UniversityEntity(
-            chsi_code=chsi_code,
-            name=school_name,
-            aliases=[school_name],
-            level=levels,
-            region=region_display,
-            official_domain=official_domain,
-            graduate_domain=grad_domain,
-            admission_domain=grad_domain,
-            departments={},
-            province="" if region_unverified else region,
-            zone="B区" if is_b_zone else "A区",
-        )
 
     def build_site_graph(
         self,

@@ -43,7 +43,7 @@ def _cmd_version(args: List[str]) -> None:
 #: ``ky help`` 子命令区的展示顺序：沿用历史手写清单的排列（常用命令保序在前），
 #: 未列入名单的新命令自动补到末尾 —— 新增命令不改本表也会出现在帮助里（防漂移）。
 _HELP_ORDER = (
-    "gui", "wechat", "menu", "status", "memory", "rollback", "today", "done", "tools",
+    "gui", "wechat", "menu", "init", "status", "memory", "rollback", "today", "done", "tools",
     "review", "calc", "style", "doctor", "plan", "fetch", "ingest", "admission",
     "watch", "compare", "scout", "exam", "exam-submit", "key", "variant", "rag",
     "gain", "map", "diagnose", "fatigue", "relieve", "notify", "build",
@@ -166,6 +166,37 @@ def _cmd_plan(args: List[str]) -> None:
         print(colorize("    脚本化场景请核对输入行数后重试，或在 `ky subject` 中单项调整。", C.DIM))
     except Exception as e:
         print(f"方案设计提示: {e}")
+
+
+def _cmd_init(args: List[str]) -> None:
+    """``ky init`` —— 本地工作区初始化向导。
+
+    [P0 修复·2026-10-11 第五轮深审] 此前 ``init`` 未注册：新手最直觉的
+    ``ky init`` 直接报「未知命令」（`py tools/init_workspace.py` 才是正解，
+    但没人猜得到）。职责与 ``py tools/init_workspace.py`` 完全一致：
+    复制模板 → 建各科资料目录 → 必考方案向导 → 写考纲 → 建看板。
+
+    参数透传：``--quick``/``-q``/``-y`` 走非交互快速模式、``--help``/``-h``
+    打印用法后短路（init_workspace.main 按 sys.argv 识别，这里转发构造）。
+    """
+    try:
+        try:
+            from tools import init_workspace
+        except ImportError:
+            import init_workspace
+    except ImportError as e:
+        print(colorize(f"[!] 初始化向导不可用: {e}", C.RED))
+        print(colorize("    可直接运行: python tools/init_workspace.py", C.DIM))
+        sys.exit(1)
+    _saved_argv = sys.argv
+    sys.argv = ["ky init", *list(args[1:])]
+    try:
+        init_workspace.main()
+    except EOFError:
+        print(colorize("\n[!] 输入流提前结束 (EOF)，初始化向导已安全中止，已完成的步骤已保存。", C.YELLOW))
+        print(colorize("    请在交互式终端重新运行 `ky init` 完成剩余步骤。", C.DIM))
+    finally:
+        sys.argv = _saved_argv
 
 
 def _cmd_tools(args: List[str]) -> int:
@@ -300,5 +331,6 @@ register(Command('status', ("status", "--status"), '', '查看考研总战役大
 register(Command('subject', ("subject", "--subject", "syllabus", "--syllabus"), '', '选择考研科目(数一/二/三/396、英一/二)并加载考纲', handler=_cmd_subject, write=True))
 register(Command('build', ("build", "--build"), '', '一键重新编译并刷新本地与移动端看板', handler=_cmd_build, write=True))
 register(Command('plan', ("plan", "--plan", "profile", "--profile", "onboarding"), '', '启动个人专属定制化必考方案向导', handler=_cmd_plan, write=True))
+register(Command('init', ("init", "--init"), '[--quick]', '本地工作区初始化向导（模板复制/资料目录/必考方案/考纲/看板）', handler=_cmd_init, write=True))
 register(Command('tools', ("tools", "--tools"), 'list [--tier=essential|extended|all] [--json] [--with-mcp]', '审计 Agent 工具注册表（名称 | tier | Level | 来源 | 描述）', handler=_cmd_tools))
 register(Command('audit', ("audit", "--audit"), 'approvals [--limit=N] [--json]', '查询权限审批 append-only 审计记录', handler=_cmd_audit))

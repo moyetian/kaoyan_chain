@@ -361,7 +361,8 @@ def test_chat_completion_http_400_gzip_max_tokens_fallback():
     cfg = {"api_key": "test_key", "base_url": "https://api.test.com/v1", "model": "test-model"}
     calls = []
 
-    def mock_urlopen(req, timeout=10.0):
+    # [2026-10-11 适配·第五轮深审] 桩统一收 **kwargs（safe_urlopen 新增 allow_loopback 回环参数）。
+    def mock_urlopen(req, timeout=10.0, **kwargs):
         calls.append(req)
         payload = json.loads(req.data.decode("utf-8"))
         if "max_tokens" in payload:
@@ -420,7 +421,7 @@ def test_chat_completion_http_400_deflate_system_role_fallback():
     cfg = {"api_key": "test_key", "base_url": "https://api.test.com/v1", "model": "test-model"}
     calls = []
 
-    def mock_urlopen(req, timeout=10.0):
+    def mock_urlopen(req, timeout=10.0, **kwargs):
         calls.append(req)
         payload = json.loads(req.data.decode("utf-8"))
         msgs = payload.get("messages", [])
@@ -478,7 +479,7 @@ def test_chat_completion_http_400_magic_bytes_without_encoding_header():
     cfg = {"api_key": "test_key", "base_url": "https://api.test.com/v1", "model": "test-model"}
     calls = []
 
-    def mock_urlopen(req, timeout=10.0):
+    def mock_urlopen(req, timeout=10.0, **kwargs):
         calls.append(req)
         payload = json.loads(req.data.decode("utf-8"))
         if "max_tokens" in payload:
@@ -512,7 +513,7 @@ def test_chat_completion_http_400_chinese_error_and_system_only_messages():
     cfg = {"api_key": "test_key", "base_url": "https://api.test.com/v1", "model": "test-model"}
     calls = []
 
-    def mock_urlopen(req, timeout=10.0):
+    def mock_urlopen(req, timeout=10.0, **kwargs):
         calls.append(req)
         payload = json.loads(req.data.decode("utf-8"))
         msgs = payload.get("messages", [])
@@ -553,7 +554,7 @@ def test_chat_completion_http_400_raw_deflate_tokens_fallback():
     cfg = {"api_key": "test_key", "base_url": "https://api.test.com/v1", "model": "test-model"}
     calls = []
 
-    def mock_urlopen(req, timeout=10.0):
+    def mock_urlopen(req, timeout=10.0, **kwargs):
         calls.append(req)
         payload = json.loads(req.data.decode("utf-8"))
         if "max_tokens" in payload:
@@ -662,4 +663,3 @@ if __name__ == "__main__":
     test_chat_completion_200_ok_gzip_and_deflate()
     test_fetch_upstream_models_gzip_and_deflate()
     print("--- [全部测试通过] 彻底解决中转站 5s 但后台无数据的问题！ ---\n")
-

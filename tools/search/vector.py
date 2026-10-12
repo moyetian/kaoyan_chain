@@ -10,7 +10,7 @@
 
 技术细节：
 - 输入：文本字符串
-- 输出：384 维向量（bge-small）
+- 输出：512 维向量（bge-small-zh-v1.5 的 hidden_size；旧注释写 384 是英文版）
 - 批处理：支持批量编码，提升吞吐量
 """
 
@@ -38,6 +38,12 @@ from typing import List, Optional, Union
 logger = logging.getLogger(__name__)
 
 ROOT = resolve_workspace_root(__file__)
+
+#: [P0 修复·2026-10-11 第五轮深审] bge-small-zh-v1.5 的向量维度（单一真源）。
+#: 官方 config.json 的 hidden_size 实测 = 512；旧实现硬编码 384（那是
+#: bge-small-**en** 的维度）——384 维表 + 512 维向量在 sqlite-vec 插入即报错。
+#: 与 knowledge_store.DEFAULT_EMBEDDING_DIM 保持一致（有测试钉子防漂移）。
+EMBEDDING_DIM = 512
 
 # 全局状态
 _ENCODER: Optional['VectorEncoder'] = None
@@ -84,7 +90,9 @@ class VectorEncoder:
 
         # 模型配置
         self.max_length = 512
-        self.embedding_dim = 384
+        # [P0 修复·2026-10-11] 384 → EMBEDDING_DIM(512)：中文版 bge-small-zh
+        # 的 hidden_size 是 512（384 是英文版），旧值从未与模型对上过。
+        self.embedding_dim = EMBEDDING_DIM
 
         # 延迟加载标志
         self._loaded = False
@@ -164,25 +172,25 @@ class VectorEncoder:
 
         Returns:
             包含 input_ids, attention_mask 的字典
-        """
-        import numpy as np
 
-        # 使用 transformers tokenizer
-        if self.tokenizer and hasattr(self.tokenizer, 'encode_plus'):
-            try:
-                encoded = self.tokenizer(
-                    texts,
-                    padding='max_length',
-                    truncation=True,
-                    max_length=self.max_length,
-                    return_tensors='np'
-                )
-                return {
-                    "input_ids": encoded['input_ids'].astype(np.int64),
-                    "attention_mask": encoded['attention_mask'].astype(np.int64)
-                }
-            except Exception as e:
-                logger.error(f"tokenizer 编码失败: {e}")
+        [P0 修复·2026-10-11 第五轮深审] 旧门禁 ``hasattr(tokenizer,
+        'encode_plus')``：``encode_plus`` 是 transformers v4 时代 API、v5 已
+        删除；且 ``tokenizers.Tokenizer``（tokenizer.json 直载）本就没有该
+        方法 —— 两条 tokenizer 路径全被门禁拒之门外，即便装了依赖也永远走
+        raise 降级（"名义功能"）。现按对象能力分支直接调用：
+          * 有 ``encode_batch`` → ``tokenizers.Tokenizer``（手工组 padding 数组）；
+          * 否则 callable → transformers 的 PreTrainedTokenizer（v4/v5 均支持
+            ``__call__``，以调用结果为准而非方法名探测）。
+        """
+        # 分支 1：tokenizers.Tokenizer（tokenizer.json 直载）
+        if self.tokenizer is not None and hasattr(self.tokenizer, "encode_batch"):
+            return self._tokenize_via_encode_batch(texts)
+
+        # 分支 2：transformers 的 PreTrainedTokenizer（v4/v5 均支持 __call__）
+        if self.tokenizer is not None and callable(self.tokenizer):
+            encoded = self._tokenize_via_callable(texts)
+            if encoded is not None:
+                return encoded
 
         # [B4 修复·假向量] 旧降级分支返回全零 input_ids + 全一 mask，
         # 所有文本得到几乎相同的 embedding，检索排序无意义但上层无从察觉。
@@ -191,6 +199,58 @@ class VectorEncoder:
         raise RuntimeError(
             "无可用 tokenizer（transformers 与 tokenizer.json 均缺失），"
             "已拒绝生成占位向量；上游将自动降级为纯词法检索")
+
+    def _tokenize_via_encode_batch(self, texts: List[str]) -> dict:
+        """``tokenizers.Tokenizer`` 路径：encode_batch + 手工组 padding 数组。"""
+        import numpy as np
+
+        try:
+            encs = self.tokenizer.encode_batch(list(texts))
+            seqs = [list(e.ids)[: self.max_length] for e in encs]
+            maxlen = max((len(s) for s in seqs), default=1) or 1
+            input_ids = np.zeros((len(seqs), maxlen), dtype=np.int64)
+            attention_mask = np.zeros((len(seqs), maxlen), dtype=np.int64)
+            try:
+                pad_id = self.tokenizer.token_to_id("[PAD]")
+            except Exception:
+                pad_id = None
+            if pad_id is None:
+                pad_id = 0
+            for i, seq in enumerate(seqs):
+                n = len(seq)
+                if n:
+                    input_ids[i, :n] = seq
+                    attention_mask[i, :n] = 1
+                if n < maxlen:
+                    input_ids[i, n:] = pad_id
+            return {"input_ids": input_ids, "attention_mask": attention_mask}
+        except Exception as e:
+            logger.error(f"tokenizers.Tokenizer 编码失败: {e}")
+            raise
+
+    def _tokenize_via_callable(self, texts: List[str]) -> Optional[dict]:
+        """``transformers`` PreTrainedTokenizer 路径：``__call__`` 编码。
+
+        失败时记日志并返回 None，由 ``_tokenize`` 走「无可用 tokenizer」
+        兜底抛错（与旧实现"异常落空后统一 raise"的行为一致）。
+        """
+        import numpy as np
+
+        try:
+            encoded = self.tokenizer(
+                texts,
+                padding='max_length',
+                truncation=True,
+                max_length=self.max_length,
+                return_tensors='np'
+            )
+            return {
+                "input_ids": encoded['input_ids'].astype(np.int64),
+                "attention_mask": encoded['attention_mask'].astype(np.int64)
+            }
+        except Exception as e:
+            logger.error(f"tokenizer 编码失败: {e}")
+            return None
 
     def encode(
         self,
@@ -218,24 +278,19 @@ class VectorEncoder:
             texts = [texts]
 
         try:
+            import numpy as np
+
             # 分词
             inputs = self._tokenize(texts)
 
-            # 推理
-            outputs = self.session.run(
-                None,
-                {
-                    "input_ids": inputs["input_ids"],
-                    "attention_mask": inputs["attention_mask"]
-                }
-            )
+            # 推理（feed 按模型输入签名动态构造，见 _build_feed）
+            outputs = self.session.run(None, self._build_feed(inputs))
 
             # 提取向量（通常是最后一层的 [CLS] token 表示）
             embeddings = outputs[0][:, 0, :]  # shape: (batch_size, embedding_dim)
 
             # L2 归一化
             if normalize:
-                import numpy as np
                 norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
                 embeddings = embeddings / (norms + 1e-8)
 
@@ -247,6 +302,26 @@ class VectorEncoder:
         except Exception as e:
             logger.error(f"向量编码失败: {e}")
             raise
+
+    def _build_feed(self, inputs: dict) -> dict:
+        """按模型实际输入签名动态构造 feed。
+
+        [P0 修复·2026-10-11 第五轮深审] bge-small-zh 的 ONNX 导出
+        （BAAI/Xenova）含 input_ids / attention_mask / **token_type_ids**
+        三个输入；旧实现只传前两个，onnxruntime 报 "Required inputs are
+        missing" 直接失败。token_type_ids 对单句编码恒为全零。
+        """
+        import numpy as np
+
+        feed = {}
+        input_names = {i.name for i in self.session.get_inputs()}
+        if "input_ids" in input_names:
+            feed["input_ids"] = inputs["input_ids"]
+        if "attention_mask" in input_names:
+            feed["attention_mask"] = inputs["attention_mask"]
+        if "token_type_ids" in input_names:
+            feed["token_type_ids"] = np.zeros_like(inputs["input_ids"])
+        return feed
 
     def encode_query(self, query: str) -> List[float]:
         """编码查询文本（便捷方法）

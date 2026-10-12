@@ -1357,8 +1357,8 @@ SANITIZED_SUFFIXES: Tuple[str, ...] = ("*.md", "*.html", "*.svg", "*.py")
 
 #: **不得被内容级脱敏改写**的 ``*.py``。两类，理由不同但都不可动：
 #:
-#: 1. ``tools/intelligence/registry.py`` —— 公开数据表型：内容本身就是
-#:    「校名 → 院校代码/官网」的公开索引。实测发布副本里它的
+#: 1. ``registry.py`` 及拆模块产物 ``registry_synth.py`` —— 公开数据表型：
+#:    内容本身就是「校名 → 院校代码/官网」的公开索引。实测发布副本里它的
 #:    ``"<真实校名>": ("10466", "河南郑州", ...)`` 被替换成
 #:    ``"目标院校": ("10466", ...)``，等于把 KNOWN_REGIONAL 兜底索引整条改坏
 #:    （校名解析失配，且凭空多出一个叫「目标院校」的学校）。
@@ -1369,7 +1369,7 @@ SANITIZED_SUFFIXES: Tuple[str, ...] = ("*.md", "*.html", "*.svg", "*.py")
 #:    该文件随后又被 ``scan_residual_identity`` 当作豁免跳过（它必须保留
 #:    那些历史校名才能工作），故两个清单共用这一份定义。
 PY_UNSANITIZED_FILES: frozenset = frozenset({
-    "tools/intelligence/registry.py",
+    "tools/intelligence/registry.py", "tools/intelligence/registry_synth.py",
     "tools/privacy_policy.py",
 })
 

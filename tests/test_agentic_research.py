@@ -788,8 +788,8 @@ class TestResearchBudgetDeadline:
                 deadline=time.monotonic() - 1.0,
             )
         mock_urlopen.assert_not_called()
-        # break 时 messages 仅 [system, user]，返回最后一条 user 内容（prompt）
-        assert res == "研究指令"
+        # [翻转] 旧行为（user prompt 原文）→ 现确定性空串：无产出 → 下游解析失败 → 本地降级
+        assert res == ""
 
     def test_research_profile_passes_budget_as_deadline(self):
         """research_university_profile 把 budget_s 换算成 deadline 传给 execute_loop；

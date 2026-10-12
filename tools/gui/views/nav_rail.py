@@ -178,7 +178,7 @@ GUI_SERVICE_ONLY_ALIASES = frozenset({"rag", "index"})
 #: GUI 可达的 CLI 主命令（12 个）
 GUI_REACHABLE_COMMANDS = frozenset(GUI_ACTION_TO_COMMAND.values())
 
-#: GUI 无分发路径的 CLI 主命令（46 − 12 = 34 个）——完整命令见 ``ky commands``
+#: GUI 无分发路径的 CLI 主命令（48 − 12 = 36 个）——完整命令见 ``ky commands``
 GUI_UNREACHABLE_COMMANDS = frozenset({
     "version", "help", "commands", "config", "doctor", "status", "subject",
     "plan", "done", "map", "calc", "exam-submit", "review", "diagnose",
@@ -188,6 +188,9 @@ GUI_UNREACHABLE_COMMANDS = frozenset({
     # [2026-10-06] 新增 ``ky budget``（输出预算档位）—— 纯 CLI 侧配置入口，
     # GUI 暂未接入（考生可先用命令切换），故列入不可达。
     "budget",
+    # [2026-10-11] 新增 ``ky init``（本地工作区初始化向导）—— 向导类写命令
+    # （模板复制/必考方案/考纲/看板），GUI 暂未接入，故列入不可达。
+    "init",
 })
 
 

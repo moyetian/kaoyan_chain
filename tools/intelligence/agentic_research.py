@@ -321,7 +321,7 @@ class ToolDispatcher:
                 ),
             }
         # 命中本地库。注意：registry 对「名字像高校但未收录」的查询会合成实体
-        # （见 UniversityRegistry._synthesize_unlisted_school），其 chsi_code 回落
+        # （见 registry_synth.synthesize_unlisted_school），其 chsi_code 回落
         # 为「待查」——这条路径**实际可达**（任何含"大学/学院"的陌生校名都走这里），
         # 且旧实现同样把它当成已核验事实返回。故一并标注 unverified。
         code = (entity.chsi_code or "").strip()
@@ -1120,6 +1120,26 @@ class AgenticResearchEngine:
         except Exception:
             return ""
 
+    @staticmethod
+    def _last_message_content(messages: list[dict[str, Any]]) -> str:
+        """最后一条消息 content 兜底；**user 角色除外**（返回空串）。
+
+        [P1 修复·2026-10-11 第五轮深审] 旧实现原样返回「最后一条消息
+        content」，当消息表里只有 [system, user]（首轮 LLM 调用就失败/
+        未产生任何回复）时会把**用户 prompt 原文**当研究结论返回——实测
+        ``res == "研究指令"``，只是靠下游 ``_extract_json_block`` 解析失败
+        才落对本地降级（巧合而非契约：prompt 里恰好含合法 JSON 块时会被
+        当成"研究结论"采信）。现对 user 角色显式返回空串，让「无产出 →
+        空串 → 下游解析失败 → 本地降级」成为确定性契约。tool/assistant
+        消息的旧行为不变（既有用例 test_no_tool_success_skips_finalize_request
+        钉住）。
+        """
+        if not messages or not isinstance(messages[-1], dict):
+            return ""
+        if messages[-1].get("role") == "user":
+            return ""
+        return messages[-1].get("content") or ""
+
     def _recover_final_answer(self, messages: List[Dict[str, Any]],
                               cfg: Dict[str, Any], deadline: Optional[float],
                               any_tool_ok: bool) -> str:
@@ -1131,6 +1151,11 @@ class AgenticResearchEngine:
         3. 极简消息 + FINALIZE_MINIMAL_INSTRUCTION；
         4. 仍无内容 → 最后一条非空 assistant 文本（模型边调工具边写的分析说明）；
         5. 都没有 → 最后一条消息 content（**旧行为兜底**：调用方解析失败走本地降级）。
+
+        [P1 修复·2026-10-11 第五轮深审] 第 5 级兜底**不返回 user 消息**
+        （返回空串让下游走本地降级；完整理由见 ``_last_message_content``
+        的 docstring）。tool/assistant 消息的旧行为不变（既有用例
+        test_no_tool_success_skips_finalize_request 钉住）。
 
         两个不发起收尾请求的前提（保持既有预算与降级语义）：
         * ``any_tool_ok`` 为假（如全源冷却空转，没有可总结的信息）；
@@ -1145,9 +1170,7 @@ class AgenticResearchEngine:
                 if isinstance(_c, str) and _c.strip():
                     last_assistant = _c
                     break
-        last_content = ""
-        if messages and isinstance(messages[-1], dict):
-            last_content = messages[-1].get("content") or ""
+        last_content = self._last_message_content(messages)
         # [P2 修复·2026-10-08] 旧行为兜底返回**未围栏**的最后一条消息 content：
         # 围栏（见 _fence_tool_result）是发给 LLM 的注入防线，而本兜底的既有
         # 契约（docstring 第 5 条）是「原样返回最后一条消息 content，调用方据此

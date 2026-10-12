@@ -323,7 +323,7 @@ def test_request_chat_timeout_is_caller_decided():
 
 def test_request_chat_default_transport_is_patchable():
     """未注入 urlopen_fn 时走模块级 safe_urlopen（生产路径，可被既有测试 patch）。"""
-    def fake(req, timeout=None):
+    def fake(req, timeout=None, **kwargs):
         return FakeStreamResponse(sse_body(delta("默认通道"), finish()))
 
     with patch("tools.llm_client.safe_urlopen", side_effect=fake) as m:

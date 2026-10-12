@@ -76,11 +76,49 @@ _READ_ONLY_MODE = False
 #: 同一份 ky_io.py 在本项目里会被加载成多个模块别名（``tools.ky_io`` 与 ``ky_io``，
 #: 取决于调用方是 ``from tools import ky_io`` 还是 ``from ky_io import ...``）。
 #: 它们是**互相独立的模块对象**，各自持有一份 ``_READ_ONLY_MODE``。
+#: [新批次·注册表加固] 本表自注册表机制引入后**降级为兜底**（见
+#: :func:`_sibling_modules`）：主路径走进程级注册表（按 ``__file__`` 身份登记，
+#: 与模块名无关），本表只在注册表异常缺失时按名称枚举兜底。
 _KY_IO_ALIASES = ("tools.ky_io", "ky_io")
+
+#: 进程级别名注册表在 ``sys`` 上的属性名。存 ``sys`` 而非本模块的全局变量：
+#: 同一份源码被双重导入时，两个模块对象各有独立的全局命名空间，只有 ``sys``
+#: 是进程内共享的。
+_ALIAS_REGISTRY_ATTR = "_ky_io_alias_registry"
 
 
 class PermissionDeniedError(RuntimeError):
     """只读模式下尝试写盘时抛出。"""
+
+
+def _self_file_key() -> str:
+    """本模块源码文件的进程内身份键（``normcase + abspath``，语义见 _sibling_modules）。"""
+    return os.path.normcase(os.path.abspath(__file__))
+
+
+def _alias_registry() -> Dict[str, List[object]]:
+    """进程级 ky_io 别名注册表：``{文件身份键: [模块对象, ...]}``。
+
+    由每个别名在**导入期**自登记（:func:`_register_self_alias`）。按 ``__file__``
+    身份登记与模块名无关 —— 即便同一份源码以第三种名称被加载（外部工具注入
+    sys.path 前缀、自定义 loader、测试的 spec_from_file_location），也能被识别
+    为兄弟别名，跨别名 fail-closed 判定不会静默失效。
+
+    [L4 修复] 建表用 ``sys.__dict__.setdefault`` 单次原子调用：旧实现
+    ``getattr`` → None → 建表 → ``setattr`` 两步非原子，两线程并发首次调用
+    可能各建一表，败者的登记落入孤儿表（注册表主路径静默漏掉该别名）。
+    """
+    return sys.__dict__.setdefault(_ALIAS_REGISTRY_ATTR, {})
+
+
+def _register_self_alias() -> None:
+    """把当前模块对象登记进进程级别名注册表（模块导入期调用一次）。"""
+    self_mod = sys.modules.get(__name__)
+    if self_mod is None:
+        return  # 未入 sys.modules 的匿名加载：无法被其它别名按名称触达，跳过
+    bucket = _alias_registry().setdefault(_self_file_key(), [])
+    if all(m is not self_mod for m in bucket):
+        bucket.append(self_mod)
 
 
 def _sibling_modules() -> List[object]:
@@ -88,6 +126,11 @@ def _sibling_modules() -> List[object]:
 
     以 ``__file__`` 而非模块名判定身份：只有真·同一份源码的别名才共享标志，
     避免把同名但来自其它安装目录的模块误判成兄弟。
+
+    两路合并（按 ``id`` 去重）：
+      主路径 = 进程级注册表（导入期按 ``__file__`` 自登记，名称无关）；
+      兜底   = ``_KY_IO_ALIASES`` 名称枚举（注册表异常缺失时的保险，例如
+               外部代码清理了 ``sys`` 上的注册表属性）。
 
     [P0 修复·Windows 路径大小写] 比较必须过 ``os.path.normcase``：Windows 文件
     系统不区分大小写，同一份 ky_io.py 经不同 sys.path 条目（如 pytest 的
@@ -97,16 +140,22 @@ def _sibling_modules() -> List[object]:
     用例间歇变红，且 ``--permission=safe`` 的写闸门在真实入口上可被绕过）。
     POSIX 上 ``normcase`` 为恒等变换，语义不变。
     """
-    here = os.path.normcase(os.path.abspath(__file__))
+    key = _self_file_key()
     self_mod = sys.modules.get(__name__)
-    out: List[object] = []
+    candidates: List[object] = list(_alias_registry().get(key, ()))
     for name in _KY_IO_ALIASES:
         mod = sys.modules.get(name)
-        if mod is None or mod is self_mod:
+        if mod is not None:
+            candidates.append(mod)
+    out: List[object] = []
+    seen = set()
+    for mod in candidates:
+        if mod is self_mod or id(mod) in seen:
             continue
         f = getattr(mod, "__file__", None)
-        if f and os.path.normcase(os.path.abspath(f)) == here:
+        if f and os.path.normcase(os.path.abspath(f)) == key:
             out.append(mod)
+            seen.add(id(mod))
     return out
 
 
@@ -189,7 +238,14 @@ def _lock_path_for(target: PathLike) -> Path:
 
 
 def _get_file_lock(lock_path: Path):
-    """取得该路径对应的**单例**文件锁；filelock 不可用时返回 None。"""
+    """取得该路径对应的**单例**文件锁；filelock 不可用时返回 None。
+
+    [新批次·显式告警] filelock 缺失时旧实现**静默降级** —— 跨进程互斥强度
+    下降是真实运维事实，却完全无声（装没装、有没有降级无人知晓）。现改为
+    对该锁路径记一条 WARNING（每路径一次，由 ``_LOCKS`` 缓存去重）。
+    降级**不影响功能正确性**：同进程可重入保护由实例缓存提供、文件内容原子性
+    由 tmp+replace 保证，仅多进程并发写同一文件时失去互斥（见模块头「依赖说明」）。
+    """
     key = str(lock_path)
     with _LOCKS_GUARD:
         if key not in _LOCKS:
@@ -198,7 +254,11 @@ def _get_file_lock(lock_path: Path):
                 from filelock import FileLock
                 lock = FileLock(lock_path, timeout=5)
             except ImportError:
-                lock = None
+                import logging
+                logging.getLogger(__name__).warning(
+                    "filelock 未安装：跨进程写互斥已降级为无锁（同进程可重入保护"
+                    "不受影响，文件内容原子性不受影响）。恢复多进程互斥："
+                    "pip install filelock")
             _LOCKS[key] = lock
         return _LOCKS[key]
 
@@ -553,4 +613,5 @@ def _adopt_read_only_mode_from_aliases() -> None:
             return
 
 
+_register_self_alias()
 _adopt_read_only_mode_from_aliases()

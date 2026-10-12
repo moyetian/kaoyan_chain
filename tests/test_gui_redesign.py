@@ -627,13 +627,13 @@ def test_w13_palette_command_coverage_boundary_audit():
     # [2026-10-05 同步] 新增 ``ky index`` 后 44 → 45（不可达 34 → 35）
     # [2026-10-06 同步] 新增 ``ky grade-regress`` 后 45 → 46（不可达 35 → 36）
     # [2026-10-06 补 GUI 入口] rag / index 由不可达移入可达：不可达 36 → 34
-    # [2026-10-06 新增 ky budget] 46 → 47（不可达 34 → 35）
-    assert len(registered) == nav_rail_view.CLI_MAIN_COMMAND_COUNT == 47
+    # [2026-10-06 ky budget] 46 → 47（不可达 34 → 35）；[2026-10-11 ky init] 47 → 48（不可达 35 → 36）
+    assert len(registered) == nav_rail_view.CLI_MAIN_COMMAND_COUNT == 48
     assert nav_rail_view.GUI_REACHABLE_COMMANDS.isdisjoint(nav_rail_view.GUI_UNREACHABLE_COMMANDS)
     assert nav_rail_view.GUI_REACHABLE_COMMANDS | nav_rail_view.GUI_UNREACHABLE_COMMANDS == registered, (
         "覆盖边界声明与 CLI 注册表漂移：请同步 nav_rail.GUI_REACHABLE/UNREACHABLE_COMMANDS")
     assert len(nav_rail_view.GUI_REACHABLE_COMMANDS) == 12
-    assert len(nav_rail_view.GUI_UNREACHABLE_COMMANDS) == 35
+    assert len(nav_rail_view.GUI_UNREACHABLE_COMMANDS) == 36
     assert {"rag", "index"} <= nav_rail_view.GUI_REACHABLE_COMMANDS, (
         "rag / index 必须已从不可达移入可达（2026-10-06 补 GUI 入口）")
     assert not ({"rag", "index"} & nav_rail_view.GUI_UNREACHABLE_COMMANDS)

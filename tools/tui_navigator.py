@@ -620,7 +620,7 @@ def render_header() -> str:
     lines.append(render_box_line(row2, W, 'left'))
 
     # 第三行：辅导风格与今日各科任务打卡进度（[UT4 修复·CLI-5] 四科→各科）
-    task_stat_str = f"{done_tasks}/{total_tasks} 完成 ({today_pct:.1f}%)" if total_tasks > 0 else "待生成 (去报道)"
+    task_stat_str = f"{done_tasks}/{total_tasks} 完成 ({today_pct:.1f}%)" if total_tasks > 0 else "待生成 (去报到)"
     row3 = (
         f"🛡️  辅导风格: {colorize(info['style'], Colors.WHITE)}    │  "
         f"{colorize('📋 今日打卡: ' + task_stat_str, Colors.BOLD + (Colors.GREEN if done_tasks == total_tasks and total_tasks > 0 else Colors.YELLOW))}"

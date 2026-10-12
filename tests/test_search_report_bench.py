@@ -118,6 +118,20 @@ def test_offline_evaluation_metrics_in_range():
     assert "plan_site_coverage" in result.metrics and "official_first" in result.metrics
 
 
+def test_offline_plan_site_coverage_is_not_silently_zero():
+    """[2026-10-11 新增·第五轮深审] 规划覆盖率判据必须与 SearchQuery 表示形态同步。
+
+    背景：site: 语法现由 ``SearchQuery.__post_init__`` 解析进 ``domains`` 字段
+    （text 剥离语法词），而 ``evaluate_offline`` 的判据曾按
+    ``q.text.startswith("site:")`` 判断——脱节后指标恒为 0，但既有断言只查键
+    存在（``"plan_site_coverage" in metrics``），恒 0 也全绿（假阴性）。
+    本用例钉住指标真实大于 0：判据若再与表示形态脱节会立刻变红。
+    """
+    result = bench.evaluate_offline()
+    assert result.metrics["plan_site_coverage"] > 0, (
+        "规划覆盖率恒 0：判据与 SearchQuery 表示形态脱节（site: 已解析进 domains）")
+
+
 def test_offline_pipeline_drops_junk_and_merges_duplicates():
     """垃圾结果不能进 Top-K，重复变体必须被合并（本轮实测的两个核心问题）。"""
     result = bench.evaluate_offline()

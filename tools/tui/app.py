@@ -296,7 +296,8 @@ class KaoyanTUI(App):
         self.query_one("#log", RichLog).write(
             "[b]欢迎使用考研学习链终端中枢[/b]\n"
             "↑↓ 或鼠标选择动作，Enter 执行；执行输出会保留在右侧日志区。\n"
-            f"快捷键：[b]1-9[/b] 直达动作；[b]10[/b] = 先按 1 再按 0；"
+            f"快捷键：[b]1-9[/b] 直达动作；[b]10/11/12[/b] = 先按 1 再按末位"
+            f"（如 1→1 = 学科报到）；"
             f"[b]0[/b] = 退出；[b]r[/b] 刷新；[b]q[/b] 退出。\n")
         self._refresh_summary()
         self.query_one("#menu", ListView).focus()
@@ -373,18 +374,27 @@ class KaoyanTUI(App):
     def action_run_digit(self, digit: str) -> None:
         """数字键派发。
 
-        [为什么需要两击序列] 菜单键里有 ``10``，而 textual 的 BINDINGS 只能绑
-        **单键名**（终端一次只送来一个字符，`Binding("10", ...)` 永不触发）。
-        故 ``1`` 先挂起一小段时间：窗口内再按 ``0`` → 派发 ``10``；
-        窗口内按别的数字 → 先把 ``1`` 补跑掉再处理新键；窗口内无第二击 → 派发 ``1``。
+        [为什么需要两击序列] 菜单键里有两位数（``10``/``11``/``12``），而 textual
+        的 BINDINGS 只能绑**单键名**（终端一次只送来一个字符，`Binding("10", ...)`
+        永不触发）。故 ``1`` 先挂起一小段时间：窗口内再按末位数字 → 派发对应
+        两位数（如 1→1 派发 ``11`` 学科报到）；窗口内按别的数字 → 先把 ``1``
+        补跑掉再处理新键；窗口内无第二击 → 派发 ``1``。
+
+        [P0 修复·2026-10-11 第五轮深审] 旧实现只把 ``1``+``0`` 组合成 ``10``：
+        ``11``/``12``（学科报到/交作业）既无法到达，且按 ``1``、``1`` 会被
+        误当作「动作 1 + 挂起再补跑一次动作 1」——实测执行两次「今日任务」。
+        现按 ``menu_keys()`` 里真实存在的 ``1x`` 两位数键组合，不再硬编码 ``10``。
         """
         if self._pending_digit == "1":
             self._pending_digit = ""
-            if digit == "0":
-                self._dispatch_menu_key("10")
+            combined = f"1{digit}"
+            if combined in self.menu_keys():
+                self._dispatch_menu_key(combined)
                 return
             self._dispatch_menu_key("1")        # 补跑被挂起的单键
-        if digit == "1" and "10" in self.menu_keys():
+        if digit == "1" and any(
+                len(k) == 2 and k.startswith("1") and k.isdigit()
+                for k in self.menu_keys()):
             self._pending_digit = "1"
             self.set_timer(DIGIT_PREFIX_TIMEOUT, self._flush_pending_digit)
             return

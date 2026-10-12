@@ -158,7 +158,7 @@ class SearchService:
             stale = self._stale_for([n for n, _ in cooling], q)
             if stale:
                 return SearchResponse(
-                    query=q.text, results=tuple(stale),
+                    query=q.text, results=tuple(stale[: q.limit]),
                     providers_used=tuple(f"{r.engine or '*'}(缓存·陈旧)" for r in stale),
                     providers_failed=tuple(reasons), providers_cooling=tuple(cooling),
                     candidates=len(stale), queries_run=0, year=q.year)

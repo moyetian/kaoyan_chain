@@ -598,7 +598,7 @@ def test_decompression_all_9_http_400_fallback_keywords():
     token_keywords = ["max_tokens", "token", "tokens", "max_completion_tokens", "max_output_tokens"]
     for kw in token_keywords:
         calls = []
-        def mock_urlopen_token(req, timeout=10.0):
+        def mock_urlopen_token(req, timeout=10.0, **kwargs):
             calls.append(req)
             payload = json.loads(req.data.decode("utf-8"))
             if "max_tokens" in payload:
@@ -623,7 +623,7 @@ def test_decompression_all_9_http_400_fallback_keywords():
     system_keywords = ["system", "role", "系统", "角色"]
     for kw in system_keywords:
         calls = []
-        def mock_urlopen_sys(req, timeout=10.0):
+        def mock_urlopen_sys(req, timeout=10.0, **kwargs):
             calls.append(req)
             payload = json.loads(req.data.decode("utf-8"))
             msgs = payload.get("messages", [])

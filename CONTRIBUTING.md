@@ -150,7 +150,7 @@ kaoyan_chain/
     ├── ky_gui.py                        # [v2.6+] PySide6 GUI 启动入口 (ky gui)
     ├── doctor.py                        # 全系统健康诊断工具 (ky doctor)
     ├── init_workspace.py                # 跨平台工作区全能初始化向导
-    ├── ky_cli.py                        # 专有终端私教与多端 IM 网关入口（43 个子命令）
+    ├── ky_cli.py                        # 专有终端私教与多端 IM 网关入口（48 个子命令）
     ├── ky_io.py                         # 原子写 + 跨进程文件锁 + 只读模式闸门（所有落盘的唯一入口）
     ├── fsrs_scheduler.py                # FSRS 自适应复测调度器（全项目间隔计算唯一真源）
     ├── protocol_loader.py               # 顶层协议加载器（兼容源码模式与 wheel 安装模式）
@@ -161,6 +161,7 @@ kaoyan_chain/
     ├── sync_publish.py                  # 导出公开仓库副本（脱敏镜像，先清空再重建）
     ├── build_package.py                 # PyInstaller 打包（默认做内容级身份脱敏）
     ├── lint_check.py                    # 零依赖静态检查（只卡 ERROR 级问题）
+    ├── review_gate.py                   # 代码审查门禁（R1–R6 红线 + 存量 ratchet 保护线，只报不卡）
     ├── check_dashboard.py               # 看板产物守卫（JS 语法 + 前端契约 + 真浏览器运行）
     ├── evaluate_pipeline.py             # 离线评测：FSRS 校准度 (RMSE/LogLoss) 与引文忠实度
     ├── gui_launcher.py                  # 桌面端启动与诊断 launcher
@@ -253,7 +254,7 @@ python tools/test_new_features.py
 - **组 D**：CLI 子命令路由（`ky gui`/`ky wechat`/`ky wx`）与 TUI 菜单挂载
 - **组 E–H**：TUI/GUI 后端契约守卫、开放题多模型判分引擎、判分引擎打磨项回归与代码审查修复项回归
 
-> **测试计数与环境的对应关系**（2026-10-10 实测；改计数时请连同环境前提一起写）：
+> **测试计数与环境的对应关系**（2026-10-12 实测；改计数时请连同环境前提一起写）：
 >
 > - `test_ky_suite.py`：26 组共 **307 项断言**（私有工作区口径）。Git 工作区内为
 >   307 通过 / 0 跳过；干净检出（`git archive` 导出、无 `.git`）为 **302 通过 +
@@ -262,15 +263,15 @@ python tools/test_new_features.py
 >   + 1 跳过 = 306**：「私有导出守卫」在私有工作区跑 2 条断言（真实模块），占位
 >   模块记为 1 条跳过，故总数比私有口径少 1。
 > - `test_new_features.py`：**132 项断言**（0 跳过），与是否 Git 工作区无关。
-> - `pytest tests/`：共 **4022 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
->   **含** `dist/` 构建产物，实测 4016 通过 + 6 跳过）。跳过项为联网测试未设
->   `KY_LIVE_TEST=1`（2 条）、一条需特定 registry 探测串的守卫（1 条）、两条 POSIX
+> - `pytest tests/`：共 **4178 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
+>   **含** `dist/` 构建产物，实测 4173 通过 + 5 跳过）。跳过项为联网测试未设
+>   `KY_LIVE_TEST=1`（2 条）、两条 POSIX
 >   权限位断言（Windows 不适用，2 条）与一条 prompt 外置迁移后的设计性跳过
 >   （1 条，迁移完成后由 golden 固化用例持续覆盖该不变量）。
 >   在**无** `dist/` 的副本里跑，6 条打包断言会转为跳过 —— 收集总数不变，通过数下降。
 >   在**无 `cat` 的 Windows 裸机**（Git usrin 未加入 PATH）上，2 条沙箱阴性对照会转为
 >   跳过 —— 收集总数不变，通过数下降（该路径由 CI 的 Linux/macOS 作业与 Git 自带 coreutils 覆盖）。
->   在**公开副本**里跑还会少一整份 `tests/test_fix_publish_privacy.py`（私有工作区收集 139 项）：
+>   在**公开副本**里跑还会少一整份 `tests/test_fix_publish_privacy.py`（私有工作区收集 145 项）：
 >   它测的 `tools/sync_publish.py` / `tools/build_package.py` 在公开副本里是刻意保留的占位文件，
 >   该测试只对私有工作区有意义，导出时按 `privacy_policy.PRIVATE_WORKSPACE_ONLY_PATHS` 剔除。
 >   ⚠️ 造副本时排除目录**必须锚定根级路径**（如 `--exclude=./dist`）：写成裸 `dist` 会连
@@ -322,6 +323,6 @@ python tools/test_new_features.py
 5. 若变更影响用户可见行为（新增/修改命令、配置项、打包或隐私策略），
    请同步更新 [CHANGELOG.md](CHANGELOG.md) 与相关文档
    （[README.md](README.md) / [操作手册.md](操作手册.md) / [SETUP.md](SETUP.md)）；
-6. 创建 Pull Request，详细描述变更背景、测试结果与设计决策。
+6. 创建 Pull Request，详细描述变更背景、测试结果与设计决策（CI 会运行 `review_gate` 代码审查门禁：R1–R6 新增代码红线 + 存量 ratchet 保护线，只报不卡；规则与例外申请流程见 [CODE_REVIEW.md](CODE_REVIEW.md)）。
 
 > 📝 版本历史、升级步骤与跨版本注意事项统一记录在 [CHANGELOG.md](CHANGELOG.md)。

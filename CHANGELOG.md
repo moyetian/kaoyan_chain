@@ -9,11 +9,12 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 
 ---
 
-## [3.1.3] — 2026-10-09 ~ 10-10（未发布）
+## [3.1.3] — 2026-10-09 ~ 10-12（未发布）
 
 > v3.1.2 发布后的连续消缺：2026-10-09 审查报告复核（39 项 → 确认 17 项全部
 > 修复）、R11 推送前多智能体深度检查（5 域并行深审 29 项 + 对抗回归 N1–N9）、
-> 隐私自检 `.git` 交互修复与推送后 CI 双红修复。版本号真源 `pyproject.toml`。
+> 隐私自检 `.git` 交互修复与推送后 CI 双红修复，以及 10-11 ~ 10-12 的
+> 第四/五轮审查与代码审查门禁建设。版本号真源 `pyproject.toml`。
 
 ### 🔍 R11 推送前多智能体深度检查（29 项 + 对抗回归 9 项）
 
@@ -54,6 +55,69 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
 - **测试**：截至 2026-10-10 全量 pytest **4022 收集 / 4016 通过 + 6 跳过**；
   `test_ky_suite.py` **307 项**（私有口径）；`test_new_features.py`
   **132 通过**。
+
+### 🛡️ 2026-10-11 ~ 10-12 连续审查与代码审查门禁建设
+
+- **第四轮三方审查 16 项**（f840da4）、**第五轮深审 P0×3 + P1×5**（dc33512）、
+  OCR 审查轮 3 项（8db1b44）：院校解析裸子串守卫、向量检索链路 5 缺陷、
+  四科 RAG 隔离、`site:` 语法解析、serve-stale 冷却路径夹 limit、Ollama
+  回环白名单、`ky init` 注册（命令数 47→48 六处同步）等；
+- **代码审查门禁**（新增 `tools/review_gate.py`，零依赖 AST 静态分析）：
+  R1–R6 新增代码红线 + 存量 ratchet 保护线（只降不升）；修复 6 项实测缺陷
+  （Windows 反斜杠路径致 100% 误报、`test_ut` 前缀误伤正常命名、存量函数
+  触碰误报 39 条等）；新增 48 个测试守护（38 单元 + 9 回归 + 1 锁告警），
+  含变异检验 4/4 与两个实测误报的端到端回归；CI 接入为**只报不卡**独立
+  job（PR 场景追加变更审查）；
+- **审查流程文件**：`CODE_REVIEW.md`（标准 + 例外申请流程）、
+  `docs/REVIEW_DIAGNOSIS.md`（基线快照，不随代码演进更新）、`ruff.toml`
+  （中文项目适配：全角标点规则豁免）、`.github/CODEOWNERS`、PR 模板；
+- **ky_io 双导入加固**：别名识别由硬编码名称枚举改为**进程级注册表**
+  （按 `__file__` 身份登记，与模块名无关；名称枚举降级为兜底）——同一份源码
+  以第三名称加载时不再漏判兄弟别名（fail-open 修复）；filelock 缺失由静默
+  降级改为**显式 WARNING**（跨进程互斥强度下降可见化）；
+- **OCR 代码审查与 L/M 级修复**（2026-10-12）：delegation 模式审查
+  `dc33512..HEAD` 全部 5 个可审文件（覆盖 5/5），确认 2 MEDIUM + 6 LOW
+  缺陷并全部修复——`check_test_naming` 子串/段判断不一致致 `--diff` 崩溃
+  （M1）、rename 文件按新路径读基线误判"新增文件"双 ERROR（M2）、行计数对
+  尾换行多计 1 行（L1）、参数注解统计漏 posonly/vararg/kwarg（L2）、git
+  输出未显式 UTF-8 解码在 cp936 机器静默降级（L3）、注册表并发首次建表
+  落入孤儿表（L4）、ruff 用法注释与主仓库 origin 语义矛盾（L5）、
+  `[lint.pylint]` 死配置如实标注（L6）；git 交互层拆分为
+  `tools/review_gate_git.py`（保持 review_gate.py 自身 ≤500 行自合规）；
+  新增 6 个守护测试，变异检验 6/6；
+- **门禁红线清零**（2026-10-12 复检）：对未推送批次跑 `review_gate --diff`
+  报出的 6 条 ERROR 全部实修——`vector._tokenize`（70 行/CC15）与 `encode`
+  抽分支助手 `_tokenize_via_encode_batch` / `_tokenize_via_callable` /
+  `_build_feed`；`knowledge_store.add_chunks`（64 行/CC11）抽
+  `_write_vectors_batch`（维度跳过 + 独立 try 语义原样保留，行为不变）；
+  598 行日期戳测试文件按主题拆为 `tests/regression/test_search_pipeline_fixes.py`
+  （360 行）+ `test_runtime_guard_fixes.py`（257 行），33 个测试 ID 逐项核对
+  一致、首行补 `[Regress]` 来源标记（CODE_REVIEW §6.3）；
+- **门禁告警收敛**（2026-10-12 二轮）：同批次 40 条 WARN 收敛至 7 条——
+  R6 注解 ×22（两个新回归测试文件全补）、R1 函数行数 ×4（`run_doctor`
+  748→647 外提 4 助手、`resolve` 87→34 外提 3 匹配助手、`search` 134→130、
+  `evaluate_offline` 75→72 删除致越线注释块，理由由测试 docstring 承载）、
+  R2 复杂度 ×3（`run_doctor` 155→136 / `_recover_final_answer` 19→16 抽
+  `_last_message_content` / `resolve` 26→8）、R3 测试文件 ×3 回落基线
+  （docstring 压缩至零增量，翻转线索保留行内注释）；
+- **门禁告警部分清零**（2026-10-12 三轮）：`doctor.py` 的 RAG/MCP 检查段
+  （4 助手 + 着色/检查原语）拆 `tools/doctor_checks.py`（997→860 行，
+  双路径导入兼容）；`registry.py` 的未收录高校合成器拆
+  `tools/intelligence/registry_synth.py`（689→581 行，4 常量上移模块级 +
+  抽 `_infer_region`，行为字节级对照一致），两文件 R3 清零；
+  `registry_synth.py` 随迁 KNOWN_REGIONAL 公开索引 → 登记
+  `PY_UNSANITIZED_FILES` 豁免（privacy_policy.py 注释净零增改写）；
+  发布豁免守卫参数化覆盖双文件并迁入
+  `tests/regression/test_publish_exempt_guard.py`（变异检验：豁免移除 →
+  守卫变红；原文件回落基线）；余 5 条 R3 为存量文件（4 生产 + 1 测试）
+  功能增长净效果，如实保留；
+- **测试**：全量 pytest **4178 收集 / 4173 通过 + 5 跳过**；
+  `test_ky_suite.py` **307 项**；`test_new_features.py` **132 通过**。
+- **发布前文档收口**（2026-10-12）：README 顶部失效锚点 ×2 修复
+  （`⚠️ 使用注意事项` 的渲染 id 含残留 U+FE0F，旧 href 缺该字符；全量
+  67 个链接逐条与渲染页真实 id 比对）；CONTRIBUTING 计数同步（pytest
+  4178/4173+5、隐私测试收集数 145、CLI 子命令 43→48）；README 门禁
+  脚本清单与 CONTRIBUTING 架构树/PR 流程补 `review_gate` 说明。
 
 ---
 

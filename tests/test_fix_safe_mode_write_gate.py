@@ -58,6 +58,7 @@ WRITE_COMMAND_SAMPLES = {
     "exam-submit": ["exam-submit", "paper.md", "A B C"],
     "gui":         ["gui"],
     "index":       ["index"],
+    "init":        ["init", "--quick"],
     "ingest":      ["ingest", "paper.md"],
     "key":         ["key", "set", "PAPER-1", "1", "答案：B"],
     "memory":      ["memory", "prune"],

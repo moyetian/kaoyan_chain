@@ -13,9 +13,17 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
+
+#: [P1 修复·2026-10-11] 查询文本里的 ``site:域名`` 语法（要求前导空白或行首，
+#: 与搜索引擎语法一致；``site:`` 与域名之间不允许空格——``site: 说明`` 这类
+#: 中文文本不该被误当语法）。
+_SITE_SYNTAX_RE = re.compile(r"(?:^|\s)site:(\S+)", re.IGNORECASE)
+#: 剥离 site: 后的多空格归一（避免留下连续空白）。
+_MULTI_SPACE_RE = re.compile(r"\s+")
 
 #: 来源类型（由 source_registry 判定；此处给出取值域）
 SOURCE_TYPES: Tuple[str, ...] = (
@@ -141,6 +149,28 @@ class SearchQuery:
     year: Optional[int] = None              # 年份锁：只认这一年的数据
     time_range: Optional[str] = None        # year / month / week
     providers: Tuple[str, ...] = ()         # 空 = 用当前全部可用 provider
+
+    def __post_init__(self) -> None:
+        # [P1 修复·2026-10-11 第五轮深审] 解析 text 里的 ``site:域名`` 语法进
+        # ``domains`` 字段。此前只有结构化 domains 字段生效，用户/LLM 按搜索
+        # 引擎习惯在查询文本里写 ``site:xiaohongshu.com 考研经验`` 时——provider
+        # 层不解析该语法（搜狗完全不认、bing 对裸 urllib 请求也只当普通词）——
+        # 三平台定向检索实际搜的是全网，只靠事后字符串过滤兜底。
+        # 现把 ``site:`` 从文本剥离并并入 domains（与既有 domains 语义合一，
+        # 由 ``_passes_domain_filter`` 统一执行）；多个 site: 与既有 domains 去重保序。
+        raw = self.text or ""
+        hits = _SITE_SYNTAX_RE.findall(raw)
+        if hits:
+            extra = tuple(h.lower().strip().rstrip("/") for h in hits if h.strip())
+            if extra:
+                merged: List[str] = list(self.domains)
+                for d in extra:
+                    if d not in merged:
+                        merged.append(d)
+                cleaned = _SITE_SYNTAX_RE.sub(" ", raw)
+                cleaned = _MULTI_SPACE_RE.sub(" ", cleaned).strip()
+                object.__setattr__(self, "text", cleaned)
+                object.__setattr__(self, "domains", tuple(merged))
 
     def with_text(self, text: str) -> "SearchQuery":
         """派生一条同参数、不同关键词的查询（供查询改写批量展开）。"""

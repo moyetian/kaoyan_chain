@@ -69,3 +69,16 @@ maturin>=1.0.0
 #   请先本地跑通 fsrs_scheduler 相关用例（tools/test_ky_suite.py 的 FSRS 段）。
 fsrs>=5.0.0,<7
 filelock>=3.12.0
+
+# ── 9. 本地 RAG 向量检索增强（可选；词法检索不依赖） ──
+# 缺任一项时 ky rag 自动降级纯词法检索（降级路径完整可用、有显式提示），
+# 装齐后按下面顺序启用全链路：
+#   1) pip install sqlite-vec          # SQLite 向量扩展（vec0 虚拟表）
+#   2) pip install transformers tokenizers  # bge-small-zh tokenizer
+#   3) python tools/search/download_model.py  # 下载 ONNX 模型（~95MB，Xenova 源）
+#      （或在 Agent 会话中让工具自动调用；模型放 data/models/）
+# 说明：onnxruntime 已由 rapidocr-onnxruntime 传递安装；如独立使用向量
+# 编码，可显式补装 onnxruntime。校验：ky doctor 的「本地 RAG 向量检索」段。
+sqlite-vec>=0.1.6 ; python_version >= "3.10"
+transformers>=4.40
+tokenizers>=0.19

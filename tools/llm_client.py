@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import http.client
+import ipaddress
 import json
 import logging
 import math
@@ -17,6 +18,7 @@ import socket
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -64,16 +66,44 @@ except ImportError:  # pragma: no cover - 兼容 tools. 包式导入
     )
 
 
+def _is_loopback_host(host: str) -> bool:
+    """host 是否为本机回环（localhost / 127.0.0.0/8 / ::1）。"""
+    h = (host or "").strip().lower().strip("[]")
+    if not h:
+        return False
+    if h == "localhost" or h.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(h).is_loopback
+    except ValueError:
+        return False
+
+
 def _llm_urlopen(req: urllib.request.Request, timeout: float = 12.0):
     """LLM 请求专用安全通道（B1 修复）。
 
-    经 ``net_guard.safe_urlopen`` 发送：初始 URL 做 SSRF 校验（fail-closed，
-    拦回环/私网/保留地址并 pin DNS 防重绑定），每次 3xx 跳转逐跳复核，
-    跨主机跳转剥离 Authorization（防恶意 base_url 用 302 收割 API Key）。
-    体积上限与解压保护仍由调用方的 ``resp.read(MAX_...)`` +
-    ``_decompress_response_bytes`` 承担。
+    统一经 ``net_guard.safe_urlopen`` 发送：初始 URL 做 SSRF 校验（fail-closed），
+    每次 3xx 跳转逐跳复核，跨主机跳转剥离 Authorization（防恶意 base_url 用
+    302 收割 API Key），连接 IP pin 防 DNS 重绑定。
+
+    [P1 修复·2026-10-11 第五轮深审 · 本地 Ollama 对齐] 回环端点放行：
+    ``safe_urlopen`` 的 SSRF 防护面向「网页内容里的不可信 URL」，而 LLM
+    ``base_url`` 是用户**在 ky_config.json 里显式配置**的信任端点——
+    README 承诺「本地 Ollama 均可（兼容 OpenAI 接口）」，但 SSRF 守门把
+    ``http://localhost:11434/v1`` 一律拦死，文档与实现冲突（A12）。
+    现对回环 host（localhost / 127.0.0.0/8 / ::1）传 ``allow_loopback=True``
+    （net_guard 为此设计的既有参数：只放行回环地址；私网、链路本地、保留
+    地址仍然拒绝）；非回环一律维持 fail-closed。
+    安全影响说明：回环放行只把请求发往用户自己配置的本机服务——该服务本就会
+    收到 Authorization 头（它就是被配置的端点）；且本通道的重定向复核与
+    跨主机剥头保护对回环请求同样生效，比「绕过通道直连」更严。
     """
-    return safe_urlopen(req, timeout=timeout)
+    try:
+        host = urllib.parse.urlsplit(req.full_url).hostname or ""
+    except Exception:                              # pragma: no cover - 畸形 URL
+        host = ""
+    return safe_urlopen(req, timeout=timeout,
+                        allow_loopback=_is_loopback_host(host))
 
 # 确保在各种导入路径与 pytest mock 环境下 tools.llm_client 与 llm_client 指向同一模块对象
 _MODULE = sys.modules[__name__]

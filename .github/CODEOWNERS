@@ -1,0 +1,40 @@
+# 考研学习链 · 高危面代码负责人（CODEOWNERS）
+#
+# 作用：L2/L3 变更（分级见 CODE_REVIEW.md §三）自动指派复核人；
+#      L3（隐私/权限/凭据/LLM 出站/打包发布/判分口径/依赖与 CI）必须由
+#      对应 Owner 复核后方可合并。
+#
+# 当前为单人维护：全部高危面由 @moyetian 负责。多人协作时，把下列条目中
+# 的 @moyetian 替换为实际负责人 GitHub 用户名即可（角色划分见
+# CODE_REVIEW.md §二「角色与职责」）。
+#
+# 语法：<路径模式>  <@用户名>（按风险面而非目录划分，后者优先级低于前者）
+
+# ---- 隐私与安全（L3）----
+/tools/privacy_policy.py            @moyetian
+/tools/agent/permissions.py         @moyetian
+/tools/config_guard.py              @moyetian
+/tools/net_guard.py                 @moyetian
+
+# ---- 发布与打包（L3）----
+/tools/build_package.py             @moyetian
+/tools/sync_publish.py              @moyetian
+
+# ---- 判卷与评分口径（L3）----
+/tools/skills/exam_grading.py       @moyetian
+/tools/skills/open_grader.py        @moyetian
+/tools/benchmarks/grading_judge.py  @moyetian
+
+# ---- Agent 内核与工具注册（L2）----
+/tools/agent/                       @moyetian
+/tools/llm_client.py                @moyetian
+
+# ---- CLI 与状态写入口（L2）----
+/tools/cli/                         @moyetian
+/tools/ky_io.py                     @moyetian
+
+# ---- 门禁与流程资产（L2）----
+/tools/review_gate.py               @moyetian
+/tools/lint_check.py                @moyetian
+/.github/                           @moyetian
+/CODE_REVIEW.md                     @moyetian

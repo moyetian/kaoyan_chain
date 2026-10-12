@@ -230,8 +230,9 @@ def test_gui_reachable_unreachable_still_equals_registry():
     assert not ({"rag", "index"} & unreachable)
     # 本任务不新增 CLI 主命令
     # [2026-10-07 同步] 新增 ``ky budget``（输出预算档位）后 46 → 47；
+    # [2026-10-11 同步] 新增 ``ky init``（本地工作区初始化向导）后 47 → 48；
     # 本条断言钉住「命令清单变更需显式确认」——改命令数必须同步此处，防止静默漂移。
-    assert len(registered) == nav_rail_view.CLI_MAIN_COMMAND_COUNT == 47
+    assert len(registered) == nav_rail_view.CLI_MAIN_COMMAND_COUNT == 48
 
 
 def test_gui_rag_and_index_dispatch_to_existing_backends(monkeypatch):

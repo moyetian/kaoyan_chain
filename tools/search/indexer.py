@@ -47,10 +47,24 @@ logger = logging.getLogger(__name__)
 
 ROOT = resolve_workspace_root(__file__)
 
+#: [P1 修复·2026-10-11 第五轮深审] 受管科目资料目录（四科，单一真源）。
+#: 此前 load_materials 只扫 ``04-专业课/参考资料``，而 ``ky ingest`` 按科目把
+#: 材料归档到各自科目目录（math→01-数学、eng→02-英语、pol→03-思想政治理论、
+#: pro→04-专业课，见 skills/variant_retriever.py 的 SUBJECT_DIRS）——数学/英语/
+#: 政治材料入库后**永远搜不到**（实测英语长难句查询 0 命中，材料挪到专业课目录
+#: 后 Top1 相关率 4/4：引擎没问题，范围是问题）。ky rag 帮助文案自称「各科
+#: 参考资料/」，现让实现与文案一致。
+MATERIAL_SUBJECT_DIRS: Tuple[str, ...] = (
+    "01-数学", "02-英语", "03-思想政治理论", "04-专业课",
+)
+
 #: [P2 修复·2026-10-08] 本索引器**管理**的来源前缀（单一真源）。
 #: ``prune_chunks`` 只清理这些前缀下的失效片段，不碰其它写入方的数据；
 #: 与 :func:`load_universities` / :func:`load_materials` 的 source 取值一一对应。
-MANAGED_SOURCE_PREFIXES: Tuple[str, ...] = ("universities/", "04-专业课/参考资料")
+MANAGED_SOURCE_PREFIXES: Tuple[str, ...] = (
+    "universities/",
+    *(f"{_d}/参考资料" for _d in MATERIAL_SUBJECT_DIRS),
+)
 
 
 @dataclass
@@ -205,49 +219,58 @@ def load_universities() -> Generator[Document, None, None]:
 
 
 def load_materials() -> Generator[Document, None, None]:
-    """加载参考资料"""
-    materials_dir = ROOT / "04-专业课" / "参考资料"
+    """加载各科参考资料（四科统一扫描，见 MATERIAL_SUBJECT_DIRS）。"""
+    found_any = False
 
-    if not materials_dir.exists():
-        logger.warning(f"参考资料目录不存在: {materials_dir}")
-        return
-
-    for file_path in materials_dir.glob("**/*.md"):
-        if file_path.name.startswith('.'):
+    for subj in MATERIAL_SUBJECT_DIRS:
+        materials_dir = ROOT / subj / "参考资料"
+        if not materials_dir.is_dir():
             continue
+        found_any = True
 
-        try:
-            content = file_path.read_text(encoding='utf-8', errors='ignore')
+        for file_path in materials_dir.glob("**/*.md"):
+            if file_path.name.startswith('.'):
+                continue
 
-            # 提取标题
-            lines = content.split('\n')
-            title = file_path.stem
-            for line in lines[:10]:
-                if line.startswith('# '):
-                    title = line[2:].strip()
-                    break
+            try:
+                content = file_path.read_text(encoding='utf-8', errors='ignore')
 
-            # 切分长文档（[W13-3 · R5-a] overlap 经 KY_RAG_OVERLAP 开关解析，
-            # 默认 50 行为不变；chunk_size 保持 500，不做 512 对齐——那是
-            # vector.py 的 tokenizer 截断口径，与字符口径不可混算）
-            chunks = chunk_text(content, chunk_size=500, overlap=resolve_overlap())
+                # 提取标题
+                lines = content.split('\n')
+                title = file_path.stem
+                for line in lines[:10]:
+                    if line.startswith('# '):
+                        title = line[2:].strip()
+                        break
 
-            for i, chunk in enumerate(chunks):
-                chunk_id = f"material-{file_path.stem}-{i}"
-                yield Document(
-                    id=chunk_id,
-                    text=chunk,
-                    source=str(file_path.relative_to(ROOT)),
-                    metadata={
-                        "type": "material",
-                        "title": title,
-                        "chunk_index": i,
-                        "total_chunks": len(chunks)
-                    }
-                )
+                # 切分长文档（[W13-3 · R5-a] overlap 经 KY_RAG_OVERLAP 开关解析，
+                # 默认 50 行为不变；chunk_size 保持 500，不做 512 对齐——那是
+                # vector.py 的 tokenizer 截断口径，与字符口径不可混算）
+                chunks = chunk_text(content, chunk_size=500, overlap=resolve_overlap())
 
-        except Exception as e:
-            logger.error(f"加载资料失败 {file_path}: {e}")
+                for i, chunk in enumerate(chunks):
+                    # [P1 修复·2026-10-11] chunk_id 带科目前缀：旧 id 只有
+                    # ``material-{stem}-{i}``，不同科目下的同名文件（如各科都有
+                    # 「真题.md」）会撞 id 互相覆盖（INSERT OR REPLACE）。
+                    chunk_id = f"material-{subj}-{file_path.stem}-{i}"
+                    yield Document(
+                        id=chunk_id,
+                        text=chunk,
+                        source=str(file_path.relative_to(ROOT)),
+                        metadata={
+                            "type": "material",
+                            "title": title,
+                            "subject": subj,
+                            "chunk_index": i,
+                            "total_chunks": len(chunks)
+                        }
+                    )
+
+            except Exception as e:
+                logger.error(f"加载资料失败 {file_path}: {e}")
+
+    if not found_any:
+        logger.warning("四科参考资料目录均不存在: %s", "、".join(MATERIAL_SUBJECT_DIRS))
 
 
 def _present_managed_prefixes() -> List[str]:
@@ -256,12 +279,15 @@ def _present_managed_prefixes() -> List[str]:
     [P2 修复·2026-10-08] 清理失效片段必须带存在性护栏：只有来源文件/目录仍在
     时才做清理 —— 否则在「被剥离的工作区」里跑一次建索引，会把上一个工作区
     留下的全部院校/资料片段误删（来源缺失 ≠ 来源被删空）。
+
+    [P1 修复·2026-10-11] 与 MATERIAL_SUBJECT_DIRS 同步扩到四科。
     """
     out: List[str] = []
     if (ROOT / "data" / "universities" / "registry.json").exists():
         out.append("universities/")
-    if (ROOT / "04-专业课" / "参考资料").is_dir():
-        out.append("04-专业课/参考资料")
+    for subj in MATERIAL_SUBJECT_DIRS:
+        if (ROOT / subj / "参考资料").is_dir():
+            out.append(f"{subj}/参考资料")
     return out
 
 

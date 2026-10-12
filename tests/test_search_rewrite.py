@@ -75,8 +75,11 @@ def test_detect_general_intent():
 def test_plan_produces_site_and_chsi_queries():
     plan = plan_queries("华中科技大学 计算机 复试线", year=2027)
     texts = plan.texts
-    assert any(t.startswith("site:") for t in texts), "应产出站内检索查询"
-    assert any("yz.chsi.com.cn" in t for t in texts), "应产出研招网查询"
+    # [2026-10-11 适配·第五轮深审] site: 语法现由 SearchQuery.__post_init__ 解析
+    # 进 domains 字段（text 剥离语法词），「站内检索查询」判据从
+    # text.startswith("site:") 改为 domains 非空；关键词断言仍走 text。
+    assert any(q.domains for q in plan.queries), "应产出站内检索查询（域名解析进 domains）"
+    assert any("yz.chsi.com.cn" in q.domains for q in plan.queries), "应产出研招网查询"
     assert any("招生简章" in t for t in texts), "应覆盖招生简章来源"
     assert "华中科技大学 计算机 复试线" in texts, "原句本身也应保留一路"
 
@@ -120,7 +123,11 @@ def test_general_query_has_no_restriction():
 
 def test_plan_sets_providers_per_query():
     plan = plan_queries("找南方医科大学085409专业课真题", year=2027, limit=6)
-    site_queries = [q for q in plan.queries if q.text.startswith("site:")]
+    # [2026-10-11 适配·第五轮深审] site: 语法解析进 domains 后，判据从
+    # q.text.startswith("site:") 改为 domains 非空——本用例的核心意图不变：
+    # 站内查询的 providers 不得含公众号源（providers_for_query 在构造前用
+    # 原始文本判定，故 providers 仍是 WEB_PROVIDERS）。
+    site_queries = [q for q in plan.queries if q.domains]
     assert site_queries and all("sogou-weixin" not in q.providers
                                 for q in site_queries)
 

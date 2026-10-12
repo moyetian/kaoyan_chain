@@ -1,0 +1,103 @@
+# ============================================================
+# ruff 配置 · 考研学习链
+#
+# 接入原则：先 --diff 后全量，先 WARN 后 ERROR。
+# 本配置只启用「有明确收益、误报低」的规则子集，
+# 不追求把所有规则一次打开（那会让存量代码瞬间爆出上万条，
+# 结果是没人看、最后被整体绕过）。
+#
+# 用法：
+#   # 阶段 1（建议期）：只检查本次改动的文件
+#   ruff check $(git diff --name-only HEAD~1 -- '*.py')
+#   # 阶段 2（稳定后）：全量
+#   ruff check tools/ tests/
+#   # 自动修复安全项
+#   ruff check --fix $(git diff --name-only HEAD~1 -- '*.py')
+#
+# 注（本仓库特有）：主仓库 origin 指向脱敏发布副本（独立提交历史），
+# 勿用 origin/main 作 diff 基线；主仓库内请用 HEAD~1 / <tag>，公开副本
+# 与 CI 全新检出中 origin/main 语义正常（详见 tools/review_gate.py 的
+# 「基线语义注意」说明）。
+# 注：本配置入库时 ruff 尚未接入 CI（CI 只装 requirements）；按上述
+# 分阶段策略，先本地使用、稳定后再转为 CI 阻塞项。
+# ============================================================
+
+line-length = 100
+target-version = "py310"
+extend-exclude = [
+    "build",
+    "dist",
+    ".venv",
+    "rust_ext/target",
+    "docs/assets/vendor",   # 内联的第三方前端资源
+]
+
+[lint]
+# 分阶段启用。注释掉的是「待 P3 阶段再开」的规则。
+select = [
+    # ---- 第一优先：真 bug 与安全 ----
+    "F",    # pyflakes：未定义名、未使用导入/变量、重复键
+    "E9",   # 语法错误 / 不可达代码
+    "S",    # bandit：eval/exec、硬编码临时目录、subprocess shell=True 等
+    "B",    # bugbear：可变默认参数之外的常见坑（如 zip 无 strict、assert 滥用）
+
+    # ---- 第二优先：代码卫生 ----
+    "W",    # pycodestyle 警告：尾随空格、空行
+    "I",    # isort：import 排序与分组
+    "UP",   # pyupgrade：modernization（f-string、类型写法等）
+    "SIM",  # simplify：可简化的条件与嵌套（配合复杂度门禁效果好）
+    "RET",  # return 一致性：不必要的 else / 隐式 None
+    "ARG",  # 未使用的函数参数
+    "PTH",  # 路径处理：os.path → pathlib（跨平台 CI 收益明确）
+
+    # ---- 第三优先：可读性 ----
+    "N",    # pep8-naming
+    "RUF",  # ruff 特有规则
+]
+
+ignore = [
+    "E501",    # 行长度交给 formatter，避免与中文注释冲突
+    "S101",    # assert：本项目测试中大量使用，属正常
+    "S603",    # subprocess 调用：本项目 CLI 核心能力，已由白名单守卫管控
+    "S607",    # 部分路径启动子进程：同上
+    "SIM108",  # 三元表达式：有时显式 if/else 更易读
+    "RET504",  # 不必要的赋值再 return：调试时常用
+    "PTH123",  # Path.open：渐进迁移，不强制
+    # ---- 中文项目适配（2026-10-12 实测：全量 5.9 万条中 5.4 万条来自以下规则）----
+    "RUF001",  # ambiguous-unicode：中文全角标点（（）等）是正常书写，不是错误
+    "RUF002",  # ambiguous-unicode-docstring：同上（实测 2.5 万条）
+    "RUF003",  # ambiguous-unicode-comment：同上（实测 1.7 万条）
+    "UP009",   # utf8-encoding-declaration：项目统一保留 `# -*- coding: utf-8 -*-` 头
+]
+
+# 每个文件允许的违规上限（渐进收敛用）
+# P0 阶段设宽松，P3 阶段逐步收紧
+[lint.per-file-ignores]
+"tests/**" = ["S", "ARG", "PTH"]        # 测试允许宽松的子进程与 fixture 参数（含分层子目录）
+"tools/test_*.py" = ["S", "ARG"]
+"tools/builtin_pro_syllabi.py" = ["ALL"]  # 内置考纲数据文件，纯数据
+
+[lint.isort]
+known-first-party = ["tools"]
+lines-after-imports = 2
+
+[lint.flake8-bugbear]
+# 允许 test 文件中使用 assert
+extend-immutable-calls = ["typer.Argument", "typer.Option"]
+
+[lint.pylint]
+# ⚠ 本段当前【未启用】：上方 select 未包含 PLR09xx 规则族，以下参数暂不生效
+# （2026-10-12 审查发现的死配置，如实标注；启用方式：把 "PLR0911",
+# "PLR0912", "PLR0913", "PLR0915" 加入 select）。
+# 实测（2026-10-12）四条规则全仓存量违规 198 条（branches 88 / statements 82 /
+# returns 17 / args 11），按「先 --diff 后全量」策略，待存量收敛后再启用。
+max-args = 8          # PLR0913
+max-branches = 15     # PLR0912
+max-returns = 8       # PLR0911
+max-statements = 60   # PLR0915，与 CODE_REVIEW.md 的 R1（60 行）对齐
+
+[format]
+# 如后续启用 ruff format，建议配置：
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false

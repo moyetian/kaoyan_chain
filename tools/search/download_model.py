@@ -15,14 +15,24 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 MODELS_DIR = ROOT / "data" / "models"
 
 # 模型配置
+#: [P0 修复·2026-10-11 第五轮深审] 换模型下载源：
+#: 旧 URL ``BAAI/bge-small-zh-v1.5/resolve/main/onnx/model.onnx`` **404**
+#: （BAAI 官方仓库没有 onnx/ 子目录，实测 HTTP 404）——下载脚本从写下那天
+#: 起就不可能成功。改用 ``Xenova/bge-small-zh-v1.5``（transformers.js 官方
+#: ONNX 转换仓库，实测全套 200）：onnx/model.onnx 94.8MB。
+#: embedding_dim 同步修正 384 → 512（bge-small-zh 的 hidden_size）。
 MODEL_CONFIG = {
     "bge-small-zh-v1.5": {
-        "onnx_url": "https://huggingface.co/BAAI/bge-small-zh-v1.5/resolve/main/onnx/model.onnx",
-        "tokenizer_url": "https://huggingface.co/BAAI/bge-small-zh-v1.5/resolve/main/tokenizer.json",
-        "vocab_url": "https://huggingface.co/BAAI/bge-small-zh-v1.5/resolve/main/vocab.txt",
-        "config_url": "https://huggingface.co/BAAI/bge-small-zh-v1.5/resolve/main/config.json",
-        "size_mb": 80,
-        "embedding_dim": 384,
+        "onnx_url": "https://huggingface.co/Xenova/bge-small-zh-v1.5/resolve/main/onnx/model.onnx",
+        "tokenizer_url": "https://huggingface.co/Xenova/bge-small-zh-v1.5/resolve/main/tokenizer.json",
+        "vocab_url": "https://huggingface.co/Xenova/bge-small-zh-v1.5/resolve/main/vocab.txt",
+        "config_url": "https://huggingface.co/Xenova/bge-small-zh-v1.5/resolve/main/config.json",
+        # AutoTokenizer.from_pretrained(本地目录) 还需要这两个配套文件；
+        # 缺 tokenizer_config.json 时 fast tokenizer 可能回落到慢速路径。
+        "tokenizer_config_url": "https://huggingface.co/Xenova/bge-small-zh-v1.5/resolve/main/tokenizer_config.json",
+        "special_tokens_url": "https://huggingface.co/Xenova/bge-small-zh-v1.5/resolve/main/special_tokens_map.json",
+        "size_mb": 95,
+        "embedding_dim": 512,
     }
 }
 
@@ -86,9 +96,18 @@ def download_model(model_name: str = "bge-small-zh-v1.5"):
     if not download_file(config['tokenizer_url'], tokenizer_path, "Tokenizer"):
         return False
 
+    # 下载 vocab（部分 tokenizer 路径回退用）
+    download_file(config['vocab_url'], MODELS_DIR / "vocab.txt", "Vocab")
+
     # 下载 config
     config_path = MODELS_DIR / "config.json"
     download_file(config['config_url'], config_path, "配置文件")
+
+    # [P0 修复·2026-10-11] 配套 tokenizer 元文件（AutoTokenizer 本地加载需要）
+    download_file(config['tokenizer_config_url'],
+                  MODELS_DIR / "tokenizer_config.json", "Tokenizer 配置")
+    download_file(config['special_tokens_url'],
+                  MODELS_DIR / "special_tokens_map.json", "特殊 token 映射")
 
     print("\n✅ 所有文件下载完成！")
     return True

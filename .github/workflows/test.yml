@@ -248,6 +248,53 @@ jobs:
         fi
         echo "[OK] 工作区干净（仅排除 docs/index.html、docs/state_snapshot.json 两个生成物）"
 
+  review-gate:
+    # [新批次·代码审查门禁] 与既有 tools/lint_check.py 互补（语法级正确性 vs
+    # 可维护性 + 资产卫生）：R1-R6 新增代码红线 + 存量 ratchet 保护线
+    # （详见 CODE_REVIEW.md 与 tools/review_gate.py 头注释）。
+    #
+    # 为什么独立成 job 而不是并入 test 矩阵：
+    #   1) --diff 需要 base ref 的完整 tree，要求 checkout fetch-depth: 0；
+    #      并入 9 格矩阵会让每格都拉全历史，纯属浪费；
+    #   2) 本门禁是 git+AST 语义，与 OS/Python 版本无关，单平台单跑即可；
+    #   3) 独立 job 的日志更干净，出问题一眼定位。
+    #
+    # 只报不卡（用户决策 2026-10-12）：step 级 continue-on-error: true。
+    # 存量债（CC>25 的 95 个函数、>1500 行的 10 个文件）尚未偿还，此刻设硬
+    # 门禁只会让 CI 长期常红而失去信号价值；待存量收敛后再评估收紧。
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      with:
+        # --diff 需要 base 分支在本地可解析（PR 场景）；全量体检本身不需要。
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+      with:
+        python-version: "3.12"
+
+    - name: Review Gate · 全量体检 + 变更审查（只报不卡）
+      # review_gate.py 零依赖（仅标准库 AST + git），无需 pip install。
+      # push 场景 GITHUB_BASE_REF 为空 → 只跑全量体检；PR 场景追加与目标
+      # 分支的变更审查（--diff origin/<base>）。base ref 不可解析时跳过变更
+      # 审查而不是判错（fetch-depth: 0 已确保其存在，此为纵深防御）。
+      continue-on-error: true
+      run: |
+        echo "::group::Review Gate · 全量体检"
+        python tools/review_gate.py --scan
+        echo "::endgroup::"
+        if [ -n "${GITHUB_BASE_REF:-}" ] && \
+           git rev-parse --verify --quiet "origin/${GITHUB_BASE_REF}^{commit}" >/dev/null; then
+          echo "::group::Review Gate · 变更审查（vs origin/${GITHUB_BASE_REF}）"
+          python tools/review_gate.py --diff "origin/${GITHUB_BASE_REF}"
+          echo "::endgroup::"
+        else
+          echo "[skip] 变更审查：非 PR 场景或 base ref 不可用（全量体检已完成）"
+        fi
+
   rust-ext:
     # [S-6] Rust 原生加速扩展 (ky_rust_ext) 此前从未在 CI 中编译验证过 ——
     # 一旦 PyO3 版本升级或源码失效，只有用户在本地编译时才会发现。

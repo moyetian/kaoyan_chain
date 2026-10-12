@@ -256,7 +256,7 @@ class TestR1FinalizeChain:
                                   deadline=time.monotonic() - 1.0)
 
         assert len(captured) == 0
-        assert res == "研究指令"            # 旧行为兜底：最后一条消息 content
+        assert res == ""                # [翻转] 旧行为兜底（user prompt 原文）→ 空串
 
 
 # ════════════════════════════════════════════════════════════════

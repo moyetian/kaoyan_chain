@@ -104,8 +104,12 @@ def write_state_snapshot(data: dict, snapshot_path: "Path", parse_warnings=None,
     if not opt_in:
         # 公开版会泄露个人学情；打印强提示并把 full 字段置空作为警示
         print("[WARNING] KY_SNAPSHOT_OPT_IN=0：当前生成完整本地学情快照，请勿提交到公开仓库。")
-        print("          例如: set KY_SNAPSHOT_OPT_IN=1 && python build.py   (Windows)")
-        print("                 export KY_SNAPSHOT_OPT_IN=1 && python build.py   (macOS/Linux)")
+        # [P1 修复·2026-10-11 第五轮深审] 旧文案只写「python build.py」而仓库根
+        # 没有 build.py（它在 05-考研看板/ 下），照抄命令会报「找不到文件」。
+        # 补全目录语境，并给出考生更常用的 ky build 入口（默认即完整模式）。
+        print("          推荐: 在仓库根运行 ky build（默认完整模式，自动处理工作目录）")
+        print("          手动: cd 05-考研看板 && set KY_SNAPSHOT_OPT_IN=1 && python build.py   (Windows)")
+        print("                cd 05-考研看板 && export KY_SNAPSHOT_OPT_IN=1 && python build.py   (macOS/Linux)")
         snapshot_payload = {"meta": meta, "data": snapshot_data}
     else:
         safe_data = sanitize_public_data(data)
