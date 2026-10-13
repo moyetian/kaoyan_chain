@@ -55,6 +55,11 @@ ROOT = Path(__file__).resolve().parent.parent
 REAL_CONFIG = ROOT / "ky_config.json"
 REAL_HISTORY = ROOT / "ky_history.json"
 
+# xdist 并行时分隔离各 worker 的 QSettings 域（见 tests/_xdist_isolation.py）。
+import _xdist_isolation
+
+_xdist_isolation.apply_worker_isolation()
+
 
 def pytest_configure(config):
     """Keep pytest's temporary fixtures usable in restricted runners.

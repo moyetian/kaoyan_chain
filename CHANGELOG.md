@@ -129,6 +129,11 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
   特有：python.org 构建禁用 SQLite 扩展加载，仅该平台必红）；改为显式
   构造（打桩 / 鸭子类型假连接 / 显式删 `vec_chunks` 表），判定与环境、
   测试顺序、平台均无关。
+- **测试提速**（2026-10-13）：本地/推送前可用 `py -m pytest tests/ -n 8
+  --dist loadscope` 并行（全量 11 分钟 → ≈70 秒）：per-worker QSettings
+  org 隔离（双导入两份模块副本统一改写）、对抗性压缩测试显式 ids（二进制
+  参数 id 无法跨 worker 传输）、并发 hammer 测试网络瞬态容忍放宽（5s→15s，
+  逻辑断言不变）；`[dev]` 新增 `pytest-xdist`。CI 矩阵保持单进程全量口径。
 
 ---
 

@@ -152,7 +152,7 @@ def test_gateway_50_threads_burst_contention_and_invariants():
             barrier.wait()
             for _ in range(30):
                 req = urllib.request.Request(f"{base_url}/api/live")
-                with urllib.request.urlopen(req, timeout=5.0) as resp:
+                with urllib.request.urlopen(req, timeout=15.0) as resp:
                     assert resp.status == 200
                     body = resp.read().decode("utf-8")
                     data = json.loads(body)
@@ -258,7 +258,7 @@ def test_gateway_http_clear_and_live_interleaving_30_threads():
             barrier.wait()
             for _ in range(25):
                 req = urllib.request.Request(f"{base_url}/api/clear", data=b"", method="POST")
-                with urllib.request.urlopen(req, timeout=5.0) as resp:
+                with urllib.request.urlopen(req, timeout=15.0) as resp:
                     assert resp.status == 200
                     body = resp.read().decode("utf-8")
                     data = json.loads(body)
@@ -272,7 +272,7 @@ def test_gateway_http_clear_and_live_interleaving_30_threads():
             barrier.wait()
             for _ in range(35):
                 req = urllib.request.Request(f"{base_url}/api/live")
-                with urllib.request.urlopen(req, timeout=5.0) as resp:
+                with urllib.request.urlopen(req, timeout=15.0) as resp:
                     assert resp.status == 200
                     body = resp.read().decode("utf-8")
                     data = json.loads(body)

@@ -263,6 +263,9 @@ python tools/test_new_features.py
 >   + 1 跳过 = 306**：「私有导出守卫」在私有工作区跑 2 条断言（真实模块），占位
 >   模块记为 1 条跳过，故总数比私有口径少 1。
 > - `test_new_features.py`：**132 项断言**（0 跳过），与是否 Git 工作区无关。
+> - **并行加速（本地）**：`py -m pytest tests/ -n 8 --dist loadscope` 全量约 70 秒
+>   （单进程约 11 分钟）；per-worker 的 QSettings org 隔离与其它状态清理见 `tests/conftest.py`。
+>   CI 矩阵保持单进程全量口径（跨平台/顺序差异的最强探测面）。
 > - `pytest tests/`：共 **4179 项**（完整工作区、已配 `study_plan` 的 `ky_config.json`、
 >   **含** `dist/` 构建产物，实测 4174 通过 + 5 跳过）。跳过项为联网测试未设
 >   `KY_LIVE_TEST=1`（2 条）、两条 POSIX

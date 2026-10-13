@@ -95,7 +95,8 @@ def _make_runner():
     (gzip.compress(json.dumps({"choices": []}).encode("utf-8"))[:12], "truncated"),
     (gzip.compress(json.dumps({"choices": []}).encode("utf-8"))[:8] + b"\xff\xff\x00\x00", "bitflipped"),
     (b"", "empty"),
-])
+],
+    ids=["garbage", "truncated", "bitflipped", "empty"])
 def test_adversarial_decompression_gzip(corrupted_payload, case_name):
     """测试各种损坏的 gzip 报文在 AgentRunner 中被安全捕获，不抛出未处理异常"""
     runner = _make_runner()
@@ -117,7 +118,8 @@ def test_adversarial_decompression_gzip(corrupted_payload, case_name):
     (zlib.compress(json.dumps({"choices": []}).encode("utf-8"))[:8], "truncated"),
     (zlib.compress(json.dumps({"choices": []}).encode("utf-8"))[:5] + b"\x00\xff", "bitflipped"),
     (b"", "empty"),
-])
+],
+    ids=["garbage", "truncated", "bitflipped", "empty"])
 def test_adversarial_decompression_deflate(corrupted_payload, case_name):
     """测试各种损坏的 deflate 报文在 AgentRunner 中被安全捕获，不抛出未处理异常"""
     runner = _make_runner()
