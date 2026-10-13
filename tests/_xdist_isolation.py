@@ -19,10 +19,12 @@
 （命名带 ``__xdist_`` 便于识别）。
 """
 
-from pathlib import Path
+import contextlib
 import importlib
 import os
 import sys
+from pathlib import Path
+
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -54,10 +56,9 @@ def apply_worker_isolation() -> None:
         return
     new_org = f"{copies[0].SETTINGS_ORG}__xdist_{_XDIST_WORKER}"
     for mod in copies:
-        try:
+        # pragma: no cover - 防御：隔离失败不得炸收集
+        with contextlib.suppress(Exception):
             mod.SETTINGS_ORG = new_org
-        except Exception:  # pragma: no cover - 防御：隔离失败不得炸收集
-            pass
 
 
 apply_worker_isolation()

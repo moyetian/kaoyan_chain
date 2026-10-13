@@ -58,6 +58,7 @@ REAL_HISTORY = ROOT / "ky_history.json"
 # xdist 并行时分隔离各 worker 的 QSettings 域（见 tests/_xdist_isolation.py）。
 import _xdist_isolation
 
+
 _xdist_isolation.apply_worker_isolation()
 
 

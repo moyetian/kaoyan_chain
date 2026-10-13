@@ -87,7 +87,7 @@ dev = [
     "pytest>=7.0.0",
     "pytest-timeout",
     "pytest-socket",
-    # 本地/CI 并行加速（``-n N``）；per-worker QSettings 隔离见 tests/conftest.py。
+    # 本地并行加速（``-n N``；CI 矩阵保持单进程口径）；per-worker QSettings 隔离见 tests/conftest.py。
     "pytest-xdist",
     "maturin>=1.0.0",
     # 测试专用依赖（**不进 requirements.txt 主依赖**，产品运行不需要）：
