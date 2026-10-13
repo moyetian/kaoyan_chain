@@ -123,6 +123,11 @@ python -c "import sys; sys.path.insert(0, 'tools'); from version import get_vers
   `PRIVATE_WORKSPACE_ONLY_PATHS` 导出排除清单，公开副本 CI 九平台 pytest
   全红（`AttributeError: module 'sync_publish' has no attribute 'DST'`）；
   现补登记，并把清单守护用例参数化扩展覆盖分层目录。
+- **CI 修复·环境无关化**（2026-10-12）：requirements 新增
+  `sqlite-vec` / `transformers` 后，三个测试对「扩展未安装」的环境真态
+  假设在 CI（会安装新依赖）上翻转 —— 九平台 pytest 全红；改为显式构造
+  （打桩扩展不可用 / 鸭子类型假连接 / 显式删 `vec_chunks` 表），判定与
+  环境、测试顺序均无关。
 
 ---
 

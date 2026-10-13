@@ -330,6 +330,15 @@ def test_rag_with_db_prints_degradation_panel(tmp_path, monkeypatch):
     """库存在但向量不可用：输出里必须出现『已降级』与具体原因。"""
     from tools.cli.commands import search as cmd_search
 
+    # [2026-10-12 环境无关化] 显式构造「sqlite-vec 扩展不可用」场景：装了
+    # sqlite-vec 的机器（CI 按新 requirements 安装）上真实加载会成功，降级
+    # 原因随之变为「模型/编码未就绪」——仅按环境真态断言 'sqlite-vec' 会在
+    # 装了扩展的机器上必红（CI 九平台实测）。打桩后判据只验「原因点名缺件」。
+    def _ext_unavailable(self: object, conn: object) -> bool:
+        return False
+
+    monkeypatch.setattr(ks_mod.KnowledgeStore, "_try_load_vec_extension",
+                        _ext_unavailable)
     db = tmp_path / "kb.db"
     store = ks_mod.KnowledgeStore(db)
     for c in CHUNKS.values():

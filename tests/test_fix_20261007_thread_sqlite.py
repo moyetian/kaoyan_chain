@@ -324,6 +324,10 @@ def test_search_by_vector_propagates_query_failure(tmp_path):
     store = ks_mod.KnowledgeStore(tmp_path / "kb.db")
     # 模拟扩展已加载但向量表缺失（查询必然失败）
     store.has_vector = True
+    # [2026-10-12 环境无关化] 装了 sqlite-vec 的机器（CI 按新 requirements
+    # 安装）构造时会真实建 vec_chunks 表 → 查询不再失败；显式删表使本用例
+    # 在任何环境下都走「表缺失 → 抛错」路径。
+    store.conn.execute("DROP TABLE IF EXISTS vec_chunks")
     with pytest.raises(sqlite3.Error):
         store.search_by_vector([0.0] * 384, top_k=3)
 

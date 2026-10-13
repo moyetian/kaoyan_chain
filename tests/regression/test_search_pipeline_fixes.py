@@ -225,13 +225,24 @@ class TestVectorPipeline:
         # 确保 import sqlite_vec 抛 ImportError
         monkeypatch.setitem(sys.modules, "sqlite_vec", None)
 
+        # [2026-10-12 环境无关化] 裸名加载能否成功是环境真态：Windows 上
+        # 同进程内若已有真实加载（另一文件的真库用例）把 vec0.dll 映射进
+        # 进程，LoadLibrary 按基名直接命中已加载模块 → 裸名「成功」；且
+        # sqlite3.Connection 是 C 类型，类属性不可 monkeypatch。判据只验
+        # 「裸名不可用 → 返回 False 而非崩」，故用鸭子类型假连接让裸名
+        # 加载必然失败（环境无关、顺序无关）。
+        class _FakeConn:
+            def enable_load_extension(self, enable: bool) -> None:
+                pass
+
+            def load_extension(self, name: str) -> None:
+                raise sqlite3.OperationalError(f"no such module: {name}")
+
         store = ks_mod.KnowledgeStore.__new__(ks_mod.KnowledgeStore)
-        conn = sqlite3.connect(":memory:")
-        conn.create_function("vec_version", 0, lambda: "v0.1.6-fake")
+        conn = _FakeConn()
         # 裸名 load_extension("vec0") 在无扩展路径时抛错 → 全部分支失败
         ok = store._try_load_vec_extension(conn)
         assert ok is False
-        conn.close()
 
     def test_tokenizers_tokenizer_branch(self):
         """[红线] tokenizers.Tokenizer（encode_batch）可编码。
