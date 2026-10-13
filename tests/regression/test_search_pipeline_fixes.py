@@ -190,7 +190,6 @@ class TestVectorPipeline:
         包目录内、裸名必然失败（实测 has_vector 恒 False）。阴性对照：
         去掉 sqlite_vec 分支 → 本用例红（走裸名分支 → 返回 False）。
         """
-        import sqlite3
         import types
 
         import tools.search.knowledge_store as ks_mod
@@ -199,22 +198,34 @@ class TestVectorPipeline:
 
         fake_sqlite_vec = types.ModuleType("sqlite_vec")
 
-        def fake_load(conn: object):
+        def fake_load(conn: object) -> None:
             called["pkg"] += 1
 
         fake_sqlite_vec.load = fake_load  # type: ignore[attr-defined]
         monkeypatch.setitem(sys.modules, "sqlite_vec", fake_sqlite_vec)
 
+        # [2026-10-13 CI 修复·macOS 特有红] 不再依赖真连接的
+        # enable_load_extension：macOS 的 python.org 构建禁用 SQLite 扩展
+        # 加载（调用抛 NotSupportedError）→ 旧写法在 macOS 走「enable 失败
+        # → return False」分支，断言 ok is True 必红（Windows/Linux 的
+        # Python 默认启用扩展加载，故仅 macOS 三格红）。鸭子类型假连接使
+        # 判定与平台无关：enable 放行 + vec_version 探测返回假版本。
+        class _FakeConn:
+            def enable_load_extension(self, enable: bool) -> None:
+                pass
+
+            def execute(self, sql: str) -> "_FakeConn":
+                return self
+
+            def fetchone(self) -> tuple:
+                return ("v0.1.9-fake",)
+
         # 用 __new__ 绕开构造期（构造会先自调一次加载，干扰计数）
         store = ks_mod.KnowledgeStore.__new__(ks_mod.KnowledgeStore)
-        conn = sqlite3.connect(":memory:")
-        # vec_version() 是 sqlite-vec 才有的函数：注册一个同名自定义函数
-        # 模拟「扩展已生效」的探测结果（真实连接支持 create_function）。
-        conn.create_function("vec_version", 0, lambda: "v0.1.6-fake")
+        conn = _FakeConn()
         ok = store._try_load_vec_extension(conn)
         assert ok is True
         assert called["pkg"] == 1, "应优先走 sqlite_vec.load"
-        conn.close()
 
     def test_sqlite_vec_missing_falls_back_to_bare(self, monkeypatch: pytest.MonkeyPatch):
         """阴性对照：sqlite_vec 包不可用时回落裸名加载（不直接失败）。"""
